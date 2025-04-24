@@ -67,6 +67,7 @@ pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
 pub fn find_byte_decomp<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {
+    let mut result = None;
     expr.visit_expressions(
         &mut |expr| {
             if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -85,16 +86,16 @@ pub fn find_byte_decomp<T: FieldElement>(
                         && is_ref(&**left)
                         && is_ref(&**inner_left)
                     {
-                        return ControlFlow::Break((left.as_ref().clone(), inner_left.as_ref().clone()));
+                        result = Some((left.as_ref().clone(), inner_left.as_ref().clone()));
+                        return ControlFlow::Break(());
                     }
                 }
             }
             ControlFlow::Continue(())
         },
         VisitOrder::Pre,
-    )
-    .break_value()
-    .expect("No byte decomposition found")
+    );
+    result.expect("No byte decomposition found")
 }
 
 /// Returns true iff a given expression features another expression as a subexpression.
