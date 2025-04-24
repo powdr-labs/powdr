@@ -771,7 +771,7 @@ pub fn generate_precompile<T: FieldElement>(
             | InstructionKind::ConditionalBranch => {
                 let mut local_idx_subs: BTreeMap<Column, u64> = BTreeMap::new();
 
-                let machine = instruction_machines.get(&instr.name).unwrap().clone();
+                let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
@@ -818,39 +818,32 @@ pub fn generate_precompile<T: FieldElement>(
 
                 let mut local_subs = BTreeMap::new();
 
-                let mut register_expression = |expr: AlgebraicExpression<T>| {
-                    let mut expr = expr.clone();
-                    powdr::substitute_algebraic(&mut expr, &sub_map);
-                    powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                    let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
-                    let mut expr = simplify_expression(expr);
-                    global_idx =
-                        powdr::reassign_ids_algebraic(&mut expr, global_idx, &mut local_idx_subs);
-                    local_subs.extend(subs);
-                    expr
-                };
+                machine.constraints.extend(local_constraints);
 
-                constraints.extend(
-                    machine
-                        .constraints
-                        .iter()
-                        .chain(&local_constraints)
-                        .map(|c| SymbolicConstraint {
-                            expr: register_expression(c.expr.clone()),
-                        }),
+                // Process all expressions in the machine
+                machine.visit_expressions_mut(
+                    &mut |expr| {
+                        *expr = {
+                            let mut expr = expr.clone();
+                            powdr::substitute_algebraic(&mut expr, &sub_map);
+                            powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
+                            let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
+                            let mut expr = simplify_expression(expr);
+                            global_idx = powdr::reassign_ids_algebraic(
+                                &mut expr,
+                                global_idx,
+                                &mut local_idx_subs,
+                            );
+                            local_subs.extend(subs);
+                            expr
+                        };
+                        std::ops::ControlFlow::Continue::<()>(())
+                    },
+                    powdr_ast::parsed::visitor::VisitOrder::Pre,
                 );
 
-                bus_interactions.extend(machine.bus_interactions.into_iter().map(|mut bus_int| {
-                    bus_int.visit_expressions_mut(
-                        &mut |e| {
-                            *e = register_expression(e.clone());
-                            std::ops::ControlFlow::Continue::<()>(())
-                        },
-                        powdr_ast::parsed::visitor::VisitOrder::Pre,
-                    );
-                    bus_int
-                }));
-
+                constraints.extend(machine.constraints);
+                bus_interactions.extend(machine.bus_interactions);
                 col_subs.push(local_subs);
 
                 // after the first round of simplifying,
