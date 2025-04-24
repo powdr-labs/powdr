@@ -2,7 +2,7 @@ use itertools::Itertools;
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::asm::Part;
-use powdr_ast::parsed::visitor::{Children, ExpressionVisitable};
+use powdr_ast::parsed::visitor::{Children, ExpressionVisitable, VisitOrder};
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::iter::once;
+use std::ops::ControlFlow;
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -762,7 +763,25 @@ pub fn generate_precompile<T: FieldElement>(
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<BTreeMap<Column, Column>> = Vec::new();
-    let mut global_idx: u64 = 3;
+    let mut global_idx: u64 = 0;
+
+    // Initialize the substitutions by mapping the constant columns to themselves, as they can be reused across instructions.
+    // It could be cleaner to have one instance per instruction (`is_first_row_1`, `is_first_row_2`, etc.) and adding constraints between them
+    // This would remove this edge case but also would require fully supporting constant columns, which is not the case in `reassign_ids_algebraic`
+    let constant_subs: BTreeMap<Column, Column> = ["is_first_row", "is_transition", "is_last_row"]
+        .iter()
+        .map(|name| {
+            let col = Column {
+                name: name.to_string(),
+                id: PolyID {
+                    ptype: PolynomialType::Constant,
+                    id: global_idx,
+                },
+            };
+            global_idx += 1;
+            (col.clone(), col)
+        })
+        .collect();
 
     for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
@@ -816,24 +835,7 @@ pub fn generate_precompile<T: FieldElement>(
 
                 machine.constraints.extend(local_constraints);
 
-                // Initialize the substitutions by mapping the constant columns to themselves, as they can be reused across instructions.
-                // It could be cleaner to have one instance per instruction (`is_first_row_1`, `is_first_row_2`, etc.) and adding constraints between them
-                // It would remove this edge case but also would require fully supporting constant columns, which is not the case in `reassign_ids_algebraic`
-                let mut local_subs: BTreeMap<Column, Column> =
-                    ["is_first_row", "is_transition", "is_last_row"]
-                        .iter()
-                        .enumerate()
-                        .map(|(id, name)| {
-                            let col = Column {
-                                name: name.to_string(),
-                                id: PolyID {
-                                    ptype: PolynomialType::Constant,
-                                    id: id as u64,
-                                },
-                            };
-                            (col.clone(), col)
-                        })
-                        .collect();
+                let mut local_subs = constant_subs.clone();
 
                 // Process all expressions in the machine
                 machine.visit_expressions_mut(
@@ -851,9 +853,9 @@ pub fn generate_precompile<T: FieldElement>(
                             );
                             expr
                         };
-                        std::ops::ControlFlow::Continue::<()>(())
+                        ControlFlow::Continue::<()>(())
                     },
-                    powdr_ast::parsed::visitor::VisitOrder::Pre,
+                    VisitOrder::Pre,
                 );
 
                 constraints.extend(machine.constraints);
