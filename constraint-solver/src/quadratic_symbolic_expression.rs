@@ -10,7 +10,8 @@ use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::Condition, symbolic_expression::BinaryOperator,
+    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
@@ -204,6 +205,163 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
                 .chain(b.referenced_unknown_variables())
         });
         Box::new(quadratic.chain(self.linear.keys()))
+    }
+
+    pub fn find_inlinable_variable(&self) -> Option<(V, SymbolicExpression<T, V>)> {
+        if self.is_affine() && self.linear.len() == 1 {
+            let (var, coeff) = self.linear.iter().next().unwrap();
+
+            if !coeff.is_known_zero() {
+                let expr = self.constant.clone().field_div(&-coeff.clone());
+
+                return Some((var.clone(), expr));
+            }
+        }
+
+        if self.is_affine() && self.linear.len() > 1 {
+            for (var, coeff) in &self.linear {
+                if !coeff.is_known_zero() {
+                    let mut expr = -self.constant.clone();
+
+                    for (other_var, other_coeff) in &self.linear {
+                        if other_var != var {
+                            let existing_range_constraint = other_coeff.range_constraint();
+
+                            let var_expr = SymbolicExpression::Symbol(
+                                other_var.clone(),
+                                existing_range_constraint,
+                            );
+
+                            expr = expr - (other_coeff.clone() * var_expr);
+                        }
+                    }
+                    expr = expr.field_div(coeff);
+
+                    return Some((var.clone(), expr));
+                }
+            }
+        }
+
+        if self.is_quadratic() {
+            // Special case: product of the form (ax + b) * (cx + d) = 0
+            // where we can deduce that ax + b = 0 or cx + d = 0
+            if let Some((left, right)) = self.try_as_single_product() {
+                if let Some(result) = left.find_inlinable_variable() {
+                    return Some(result);
+                }
+                if let Some(result) = right.find_inlinable_variable() {
+                    return Some(result);
+                }
+            }
+
+            // Other quadratic cases could be implemented here
+        }
+
+        None
+    }
+
+    pub fn degree_with_virtual_substitution(
+        &self,
+        var: &V,
+        expr: &SymbolicExpression<T, V>,
+        substitution_cache: &mut BTreeMap<V, usize>,
+    ) -> usize {
+        if let Some(&degree) = substitution_cache.get(var) {
+            return degree;
+        }
+
+        let expr_degree = calculate_symbolic_expression_degree(expr);
+
+        if self.is_affine() {
+            if !self.referenced_unknown_variables().any(|v| v == var) {
+                return 1;
+            }
+
+            expr_degree
+        } else {
+            let mut max_degree = 0;
+
+            for (left, right) in &self.quadratic {
+                let left_contains = left.referenced_unknown_variables().any(|v| v == var);
+                let right_contains = right.referenced_unknown_variables().any(|v| v == var);
+
+                let term_degree = match (left_contains, right_contains) {
+                    (true, true) => 2 * expr_degree,
+                    (true, false) => {
+                        expr_degree
+                            + right.degree_with_virtual_substitution(var, expr, substitution_cache)
+                    }
+                    (false, true) => {
+                        left.degree_with_virtual_substitution(var, expr, substitution_cache)
+                            + expr_degree
+                    }
+                    (false, false) => {
+                        left.degree_with_virtual_substitution(var, expr, substitution_cache)
+                            + right.degree_with_virtual_substitution(var, expr, substitution_cache)
+                    }
+                };
+
+                max_degree = max_degree.max(term_degree);
+            }
+
+            if self.linear.contains_key(var) {
+                max_degree = max_degree.max(expr_degree);
+            } else {
+                max_degree = max_degree.max(1);
+            }
+
+            max_degree
+        }
+    }
+
+    /// Substitutes a variable with an expression.
+    pub fn substitute_variable(&mut self, var: &V, expr: &SymbolicExpression<T, V>) -> bool {
+        let mut made_changes = false;
+
+        for (left, right) in &mut self.quadratic {
+            let left_contains = left.referenced_unknown_variables().any(|v| v == var);
+            let right_contains = right.referenced_unknown_variables().any(|v| v == var);
+
+            if left_contains {
+                made_changes |= left.substitute_variable(var, expr);
+            }
+
+            if right_contains {
+                made_changes |= right.substitute_variable(var, expr);
+            }
+        }
+
+        if let Some(coeff) = self.linear.remove(var) {
+            made_changes = true;
+
+            let new_term = expr.clone() * coeff.clone();
+
+            // TODO: There must be a better way to do this
+            match symbolic_expression_to_quadratic_symbolic_expression(&new_term) {
+                Some(qse) => {
+                    // Add the quadratic terms
+                    self.quadratic.extend(qse.quadratic);
+
+                    // Add the linear terms
+                    for (v, c) in qse.linear {
+                        self.linear
+                            .entry(v)
+                            .and_modify(|existing| *existing += c.clone())
+                            .or_insert(c);
+                    }
+
+                    // Add the constant
+                    self.constant += qse.constant;
+                }
+                None => {
+                    // If conversion fails, put the variable back
+                    self.linear.insert(var.clone(), coeff);
+                    return false;
+                }
+            }
+        }
+
+        made_changes
     }
 }
 
@@ -464,6 +622,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         // This could be fixed by finding a canonical form for the quadratic
         // expression, and normalizing the constants.
         Ok(combine_range_constraints(&left_solution, &right_solution))
+    }
+}
+
+/// Calculates the degree of a symbolic expression.
+fn calculate_symbolic_expression_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    expr: &SymbolicExpression<T, V>,
+) -> usize {
+    match expr {
+        SymbolicExpression::Concrete(_) => 0,
+        SymbolicExpression::Symbol(_, _) => 1,
+        SymbolicExpression::BinaryOperation(left, op, right, _) => {
+            let left_degree = calculate_symbolic_expression_degree(left);
+            let right_degree = calculate_symbolic_expression_degree(right);
+            match op {
+                // For addition and subtraction, the degree is the maximum of the operands
+                BinaryOperator::Add | BinaryOperator::Sub => left_degree.max(right_degree),
+                // For multiplication, the degree is the sum of the operands
+                BinaryOperator::Mul => left_degree + right_degree,
+                // For division, we assume the divisor is constant
+                BinaryOperator::Div => left_degree,
+            }
+        }
+        // For unary operations, the degree is the same as the operand
+        SymbolicExpression::UnaryOperation(_, inner, _) => {
+            calculate_symbolic_expression_degree(inner)
+        }
     }
 }
 

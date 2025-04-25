@@ -1,7 +1,7 @@
 use powdr_number::FieldElement;
 
 use crate::range_constraint::RangeConstraint;
-use crate::utils::known_variables;
+use crate::utils::{is_substitution_creating_cycle, known_variables};
 use crate::variable_update::VariableUpdate;
 
 use super::effect::Effect;
@@ -78,6 +78,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
+
+                let substitutions = self.find_substitutions(3);
+                for effect in substitutions {
+                    progress |= self.apply_effect(effect);
+                }
             }
             if !progress {
                 break;
@@ -92,6 +97,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(v, range_constraint)
             }
+            Effect::Substitution(v, expr) => self.apply_substitution(v, expr),
             Effect::BitDecomposition(..) => unreachable!(),
             Effect::Assertion(..) => unreachable!(),
             Effect::ConditionalAssignment { .. } => todo!(),
@@ -172,6 +178,69 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         for constraint in &mut self.algebraic_constraints {
             constraint.apply_update(variable_update);
         }
+    }
+
+    /// Applies a substitution to all constraints.
+    fn apply_substitution(&mut self, var: V, expr: SymbolicExpression<T, V>) -> bool {
+        // Track if any changes were made
+        let mut made_changes = false;
+
+        // Apply the update to all constraints
+        for constraint in &mut self.algebraic_constraints {
+            made_changes |= constraint.substitute_variable(&var, &expr);
+        }
+
+        // Remove the variable from variable_states since it's been substituted
+        made_changes |= self.variable_states.remove(&var).is_some();
+
+        made_changes
+    }
+
+    pub fn find_substitutions(&self, max_degree: usize) -> Vec<Effect<T, V>> {
+        let mut substitutions = Vec::new();
+
+        for (idx, constraint) in self.algebraic_constraints.iter().enumerate() {
+            if let Some((var, expr)) = constraint.find_inlinable_variable() {
+                if self.is_valid_substitution(&var, &expr, max_degree, idx) {
+                    substitutions.push(Effect::Substitution(var, expr));
+                }
+            }
+        }
+
+        substitutions
+    }
+
+    fn is_valid_substitution(
+        &self,
+        var: &V,
+        expr: &SymbolicExpression<T, V>,
+        max_degree: usize,
+        exclude_idx: usize,
+    ) -> bool {
+        // TODO: inputs/outputs
+
+        if is_substitution_creating_cycle(var, expr, &self.algebraic_constraints, exclude_idx) {
+            return false;
+        }
+
+        let mut substitution_cache = BTreeMap::new();
+        // TODO: Get only the constraints that reference the variable
+        for (idx, constraint) in self.algebraic_constraints.iter().enumerate() {
+            if idx == exclude_idx {
+                continue;
+            }
+
+            if constraint.referenced_unknown_variables().any(|v| v == var) {
+                let degree =
+                    constraint.degree_with_virtual_substitution(var, expr, &mut substitution_cache);
+
+                if degree > max_degree {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 }
 
