@@ -16,13 +16,22 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
-    /// A variable is assigned one of two alterantive expressions, depending on a condition.
+    /// A variable is assigned one of two alternative expressions, depending on a condition.
     ConditionalAssignment {
         variable: V,
         condition: Condition<T, V>,
         in_range_value: SymbolicExpression<T, V>,
         out_of_range_value: SymbolicExpression<T, V>,
     },
+}
+
+impl<T: FieldElement, V> Effect<T, V> {
+    pub fn from_range_constraint_update(variable: V, range_constraint: RangeConstraint<T>) -> Self {
+        match range_constraint.try_to_single_value() {
+            Some(value) => Effect::Assignment(variable, SymbolicExpression::Concrete(value)),
+            None => Effect::RangeConstraint(variable, range_constraint),
+        }
+    }
 }
 
 /// A bit decomposition of a value.

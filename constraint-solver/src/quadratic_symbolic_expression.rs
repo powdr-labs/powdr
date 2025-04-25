@@ -113,6 +113,25 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         !self.is_quadratic()
     }
 
+    /// If the expression is a known number, returns it.
+    pub fn try_to_number(&self) -> Option<T> {
+        self.try_to_known()?.try_to_number()
+    }
+
+    /// If the expression is equal to `QuadraticSymbolicExpression::from_unknown_variable(v)`, returns `v`.
+    pub fn try_to_simple_unknown(&self) -> Option<V> {
+        if self.is_quadratic() || !self.constant.is_known_zero() {
+            return None;
+        }
+        let [(var, coeff)] = self.linear.iter().collect::<Vec<_>>()[..] else {
+            return None;
+        };
+        if !coeff.is_known_one() {
+            return None;
+        }
+        Some(var.clone())
+    }
+
     /// Returns true if this expression contains at least one quadratic term.
     pub fn is_quadratic(&self) -> bool {
         !self.quadratic.is_empty()

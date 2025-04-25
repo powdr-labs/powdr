@@ -1,5 +1,6 @@
 use powdr_number::FieldElement;
 
+use crate::bus_interaction::{BusInteraction, BusInteractionHandler};
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 use crate::variable_update::VariableUpdate;
@@ -30,13 +31,18 @@ pub struct Solver<T: FieldElement, V> {
     /// Note that these are mutated during the solving process.
     /// They must be kept consistent with the variable states.
     algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    bus_interactions: Vec<BusInteraction<T, V>>,
+    bus_interaction_handler: Option<Box<dyn BusInteractionHandler<T = T, V = V>>>,
     /// The current state of the variables.
     variable_states: BTreeMap<V, VariableState<T>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
-    pub fn new(algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>) -> Self {
+    pub fn new(
+        algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+        bus_interactions: Vec<BusInteraction<T, V>>,
+    ) -> Self {
         assert!(
             known_variables(&algebraic_constraints).is_empty(),
             "Expected all variables to be unknown."
@@ -44,7 +50,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         Solver {
             algebraic_constraints,
+            bus_interactions,
             variable_states: BTreeMap::new(),
+            bus_interaction_handler: None,
+        }
+    }
+
+    pub fn with_bus_interaction_handler(
+        self,
+        bus_interaction_handler: Box<dyn BusInteractionHandler<T = T, V = V>>,
+    ) -> Self {
+        Solver {
+            bus_interaction_handler: Some(bus_interaction_handler),
+            ..self
         }
     }
 
@@ -75,6 +93,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 // TODO: Improve efficiency by only running skipping constraints that
                 // have not received any updates since they were last processed.
                 let effects = self.algebraic_constraints[i].solve(self)?.effects;
+                for effect in effects {
+                    progress |= self.apply_effect(effect);
+                }
+            }
+            if let Some(bus_interaction_handler) = &self.bus_interaction_handler {
+                let effects = self
+                    .bus_interactions
+                    .iter()
+                    .flat_map(|bus_interaction| {
+                        bus_interaction.solve(&**bus_interaction_handler, self)
+                    })
+                    // Collect to satisfy borrow checker
+                    .collect::<Vec<_>>();
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
@@ -171,6 +202,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         // TODO: Make this more efficient by remembering where the variable appears
         for constraint in &mut self.algebraic_constraints {
             constraint.apply_update(variable_update);
+        }
+        for bus_interaction in &mut self.bus_interactions {
+            bus_interaction.apply_update(variable_update);
         }
     }
 }
