@@ -1,7 +1,7 @@
 use powdr_number::FieldElement;
-use utils::known_variables;
 
 use crate::range_constraint::RangeConstraint;
+use crate::utils::known_variables;
 use crate::variable_update::VariableUpdate;
 
 use super::effect::Effect;
@@ -16,7 +16,6 @@ use std::hash::Hash;
 
 #[cfg(test)]
 mod tests;
-mod utils;
 
 /// The result of the solving process.
 #[allow(dead_code)]
