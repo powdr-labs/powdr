@@ -31,15 +31,15 @@ pub fn var_expr(name: Var) -> SymbolicExpression<GoldilocksField, Var> {
     SymbolicExpression::Symbol(name, RangeConstraint::default())
 }
 
-pub fn assert_solve_result(mut constraints: Vec<Qse>, expected_final_state: Vec<(Var, Expr)>) {
+pub fn assert_solve_result(mut constraints: Vec<Qse>, expected_assignments: Vec<(Var, Expr)>) {
     init_logging();
 
     // Reverse to make sure several passes are necessary
     constraints.reverse();
 
     let final_state = Solver::new(constraints).solve().unwrap();
-    let expected_final_state = expected_final_state.into_iter().collect();
-    assert_expected_state(final_state, expected_final_state);
+    let expected_final_state = expected_assignments.into_iter().collect();
+    assert_expected_state(final_state.assignments, expected_final_state);
 }
 
 fn init_logging() {

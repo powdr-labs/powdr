@@ -49,6 +49,16 @@ impl<T: FieldElement, V> VariableState<T, V> {
     }
 }
 
+/// The result of the solving process.
+#[allow(dead_code)]
+pub struct SolveResult<T: FieldElement, V> {
+    /// The variable assignments that were derived.
+    assignments: BTreeMap<V, SymbolicExpression<T, V>>,
+    /// The final state of the algebraic constraints, with known variables
+    /// replaced by their values.
+    simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+}
+
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
     /// The algebraic constraints to solve.
@@ -91,12 +101,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// how the variable can be computed from other variables at runtime.
     /// If we were able to solve for the value already, the expression will be an
     /// instance of `SymbolicExpression::Concrete(_)`.
+    /// Also, the result contains the simplified algebraic constraints.
     #[allow(dead_code)]
-    pub fn solve(mut self) -> Result<BTreeMap<V, SymbolicExpression<T, V>>, Error> {
+    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
-        // Return assignment for all known variables
-        Ok(self
+        let assignments = self
             .variable_states
             .into_iter()
             .filter_map(|(v, info)| match info {
@@ -104,7 +114,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 VariableState::Unknown(_) => None,
             })
             .filter(|(v, _)| !self.input_variables.contains(v))
-            .collect())
+            .collect();
+        Ok(SolveResult {
+            assignments,
+            simplified_algebraic_constraints: self.algebraic_constraints,
+        })
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
