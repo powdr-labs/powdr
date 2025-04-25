@@ -2,7 +2,6 @@ use crate::{
     effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    variable_update::VariableUpdate,
 };
 use powdr_number::FieldElement;
 use std::hash::Hash;
@@ -21,6 +20,18 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
             self.algebraic_constraints
                 .iter()
                 .chain(self.bus_interactions.iter().flat_map(|bi| bi.expressions())),
+        )
+    }
+
+    pub fn expressions_mut(
+        &mut self,
+    ) -> Box<dyn Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> + '_> {
+        Box::new(
+            self.algebraic_constraints.iter_mut().chain(
+                self.bus_interactions
+                    .iter_mut()
+                    .flat_map(|bi| bi.expressions_mut()),
+            ),
         )
     }
 }
@@ -73,17 +84,19 @@ impl<T: FieldElement, V> BusInteraction<T, V> {
                 .chain(self.payload.iter()),
         )
     }
+
+    pub fn expressions_mut(
+        &mut self,
+    ) -> Box<dyn Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> + '_> {
+        Box::new(
+            [&mut self.bus_id, &mut self.multiplicity]
+                .into_iter()
+                .chain(self.payload.iter_mut()),
+        )
+    }
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> BusInteraction<T, V> {
-    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
-        self.multiplicity.apply_update(var_update);
-        self.bus_id.apply_update(var_update);
-        for expr in &mut self.payload {
-            expr.apply_update(var_update);
-        }
-    }
-
     /// Attempts to execute the bus interaction, using the given
     /// `BusInteractionHandler`. Returns a list of updates to be
     /// executed by the caller.
