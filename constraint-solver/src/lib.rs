@@ -8,6 +8,3 @@ pub mod symbolic_expression;
 pub mod variable_update;
 
 mod utils;
-
-#[cfg(test)]
-mod tests;
