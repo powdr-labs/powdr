@@ -11,6 +11,7 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
     effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    variable_update::UpdateKind,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
@@ -130,17 +131,28 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
-        let VariableUpdate {
-            variable,
-            known,
-            range_constraint,
-        } = var_update;
-        self.constant.apply_update(var_update);
+    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V, SymbolicExpression<T, V>>) {
+        let substitution = variable_update_to_substitution(var_update);
+        let VariableUpdate { variable, update } = var_update;
+        self.constant.substitute(variable, &substitution);
         if self.linear.contains_key(variable) {
             // If the variable is a key in `linear`, it must be unknown
             // and thus can only occur there. Otherwise, it can be in
             // any symbolic expression.
+            match update {
+                UpdateKind::RangeConstraintUpdate(rc) => {
+                    self.linear.get_mut(variable).unwrap().replace(var_update);
+                    self.linear
+                        .get_mut(variable)
+                        .unwrap()
+                        .update_range_constraint(rc.clone());
+                }
+                UpdateKind::Replace(new_expr) => {
+                    // We replace the variable by a symbolic expression
+                    let coeff = self.linear.remove(variable).unwrap();
+                    self.linear.insert(variable.clone(), new_expr.clone());
+                }
+            }
             if *known {
                 let coeff = self.linear.remove(variable).unwrap();
                 let expr =
@@ -149,7 +161,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             }
         } else {
             for coeff in self.linear.values_mut() {
-                coeff.apply_update(var_update);
+                coeff.substitute(variable, &substitution);
             }
             self.linear.retain(|_, f| !f.is_known_zero());
         }
@@ -182,6 +194,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    // TODO we also nee a version of `apply_update` where the update is a QSE
+
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
@@ -204,6 +218,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
                 .chain(b.referenced_unknown_variables())
         });
         Box::new(quadratic.chain(self.linear.keys()))
+    }
+}
+
+/// Turns a variable update into a substitution.
+fn variable_update_to_substitution<T: FieldElement, V: Clone>(
+    variable_update: &VariableUpdate<T, V, SymbolicExpression<T, V>>,
+) -> SymbolicExpression<T, V> {
+    let var = &variable_update.variable;
+    match &variable_update.update {
+        UpdateKind::RangeConstraintUpdate(rc) => {
+            SymbolicExpression::from_symbol(var.clone(), rc.clone())
+        }
+        UpdateKind::Replace(replacement) => replacement.clone(),
     }
 }
 

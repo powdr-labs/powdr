@@ -11,7 +11,9 @@ use powdr_ast::{
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, variable_update::VariableUpdate,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    symbolic_expression::SymbolicExpression,
+    variable_update::{UpdateKind, VariableUpdate},
 };
 use powdr_number::FieldElement;
 
@@ -86,7 +88,7 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
 
     pub fn variables_updated(
         &mut self,
-        updates: impl IntoIterator<Item = VariableUpdate<T, Variable>>,
+        updates: impl IntoIterator<Item = VariableUpdate<T, Variable, SymbolicExpression<T, Variable>>>,
     ) {
         // Note that this will usually re-add the item that caused the update,
         // which is fine, since there are situations where we can further process
@@ -99,9 +101,19 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
                 } = &mut self.items[*index]
                 {
                     let update = if *require_concretely_known {
-                        &VariableUpdate {
-                            known: update.range_constraint.try_to_single_value().is_some(),
-                            ..update.clone()
+                        match &update.update {
+                            // If we require concretely known variables and this is a
+                            // replacement by a symbolic expression, we turn it to
+                            // a mere range constraint update.
+                            UpdateKind::Replace(r) if r.try_to_known().is_none() => {
+                                &VariableUpdate {
+                                    variable: update.variable.clone(),
+                                    update: UpdateKind::RangeConstraintUpdate(r.range_constraint()),
+                                }
+                            }
+                            UpdateKind::Replace(r) | UpdateKind::RangeConstraintUpdate(_) => {
+                                &update
+                            }
                         }
                     } else {
                         &update

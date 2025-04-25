@@ -3,6 +3,7 @@ use std::fmt::{self, Display, Formatter, Write};
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
     variable_update::VariableUpdate,
@@ -625,8 +626,12 @@ fn variable_update<T: FieldElement>(
     let range_constraint = witgen.range_constraint(&variable);
     VariableUpdate {
         variable,
-        known,
-        range_constraint,
+        update: if known {
+            // If the variable got known, we replace it by a known symbolic expresison.
+            VariableUpdate::Replace(SymbolicExpression::from_symbol(variable, range_constraint))
+        } else {
+            VariableUpdate::RangeConstraintUpdate(range_constraint)
+        },
     }
 }
 
