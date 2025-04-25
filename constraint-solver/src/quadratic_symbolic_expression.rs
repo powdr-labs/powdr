@@ -134,30 +134,23 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V, SymbolicExpression<T, V>>) {
         let substitution = variable_update_to_substitution(var_update);
         let VariableUpdate { variable, update } = var_update;
+
         self.constant.substitute(variable, &substitution);
+
         if self.linear.contains_key(variable) {
             // If the variable is a key in `linear`, it must be unknown
             // and thus can only occur there. Otherwise, it can be in
             // any symbolic expression.
             match update {
-                UpdateKind::RangeConstraintUpdate(rc) => {
-                    self.linear.get_mut(variable).unwrap().replace(var_update);
-                    self.linear
-                        .get_mut(variable)
-                        .unwrap()
-                        .update_range_constraint(rc.clone());
+                UpdateKind::RangeConstraintUpdate(_) => {
+                    // We ignore range constraint updates on unknown variables because
+                    // they are stored centrally.
                 }
                 UpdateKind::Replace(new_expr) => {
-                    // We replace the variable by a symbolic expression
+                    // We replace the variable by a symbolic expression, so it goes into the constant part.
                     let coeff = self.linear.remove(variable).unwrap();
-                    self.linear.insert(variable.clone(), new_expr.clone());
+                    self.constant += &coeff * new_expr;
                 }
-            }
-            if *known {
-                let coeff = self.linear.remove(variable).unwrap();
-                let expr =
-                    SymbolicExpression::from_symbol(variable.clone(), range_constraint.clone());
-                self.constant += expr * coeff;
             }
         } else {
             for coeff in self.linear.values_mut() {
@@ -844,25 +837,31 @@ mod tests {
         assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
         t.apply_update(&VariableUpdate {
             variable: "B",
-            known: true,
-            range_constraint: RangeConstraint::from_value(7.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "B",
+                RangeConstraint::from_value(7.into()),
+            )),
         });
         assert!(t.is_quadratic());
         assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
         t.apply_update(&VariableUpdate {
             variable: "X",
-            known: true,
-            range_constraint: RangeConstraint::from_range(1.into(), 2.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "X",
+                RangeConstraint::from_range(1.into(), 2.into()),
+            )),
         });
         assert!(!t.is_quadratic());
-        assert_eq!(t.to_string(), "(X * 7) * Y + (A * 7)");
+        assert_eq!(t.to_string(), "(7 * X) * Y + (A * 7)");
         t.apply_update(&VariableUpdate {
             variable: "Y",
-            known: true,
-            range_constraint: RangeConstraint::from_value(3.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "Y",
+                RangeConstraint::from_value(3.into()),
+            )),
         });
         assert!(t.try_to_known().is_some());
-        assert_eq!(t.to_string(), "((A * 7) + (3 * (X * 7)))");
+        assert_eq!(t.to_string(), "((A * 7) + ((7 * X) * 3))");
     }
 
     #[test]
@@ -875,14 +874,18 @@ mod tests {
         assert_eq!(t.to_string(), "(A * B) * X + B * Y");
         t.apply_update(&VariableUpdate {
             variable: "B",
-            known: true,
-            range_constraint: RangeConstraint::from_value(7.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "B",
+                RangeConstraint::from_value(7.into()),
+            )),
         });
         assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
         t.apply_update(&VariableUpdate {
             variable: "A",
-            known: true,
-            range_constraint: RangeConstraint::from_value(0.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "A",
+                RangeConstraint::from_value(0.into()),
+            )),
         });
         assert_eq!(t.to_string(), "7 * Y");
     }
@@ -917,13 +920,17 @@ mod tests {
         // The same with range constraints that disallow zero.
         constr.apply_update(&VariableUpdate {
             variable: "X",
-            known: true,
-            range_constraint: RangeConstraint::from_value(5.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "X",
+                RangeConstraint::from_value(5.into()),
+            )),
         });
         constr.apply_update(&VariableUpdate {
             variable: "Y",
-            known: true,
-            range_constraint: RangeConstraint::from_range(100.into(), 102.into()),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+                "Y",
+                RangeConstraint::from_range(100.into(), 102.into()),
+            )),
         });
         assert!(Qse::from(GoldilocksField::from(10))
             .solve(&NoRangeConstraints)
@@ -979,8 +986,7 @@ mod tests {
         assert!(!result.complete && result.effects.is_empty());
         constr.apply_update(&VariableUpdate {
             variable: "z",
-            known: true,
-            range_constraint: z_rc.clone(),
+            update: UpdateKind::Replace(SymbolicExpression::from_symbol("z", z_rc.clone())),
         });
         // Now it should work.
         let result = constr.solve(&range_constraints).unwrap();
@@ -1012,13 +1018,11 @@ mod tests {
         let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
         constr.apply_update(&VariableUpdate {
             variable: "b",
-            known: false,
-            range_constraint: rc.clone(),
+            update: UpdateKind::RangeConstraintUpdate(rc.clone()),
         });
         constr.apply_update(&VariableUpdate {
             variable: "c",
-            known: false,
-            range_constraint: rc.clone(),
+            update: UpdateKind::RangeConstraintUpdate(rc.clone()),
         });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
@@ -1026,8 +1030,7 @@ mod tests {
         range_constraints.insert("a", rc.clone());
         constr.apply_update(&VariableUpdate {
             variable: "a",
-            known: false,
-            range_constraint: rc.clone(),
+            update: UpdateKind::RangeConstraintUpdate(rc.clone()),
         });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);

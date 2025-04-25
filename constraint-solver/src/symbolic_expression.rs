@@ -12,10 +12,7 @@ use std::{
 
 use powdr_number::FieldElement;
 
-use crate::variable_update::UpdateKind;
-
 use super::range_constraint::RangeConstraint;
-use super::variable_update::VariableUpdate;
 
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.

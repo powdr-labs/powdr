@@ -105,13 +105,13 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
                             // If we require concretely known variables and this is a
                             // replacement by a symbolic expression, we turn it to
                             // a mere range constraint update.
-                            UpdateKind::Replace(r) if r.try_to_known().is_none() => {
+                            UpdateKind::Replace(r) if r.try_to_number().is_none() => {
                                 &VariableUpdate {
                                     variable: update.variable.clone(),
                                     update: UpdateKind::RangeConstraintUpdate(r.range_constraint()),
                                 }
                             }
-                            UpdateKind::Replace(r) | UpdateKind::RangeConstraintUpdate(_) => {
+                            UpdateKind::Replace(_) | UpdateKind::RangeConstraintUpdate(_) => {
                                 &update
                             }
                         }
