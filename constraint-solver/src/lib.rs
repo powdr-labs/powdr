@@ -5,5 +5,11 @@ pub mod quadratic_symbolic_expression;
 pub mod range_constraint;
 pub mod solver;
 pub mod symbolic_expression;
-mod utils;
 pub mod variable_update;
+
+mod utils;
+
+#[cfg(test)]
+mod solver_tests;
+#[cfg(test)]
+mod test_utils;

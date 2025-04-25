@@ -1,6 +1,4 @@
-mod test_utils;
-
-use test_utils::*;
+use crate::test_utils::*;
 
 #[test]
 fn single_variable() {

@@ -14,17 +14,14 @@ use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-#[cfg(test)]
-mod tests;
-
 /// The result of the solving process.
 #[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    assignments: BTreeMap<V, T>,
+    pub assignments: BTreeMap<V, T>,
     /// The final state of the algebraic constraints, with known variables
     /// replaced by their values.
-    simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
