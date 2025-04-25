@@ -10,8 +10,7 @@ use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::BranchCondition,
-    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
@@ -58,7 +57,7 @@ pub enum Error {
 /// It also provides ways to quickly update the expression when the value of
 /// an unknown variable gets known and provides functions to solve
 /// (some kinds of) equations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
@@ -210,6 +209,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
+}
+
+pub struct NoRangeConstraints;
+impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
+    fn get(&self, _var: &V) -> RangeConstraint<T> {
+        RangeConstraint::default()
+    }
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
@@ -446,30 +452,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         };
 
         if let Some(result) =
-            combine_to_conditional_assignment(left_solution, right_solution, range_constraints)
+            combine_to_conditional_assignment(&left_solution, &right_solution, range_constraints)
         {
-            Ok(result)
-        } else {
-            // TODO Now at least try to combine joint range constraints
-            Ok(ProcessResult::empty())
+            return Ok(result);
         }
+
+        // Now at least combine new range constraints on the same variable.
+        // TODO: This will correctly find a bit range constraint on
+        // `(X - 1) * X = 0`, but it fails to detect the case of
+        // `X * X - X`.
+        // This could be fixed by finding a canonical form for the quadratic
+        // expression, and normalizing the constants.
+        Ok(combine_range_constraints(&left_solution, &right_solution))
     }
 }
 
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
 fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    left: ProcessResult<T, V>,
-    right: ProcessResult<T, V>,
+    left: &ProcessResult<T, V>,
+    right: &ProcessResult<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<ProcessResult<T, V>> {
-    let [Effect::Assignment(first_var, first_assignment)]: [_; 1] = left.effects.try_into().ok()?
-    else {
+    let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
     };
-    let [Effect::Assignment(second_var, second_assignment)]: [_; 1] =
-        right.effects.try_into().ok()?
-    else {
+    let [Effect::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
         return None;
     };
 
@@ -483,7 +491,7 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
     // conditional assignment.
 
     let diff = symbolic_expression_to_quadratic_symbolic_expression(
-        &(first_assignment.clone() + -&second_assignment),
+        &(first_assignment.clone() + -second_assignment.clone()),
     )?;
     let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
@@ -491,7 +499,7 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
     // that if the value that `A` evaluates to falls into the allowed range for `X`,
     // then `B = A + diff` is not a possible value for `X` and vice-versa.
     // This means the two alternatives are disjoint and we can use a conditional assignment.
-    let rc = range_constraints.get(&first_var);
+    let rc = range_constraints.get(first_var);
     if !rc
         .combine_sum(&RangeConstraint::from_value(diff))
         .is_disjoint(&rc)
@@ -501,23 +509,77 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
 
     Some(ProcessResult {
         effects: vec![Effect::ConditionalAssignment {
-            variable: first_var,
-            condition: BranchCondition {
+            variable: first_var.clone(),
+            condition: Condition {
                 value: first_assignment.clone(),
                 condition: rc,
             },
-            in_range_value: first_assignment,
-            out_of_range_value: second_assignment,
+            in_range_value: first_assignment.clone(),
+            out_of_range_value: second_assignment.clone(),
         }],
         complete: left.complete && right.complete,
     })
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> PartialEq for QuadraticSymbolicExpression<T, V> {
-    fn eq(&self, other: &Self) -> bool {
-        self.quadratic == other.quadratic
-            && self.linear == other.linear
-            && self.constant == other.constant
+/// Tries to combine range constraint results from two alternative branches.
+/// In some cases, if both branches produce a complete range constraint for the same variable,
+/// and those range constraints can be combined without loss, the result is complete as well.
+fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    left: &ProcessResult<T, V>,
+    right: &ProcessResult<T, V>,
+) -> ProcessResult<T, V> {
+    let left_constraints = left
+        .effects
+        .iter()
+        .filter_map(|e| effect_to_range_constraint(e))
+        .into_grouping_map()
+        .reduce(|rc1, _, rc2| rc1.conjunction(&rc2));
+    let right_constraints = right
+        .effects
+        .iter()
+        .filter_map(|e| effect_to_range_constraint(e))
+        .into_grouping_map()
+        .reduce(|rc1, _, rc2| rc1.conjunction(&rc2));
+
+    let effects = left_constraints
+        .iter()
+        .filter_map(|(v, rc1)| {
+            let rc2 = right_constraints.get(v)?;
+            let rc = rc1.disjunction(rc2);
+            // This does not capture all cases where the disjunction does not lose information,
+            // but we want this to be an indicator of whether we can remove the original
+            // constraint, and thus we want it to only hit the "single value" case.
+            let complete = rc1.try_to_single_value().is_some()
+                && rc2.try_to_single_value().is_some()
+                && rc.range_width() <= 2.into();
+            Some((v, rc, complete))
+        })
+        .collect_vec();
+    // The completeness is tricky, but if there is just a single left effect
+    // and a single right effect and the final range constraint is complete,
+    // it means that both branches have a concrete assignment for the variable
+    // and thus the range constraint is exactly what the original constraint captures.
+    let complete = left.effects.len() == 1
+        && right.effects.len() == 1
+        && effects.len() == 1
+        && effects.iter().all(|(_, _, complete)| *complete);
+    ProcessResult {
+        effects: effects
+            .into_iter()
+            .map(|(v, rc, _)| Effect::RangeConstraint(v.clone(), rc))
+            .collect(),
+        complete,
+    }
+}
+
+/// Turns an effect into a range constraint on a variable.
+fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    effect: &Effect<T, V>,
+) -> Option<(V, RangeConstraint<T>)> {
+    match effect {
+        Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
+        Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
+        _ => None,
     }
 }
 
@@ -798,13 +860,6 @@ mod tests {
         assert_eq!(t.to_string(), "7 * Y");
     }
 
-    struct NoRangeConstraints;
-    impl RangeConstraintProvider<GoldilocksField, &'static str> for NoRangeConstraints {
-        fn get(&self, _var: &&'static str) -> RangeConstraint<GoldilocksField> {
-            RangeConstraint::default()
-        }
-    }
-
     impl RangeConstraintProvider<GoldilocksField, &'static str>
         for HashMap<&'static str, RangeConstraint<GoldilocksField>>
     {
@@ -1022,11 +1077,10 @@ Z: [10, 4294967050] & 0xffffffff;
         let rc = RangeConstraint::from_mask(0xffu32);
         let a = Qse::from_unknown_variable("a");
         let b = Qse::from_known_symbol("b", rc.clone());
-        let range_constraints =
-            HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
+        let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
         let ten = Qse::from(GoldilocksField::from(10));
-        let two56 = Qse::from(GoldilocksField::from(0x100));
-        let constr = (a.clone() - b.clone() + two56 - ten.clone()) * (a - b - ten);
+        let two_pow8 = Qse::from(GoldilocksField::from(0x100));
+        let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
         let effects = result
@@ -1035,7 +1089,7 @@ Z: [10, 4294967050] & 0xffffffff;
             .map(|effect| match effect {
                 Effect::ConditionalAssignment {
                     variable,
-                    condition: BranchCondition { value, condition },
+                    condition: Condition { value, condition },
                     in_range_value,
                     out_of_range_value,
                 } => {
@@ -1049,6 +1103,85 @@ Z: [10, 4294967050] & 0xffffffff;
             effects,
             "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
 "
+        );
+    }
+
+    fn unpack_range_constraint(
+        process_result: &ProcessResult<GoldilocksField, &'static str>,
+    ) -> (&'static str, RangeConstraint<GoldilocksField>) {
+        let [effect] = &process_result.effects[..] else {
+            panic!();
+        };
+        let Effect::RangeConstraint(var, rc) = effect else {
+            panic!();
+        };
+        (var, rc.clone())
+    }
+
+    #[test]
+    fn detect_bit_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let one = Qse::from(GoldilocksField::from(1));
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // All these constraints should be equivalent to a bit constraint.
+        let constraints = [
+            a.clone() * (a.clone() - one.clone()),
+            (a.clone() - one.clone()) * a.clone(),
+            (three * a.clone()) * (five.clone() * a.clone() - five),
+        ];
+
+        for constraint in constraints {
+            let result = constraint.solve(&NoRangeConstraints).unwrap();
+            assert!(result.complete);
+            let (var, rc) = unpack_range_constraint(&result);
+            assert_eq!(var.to_string(), "a");
+            assert_eq!(rc, RangeConstraint::from_mask(1u64));
+        }
+    }
+
+    #[test]
+    fn detect_complete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let four = Qse::from(GoldilocksField::from(4));
+
+        // `a` can be 3 or 4, which is can be completely represented by
+        // RangeConstraint::from_range(3, 4), so the identity should be
+        // marked as complete.
+        let constraint = (a.clone() - three) * (a - four);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4))
+        );
+    }
+
+    #[test]
+    fn detect_incomplete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // `a` can be 3 or 5, so there is a range constraint
+        // RangeConstraint::from_range(3, 5) on `a`.
+        // However, the identity is not complete, because the
+        // range constraint allows for a value of 4, so removing
+        // the identity would loose information.
+        let constraint = (a.clone() - three) * (a - five);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(!result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(5))
         );
     }
 }
