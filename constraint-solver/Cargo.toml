@@ -19,6 +19,7 @@ log = "0.4.27"
 [dev-dependencies]
 pretty_assertions = "1.4.0"
 env_logger = "0.10.0"
+test-log = "0.2.12"
 
 [lints]
 workspace = true

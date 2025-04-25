@@ -1,4 +1,5 @@
 use super::test_utils::*;
+use test_log::test;
 
 #[test]
 fn single_variable() {

@@ -19,23 +19,12 @@ pub fn assert_solve_result(
     mut constraints: Vec<Qse>,
     expected_assignments: Vec<(Var, GoldilocksField)>,
 ) {
-    init_logging();
-
     // Reverse to make sure several passes are necessary
     constraints.reverse();
 
     let final_state = Solver::new(constraints).solve().unwrap();
     let expected_final_state = expected_assignments.into_iter().collect();
     assert_expected_state(final_state.assignments, expected_final_state);
-}
-
-fn init_logging() {
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
-            .is_test(true)
-            .init();
-    });
 }
 
 fn assert_expected_state(
