@@ -173,23 +173,14 @@ fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
 ) -> BTreeMap<PolyID, (&String, Option<usize>)> {
     pil_file
-        .definitions
-        .iter()
-        .map(|(name, (symbol, _))| (name, symbol))
-        .chain(
-            pil_file
-                .intermediate_columns
-                .iter()
-                .map(|(name, (symbol, _))| (name, symbol)),
-        )
-        .filter(|(_, symbol)| matches!(symbol.kind, SymbolKind::Poly(_)))
-        .flat_map(|(name, symbol)| {
+        .column_symbols()
+        .flat_map(|symbol| {
             symbol
                 .array_elements()
                 .enumerate()
                 .map(move |(idx, (_, id))| {
                     let array_pos = symbol.is_array().then_some(idx);
-                    (id, (name, array_pos))
+                    (id, (&symbol.absolute_name, array_pos))
                 })
         })
         .collect()
@@ -632,7 +623,6 @@ fn substitute_polynomial_references<T: FieldElement>(
 ) {
     let poly_id_to_name = pil_file
         .name_to_poly_id()
-        .into_iter()
         .map(|(name, poly)| ((poly.ptype, poly.id), name))
         .collect();
     let substitutions_by_id = substitutions

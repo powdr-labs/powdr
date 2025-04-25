@@ -3,12 +3,10 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, PolynomialIdentity, SelectedExpressions,
 };
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::FieldElement;
 
-use crate::witgen::{
-    data_structures::identity::{BusSend, Identity},
-    range_constraints::RangeConstraint,
-};
+use crate::witgen::data_structures::identity::{BusSend, Identity};
 
 use super::{
     variable::Variable,
@@ -47,8 +45,9 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         let value = self
                             .witgen
-                            .evaluate(expression, *row)
-                            .and_then(|v| v.try_to_known().cloned());
+                            .evaluate(expression, *row, false)
+                            .try_to_known()
+                            .cloned();
                         let conflict = value
                             .as_ref()
                             .and_then(|v| v.try_to_number().map(|n| n != 0.into()))
@@ -342,8 +341,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     }
 
     fn try_to_known(&self, e: &Expression<T>, row_offset: i32) -> Option<T> {
-        let v = self.witgen.evaluate(e, row_offset)?;
-        v.try_to_known()?.try_to_number()
+        self.witgen.try_evaluate_to_known_number(e, row_offset)
     }
 }
 

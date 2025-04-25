@@ -1,6 +1,6 @@
 use powdr_number::FieldElement;
 
-use crate::witgen::range_constraints::RangeConstraint;
+use super::range_constraint::RangeConstraint;
 
 /// An update representing new information about a variable.
 #[derive(Debug, Clone)]
