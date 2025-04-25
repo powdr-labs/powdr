@@ -825,7 +825,7 @@ mod tests {
         assert!(!t.is_quadratic());
         assert_eq!(t.to_string(), "(7 * X) * Y + (A * 7)");
         t.substitute_by_known(
-            &&"Y",
+            &"Y",
             &SymbolicExpression::from_symbol("Y", RangeConstraint::from_value(3.into())),
         );
         assert!(t.try_to_known().is_some());
@@ -841,12 +841,12 @@ mod tests {
         let mut t: Qse = (x * a + y) * b;
         assert_eq!(t.to_string(), "(A * B) * X + B * Y");
         t.substitute_by_known(
-            &&"B",
+            &"B",
             &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
         );
         assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
         t.substitute_by_known(
-            &&"A",
+            &"A",
             &SymbolicExpression::from_symbol("A", RangeConstraint::from_value(0.into())),
         );
         assert_eq!(t.to_string(), "7 * Y");
@@ -861,13 +861,13 @@ mod tests {
         let mut t: Qse = (x * a + y) * b.clone() + b;
         assert_eq!(t.to_string(), "(A * B) * X + B * Y + B");
         t.substitute_by_known(
-            &&"B",
+            &"B",
             &(SymbolicExpression::from_symbol("B", Default::default())
                 + SymbolicExpression::from(GoldilocksField::from(1))),
         );
         assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
         t.substitute_by_known(
-            &&"B",
+            &"B",
             &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
         );
         assert_eq!(t.to_string(), "(A * 11) * X + 11 * Y + 11");
@@ -964,7 +964,7 @@ mod tests {
         // For the latter to take effect, we need to call `apply_update`.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
-        constr.substitute_by_known(&&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
+        constr.substitute_by_known(&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
         // Now it should work.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
