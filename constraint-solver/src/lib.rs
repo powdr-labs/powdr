@@ -10,6 +10,4 @@ pub mod variable_update;
 mod utils;
 
 #[cfg(test)]
-mod solver_tests;
-#[cfg(test)]
-mod test_utils;
+mod tests;

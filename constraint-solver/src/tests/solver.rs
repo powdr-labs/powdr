@@ -1,4 +1,4 @@
-use crate::test_utils::*;
+use super::test_utils::*;
 
 #[test]
 fn single_variable() {
