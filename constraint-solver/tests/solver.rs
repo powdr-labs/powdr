@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use num_traits::identities::One;
+use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -125,28 +125,37 @@ impl BusInteractionHandler for TestBusInteractionHandler {
 
     fn handle_bus_interaction(
         &self,
-        bus_id: GoldilocksField,
-        payload: Vec<RangeConstraint<GoldilocksField>>,
-        multiplicity: GoldilocksField,
-    ) -> Vec<RangeConstraint<GoldilocksField>> {
+        bus_interaction: BusInteraction<RangeConstraint<GoldilocksField>>,
+    ) -> BusInteraction<RangeConstraint<GoldilocksField>> {
+        let (Some(bus_id), Some(multiplicity)) = (
+            bus_interaction.bus_id.try_to_single_value(),
+            bus_interaction.multiplicity.try_to_single_value(),
+        ) else {
+            return bus_interaction;
+        };
+
+        if multiplicity.is_zero() {
+            return bus_interaction;
+        }
+
         assert!(multiplicity.is_one(), "Only expected send interactions");
         let byte_constraint = RangeConstraint::from_mask(0xffu32);
-        match bus_id.to_degree() {
+        let payload_constraints = match bus_id.to_degree() {
             BYTE_BUS_ID => {
-                assert_eq!(payload.len(), 1);
+                assert_eq!(bus_interaction.payload.len(), 1);
                 vec![byte_constraint]
             }
             XOR_BUS_ID => {
-                assert_eq!(payload.len(), 3);
+                assert_eq!(bus_interaction.payload.len(), 3);
                 if let (Some(a), Some(b)) = (
-                    payload[0].try_to_single_value(),
-                    payload[1].try_to_single_value(),
+                    bus_interaction.payload[0].try_to_single_value(),
+                    bus_interaction.payload[1].try_to_single_value(),
                 ) {
                     // Both inputs are known, can compute result concretely
                     let result = GoldilocksField::from(a.to_degree() ^ b.to_degree());
                     vec![
-                        payload[0].clone(),
-                        payload[1].clone(),
+                        bus_interaction.payload[0].clone(),
+                        bus_interaction.payload[1].clone(),
                         RangeConstraint::from_value(result),
                     ]
                 } else {
@@ -156,6 +165,10 @@ impl BusInteractionHandler for TestBusInteractionHandler {
             _ => {
                 panic!("Unexpected bus ID: {bus_id}");
             }
+        };
+        BusInteraction {
+            payload: payload_constraints,
+            ..bus_interaction
         }
     }
 }
@@ -163,7 +176,7 @@ impl BusInteractionHandler for TestBusInteractionHandler {
 fn send(
     bus_id: u64,
     payload: Vec<QuadraticSymbolicExpression<GoldilocksField, Var>>,
-) -> BusInteraction<GoldilocksField, Var> {
+) -> BusInteraction<QuadraticSymbolicExpression<GoldilocksField, Var>> {
     BusInteraction {
         multiplicity: constant(1),
         bus_id: constant(bus_id),

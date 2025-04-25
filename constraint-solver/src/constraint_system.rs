@@ -11,73 +11,42 @@ pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// The bus interactions which have to be satisfied.
-    pub bus_interactions: Vec<BusInteraction<T, V>>,
+    pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_> {
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_> {
         Box::new(
             self.algebraic_constraints
                 .iter()
-                .chain(self.bus_interactions.iter().flat_map(|bi| bi.expressions())),
+                .chain(self.bus_interactions.iter().flat_map(|b| b.iter())),
         )
     }
 
-    pub fn expressions_mut(
+    pub fn iter_mut(
         &mut self,
     ) -> Box<dyn Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> + '_> {
         Box::new(
-            self.algebraic_constraints.iter_mut().chain(
-                self.bus_interactions
-                    .iter_mut()
-                    .flat_map(|bi| bi.expressions_mut()),
-            ),
+            self.algebraic_constraints
+                .iter_mut()
+                .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut())),
         )
     }
 }
 
-/// A trait for handling bus interactions.
-pub trait BusInteractionHandler {
-    type T: FieldElement;
-    type V;
-
-    /// Handles a bus interaction.
-    ///
-    /// Arguments:
-    /// - `bus_id`: The ID of the bus.
-    /// - `payload`: The range constraints of the payload. Payload elements are
-    ///    represented as range constraints, but they might have a concrete
-    ///    value (if `RangeConstraint::try_to_single_value` returns `Some`).
-    /// - `multiplicity`: The multiplicity of the bus interaction. Can be
-    ///   assumed to be non-zero.
-    ///
-    /// Returns:
-    /// - A vector of updated range constraints for the payload. The length of
-    ///   this vector should match the length of the `payload` vector. Note that
-    ///   these range constraints will be intersected with the previous
-    ///   constraints of the payload elements, so this doesn't need to be
-    ///   handled by the implementation here.
-    fn handle_bus_interaction(
-        &self,
-        bus_id: Self::T,
-        payload: Vec<RangeConstraint<Self::T>>,
-        multiplicity: Self::T,
-    ) -> Vec<RangeConstraint<Self::T>>;
-}
-
 /// A bus interaction.
-pub struct BusInteraction<T: FieldElement, V> {
+pub struct BusInteraction<V> {
     /// The ID of the bus.
-    pub bus_id: QuadraticSymbolicExpression<T, V>,
+    pub bus_id: V,
     /// The payload of the bus interaction.
-    pub payload: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub payload: Vec<V>,
     /// The multiplicity of the bus interaction. In most cases,
     /// this should evaluate to 1 or -1.
-    pub multiplicity: QuadraticSymbolicExpression<T, V>,
+    pub multiplicity: V,
 }
 
-impl<T: FieldElement, V> BusInteraction<T, V> {
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_> {
+impl<V> BusInteraction<V> {
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         Box::new(
             [&self.bus_id, &self.multiplicity]
                 .into_iter()
@@ -85,9 +54,7 @@ impl<T: FieldElement, V> BusInteraction<T, V> {
         )
     }
 
-    pub fn expressions_mut(
-        &mut self,
-    ) -> Box<dyn Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> + '_> {
+    pub fn iter_mut(&mut self) -> Box<dyn Iterator<Item = &mut V> + '_> {
         Box::new(
             [&mut self.bus_id, &mut self.multiplicity]
                 .into_iter()
@@ -96,7 +63,29 @@ impl<T: FieldElement, V> BusInteraction<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq> BusInteraction<T, V> {
+impl<T: FieldElement, V: Clone + Hash + Ord> BusInteraction<QuadraticSymbolicExpression<T, V>> {
+    /// Converts a bus interactions with fields represented by expressions
+    /// to a bus interaction with fields represented by range constraints.
+    pub fn to_range_constraints(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<BusInteraction<RangeConstraint<T>>> {
+        // TODO: Handle bus interactions with complex expressions.
+        Some(BusInteraction {
+            bus_id: expr_to_range_constraint(&self.bus_id, range_constraints)?,
+            payload: self
+                .payload
+                .iter()
+                .map(|expr| expr_to_range_constraint(expr, range_constraints))
+                .collect::<Option<Vec<_>>>()?,
+            multiplicity: expr_to_range_constraint(&self.multiplicity, range_constraints)?,
+        })
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
+    BusInteraction<QuadraticSymbolicExpression<T, V>>
+{
     /// Attempts to execute the bus interaction, using the given
     /// `BusInteractionHandler`. Returns a list of updates to be
     /// executed by the caller.
@@ -105,44 +94,37 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> BusInteraction<T, V> {
         bus_interaction_handler: &dyn BusInteractionHandler<T = T, V = V>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Vec<Effect<T, V>> {
-        let Some((bus_id, range_constraints, multiplicity)) =
-            self.get_bus_interaction_args(range_constraints)
-        else {
+        let Some(range_constraints) = self.to_range_constraints(range_constraints) else {
             return vec![];
         };
-        let new_range_constraints =
-            bus_interaction_handler.handle_bus_interaction(bus_id, range_constraints, multiplicity);
-        new_range_constraints
-            .into_iter()
-            .zip(&self.payload)
-            .filter_map(|(new_range_constraint, expr)| {
+        let range_constraints = bus_interaction_handler.handle_bus_interaction(range_constraints);
+        self.iter()
+            .zip(range_constraints.iter())
+            .filter_map(|(expr, rc)| {
                 if let Some(var) = expr.try_to_simple_unknown() {
-                    return Some(Effect::from_range_constraint_update(
-                        var,
-                        new_range_constraint,
-                    ));
+                    return Some(Effect::from_range_constraint_update(var, rc.clone()));
                 }
                 None
             })
             .collect()
     }
+}
 
-    pub fn get_bus_interaction_args(
+/// A trait for handling bus interactions.
+pub trait BusInteractionHandler {
+    type T: FieldElement;
+    type V;
+
+    /// Handles a bus interaction, by transforming taking a bus interaction
+    /// (with the fields represented by range constraints) and returning
+    /// updated range constraints.
+    /// The range constraints are intersected with the previous ones by the
+    /// caller, so there is no need to do that in the implementation of this
+    /// trait.
+    fn handle_bus_interaction(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> Option<(T, Vec<RangeConstraint<T>>, T)> {
-        let bus_id = self.bus_id.try_to_number()?;
-        let multiplicity = self.multiplicity.try_to_number()?;
-        if multiplicity.is_zero() {
-            return None;
-        }
-        let range_constraints = self
-            .payload
-            .iter()
-            .map(|expr| expr_to_range_constraint(expr, range_constraints))
-            .collect::<Option<Vec<_>>>()?;
-        Some((bus_id, range_constraints, multiplicity))
-    }
+        bus_interaction: BusInteraction<RangeConstraint<Self::T>>,
+    ) -> BusInteraction<RangeConstraint<Self::T>>;
 }
 
 fn expr_to_range_constraint<T: FieldElement, V: Clone + Hash + Ord + Eq>(

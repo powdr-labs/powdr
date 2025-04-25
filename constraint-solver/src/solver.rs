@@ -36,7 +36,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
-            known_variables(constraint_system.expressions()).is_empty(),
+            known_variables(constraint_system.iter()).is_empty(),
             "Expected all variables to be unknown."
         );
 
@@ -194,7 +194,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
         // TODO: Make this more efficient by remembering where the variable appears
-        for expression in self.constraint_system.expressions_mut() {
+        for expression in self.constraint_system.iter_mut() {
             expression.apply_update(variable_update);
         }
     }
