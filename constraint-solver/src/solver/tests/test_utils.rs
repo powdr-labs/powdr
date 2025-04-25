@@ -2,36 +2,23 @@ use std::collections::BTreeMap;
 
 use powdr_number::GoldilocksField;
 
-use crate::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, range_constraint::RangeConstraint,
-    solver::Solver, symbolic_expression::SymbolicExpression,
-};
+use crate::{quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver};
 
 pub type Var = &'static str;
 pub type Qse = QuadraticSymbolicExpression<GoldilocksField, Var>;
-pub type Expr = SymbolicExpression<GoldilocksField, Var>;
 
 pub fn var(name: Var) -> Qse {
     Qse::from_unknown_variable(name)
-}
-
-pub fn known(name: Var) -> Qse {
-    Qse::from_known_symbol(name, RangeConstraint::default())
 }
 
 pub fn constant(value: u64) -> Qse {
     GoldilocksField::from(value).into()
 }
 
-pub fn constant_expr(value: u64) -> SymbolicExpression<GoldilocksField, Var> {
-    GoldilocksField::from(value).into()
-}
-
-pub fn var_expr(name: Var) -> SymbolicExpression<GoldilocksField, Var> {
-    SymbolicExpression::Symbol(name, RangeConstraint::default())
-}
-
-pub fn assert_solve_result(mut constraints: Vec<Qse>, expected_assignments: Vec<(Var, Expr)>) {
+pub fn assert_solve_result(
+    mut constraints: Vec<Qse>,
+    expected_assignments: Vec<(Var, GoldilocksField)>,
+) {
     init_logging();
 
     // Reverse to make sure several passes are necessary
@@ -52,8 +39,8 @@ fn init_logging() {
 }
 
 fn assert_expected_state(
-    final_state: BTreeMap<Var, SymbolicExpression<GoldilocksField, Var>>,
-    expected_final_state: BTreeMap<Var, SymbolicExpression<GoldilocksField, Var>>,
+    final_state: BTreeMap<Var, GoldilocksField>,
+    expected_final_state: BTreeMap<Var, GoldilocksField>,
 ) {
     assert_eq!(
         final_state.keys().collect::<Vec<_>>(),
@@ -62,11 +49,11 @@ fn assert_expected_state(
     );
 
     let mut error = false;
-    for (variable, expression) in expected_final_state {
+    for (variable, value) in expected_final_state {
         // Compare string representation, so that range constraints are ignored.
-        if final_state[variable].to_string() != expression.to_string() {
+        if final_state[variable].to_string() != value.to_string() {
             log::error!("Mismatch for variable {variable}:");
-            log::error!("  Expected: {expression}");
+            log::error!("  Expected: {value}");
             log::error!("  Actual:   {}", final_state[variable]);
             error = true;
         }

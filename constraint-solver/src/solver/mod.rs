@@ -10,7 +10,7 @@ use super::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -21,8 +21,8 @@ mod utils;
 /// The result of the solving process.
 #[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
-    /// The variable assignments that were derived.
-    assignments: BTreeMap<V, SymbolicExpression<T, V>>,
+    /// The concrete variable assignments that were derived.
+    assignments: BTreeMap<V, T>,
     /// The final state of the algebraic constraints, with known variables
     /// replaced by their values.
     simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
@@ -35,42 +35,25 @@ pub struct Solver<T: FieldElement, V> {
     /// They must be kept consistent with the variable states.
     algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// The current state of the variables.
-    variable_states: BTreeMap<V, VariableState<T, V>>,
-    /// Input nodes to the constraint system.
-    input_variables: BTreeSet<V>,
+    variable_states: BTreeMap<V, VariableState<T>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
     pub fn new(algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>) -> Self {
-        let input_variables = known_variables(&algebraic_constraints);
-        let variable_states = input_variables
-            .iter()
-            .map(|known_var| {
-                (
-                    known_var.clone(),
-                    VariableState::Known(SymbolicExpression::Symbol(
-                        known_var.clone(),
-                        // TODO: We're losing the initial range constraint here!
-                        RangeConstraint::default(),
-                    )),
-                )
-            })
-            .collect();
+        assert!(
+            known_variables(&algebraic_constraints).is_empty(),
+            "Expected all variables to be unknown."
+        );
 
         Solver {
             algebraic_constraints,
-            variable_states,
-            input_variables,
+            variable_states: BTreeMap::new(),
         }
     }
 
-    /// Solves the constraints as far as possible. For each variable it was able to
-    /// find a unique solution for, the result contains an expression, indicating
-    /// how the variable can be computed from other variables at runtime.
-    /// If we were able to solve for the value already, the expression will be an
-    /// instance of `SymbolicExpression::Concrete(_)`.
-    /// Also, the result contains the simplified algebraic constraints.
+    /// Solves the constraints as far as possible, returning concrete variable
+    /// assignments and a simplified version of the algebraic constraints.
     #[allow(dead_code)]
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
@@ -82,7 +65,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 VariableState::Known(expr) => Some((v, expr)),
                 VariableState::Unknown(_) => None,
             })
-            .filter(|(v, _)| !self.input_variables.contains(v))
             .collect();
         Ok(SolveResult {
             assignments,
@@ -114,41 +96,40 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(v, range_constraint)
             }
-            // TODO: We need to introduce a new operator in `SymbolicExpression` for this.
-            Effect::BitDecomposition(..) => unimplemented!(),
-            Effect::Assertion(..) => todo!(),
+            Effect::BitDecomposition(..) => unreachable!(),
+            Effect::Assertion(..) => unreachable!(),
             Effect::ConditionalAssignment { .. } => todo!(),
         }
     }
 
     fn apply_assignment(&mut self, variable: V, expr: SymbolicExpression<T, V>) -> bool {
-        // If the expression's range constraint tighter than the current one, we need to
-        // update it.
-        let progress_range_constraint =
-            self.apply_range_constraint_update(variable.clone(), expr.range_constraint());
+        let SymbolicExpression::Concrete(value) = expr else {
+            panic!("Unexpected non-concrete assignment: {variable} = {expr}");
+        };
 
         let entry = self.variable_states.entry(variable.clone()).or_default();
         let variable_update = match &entry {
             // We already know the expression
-            VariableState::Known(existing) if existing == &expr => None,
+            VariableState::Known(existing) => {
+                assert_eq!(
+                    *existing, value,
+                    "Inconsistent assignment for {variable}: {existing} != {value}"
+                );
+                return false;
+            }
 
-            // An unknown variable became known, or we updated the expression.
-            _ => {
-                log::trace!("{variable} = {expr}");
+            // An unknown variable became known.
+            VariableState::Unknown(..) => {
+                log::trace!("{variable} = {value}");
 
-                // Use the tightest possible range constraint.
-                let range_constraint = entry
-                    .range_constraint()
-                    .conjunction(&expr.range_constraint());
-
-                *entry = VariableState::Known(expr.clone());
+                *entry = VariableState::Known(value);
 
                 // The borrow checker won't let us call `update_constraints` here, so we
                 // just return the update.
                 Some(VariableUpdate {
                     variable,
                     known: true,
-                    range_constraint,
+                    range_constraint: RangeConstraint::from_value(value),
                 })
             }
         };
@@ -157,7 +138,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             self.update_constraints(&variable_update);
             true
         } else {
-            progress_range_constraint
+            false
         }
     }
 
@@ -200,31 +181,25 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
 /// Current state of a variable in the solver.
 #[derive(Debug, PartialEq)]
-enum VariableState<T: FieldElement, V> {
+enum VariableState<T: FieldElement> {
     /// The variable is unknown (but has a range constraint).
     Unknown(RangeConstraint<T>),
-    /// The variable is known, and can be computed from other variables using
-    /// the given expression.
-    /// Note that if the expression is an instance of `SymbolicExpression::Concrete(_)`,
-    /// we have found a concrete variable assignment.
-    Known(SymbolicExpression<T, V>),
+    /// The variable is concretely known.
+    Known(T),
 }
 
 // We could derive it, but then we'd have to require that `V: Default`.
-impl<T: FieldElement, V> Default for VariableState<T, V> {
+impl<T: FieldElement> Default for VariableState<T> {
     fn default() -> Self {
         VariableState::Unknown(RangeConstraint::default())
     }
 }
 
-impl<T: FieldElement, V> VariableState<T, V> {
+impl<T: FieldElement> VariableState<T> {
     fn range_constraint(&self) -> RangeConstraint<T> {
         match self {
             VariableState::Unknown(range_constraint) => range_constraint.clone(),
-            // Note that the expression's range constraint might not be as tight as it
-            // could be. But for solving, we only need range constraints of unknown variables,
-            // so this is fine.
-            VariableState::Known(expr) => expr.range_constraint(),
+            VariableState::Known(value) => RangeConstraint::from_value(*value),
         }
     }
 }

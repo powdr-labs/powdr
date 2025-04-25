@@ -4,7 +4,7 @@ use test_utils::*;
 
 #[test]
 fn single_variable() {
-    assert_solve_result(vec![var("x") - constant(5)], vec![("x", constant_expr(5))]);
+    assert_solve_result(vec![var("x") - constant(5)], vec![("x", 5.into())]);
 }
 
 #[test]
@@ -19,29 +19,10 @@ fn concretely_solvable() {
             var("d") - (var("c") * constant(4) - var("a")),
         ],
         vec![
-            ("a", constant_expr(2)),
-            ("b", constant_expr(3)),
-            ("c", constant_expr(6)),
-            ("d", constant_expr(22)),
-        ],
-    );
-}
-
-#[test]
-fn symbolically_solvable() {
-    assert_solve_result(
-        vec![
-            // Like above, but this time `a` is only known at runtime
-            var("b") - constant(3),
-            var("c") - known("a") * var("b"),
-            var("d") - (var("c") * constant(4) - known("a")),
-        ],
-        vec![
-            ("b", constant_expr(3)),
-            // TODO: This should simplify to `3 * a`
-            ("c", -constant_expr(3) * (-var_expr("a"))),
-            // TODO: This should simplify to `11 * a`
-            ("d", -var_expr("a") + var_expr("c") * constant_expr(4)),
+            ("a", 2.into()),
+            ("b", 3.into()),
+            ("c", 6.into()),
+            ("d", 22.into()),
         ],
     );
 }
@@ -60,10 +41,10 @@ fn bit_decomposition() {
                 - constant(0b1110),
         ],
         vec![
-            ("b0", constant_expr(0)),
-            ("b1", constant_expr(1)),
-            ("b2", constant_expr(1)),
-            ("b3", constant_expr(1)),
+            ("b0", 0.into()),
+            ("b1", 1.into()),
+            ("b2", 1.into()),
+            ("b3", 1.into()),
         ],
     );
 }
