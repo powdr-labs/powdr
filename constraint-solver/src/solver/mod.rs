@@ -18,37 +18,6 @@ use std::hash::Hash;
 mod tests;
 mod utils;
 
-/// Current state of a variable in the solver.
-#[derive(Debug, PartialEq)]
-enum VariableState<T: FieldElement, V> {
-    /// The variable is unknown (but has a range constraint).
-    Unknown(RangeConstraint<T>),
-    /// The variable is known, and can be computed from other variables using
-    /// the given expression.
-    /// Note that if the expression is an instance of `SymbolicExpression::Concrete(_)`,
-    /// we have found a concrete variable assignment.
-    Known(SymbolicExpression<T, V>),
-}
-
-// We could derive it, but then we'd have to require that `V: Default`.
-impl<T: FieldElement, V> Default for VariableState<T, V> {
-    fn default() -> Self {
-        VariableState::Unknown(RangeConstraint::default())
-    }
-}
-
-impl<T: FieldElement, V> VariableState<T, V> {
-    fn range_constraint(&self) -> RangeConstraint<T> {
-        match self {
-            VariableState::Unknown(range_constraint) => range_constraint.clone(),
-            // Note that the expression's range constraint might not be as tight as it
-            // could be. But for solving, we only need range constraints of unknown variables,
-            // so this is fine.
-            VariableState::Known(expr) => expr.range_constraint(),
-        }
-    }
-}
-
 /// The result of the solving process.
 #[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
@@ -225,6 +194,37 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         // TODO: Make this more efficient by remembering where the variable appears
         for constraint in &mut self.algebraic_constraints {
             constraint.apply_update(variable_update);
+        }
+    }
+}
+
+/// Current state of a variable in the solver.
+#[derive(Debug, PartialEq)]
+enum VariableState<T: FieldElement, V> {
+    /// The variable is unknown (but has a range constraint).
+    Unknown(RangeConstraint<T>),
+    /// The variable is known, and can be computed from other variables using
+    /// the given expression.
+    /// Note that if the expression is an instance of `SymbolicExpression::Concrete(_)`,
+    /// we have found a concrete variable assignment.
+    Known(SymbolicExpression<T, V>),
+}
+
+// We could derive it, but then we'd have to require that `V: Default`.
+impl<T: FieldElement, V> Default for VariableState<T, V> {
+    fn default() -> Self {
+        VariableState::Unknown(RangeConstraint::default())
+    }
+}
+
+impl<T: FieldElement, V> VariableState<T, V> {
+    fn range_constraint(&self) -> RangeConstraint<T> {
+        match self {
+            VariableState::Unknown(range_constraint) => range_constraint.clone(),
+            // Note that the expression's range constraint might not be as tight as it
+            // could be. But for solving, we only need range constraints of unknown variables,
+            // so this is fine.
+            VariableState::Known(expr) => expr.range_constraint(),
         }
     }
 }
