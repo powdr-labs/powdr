@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 
 use num_traits::identities::One;
 use powdr_constraint_solver::{
-    bus_interaction::{BusInteraction, BusInteractionHandler},
-    constraint_system::ConstraintSystem,
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::Solver,

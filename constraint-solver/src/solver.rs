@@ -1,7 +1,6 @@
 use powdr_number::FieldElement;
 
-use crate::bus_interaction::BusInteractionHandler;
-use crate::constraint_system::ConstraintSystem;
+use crate::constraint_system::{BusInteractionHandler, ConstraintSystem};
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 use crate::variable_update::VariableUpdate;
