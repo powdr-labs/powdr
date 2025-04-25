@@ -100,25 +100,19 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
                     require_concretely_known,
                 } = &mut self.items[*index]
                 {
-                    let update = if *require_concretely_known {
-                        match &update.update {
-                            // If we require concretely known variables and this is a
-                            // replacement by a symbolic expression, we turn it to
-                            // a mere range constraint update.
-                            UpdateKind::Replace(r) if r.try_to_number().is_none() => {
-                                &VariableUpdate {
-                                    variable: update.variable.clone(),
-                                    update: UpdateKind::RangeConstraintUpdate(r.range_constraint()),
-                                }
-                            }
-                            UpdateKind::Replace(_) | UpdateKind::RangeConstraintUpdate(_) => {
-                                &update
+                    match &update.update {
+                        UpdateKind::Replace(r) => {
+                            if !*require_concretely_known || r.try_to_number().is_some() {
+                                expr.substitute_by_known(&update.variable, r);
                             }
                         }
-                    } else {
-                        &update
-                    };
-                    expr.apply_update(update);
+                        UpdateKind::RangeConstraintUpdate(r) => {
+                            assert!(
+                                r.try_to_single_value().is_none(),
+                                "Should have used a replacement instead."
+                            );
+                        }
+                    }
                 }
 
                 if !self.in_queue[*index] {

@@ -11,12 +11,11 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
     effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
-    variable_update::UpdateKind,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
 use super::range_constraint::RangeConstraint;
-use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
+use super::symbolic_expression::SymbolicExpression;
 
 #[derive(Default)]
 pub struct ProcessResult<T: FieldElement, V> {
@@ -131,30 +130,21 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V, SymbolicExpression<T, V>>) {
-        let substitution = variable_update_to_substitution(var_update);
-        let VariableUpdate { variable, update } = var_update;
-
-        self.constant.substitute(variable, &substitution);
+    /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
+    /// If it was already known, it will be substituted in the known expressions.
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
+        self.constant.substitute(variable, substitution);
 
         if self.linear.contains_key(variable) {
             // If the variable is a key in `linear`, it must be unknown
             // and thus can only occur there. Otherwise, it can be in
             // any symbolic expression.
-            match update {
-                UpdateKind::RangeConstraintUpdate(_) => {
-                    // We ignore range constraint updates on unknown variables because
-                    // they are stored centrally.
-                }
-                UpdateKind::Replace(new_expr) => {
-                    // We replace the variable by a symbolic expression, so it goes into the constant part.
-                    let coeff = self.linear.remove(variable).unwrap();
-                    self.constant += &coeff * new_expr;
-                }
-            }
+            // We replace the variable by a symbolic expression, so it goes into the constant part.
+            let coeff = self.linear.remove(variable).unwrap();
+            self.constant += &coeff * substitution;
         } else {
             for coeff in self.linear.values_mut() {
-                coeff.substitute(variable, &substitution);
+                coeff.substitute(variable, substitution);
             }
             self.linear.retain(|_, f| !f.is_known_zero());
         }
@@ -164,8 +154,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
         let mut to_add = QuadraticSymbolicExpression::from(T::zero());
         self.quadratic.retain_mut(|(l, r)| {
-            l.apply_update(var_update);
-            r.apply_update(var_update);
+            l.substitute_by_known(variable, substitution);
+            r.substitute_by_known(variable, substitution);
             match (l.try_to_known(), r.try_to_known()) {
                 (Some(l), Some(r)) => {
                     to_add += (l * r).into();
@@ -187,7 +177,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    // TODO we also nee a version of `apply_update` where the update is a QSE
+    // TODO implement substitute_by_unknown where substitution is a QSE.
 
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
@@ -211,19 +201,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
                 .chain(b.referenced_unknown_variables())
         });
         Box::new(quadratic.chain(self.linear.keys()))
-    }
-}
-
-/// Turns a variable update into a substitution.
-fn variable_update_to_substitution<T: FieldElement, V: Clone>(
-    variable_update: &VariableUpdate<T, V, SymbolicExpression<T, V>>,
-) -> SymbolicExpression<T, V> {
-    let var = &variable_update.variable;
-    match &variable_update.update {
-        UpdateKind::RangeConstraintUpdate(rc) => {
-            SymbolicExpression::from_symbol(var.clone(), rc.clone())
-        }
-        UpdateKind::Replace(replacement) => replacement.clone(),
     }
 }
 
@@ -835,31 +812,22 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * y + a) * b;
         assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
-        t.apply_update(&VariableUpdate {
-            variable: "B",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
-                "B",
-                RangeConstraint::from_value(7.into()),
-            )),
-        });
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
+        );
         assert!(t.is_quadratic());
         assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
-        t.apply_update(&VariableUpdate {
-            variable: "X",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
-                "X",
-                RangeConstraint::from_range(1.into(), 2.into()),
-            )),
-        });
+        t.substitute_by_known(
+            &"X",
+            &SymbolicExpression::from_symbol("X", RangeConstraint::from_range(1.into(), 2.into())),
+        );
         assert!(!t.is_quadratic());
         assert_eq!(t.to_string(), "(7 * X) * Y + (A * 7)");
-        t.apply_update(&VariableUpdate {
-            variable: "Y",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
-                "Y",
-                RangeConstraint::from_value(3.into()),
-            )),
-        });
+        t.substitute_by_known(
+            &&"Y",
+            &SymbolicExpression::from_symbol("Y", RangeConstraint::from_value(3.into())),
+        );
         assert!(t.try_to_known().is_some());
         assert_eq!(t.to_string(), "((A * 7) + ((7 * X) * 3))");
     }
@@ -872,22 +840,37 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * a + y) * b;
         assert_eq!(t.to_string(), "(A * B) * X + B * Y");
-        t.apply_update(&VariableUpdate {
-            variable: "B",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
-                "B",
-                RangeConstraint::from_value(7.into()),
-            )),
-        });
+        t.substitute_by_known(
+            &&"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
+        );
         assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
-        t.apply_update(&VariableUpdate {
-            variable: "A",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
-                "A",
-                RangeConstraint::from_value(0.into()),
-            )),
-        });
+        t.substitute_by_known(
+            &&"A",
+            &SymbolicExpression::from_symbol("A", RangeConstraint::from_value(0.into())),
+        );
         assert_eq!(t.to_string(), "7 * Y");
+    }
+
+    #[test]
+    fn substitute_known() {
+        let x = Qse::from_unknown_variable("X");
+        let y = Qse::from_unknown_variable("Y");
+        let a = Qse::from_known_symbol("A", RangeConstraint::default());
+        let b = Qse::from_known_symbol("B", RangeConstraint::default());
+        let mut t: Qse = (x * a + y) * b.clone() + b;
+        assert_eq!(t.to_string(), "(A * B) * X + B * Y + B");
+        t.substitute_by_known(
+            &&"B",
+            &(SymbolicExpression::from_symbol("B", Default::default())
+                + SymbolicExpression::from(GoldilocksField::from(1))),
+        );
+        assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
+        t.substitute_by_known(
+            &&"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
+        );
+        assert_eq!(t.to_string(), "(A * 11) * X + 11 * Y + 11");
     }
 
     impl RangeConstraintProvider<GoldilocksField, &'static str>
@@ -918,20 +901,17 @@ mod tests {
             .is_err());
 
         // The same with range constraints that disallow zero.
-        constr.apply_update(&VariableUpdate {
-            variable: "X",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
-                "X",
-                RangeConstraint::from_value(5.into()),
-            )),
-        });
-        constr.apply_update(&VariableUpdate {
-            variable: "Y",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol(
+        constr.substitute_by_known(
+            &"X",
+            &SymbolicExpression::from_symbol("X", RangeConstraint::from_value(5.into())),
+        );
+        constr.substitute_by_known(
+            &"Y",
+            &SymbolicExpression::from_symbol(
                 "Y",
                 RangeConstraint::from_range(100.into(), 102.into()),
-            )),
-        });
+            ),
+        );
         assert!(Qse::from(GoldilocksField::from(10))
             .solve(&NoRangeConstraints)
             .is_err());
@@ -984,10 +964,7 @@ mod tests {
         // For the latter to take effect, we need to call `apply_update`.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
-        constr.apply_update(&VariableUpdate {
-            variable: "z",
-            update: UpdateKind::Replace(SymbolicExpression::from_symbol("z", z_rc.clone())),
-        });
+        constr.substitute_by_known(&&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
         // Now it should work.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
@@ -1009,29 +986,17 @@ mod tests {
         let z = Qse::from_known_symbol("Z", Default::default());
         // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = Qse::from(GoldilocksField::from(10));
-        let mut constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
+        let constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
             - b * Qse::from(GoldilocksField::from(0x10000))
             + c * Qse::from(GoldilocksField::from(0x1000000))
             + ten.clone()
             + z.clone();
         // Without range constraints on a, this is not solvable.
         let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
-        constr.apply_update(&VariableUpdate {
-            variable: "b",
-            update: UpdateKind::RangeConstraintUpdate(rc.clone()),
-        });
-        constr.apply_update(&VariableUpdate {
-            variable: "c",
-            update: UpdateKind::RangeConstraintUpdate(rc.clone()),
-        });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         range_constraints.insert("a", rc.clone());
-        constr.apply_update(&VariableUpdate {
-            variable: "a",
-            update: UpdateKind::RangeConstraintUpdate(rc.clone()),
-        });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
 
