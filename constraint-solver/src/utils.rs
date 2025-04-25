@@ -6,7 +6,7 @@ use powdr_number::FieldElement;
 
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
-/// Selects the set of known variables from a list of algebraic constraints.
+/// Returns the set of all known variables in a list of algebraic constraints.
 /// Panics if a variable appears as both known and unknown.
 pub fn known_variables<T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Display>(
     algebraic_constraints: &[QuadraticSymbolicExpression<T, V>],
