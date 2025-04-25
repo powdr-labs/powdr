@@ -3,8 +3,11 @@ use std::collections::BTreeMap;
 use num_traits::identities::One;
 use powdr_constraint_solver::{
     bus_interaction::{BusInteraction, BusInteractionHandler},
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, range_constraint::RangeConstraint,
-    solver::Solver, symbolic_expression::SymbolicExpression,
+    constraint_system::ConstraintSystem,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    range_constraint::RangeConstraint,
+    solver::Solver,
+    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 use test_log::test;
@@ -64,23 +67,29 @@ fn assert_expected_state(
 #[test]
 fn single_variable() {
     assert_solve_result(
-        Solver::new(vec![var("x") - constant(5)], vec![]),
+        Solver::new(ConstraintSystem {
+            algebraic_constraints: vec![var("x") - constant(5)],
+            bus_interactions: vec![],
+        }),
         vec![("x", 5.into())],
     );
 }
 
 #[test]
 fn concretely_solvable() {
-    let constraints = vec![
-        var("a") - constant(2),
-        var("b") - constant(3),
-        // c = a * b = 6
-        var("c") - var("a") * var("b"),
-        // d = c * 4 - a = 22
-        var("d") - (var("c") * constant(4) - var("a")),
-    ];
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            var("a") - constant(2),
+            var("b") - constant(3),
+            // c = a * b = 6
+            var("c") - var("a") * var("b"),
+            // d = c * 4 - a = 22
+            var("d") - (var("c") * constant(4) - var("a")),
+        ],
+        bus_interactions: vec![],
+    };
     assert_solve_result(
-        Solver::new(constraints, vec![]),
+        Solver::new(constraint_system),
         vec![
             ("a", 2.into()),
             ("b", 3.into()),
@@ -92,18 +101,22 @@ fn concretely_solvable() {
 
 #[test]
 fn bit_decomposition() {
-    let constraints = vec![
-        // 4 bit-constrained variables:
-        var("b0") * (var("b0") - constant(1)),
-        var("b1") * (var("b1") - constant(1)),
-        var("b2") * (var("b2") - constant(1)),
-        var("b3") * (var("b3") - constant(1)),
-        // Bit-decomposition of a concrete value:
-        var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
-            - constant(0b1110),
-    ];
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // 4 bit-constrained variables:
+            var("b0") * (var("b0") - constant(1)),
+            var("b1") * (var("b1") - constant(1)),
+            var("b2") * (var("b2") - constant(1)),
+            var("b3") * (var("b3") - constant(1)),
+            // Bit-decomposition of a concrete value:
+            var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
+                - constant(0b1110),
+        ],
+        bus_interactions: vec![],
+    };
+
     assert_solve_result(
-        Solver::new(constraints, vec![]),
+        Solver::new(constraint_system),
         vec![
             ("b0", 0.into()),
             ("b1", 1.into()),
@@ -171,20 +184,22 @@ fn send(
 
 #[test]
 fn byte_decomposition() {
-    let constraints = vec![
-        // Byte-decomposition of a concrete value:
-        var("b0")
-            + var("b1") * constant(1 << 8)
-            + var("b2") * constant(1 << 16)
-            + var("b3") * constant(1 << 24)
-            - constant(0xabcdef12),
-    ];
-    // Byte range constraints on b0..3
-    let bus_interactions = (0..4)
-        .map(|i| send(BYTE_BUS_ID, vec![var(format!("b{i}").leak())]))
-        .collect();
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // Byte-decomposition of a concrete value:
+            var("b0")
+                + var("b1") * constant(1 << 8)
+                + var("b2") * constant(1 << 16)
+                + var("b3") * constant(1 << 24)
+                - constant(0xabcdef12),
+        ],
+        // Byte range constraints on b0..3
+        bus_interactions: (0..4)
+            .map(|i| send(BYTE_BUS_ID, vec![var(format!("b{i}").leak())]))
+            .collect(),
+    };
 
-    let solver = Solver::new(constraints, bus_interactions)
+    let solver = Solver::new(constraint_system)
         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
 
     assert_solve_result(
@@ -200,25 +215,23 @@ fn byte_decomposition() {
 
 #[test]
 fn xor() {
-    let constraints = vec![
-        // a and by are the byte decomposition of 0xa00b
-        // Note that solving this requires range constraints on a and b
-        constant(1 << 8) * var("a") + var("b") - constant(0xa00b),
-    ];
-    // Send (a, b, c) to the XOR table.
-    // Initially, this should return the required range constraints for a and b.
-    // Once a and b are known concretely, c can be computed concretely as well.
-    let bus_interactions = vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])];
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // a and b are the byte decomposition of 0xa00b
+            // Note that solving this requires range constraints on a and b
+            constant(1 << 8) * var("a") + var("b") - constant(0xa00b),
+        ],
+        // Send (a, b, c) to the XOR table.
+        // Initially, this should return the required range constraints for a and b.
+        // Once a and b are known concretely, c can be computed concretely as well.
+        bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
+    };
 
-    let solver = Solver::new(constraints, bus_interactions)
+    let solver = Solver::new(constraint_system)
         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
 
     assert_solve_result(
         solver,
-        vec![
-            ("a", 0xa0.into()),
-            ("b", 0x0b.into()),
-            ("c", 0xab.into()),
-        ],
+        vec![("a", 0xa0.into()), ("b", 0x0b.into()), ("c", 0xab.into())],
     );
 }

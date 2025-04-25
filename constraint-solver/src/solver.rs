@@ -1,16 +1,14 @@
 use powdr_number::FieldElement;
 
-use crate::bus_interaction::{BusInteraction, BusInteractionHandler};
+use crate::bus_interaction::BusInteractionHandler;
+use crate::constraint_system::ConstraintSystem;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 use crate::variable_update::VariableUpdate;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
-use super::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    symbolic_expression::SymbolicExpression,
-};
+use super::symbolic_expression::SymbolicExpression;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -20,18 +18,16 @@ use std::hash::Hash;
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
-    /// The final state of the algebraic constraints, with known variables
+    /// The final state of the constraints, with known variables
     /// replaced by their values.
-    pub simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub simplified_constraint_system: ConstraintSystem<T, V>,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
-    /// The algebraic constraints to solve.
-    /// Note that these are mutated during the solving process.
-    /// They must be kept consistent with the variable states.
-    algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
-    bus_interactions: Vec<BusInteraction<T, V>>,
+    /// The constraint system to solve. During the solving process, any expressions will
+    /// be simplified as much as possible.
+    constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: Option<Box<dyn BusInteractionHandler<T = T, V = V>>>,
     /// The current state of the variables.
     variable_states: BTreeMap<V, VariableState<T>>,
@@ -39,18 +35,15 @@ pub struct Solver<T: FieldElement, V> {
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
-    pub fn new(
-        algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
-        bus_interactions: Vec<BusInteraction<T, V>>,
-    ) -> Self {
+    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
+        // TODO: Include bus interactions.
         assert!(
-            known_variables(&algebraic_constraints).is_empty(),
+            known_variables(&constraint_system.algebraic_constraints).is_empty(),
             "Expected all variables to be unknown."
         );
 
         Solver {
-            algebraic_constraints,
-            bus_interactions,
+            constraint_system,
             variable_states: BTreeMap::new(),
             bus_interaction_handler: None,
         }
@@ -82,23 +75,26 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .collect();
         Ok(SolveResult {
             assignments,
-            simplified_algebraic_constraints: self.algebraic_constraints,
+            simplified_constraint_system: self.constraint_system,
         })
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
-            for i in 0..self.algebraic_constraints.len() {
+            for i in 0..self.constraint_system.algebraic_constraints.len() {
                 // TODO: Improve efficiency by only running skipping constraints that
                 // have not received any updates since they were last processed.
-                let effects = self.algebraic_constraints[i].solve(self)?.effects;
+                let effects = self.constraint_system.algebraic_constraints[i]
+                    .solve(self)?
+                    .effects;
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
             }
             if let Some(bus_interaction_handler) = &self.bus_interaction_handler {
                 let effects = self
+                    .constraint_system
                     .bus_interactions
                     .iter()
                     .flat_map(|bus_interaction| {
@@ -200,10 +196,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
         // TODO: Make this more efficient by remembering where the variable appears
-        for constraint in &mut self.algebraic_constraints {
+        for constraint in &mut self.constraint_system.algebraic_constraints {
             constraint.apply_update(variable_update);
         }
-        for bus_interaction in &mut self.bus_interactions {
+        for bus_interaction in &mut self.constraint_system.bus_interactions {
             bus_interaction.apply_update(variable_update);
         }
     }

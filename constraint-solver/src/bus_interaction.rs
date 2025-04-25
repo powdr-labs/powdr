@@ -14,6 +14,7 @@ pub trait BusInteractionHandler {
     type V;
 
     /// Handles a bus interaction.
+    ///
     /// Arguments:
     /// - `bus_id`: The ID of the bus.
     /// - `payload`: The range constraints of the payload. Payload elements are
@@ -21,6 +22,7 @@ pub trait BusInteractionHandler {
     ///    value (if `RangeConstraint::try_to_single_value` returns `Some`).
     /// - `multiplicity`: The multiplicity of the bus interaction. Can be
     ///   assumed to be non-zero.
+    ///
     /// Returns:
     /// - A vector of updated range constraints for the payload. The length of
     ///   this vector should match the length of the `payload` vector. Note that
