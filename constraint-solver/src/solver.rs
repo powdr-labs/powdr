@@ -151,7 +151,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     ) -> bool {
         let entry = self.variable_states.entry(variable.clone()).or_default();
         let existing_range_constraint = entry.range_constraint();
-        let updated_constraint = range_constraint.conjunction(&existing_range_constraint);
+        let updated_constraint = existing_range_constraint.conjunction(&range_constraint);
 
         if existing_range_constraint == updated_constraint {
             // Already knew the constraint, no progress

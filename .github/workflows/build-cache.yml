@@ -17,7 +17,7 @@ jobs:
         submodules: recursive
 
     - name: Save date of cache build
-      run: date -R -u > target/cache-build-date.txt
+      run: mkdir target && date -R -u > target/cache-build-date.txt
     - name: Save commit hash of cache build
       run: git rev-parse HEAD > target/cache-commit-hash.txt
 
