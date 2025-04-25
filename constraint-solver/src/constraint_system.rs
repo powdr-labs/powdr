@@ -1,5 +1,8 @@
 use crate::{
-    effect::Effect, quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider}, range_constraint::RangeConstraint, variable_update::VariableUpdate
+    effect::Effect,
+    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    range_constraint::RangeConstraint,
+    variable_update::VariableUpdate,
 };
 use powdr_number::FieldElement;
 use std::hash::Hash;
@@ -10,6 +13,16 @@ pub struct ConstraintSystem<T: FieldElement, V> {
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// The bus interactions which have to be satisfied.
     pub bus_interactions: Vec<BusInteraction<T, V>>,
+}
+
+impl<T: FieldElement, V> ConstraintSystem<T, V> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_> {
+        Box::new(
+            self.algebraic_constraints
+                .iter()
+                .chain(self.bus_interactions.iter().flat_map(|bi| bi.expressions())),
+        )
+    }
 }
 
 /// A trait for handling bus interactions.
@@ -50,6 +63,16 @@ pub struct BusInteraction<T: FieldElement, V> {
     /// The multiplicity of the bus interaction. In most cases,
     /// this should evaluate to 1 or -1.
     pub multiplicity: QuadraticSymbolicExpression<T, V>,
+}
+
+impl<T: FieldElement, V> BusInteraction<T, V> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_> {
+        Box::new(
+            [&self.bus_id, &self.multiplicity]
+                .into_iter()
+                .chain(self.payload.iter()),
+        )
+    }
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> BusInteraction<T, V> {

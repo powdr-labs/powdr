@@ -35,9 +35,8 @@ pub struct Solver<T: FieldElement, V> {
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
-        // TODO: Include bus interactions.
         assert!(
-            known_variables(&constraint_system.algebraic_constraints).is_empty(),
+            known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
 

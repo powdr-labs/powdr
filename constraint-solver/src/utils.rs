@@ -6,20 +6,20 @@ use powdr_number::FieldElement;
 
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
-/// Returns the set of all known variables in a list of algebraic constraints.
+/// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
 pub fn known_variables<T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Display>(
-    algebraic_constraints: &[QuadraticSymbolicExpression<T, V>],
+    expressions: Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_>,
 ) -> BTreeSet<V> {
     let mut all_known_variables = BTreeSet::new();
     let mut all_unknown_variables = BTreeSet::new();
 
-    for constraint in algebraic_constraints {
-        let all_vars = constraint
+    for expression in expressions {
+        let all_vars = expression
             .referenced_variables()
             .cloned()
             .collect::<BTreeSet<_>>();
-        let unknown_variables = constraint
+        let unknown_variables = expression
             .referenced_unknown_variables()
             .cloned()
             .collect::<BTreeSet<_>>();
