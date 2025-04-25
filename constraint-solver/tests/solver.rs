@@ -7,29 +7,19 @@ use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::Solver,
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 use test_log::test;
 
 pub type Var = &'static str;
 pub type Qse = QuadraticSymbolicExpression<GoldilocksField, Var>;
-pub type Expr = SymbolicExpression<GoldilocksField, Var>;
 
 pub fn var(name: Var) -> Qse {
     Qse::from_unknown_variable(name)
 }
 
-pub fn known(name: Var) -> Qse {
-    Qse::from_known_symbol(name, RangeConstraint::default())
-}
-
 pub fn constant(value: u64) -> Qse {
     GoldilocksField::from(value).into()
-}
-
-pub fn var_expr(name: Var) -> SymbolicExpression<GoldilocksField, Var> {
-    SymbolicExpression::Symbol(name, RangeConstraint::default())
 }
 
 pub fn assert_solve_result(
