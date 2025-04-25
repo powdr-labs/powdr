@@ -130,6 +130,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    // TODO we could also try to convert this into something that supports conversion from SymbolicExpression
+    // and multiplication and addition.
+    pub fn elements(
+        &self,
+    ) -> (
+        &[(Self, Self)],
+        &BTreeMap<V, SymbolicExpression<T, V>>,
+        &SymbolicExpression<T, V>,
+    ) {
+        (&self.quadratic, &self.linear, &self.constant)
+    }
+
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
         let VariableUpdate {
             variable,
