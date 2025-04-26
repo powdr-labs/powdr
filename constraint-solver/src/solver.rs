@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::range_constraint::RangeConstraint;
@@ -10,7 +11,7 @@ use super::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -20,7 +21,7 @@ pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
     /// The final state of the algebraic constraints, with known variables
-    /// replaced by their values.
+    /// replaced by their values and constraints simplified accordingly.
     pub simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
 }
 
@@ -30,8 +31,8 @@ pub struct Solver<T: FieldElement, V> {
     /// Note that these are mutated during the solving process.
     /// They must be kept consistent with the variable states.
     algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
-    /// The current state of the variables.
-    variable_states: BTreeMap<V, VariableState<T>>,
+    /// The currently known range constraints of the variables.
+    range_constraints: RangeConstraints<T, V>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -44,7 +45,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         Solver {
             algebraic_constraints,
-            variable_states: BTreeMap::new(),
+            range_constraints: Default::default(),
         }
     }
 
@@ -55,12 +56,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         self.loop_until_no_progress()?;
 
         let assignments = self
-            .variable_states
-            .into_iter()
-            .filter_map(|(v, info)| match info {
-                VariableState::Known(expr) => Some((v, expr)),
-                VariableState::Unknown(_) => None,
-            })
+            .range_constraints
+            .all_range_constraints()
+            .filter_map(|(v, rc)| Some((v, rc.try_to_single_value()?)))
             .collect();
         Ok(SolveResult {
             assignments,
@@ -74,7 +72,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             for i in 0..self.algebraic_constraints.len() {
                 // TODO: Improve efficiency by only running skipping constraints that
                 // have not received any updates since they were last processed.
-                let effects = self.algebraic_constraints[i].solve(self)?.effects;
+                let effects = self.algebraic_constraints[i]
+                    .solve(&self.range_constraints)?
+                    .effects;
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
@@ -88,9 +88,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(v, expr),
+            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr),
             Effect::RangeConstraint(v, range_constraint) => {
-                self.apply_range_constraint_update(v, range_constraint)
+                self.apply_range_constraint_update(&v, range_constraint)
             }
             Effect::BitDecomposition(..) => unreachable!(),
             Effect::Assertion(..) => unreachable!(),
@@ -98,73 +98,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
-    fn apply_assignment(&mut self, variable: V, expr: SymbolicExpression<T, V>) -> bool {
-        let SymbolicExpression::Concrete(value) = expr else {
-            panic!("Unexpected non-concrete assignment: {variable} = {expr}");
-        };
-
-        let entry = self.variable_states.entry(variable.clone()).or_default();
-        let variable_update = match &entry {
-            // We already know the expression
-            VariableState::Known(existing) => {
-                assert_eq!(
-                    *existing, value,
-                    "Inconsistent assignment for {variable}: {existing} != {value}"
-                );
-                return false;
-            }
-
-            // An unknown variable became known.
-            VariableState::Unknown(..) => {
-                log::trace!("{variable} = {value}");
-
-                *entry = VariableState::Known(value);
-
-                // The borrow checker won't let us call `update_constraints` here, so we
-                // just return the update.
-                Some(VariableUpdate {
-                    variable,
-                    known: true,
-                    range_constraint: RangeConstraint::from_value(value),
-                })
-            }
-        };
-
-        if let Some(variable_update) = variable_update {
-            self.update_constraints(&variable_update);
-            true
-        } else {
-            false
-        }
+    fn apply_assignment(&mut self, variable: &V, expr: &SymbolicExpression<T, V>) -> bool {
+        self.apply_range_constraint_update(variable, expr.range_constraint())
     }
 
     fn apply_range_constraint_update(
         &mut self,
-        variable: V,
+        variable: &V,
         range_constraint: RangeConstraint<T>,
     ) -> bool {
-        let entry = self.variable_states.entry(variable.clone()).or_default();
-        let existing_range_constraint = entry.range_constraint();
-        let updated_constraint = existing_range_constraint.conjunction(&range_constraint);
+        if self.range_constraints.update(variable, &range_constraint) {
+            // The range constraint was updated.
+            log::trace!("({variable}: {range_constraint})");
 
-        if existing_range_constraint == updated_constraint {
-            // Already knew the constraint, no progress
-            return false;
+            let new_rc = self.range_constraints.get(variable);
+            if new_rc.try_to_single_value().is_some() {
+                // The variable is now known.
+                self.update_constraints(&VariableUpdate {
+                    variable: variable.clone(),
+                    known: true,
+                    range_constraint: new_rc.clone(),
+                });
+            }
+            true
+        } else {
+            false
         }
-
-        log::trace!("({variable}: {updated_constraint})");
-
-        if let VariableState::Unknown(existing) = entry {
-            *existing = updated_constraint.clone();
-        }
-        let known = matches!(entry, VariableState::Known(_));
-
-        self.update_constraints(&VariableUpdate {
-            variable,
-            known,
-            range_constraint: updated_constraint,
-        });
-        true
     }
 
     fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
@@ -175,36 +134,46 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 }
 
-/// Current state of a variable in the solver.
-#[derive(Debug, PartialEq)]
-enum VariableState<T: FieldElement> {
-    /// The variable is unknown (but has a range constraint).
-    Unknown(RangeConstraint<T>),
-    /// The variable is concretely known.
-    Known(T),
+/// The currently known range constraints for the variables.
+struct RangeConstraints<T: FieldElement, V> {
+    range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
-// We could derive it, but then we'd have to require that `V: Default`.
-impl<T: FieldElement> Default for VariableState<T> {
+impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
     fn default() -> Self {
-        VariableState::Unknown(RangeConstraint::default())
-    }
-}
-
-impl<T: FieldElement> VariableState<T> {
-    fn range_constraint(&self) -> RangeConstraint<T> {
-        match self {
-            VariableState::Unknown(range_constraint) => range_constraint.clone(),
-            VariableState::Known(value) => RangeConstraint::from_value(*value),
+        RangeConstraints {
+            range_constraints: Default::default(),
         }
     }
 }
 
-impl<T: FieldElement, V: Ord> RangeConstraintProvider<T, V> for Solver<T, V> {
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
+    for RangeConstraints<T, V>
+{
     fn get(&self, var: &V) -> RangeConstraint<T> {
-        self.variable_states
-            .get(var)
-            .map(|state| state.range_constraint())
-            .unwrap_or_default()
+        self.range_constraints.get(var).cloned().unwrap_or_default()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
+    /// Adds a new range constraint for the variable.
+    /// Returns `true` if the new combined constraint is tighter than the existing one.
+    fn update(&mut self, variable: &V, range_constraint: &RangeConstraint<T>) -> bool {
+        let existing = self.get(variable);
+        let new = existing.conjunction(range_constraint);
+        if new != existing {
+            self.range_constraints.insert(variable.clone(), new);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RangeConstraints<T, V> {
+    fn all_range_constraints(self) -> impl Iterator<Item = (V, RangeConstraint<T>)> {
+        self.range_constraints
+            .into_iter()
+            .sorted_by_key(|(v, _)| v.clone())
     }
 }
