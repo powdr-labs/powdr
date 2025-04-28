@@ -135,7 +135,7 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
                 -(l * r)
             }
         })
-        .chain(linear.iter().map(|(v, c)| {
+        .chain(linear.map(|(v, c)| {
             if let Some(c) = c.try_to_number() {
                 if c.is_one() {
                     return variable_to_algebraic_expression(v.clone());

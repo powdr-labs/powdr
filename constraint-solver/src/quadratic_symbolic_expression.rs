@@ -131,14 +131,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     }
 
     /// Returns the quadratic, linear and constant components of this expression.
+    #[allow(clippy::type_complexity)]
     pub fn components(
         &self,
     ) -> (
         &[(Self, Self)],
-        &BTreeMap<V, SymbolicExpression<T, V>>,
+        impl Iterator<Item = (&V, &SymbolicExpression<T, V>)>,
         &SymbolicExpression<T, V>,
     ) {
-        (&self.quadratic, &self.linear, &self.constant)
+        (&self.quadratic, self.linear.iter(), &self.constant)
     }
 
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
