@@ -86,9 +86,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord> BusInteraction<QuadraticSymbolicExp
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
     BusInteraction<QuadraticSymbolicExpression<T, V>>
 {
-    /// Attempts to execute the bus interaction, using the given
-    /// `BusInteractionHandler`. Returns a list of updates to be
-    /// executed by the caller.
+    /// Refines range constraints of the bus interaction's fields
+    /// using the provided `BusInteractionHandler`.
+    /// Returns a list of updates to be executed by the caller.
     pub fn solve(
         &self,
         bus_interaction_handler: &dyn BusInteractionHandler<T = T, V = V>,
@@ -102,7 +102,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
             .zip(range_constraints.iter())
             .filter_map(|(expr, rc)| {
                 if let Some(var) = expr.try_to_simple_unknown() {
-                    return Some(Effect::from_range_constraint_update(var, rc.clone()));
+                    return Some(Effect::RangeConstraint(var, rc.clone()));
                 }
                 None
             })
@@ -118,6 +118,10 @@ pub trait BusInteractionHandler {
     /// Handles a bus interaction, by transforming taking a bus interaction
     /// (with the fields represented by range constraints) and returning
     /// updated range constraints.
+    /// The idea is that a certain combination of range constraints on elements
+    /// can be further restricted given internal knowledge about the specific
+    /// bus interaction, in particular if some elements are restricted to just
+    /// a few or even concrete values.
     /// The range constraints are intersected with the previous ones by the
     /// caller, so there is no need to do that in the implementation of this
     /// trait.

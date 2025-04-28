@@ -123,7 +123,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         if self.is_quadratic() || !self.constant.is_known_zero() {
             return None;
         }
-        let [(var, coeff)] = self.linear.iter().collect::<Vec<_>>()[..] else {
+        let Ok((var, coeff)) = self.linear.iter().exactly_one() else {
             return None;
         };
         if !coeff.is_known_one() {

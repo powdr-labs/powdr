@@ -25,15 +25,6 @@ pub enum Effect<T: FieldElement, V> {
     },
 }
 
-impl<T: FieldElement, V> Effect<T, V> {
-    pub fn from_range_constraint_update(variable: V, range_constraint: RangeConstraint<T>) -> Self {
-        match range_constraint.try_to_single_value() {
-            Some(value) => Effect::Assignment(variable, SymbolicExpression::Concrete(value)),
-            None => Effect::RangeConstraint(variable, range_constraint),
-        }
-    }
-}
-
 /// A bit decomposition of a value.
 /// Executing this effect solves the following equation:
 /// value = sum_{i=0}^{components.len() - 1} (-1)**components[i].negative * 2**components[i].exponent * components[i].variable
