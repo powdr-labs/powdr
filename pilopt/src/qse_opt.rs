@@ -1,9 +1,13 @@
-use std::iter;
+use std::{
+    fmt::{self, Display},
+    iter,
+};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolynomialIdentity,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge, Identity,
+    PolynomialIdentity,
 };
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -18,7 +22,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .filter_map(|identity| match identity {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                try_algebraic_to_quadratic_symbolic_expression(expression)
+                Some(algebraic_to_quadratic_symbolic_expression(expression))
             }
             _ => None,
         })
@@ -51,21 +55,43 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
+enum Variable {
+    Reference(AlgebraicReference),
+    PublicReference(String),
+    Challenge(Challenge),
+}
+
+impl Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable::Reference(r) => write!(f, "{r}"),
+            Variable::PublicReference(r) => write!(f, "{r}"),
+            Variable::Challenge(c) => write!(f, "{c}"),
+        }
+    }
+}
+
 // Turns an algebraic expression into a quadratic symbolic expression,
-/// assuming all [`AlgebraicReference`]s are unknown variables.
-///
-/// Fails (returns None) if public references or challenges are used.
-fn try_algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
+/// assuming all [`AlgebraicReference`]s, public references and challenges
+/// are unknown variables.
+fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
-) -> Option<QuadraticSymbolicExpression<T, AlgebraicReference>> {
-    Some(match expr {
+) -> QuadraticSymbolicExpression<T, Variable> {
+    match expr {
         AlgebraicExpression::Reference(r) => {
-            QuadraticSymbolicExpression::from_unknown_variable(r.clone())
+            QuadraticSymbolicExpression::from_unknown_variable(Variable::Reference(r.clone()))
+        }
+        AlgebraicExpression::PublicReference(r) => {
+            QuadraticSymbolicExpression::from_unknown_variable(Variable::PublicReference(r.clone()))
+        }
+        AlgebraicExpression::Challenge(c) => {
+            QuadraticSymbolicExpression::from_unknown_variable(Variable::Challenge(*c))
         }
         AlgebraicExpression::Number(n) => (*n).into(),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = try_algebraic_to_quadratic_symbolic_expression(left)?;
-            let right = try_algebraic_to_quadratic_symbolic_expression(right)?;
+            let left = algebraic_to_quadratic_symbolic_expression(left);
+            let right = algebraic_to_quadratic_symbolic_expression(right);
             match op {
                 AlgebraicBinaryOperator::Add => left + right,
                 AlgebraicBinaryOperator::Sub => left - right,
@@ -76,14 +102,13 @@ fn try_algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
-            AlgebraicUnaryOperator::Minus => -try_algebraic_to_quadratic_symbolic_expression(expr)?,
+            AlgebraicUnaryOperator::Minus => -algebraic_to_quadratic_symbolic_expression(expr),
         },
-        AlgebraicExpression::PublicReference(_) | AlgebraicExpression::Challenge(_) => return None,
-    })
+    }
 }
 
 fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
-    expr: &QuadraticSymbolicExpression<T, AlgebraicReference>,
+    expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
     let (quadratic, linear, constant) = expr.elements();
     quadratic
@@ -93,7 +118,7 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
                 * quadratic_symbolic_expression_to_algebraic(r)
         })
         .chain(linear.iter().map(|(v, c)| {
-            AlgebraicExpression::Reference((*v).clone()) * symbolic_expression_to_algebraic(c)
+            variable_to_algebraic_expression(v.clone()) * symbolic_expression_to_algebraic(c)
         }))
         .chain(iter::once(symbolic_expression_to_algebraic(constant)))
         .reduce(|acc, x| acc + x)
@@ -101,12 +126,11 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
 }
 
 fn symbolic_expression_to_algebraic<T: FieldElement>(
-    e: &SymbolicExpression<T, AlgebraicReference>,
+    e: &SymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
-    // Problem: div does not work!
     match e {
         SymbolicExpression::Concrete(v) => AlgebraicExpression::Number(*v),
-        SymbolicExpression::Symbol(var, _) => AlgebraicExpression::Reference((*var).clone()),
+        SymbolicExpression::Symbol(var, _) => variable_to_algebraic_expression(var.clone()),
         SymbolicExpression::BinaryOperation(left, op, right, _) => {
             let left = Box::new(symbolic_expression_to_algebraic(left));
             let right = Box::new(symbolic_expression_to_algebraic(right));
@@ -130,6 +154,14 @@ fn symbolic_op_to_algebraic(op: BinaryOperator) -> AlgebraicBinaryOperator {
         BinaryOperator::Add => AlgebraicBinaryOperator::Add,
         BinaryOperator::Sub => AlgebraicBinaryOperator::Sub,
         BinaryOperator::Mul => AlgebraicBinaryOperator::Mul,
-        BinaryOperator::Div => todo!(),
+        BinaryOperator::Div => unreachable!(),
+    }
+}
+
+fn variable_to_algebraic_expression<T>(var: Variable) -> AlgebraicExpression<T> {
+    match var {
+        Variable::Reference(r) => AlgebraicExpression::Reference(r),
+        Variable::PublicReference(r) => AlgebraicExpression::PublicReference(r),
+        Variable::Challenge(c) => AlgebraicExpression::Challenge(c),
     }
 }
