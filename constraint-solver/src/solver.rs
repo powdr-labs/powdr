@@ -55,7 +55,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug + 'static> So
         bus_interaction_handler: Box<dyn BusInteractionHandler<T = T, V = V>>,
     ) -> Self {
         Solver {
-            bus_interaction_handler: bus_interaction_handler,
+            bus_interaction_handler,
             ..self
         }
     }
