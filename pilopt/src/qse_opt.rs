@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -103,13 +104,46 @@ fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
                 AlgebraicBinaryOperator::Sub => left - right,
                 AlgebraicBinaryOperator::Mul => left * right,
                 AlgebraicBinaryOperator::Pow => {
-                    todo!()
+                    let Some(exponent) = right.try_to_known().and_then(|e| e.try_to_number())
+                    else {
+                        panic!(
+                            "Exponentiation is only supported for known numbers, but got '{right}'."
+                        );
+                    };
+                    let exponent = exponent.to_integer();
+                    if exponent > 10.into() {
+                        panic!("Eponent too large ({exponent}).");
+                    }
+                    apply_pow(&left, exponent)
                 }
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
             AlgebraicUnaryOperator::Minus => -algebraic_to_quadratic_symbolic_expression(expr),
         },
+    }
+}
+
+/// Raises `v` to the power of `exponent` using iterated multiplication.
+fn apply_pow<T, V>(
+    v: &QuadraticSymbolicExpression<T, V>,
+    exponent: T::Integer,
+) -> QuadraticSymbolicExpression<T, V>
+where
+    T: FieldElement,
+    V: Clone + Hash + Ord,
+{
+    assert!(exponent >= 0.into());
+    if exponent == 0.into() {
+        QuadraticSymbolicExpression::from(T::from(1))
+    } else if exponent == 1.into() {
+        v.clone()
+    } else if exponent & 1.into() == 1.into() {
+        let r = apply_pow(v, exponent >> 1);
+        (r.clone() * r) * v.clone()
+    } else {
+        let r = apply_pow(v, exponent >> 1);
+        r.clone() * r
     }
 }
 
@@ -226,5 +260,29 @@ fn extract_negation_if_possible<T>(e: AlgebraicExpression<T>) -> (AlgebraicExpre
             expr,
         }) => (*expr, true),
         _ => (e, false),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_apply_pow() {
+        type T = powdr_number::GoldilocksField;
+        type Qse = QuadraticSymbolicExpression<T, &'static str>;
+        let v = Qse::from_unknown_variable("x");
+        assert_eq!(apply_pow(&v, 0u64.into()).to_string(), "1");
+        assert_eq!(apply_pow(&v, 1u64.into()).to_string(), "x");
+        assert_eq!(apply_pow(&v, 2u64.into()).to_string(), "(x) * (x)");
+        assert_eq!(apply_pow(&v, 3u64.into()).to_string(), "((x) * (x)) * (x)");
+        assert_eq!(
+            apply_pow(&v, 4u64.into()).to_string(),
+            "((x) * (x)) * ((x) * (x))"
+        );
+        assert_eq!(
+            apply_pow(&v, 5u64.into()).to_string(),
+            "(((x) * (x)) * ((x) * (x))) * (x)"
+        );
     }
 }
