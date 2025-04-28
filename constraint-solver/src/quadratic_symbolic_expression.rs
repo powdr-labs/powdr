@@ -860,6 +860,7 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * a + y) * b.clone() + b;
         assert_eq!(t.to_string(), "(A * B) * X + B * Y + B");
+        // We substitute B by an expression containing B on purpose.
         t.substitute_by_known(
             &"B",
             &(SymbolicExpression::from_symbol("B", Default::default())
