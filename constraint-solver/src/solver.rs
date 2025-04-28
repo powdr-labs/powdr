@@ -137,18 +137,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.substitute_in_constraints(variable, &value.into());
+                self.constraint_system.substitute(variable, &value.into());
             }
             true
         } else {
             false
-        }
-    }
-
-    fn substitute_in_constraints(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        for expression in self.constraint_system.iter_mut() {
-            expression.substitute_by_known(variable, substitution);
         }
     }
 }
