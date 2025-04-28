@@ -10,7 +10,8 @@ use std::hash::Hash;
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
-    /// The bus interactions which have to be satisfied.
+    /// Bus interactions, which can further restrict variables.
+    /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
 }
 
