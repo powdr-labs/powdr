@@ -38,7 +38,7 @@ fn replace_intermediate() {
 "#;
     let expectation = r#"namespace N(65536);
     col witness X;
-    N::X' - N::X = 1;
+    N::X' = N::X + 1;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -65,7 +65,7 @@ fn deduplicate_fixed() {
     col i = N::first * N::first;
     col witness X;
     col witness Y;
-    N::X * N::first - N::Y * N::first = N::i;
+    N::X * N::first = N::Y * N::first + N::i;
 namespace M(65536);
     col fixed first = [1_fe, 32_fe]*;
     col witness X;
@@ -465,6 +465,11 @@ fn equal_constrained_transitive() {
 
 #[test]
 fn replace_witness_by_intermediate() {
+    // NOTE since the introduction of QSE-opt, this test does not properly work any more
+    // because the expressions are mangled too much for the pattern matcher in
+    // `replace_linear_witness_columns`.
+    // To fix this, we should use QSE-opt to perform this optimization step, for example
+    // extract intermediate columns from the QSEs as a post-processing step.
     let input = r#"namespace N(65536);
         col witness w;
         col fixed f = [1, 0]*;
@@ -492,13 +497,13 @@ fn replace_witness_by_intermediate() {
     col witness w;
     col fixed f = [1_fe, 0_fe]*;
     col can_be_replaced = 2 * N::w + 3 * N::f + 5;
-    N::can_be_replaced + N::w = 5;
+    N::w + N::can_be_replaced = 5;
     col witness linear_with_next_ref;
     N::linear_with_next_ref = 2 * N::w + 3 * N::f' + 5;
-    N::linear_with_next_ref + N::w = 5;
+    N::w + N::linear_with_next_ref = 5;
     col witness quadratic;
     N::quadratic = 2 * N::w * N::w + 3 * N::f + 5;
-    N::quadratic + N::w = 5;
+    N::w + N::quadratic = 5;
     col constrained_twice = 2 * N::w + 3 * N::f + 5;
     N::constrained_twice = N::w + N::f;
 "#;
@@ -532,11 +537,11 @@ fn simplify_associative_operations() {
     col witness z;
     N::x + 3 = N::y * N::y;
     N::x + 5 = N::y * N::y;
-    N::x - 2 + 1 = N::y * N::y;
-    N::x + 3 - N::y - 9 = N::z * N::z;
-    N::x + 6 - N::y = N::z * N::z;
-    -N::x + N::y + 12 = N::z * N::z;
-    -N::x + 18 = N::z * N::z;
+    N::x = N::y * N::y + 1;
+    N::x = N::z * N::z + N::y + 6;
+    N::x + 6 = N::z * N::z + N::y;
+    N::y + 12 = N::z * N::z + N::x;
+    18 = N::z * N::z + N::x;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
@@ -566,8 +571,9 @@ fn inline_chain_of_substitutions() {
     col witness a;
     col witness b;
     col x = N::a + N::y;
-    col y = N::x + N::b;
-    col m = N::x - N::y;
+    col y = N::b + N::x;
+    col witness m;
+    N::y + N::m = N::x;
     N::a * N::b = 10;
     N::m * N::a = 1;
 "#;

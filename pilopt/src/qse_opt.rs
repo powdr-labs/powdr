@@ -107,12 +107,12 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
     let (quadratic, linear, constant) = expr.elements();
-    quadratic
+    let items = quadratic
         .iter()
         .map(|(l, r)| {
             let l = quadratic_symbolic_expression_to_algebraic(l);
-            let r = quadratic_symbolic_expression_to_algebraic(r);
             let (l, l_negated) = extract_negation_if_possible(l);
+            let r = quadratic_symbolic_expression_to_algebraic(r);
             let (r, r_negated) = extract_negation_if_possible(r);
             match (l_negated, r_negated) {
                 (false, false) => l * r,
@@ -148,18 +148,27 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
             }
         } else {
             Some(symbolic_expression_to_algebraic(constant))
-        })
-        .reduce(|acc, item| {
-            let (item, item_negated) = extract_negation_if_possible(item);
-            let (acc, acc_negated) = extract_negation_if_possible(acc);
-            match (acc_negated, item_negated) {
-                (false, false) => acc + item,
-                (false, true) => acc - item,
-                (true, false) => item - acc,
-                (true, true) => -(acc + item),
-            }
-        })
-        .unwrap_or(AlgebraicExpression::from(T::zero()))
+        });
+
+    // Now order the items by negated and non-negated.
+    let mut positive = vec![];
+    let mut negated = vec![];
+    for item in items {
+        let (item, item_negated) = extract_negation_if_possible(item);
+        if item_negated {
+            negated.push(item);
+        } else {
+            positive.push(item);
+        }
+    }
+    let positive = positive.into_iter().reduce(|acc, item| acc + item);
+    let negated = negated.into_iter().reduce(|acc, item| acc + item);
+    match (positive, negated) {
+        (Some(positive), Some(negated)) => positive - negated,
+        (Some(positive), None) => positive,
+        (None, Some(negated)) => -negated,
+        (None, None) => AlgebraicExpression::from(T::zero()),
+    }
 }
 
 fn symbolic_expression_to_algebraic<T: FieldElement>(
