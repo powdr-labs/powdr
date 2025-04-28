@@ -46,7 +46,7 @@ pub struct BusInteraction<V> {
 }
 
 impl<V> BusInteraction<V> {
-    pub fn iter(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+    pub fn iter(&self) -> impl Iterator<Item = &V> {
         Box::new(
             [&self.bus_id, &self.multiplicity]
                 .into_iter()
@@ -54,7 +54,7 @@ impl<V> BusInteraction<V> {
         )
     }
 
-    pub fn iter_mut(&mut self) -> Box<dyn Iterator<Item = &mut V> + '_> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
         Box::new(
             [&mut self.bus_id, &mut self.multiplicity]
                 .into_iter()
@@ -63,7 +63,23 @@ impl<V> BusInteraction<V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Ord> BusInteraction<QuadraticSymbolicExpression<T, V>> {
+impl<V> FromIterator<V> for BusInteraction<V> {
+    fn from_iter<T: IntoIterator<Item = V>>(iter: T) -> Self {
+        let mut iter = iter.into_iter();
+        let bus_id = iter.next().unwrap();
+        let multiplicity = iter.next().unwrap();
+        let payload = iter.collect();
+        BusInteraction {
+            bus_id,
+            payload,
+            multiplicity,
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
+    BusInteraction<QuadraticSymbolicExpression<T, V>>
+{
     /// Converts a bus interactions with fields represented by expressions
     /// to a bus interaction with fields represented by range constraints.
     fn to_range_constraints(
@@ -71,21 +87,13 @@ impl<T: FieldElement, V: Clone + Hash + Ord> BusInteraction<QuadraticSymbolicExp
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Option<BusInteraction<RangeConstraint<T>>> {
         // TODO: Handle bus interactions with complex expressions.
-        Some(BusInteraction {
-            bus_id: expr_to_range_constraint(&self.bus_id, range_constraints)?,
-            payload: self
-                .payload
-                .iter()
+        Some(BusInteraction::from_iter(
+            self.iter()
                 .map(|expr| expr_to_range_constraint(expr, range_constraints))
                 .collect::<Option<Vec<_>>>()?,
-            multiplicity: expr_to_range_constraint(&self.multiplicity, range_constraints)?,
-        })
+        ))
     }
-}
 
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
-    BusInteraction<QuadraticSymbolicExpression<T, V>>
-{
     /// Refines range constraints of the bus interaction's fields
     /// using the provided `BusInteractionHandler`.
     /// Returns a list of updates to be executed by the caller.

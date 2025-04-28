@@ -8,8 +8,8 @@ use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
 /// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
-pub fn known_variables<T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Display>(
-    expressions: Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_>,
+pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Display + 'a>(
+    expressions: impl Iterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
 ) -> BTreeSet<V> {
     let mut all_known_variables = BTreeSet::new();
     let mut all_unknown_variables = BTreeSet::new();
