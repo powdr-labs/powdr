@@ -572,13 +572,13 @@ main_binary::C_byte[-1] = call_var(9, -1, 3);
 main_binary::C[0] = main_binary::C_byte[-1];
 machine_call(2, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
 main_binary::C_byte[0] = call_var(9, 0, 3);
-main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
+main_binary::C[1] = (main_binary::C[0] + (256 * main_binary::C_byte[0]));
 machine_call(2, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
 main_binary::C_byte[1] = call_var(9, 1, 3);
-main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
+main_binary::C[2] = (main_binary::C[1] + (65536 * main_binary::C_byte[1]));
 machine_call(2, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
 main_binary::C_byte[2] = call_var(9, 2, 3);
-main_binary::C[3] = (main_binary::C[2] + (main_binary::C_byte[2] * 16777216));
+main_binary::C[3] = (main_binary::C[2] + (16777216 * main_binary::C_byte[2]));
 params[3] = main_binary::C[3];"
         )
     }
@@ -644,7 +644,7 @@ call_var(1, 0, 0) = SubM::c[0];
 SubM::c[1] = SubM::c[0];
 params[1] = SubM::b[0];
 SubM::b[1] = SubM::b[0];
-SubM::a[1] = (SubM::c[1] + (SubM::b[1] * 256));
+SubM::a[1] = (SubM::c[1] + (256 * SubM::b[1]));
 call_var(1, 1, 0) = SubM::b[1];
 machine_call(2, [Known(call_var(1, 0, 0))]);
 machine_call(2, [Known(call_var(1, 1, 0))]);"
@@ -828,7 +828,7 @@ params[2] = S::Z[0];"
 S::X[0] = params[0];
 S::Y[0] = params[1];
 S::Zi[0][0] = (S::X[0] + S::Y[0]);
-S::Zi[1][0] = (S::X[0] * 2);
+S::Zi[1][0] = (2 * S::X[0]);
 S::Zi[2][0] = (S::Y[0] * S::Y[0]);
 S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
 params[2] = S::Z[0];"

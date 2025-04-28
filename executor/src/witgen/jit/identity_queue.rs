@@ -11,7 +11,9 @@ use powdr_ast::{
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, variable_update::VariableUpdate,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    symbolic_expression::SymbolicExpression,
+    variable_update::{UpdateKind, VariableUpdate},
 };
 use powdr_number::FieldElement;
 
@@ -86,7 +88,7 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
 
     pub fn variables_updated(
         &mut self,
-        updates: impl IntoIterator<Item = VariableUpdate<T, Variable>>,
+        updates: impl IntoIterator<Item = VariableUpdate<T, Variable, SymbolicExpression<T, Variable>>>,
     ) {
         // Note that this will usually re-add the item that caused the update,
         // which is fine, since there are situations where we can further process
@@ -98,15 +100,19 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
                     require_concretely_known,
                 } = &mut self.items[*index]
                 {
-                    let update = if *require_concretely_known {
-                        &VariableUpdate {
-                            known: update.range_constraint.try_to_single_value().is_some(),
-                            ..update.clone()
+                    match &update.update {
+                        UpdateKind::Replace(r) => {
+                            if !*require_concretely_known || r.try_to_number().is_some() {
+                                expr.substitute_by_known(&update.variable, r);
+                            }
                         }
-                    } else {
-                        &update
-                    };
-                    expr.apply_update(update);
+                        UpdateKind::RangeConstraintUpdate(r) => {
+                            assert!(
+                                r.try_to_single_value().is_none(),
+                                "Should have used a replacement instead."
+                            );
+                        }
+                    }
                 }
 
                 if !self.in_queue[*index] {

@@ -66,7 +66,7 @@ impl<V> BusInteraction<V> {
 impl<T: FieldElement, V: Clone + Hash + Ord> BusInteraction<QuadraticSymbolicExpression<T, V>> {
     /// Converts a bus interactions with fields represented by expressions
     /// to a bus interaction with fields represented by range constraints.
-    pub fn to_range_constraints(
+    fn to_range_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Option<BusInteraction<RangeConstraint<T>>> {
