@@ -465,11 +465,6 @@ fn equal_constrained_transitive() {
 
 #[test]
 fn replace_witness_by_intermediate() {
-    // NOTE since the introduction of QSE-opt, this test does not properly work any more
-    // because the expressions are mangled too much for the pattern matcher in
-    // `replace_linear_witness_columns`.
-    // To fix this, we should use QSE-opt to perform this optimization step, for example
-    // extract intermediate columns from the QSEs as a post-processing step.
     let input = r#"namespace N(65536);
         col witness w;
         col fixed f = [1, 0]*;

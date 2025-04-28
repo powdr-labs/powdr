@@ -13,6 +13,16 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
+/// Performs optimizations on the polynomial constraints in `pil_file`
+/// by utilizing quadratic symbolic expressions, and the constraint solver
+/// based on those.
+///
+/// This fully parses the constraints into an internal representation,
+/// optimizes on that representation and converts them back into the
+/// original representation.
+///
+/// This means the syntactic structure (order of additions, etc) is not
+/// preserved.
 pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let identities = pil_file
         .identities
@@ -68,7 +78,7 @@ impl Display for Variable {
     }
 }
 
-// Turns an algebraic expression into a quadratic symbolic expression,
+/// Turns an algebraic expression into a quadratic symbolic expression,
 /// assuming all [`AlgebraicReference`]s, public references and challenges
 /// are unknown variables.
 fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
@@ -103,10 +113,15 @@ fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     }
 }
 
+/// Turns a quadratic symbolic expression back into an algebraic expression.
+/// Tries to simplify the expression wrt negation and constant factors
+/// to aid human readability.
 fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
-    let (quadratic, linear, constant) = expr.elements();
+    // Turn the expression into a list of to-be-summed items and try to
+    // simplify on the way.
+    let (quadratic, linear, constant) = expr.components();
     let items = quadratic
         .iter()
         .map(|(l, r)| {
@@ -114,41 +129,28 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
             let (l, l_negated) = extract_negation_if_possible(l);
             let r = quadratic_symbolic_expression_to_algebraic(r);
             let (r, r_negated) = extract_negation_if_possible(r);
-            match (l_negated, r_negated) {
-                (false, false) => l * r,
-                (false, true) => -(l * r),
-                (true, false) => -(l * r),
-                (true, true) => l * r,
+            if l_negated == r_negated {
+                l * r
+            } else {
+                -(l * r)
             }
         })
         .chain(linear.iter().map(|(v, c)| {
             if let Some(c) = c.try_to_number() {
                 if c.is_one() {
-                    variable_to_algebraic_expression(v.clone())
+                    return variable_to_algebraic_expression(v.clone());
                 } else if (-c).is_one() {
-                    -variable_to_algebraic_expression(v.clone())
-                } else if !c.is_in_lower_half() {
-                    -(AlgebraicExpression::from(-c) * variable_to_algebraic_expression(v.clone()))
-                } else if c.is_zero() {
-                    unreachable!()
-                } else {
-                    AlgebraicExpression::from(c) * variable_to_algebraic_expression(v.clone())
+                    return -variable_to_algebraic_expression(v.clone());
                 }
+            }
+            let (c, negated) = extract_negation_if_possible(symbolic_expression_to_algebraic(c));
+            if negated {
+                -(c * variable_to_algebraic_expression(v.clone()))
             } else {
-                symbolic_expression_to_algebraic(c) * variable_to_algebraic_expression(v.clone())
+                c * variable_to_algebraic_expression(v.clone())
             }
         }))
-        .chain(if let Some(c) = constant.try_to_number() {
-            if c.is_zero() {
-                None
-            } else if c.is_in_lower_half() {
-                Some(AlgebraicExpression::from(c))
-            } else {
-                Some(-AlgebraicExpression::from(-c))
-            }
-        } else {
-            Some(symbolic_expression_to_algebraic(constant))
-        });
+        .chain((!constant.is_known_zero()).then(|| symbolic_expression_to_algebraic(constant)));
 
     // Now order the items by negated and non-negated.
     let mut positive = vec![];

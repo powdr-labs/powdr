@@ -130,9 +130,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    // TODO we could also try to convert this into something that supports conversion from SymbolicExpression
-    // and multiplication and addition.
-    pub fn elements(
+    /// Returns the quadratic, linear and constant components of this expression.
+    pub fn components(
         &self,
     ) -> (
         &[(Self, Self)],
