@@ -367,6 +367,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     component += T::Integer::MAX - T::modulus() + 1.into();
                 };
                 component &= bit_mask;
+                if component >= T::modulus() {
+                    // If the component does not fit the field, the bit mask is not
+                    // tight good enough.
+                    return Ok(ProcessResult::empty());
+                }
                 concrete_assignments.push(Effect::Assignment(
                     variable.clone(),
                     T::from(component >> exponent).into(),
