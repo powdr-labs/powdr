@@ -14,9 +14,12 @@ itertools = "0.13"
 num-traits = "0.2.15"
 derive_more = "0.99.17"
 auto_enums = "0.8.5"
+log = "0.4.27"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+env_logger = "0.10.0"
+test-log = "0.2.12"
 
 [lints]
 workspace = true
