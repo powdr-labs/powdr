@@ -13,7 +13,6 @@ use std::{
 use powdr_number::FieldElement;
 
 use super::range_constraint::RangeConstraint;
-use super::variable_update::VariableUpdate;
 
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
@@ -112,25 +111,15 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
 }
 
 impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
-    /// Applies a variable update and returns a modified version if there was a change.
-    pub fn compute_updated(&self, variable_update: &VariableUpdate<T, S>) -> Option<Self> {
+    /// Applies a variable substitution and returns a modified version if there was a change.
+    pub fn compute_substitution(&self, variable: &S, substitution: &Self) -> Option<Self> {
         match self {
             SymbolicExpression::Concrete(_) => None,
-            SymbolicExpression::Symbol(v, _) => {
-                if *v == variable_update.variable {
-                    assert!(variable_update.known);
-                    Some(SymbolicExpression::from_symbol(
-                        v.clone(),
-                        variable_update.range_constraint.clone(),
-                    ))
-                } else {
-                    None
-                }
-            }
+            SymbolicExpression::Symbol(v, _) => (v == variable).then(|| substitution.clone()),
             SymbolicExpression::BinaryOperation(left, op, right, _) => {
                 let (l, r) = match (
-                    left.compute_updated(variable_update),
-                    right.compute_updated(variable_update),
+                    left.compute_substitution(variable, substitution),
+                    right.compute_substitution(variable, substitution),
                 ) {
                     (None, None) => return None,
                     (Some(l), None) => (l, (**right).clone()),
@@ -145,16 +134,17 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
                 }
             }
             SymbolicExpression::UnaryOperation(op, inner, _) => {
-                let inner = inner.compute_updated(variable_update)?;
-                assert!(matches!(op, UnaryOperator::Neg));
-                Some(-inner)
+                let inner = inner.compute_substitution(variable, substitution)?;
+                match op {
+                    UnaryOperator::Neg => Some(-inner),
+                }
             }
         }
     }
 
-    /// Applies a variable update in place.
-    pub fn apply_update(&mut self, variable_update: &VariableUpdate<T, S>) {
-        if let Some(updated) = self.compute_updated(variable_update) {
+    /// Applies a variable substitution in place.
+    pub fn substitute(&mut self, variable: &S, substitution: &Self) {
+        if let Some(updated) = self.compute_substitution(variable, substitution) {
             *self = updated;
         }
     }
