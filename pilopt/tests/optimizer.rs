@@ -38,7 +38,7 @@ fn replace_intermediate() {
 "#;
     let expectation = r#"namespace N(65536);
     col witness X;
-    N::X' = N::X + 1;
+    N::X' - N::X = 1;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -65,7 +65,7 @@ fn deduplicate_fixed() {
     col i = N::first * N::first;
     col witness X;
     col witness Y;
-    N::X * N::first = N::Y * N::first + N::i;
+    N::X * N::first - N::Y * N::first = N::i;
 namespace M(65536);
     col fixed first = [1_fe, 32_fe]*;
     col witness X;
@@ -121,7 +121,7 @@ fn intermediate() {
     let expectation = r#"namespace N(65536);
     col witness x;
     col int2 = N::x * N::x;
-    N::int2 = 3 * N::x + N::x;
+    N::int2 = 4 * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -369,7 +369,7 @@ fn handle_array_references_in_prover_functions() {
     col witness x[1];
     
     // non-trivial constraint so that `x[0]` does not get removed.
-    x[0]' = x[0] + 1;
+    x[0]' - x[0] = 1;
     {
         let intermediate = x[0] + 1;
         query |i| {
@@ -440,7 +440,7 @@ fn equal_constrained_array_elements() {
     col witness w[20];
     N::w[4] = N::w[7];
     N::w[3] = N::w[5];
-    N::w[7] + N::w[1] + N::w[3] = 5;
+    N::w[1] + N::w[3] + N::w[7] = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -456,10 +456,9 @@ fn equal_constrained_transitive() {
         b = c;
         a + b + c = 5;
     "#;
-    let expectation = r#"namespace N(65536);
-    col witness c;
-    N::c + N::c + N::c = 5;
-"#;
+    // This is fully optimized away because we end up with
+    // 3 * a = 5, i.e. a = b = c = 5 / 3.
+    let expectation = r#""#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }

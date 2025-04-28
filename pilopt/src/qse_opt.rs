@@ -33,21 +33,20 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             simplified_algebraic_constraints,
             ..
         }) => {
-            let mut replacements = 0;
-            // TODO this is not correct if the are constraints with publics and challenges, because we skip them.
-            for identity in &mut pil_file.identities {
-                if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
-                    if let Some(constraint) = simplified_algebraic_constraints.get(replacements) {
-                        *expression = quadratic_symbolic_expression_to_algebraic(constraint);
+            pil_file
+                .identities
+                .iter_mut()
+                .filter_map(|identity| {
+                    if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
+                        Some(expression)
                     } else {
-                        *expression = AlgebraicExpression::Number(0.into());
+                        None
                     }
-                    replacements += 1;
-                }
-            }
-            // If not, we have more simplified algebraic constraints than original
-            // and would have to append.
-            assert!(replacements >= simplified_algebraic_constraints.len());
+                })
+                .zip_eq(simplified_algebraic_constraints)
+                .for_each(|(identity, simplified)| {
+                    *identity = quadratic_symbolic_expression_to_algebraic(&simplified);
+                });
         }
     }
 }
@@ -160,7 +159,7 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
                 (true, true) => -(acc + item),
             }
         })
-        .unwrap()
+        .unwrap_or(AlgebraicExpression::from(T::zero()))
 }
 
 fn symbolic_expression_to_algebraic<T: FieldElement>(
