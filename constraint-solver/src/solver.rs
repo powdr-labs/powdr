@@ -18,7 +18,7 @@ use std::hash::Hash;
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
-    /// The final state of the algebraic constraints, with known variables
+    /// The final state of the constraint system, with known variables
     /// replaced by their values and constraints simplified accordingly.
     pub simplified_constraint_system: ConstraintSystem<T, V>,
 }
@@ -28,6 +28,8 @@ pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: ConstraintSystem<T, V>,
+    /// The handler for bus interactions, if any. If none, bus interactions
+    /// will be ignored.
     bus_interaction_handler: Option<Box<dyn BusInteractionHandler<T = T, V = V>>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
