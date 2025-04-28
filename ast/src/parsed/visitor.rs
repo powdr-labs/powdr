@@ -50,7 +50,7 @@ pub trait ExpressionVisitable<Expr> {
     where
         F: FnMut(&mut Expr),
     {
-        self.pre_visit_expressions_return_mut(&mut move |e| {
+        let _ = self.pre_visit_expressions_return_mut(&mut move |e| {
             f(e);
             ControlFlow::Continue::<()>(())
         });
@@ -70,7 +70,7 @@ pub trait ExpressionVisitable<Expr> {
     where
         F: FnMut(&Expr),
     {
-        self.pre_visit_expressions_return(&mut move |e| {
+        let _ = self.pre_visit_expressions_return(&mut move |e| {
             f(e);
             ControlFlow::Continue::<()>(())
         });
@@ -90,7 +90,7 @@ pub trait ExpressionVisitable<Expr> {
     where
         F: FnMut(&mut Expr),
     {
-        self.post_visit_expressions_return_mut(&mut move |e| {
+        let _ = self.post_visit_expressions_return_mut(&mut move |e| {
             f(e);
             ControlFlow::Continue::<()>(())
         });
@@ -110,7 +110,7 @@ pub trait ExpressionVisitable<Expr> {
     where
         F: FnMut(&Expr),
     {
-        self.post_visit_expressions_return(&mut move |e| {
+        let _ = self.post_visit_expressions_return(&mut move |e| {
             f(e);
             ControlFlow::Continue::<()>(())
         });

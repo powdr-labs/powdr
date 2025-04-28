@@ -1,8 +1,8 @@
-use std::{collections::BTreeMap, ops::ControlFlow};
+use std::collections::BTreeMap;
 
 use powdr_ast::{
     analyzed::{AlgebraicExpression, Analyzed},
-    parsed::visitor::{AllChildren, ExpressionVisitable, VisitOrder},
+    parsed::visitor::{AllChildren, ExpressionVisitable},
 };
 use powdr_backend_utils::referenced_namespaces_algebraic_expression;
 use powdr_number::FieldElement;
@@ -25,15 +25,11 @@ pub fn localize<F: FieldElement, E: ExpressionVisitable<AlgebraicExpression<F>>>
         .collect::<BTreeMap<_, _>>();
 
     // Translate all polynomial references.
-    e.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(reference) = expr {
-                reference.poly_id = id_map[&reference.poly_id];
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
+    e.pre_visit_expressions_mut(&mut |expr| {
+        if let AlgebraicExpression::Reference(reference) = expr {
+            reference.poly_id = id_map[&reference.poly_id];
+        }
+    });
 
     e
 }
