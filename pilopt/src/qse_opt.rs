@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Display},
-    iter,
-};
+use std::fmt::{self, Display};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -114,14 +111,55 @@ fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     quadratic
         .iter()
         .map(|(l, r)| {
-            quadratic_symbolic_expression_to_algebraic(l)
-                * quadratic_symbolic_expression_to_algebraic(r)
+            let l = quadratic_symbolic_expression_to_algebraic(l);
+            let r = quadratic_symbolic_expression_to_algebraic(r);
+            let (l, l_negated) = extract_negation_if_possible(l);
+            let (r, r_negated) = extract_negation_if_possible(r);
+            match (l_negated, r_negated) {
+                (false, false) => l * r,
+                (false, true) => -(l * r),
+                (true, false) => -(l * r),
+                (true, true) => l * r,
+            }
         })
         .chain(linear.iter().map(|(v, c)| {
-            variable_to_algebraic_expression(v.clone()) * symbolic_expression_to_algebraic(c)
+            if let Some(c) = c.try_to_number() {
+                if c.is_one() {
+                    variable_to_algebraic_expression(v.clone())
+                } else if (-c).is_one() {
+                    -variable_to_algebraic_expression(v.clone())
+                } else if !c.is_in_lower_half() {
+                    -(AlgebraicExpression::from(-c) * variable_to_algebraic_expression(v.clone()))
+                } else if c.is_zero() {
+                    unreachable!()
+                } else {
+                    AlgebraicExpression::from(c) * variable_to_algebraic_expression(v.clone())
+                }
+            } else {
+                symbolic_expression_to_algebraic(c) * variable_to_algebraic_expression(v.clone())
+            }
         }))
-        .chain(iter::once(symbolic_expression_to_algebraic(constant)))
-        .reduce(|acc, x| acc + x)
+        .chain(if let Some(c) = constant.try_to_number() {
+            if c.is_zero() {
+                None
+            } else if c.is_in_lower_half() {
+                Some(AlgebraicExpression::from(c))
+            } else {
+                Some(-AlgebraicExpression::from(-c))
+            }
+        } else {
+            Some(symbolic_expression_to_algebraic(constant))
+        })
+        .reduce(|acc, item| {
+            let (item, item_negated) = extract_negation_if_possible(item);
+            let (acc, acc_negated) = extract_negation_if_possible(acc);
+            match (acc_negated, item_negated) {
+                (false, false) => acc + item,
+                (false, true) => acc - item,
+                (true, false) => item - acc,
+                (true, true) => -(acc + item),
+            }
+        })
         .unwrap()
 }
 
@@ -129,7 +167,13 @@ fn symbolic_expression_to_algebraic<T: FieldElement>(
     e: &SymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
     match e {
-        SymbolicExpression::Concrete(v) => AlgebraicExpression::Number(*v),
+        SymbolicExpression::Concrete(v) => {
+            if v.is_in_lower_half() {
+                AlgebraicExpression::from(*v)
+            } else {
+                -AlgebraicExpression::from(-*v)
+            }
+        }
         SymbolicExpression::Symbol(var, _) => variable_to_algebraic_expression(var.clone()),
         SymbolicExpression::BinaryOperation(left, op, right, _) => {
             let left = Box::new(symbolic_expression_to_algebraic(left));
@@ -138,13 +182,10 @@ fn symbolic_expression_to_algebraic<T: FieldElement>(
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right })
         }
         SymbolicExpression::UnaryOperation(op, inner, _) => match op {
-            UnaryOperator::Neg => {
-                let expr = Box::new(symbolic_expression_to_algebraic(inner));
-                AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                    expr,
-                    op: AlgebraicUnaryOperator::Minus,
-                })
-            }
+            UnaryOperator::Neg => AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                expr: Box::new(symbolic_expression_to_algebraic(inner)),
+                op: AlgebraicUnaryOperator::Minus,
+            }),
         },
     }
 }
@@ -163,5 +204,17 @@ fn variable_to_algebraic_expression<T>(var: Variable) -> AlgebraicExpression<T> 
         Variable::Reference(r) => AlgebraicExpression::Reference(r),
         Variable::PublicReference(r) => AlgebraicExpression::PublicReference(r),
         Variable::Challenge(c) => AlgebraicExpression::Challenge(c),
+    }
+}
+
+/// If `e` is negated, returns the expression without negation and `true`,
+/// otherwise returns the un-modified expression and `false`.
+fn extract_negation_if_possible<T>(e: AlgebraicExpression<T>) -> (AlgebraicExpression<T>, bool) {
+    match e {
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+            op: AlgebraicUnaryOperator::Minus,
+            expr,
+        }) => (*expr, true),
+        _ => (e, false),
     }
 }

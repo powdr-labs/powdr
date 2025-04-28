@@ -1793,6 +1793,14 @@ impl<T> ops::Sub for AlgebraicExpression<T> {
     }
 }
 
+impl<T> ops::Neg for AlgebraicExpression<T> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self::new_unary(AlgebraicUnaryOperator::Minus, self)
+    }
+}
+
 impl<T> ops::Mul for AlgebraicExpression<T> {
     type Output = Self;
 
