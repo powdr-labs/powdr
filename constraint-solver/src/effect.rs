@@ -23,7 +23,6 @@ pub enum Effect<T: FieldElement, V> {
         in_range_value: SymbolicExpression<T, V>,
         out_of_range_value: SymbolicExpression<T, V>,
     },
-    Substitution(V, SymbolicExpression<T, V>),
 }
 
 /// A bit decomposition of a value.

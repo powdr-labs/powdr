@@ -10,13 +10,12 @@ use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::Condition, symbolic_expression::BinaryOperator,
-    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
 use super::range_constraint::RangeConstraint;
-use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
+use super::symbolic_expression::SymbolicExpression;
 
 #[derive(Default)]
 pub struct ProcessResult<T: FieldElement, V> {
@@ -131,26 +130,21 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
-        let VariableUpdate {
-            variable,
-            known,
-            range_constraint,
-        } = var_update;
-        self.constant.apply_update(var_update);
+    /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
+    /// If it was already known, it will be substituted in the known expressions.
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
+        self.constant.substitute(variable, substitution);
+
         if self.linear.contains_key(variable) {
             // If the variable is a key in `linear`, it must be unknown
             // and thus can only occur there. Otherwise, it can be in
             // any symbolic expression.
-            if *known {
-                let coeff = self.linear.remove(variable).unwrap();
-                let expr =
-                    SymbolicExpression::from_symbol(variable.clone(), range_constraint.clone());
-                self.constant += expr * coeff;
-            }
+            // We replace the variable by a symbolic expression, so it goes into the constant part.
+            let coeff = self.linear.remove(variable).unwrap();
+            self.constant += &coeff * substitution;
         } else {
             for coeff in self.linear.values_mut() {
-                coeff.apply_update(var_update);
+                coeff.substitute(variable, substitution);
             }
             self.linear.retain(|_, f| !f.is_known_zero());
         }
@@ -160,8 +154,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
         let mut to_add = QuadraticSymbolicExpression::from(T::zero());
         self.quadratic.retain_mut(|(l, r)| {
-            l.apply_update(var_update);
-            r.apply_update(var_update);
+            l.substitute_by_known(variable, substitution);
+            r.substitute_by_known(variable, substitution);
             match (l.try_to_known(), r.try_to_known()) {
                 (Some(l), Some(r)) => {
                     to_add += (l * r).into();
@@ -182,6 +176,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             *self += to_add;
         }
     }
+
+    // TODO implement substitute_by_unknown where substitution is a QSE.
 
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
@@ -205,163 +201,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
                 .chain(b.referenced_unknown_variables())
         });
         Box::new(quadratic.chain(self.linear.keys()))
-    }
-
-    pub fn find_inlinable_variable(&self) -> Option<(V, SymbolicExpression<T, V>)> {
-        if self.is_affine() && self.linear.len() == 1 {
-            let (var, coeff) = self.linear.iter().next().unwrap();
-
-            if !coeff.is_known_zero() {
-                let expr = self.constant.clone().field_div(&-coeff.clone());
-
-                return Some((var.clone(), expr));
-            }
-        }
-
-        if self.is_affine() && self.linear.len() > 1 {
-            for (var, coeff) in &self.linear {
-                if !coeff.is_known_zero() {
-                    let mut expr = -self.constant.clone();
-
-                    for (other_var, other_coeff) in &self.linear {
-                        if other_var != var {
-                            let existing_range_constraint = other_coeff.range_constraint();
-
-                            let var_expr = SymbolicExpression::Symbol(
-                                other_var.clone(),
-                                existing_range_constraint,
-                            );
-
-                            expr = expr - (other_coeff.clone() * var_expr);
-                        }
-                    }
-                    expr = expr.field_div(coeff);
-
-                    return Some((var.clone(), expr));
-                }
-            }
-        }
-
-        if self.is_quadratic() {
-            // Special case: product of the form (ax + b) * (cx + d) = 0
-            // where we can deduce that ax + b = 0 or cx + d = 0
-            if let Some((left, right)) = self.try_as_single_product() {
-                if let Some(result) = left.find_inlinable_variable() {
-                    return Some(result);
-                }
-                if let Some(result) = right.find_inlinable_variable() {
-                    return Some(result);
-                }
-            }
-
-            // Other quadratic cases could be implemented here
-        }
-
-        None
-    }
-
-    pub fn degree_with_virtual_substitution(
-        &self,
-        var: &V,
-        expr: &SymbolicExpression<T, V>,
-        substitution_cache: &mut BTreeMap<V, usize>,
-    ) -> usize {
-        if let Some(&degree) = substitution_cache.get(var) {
-            return degree;
-        }
-
-        let expr_degree = calculate_symbolic_expression_degree(expr);
-
-        if self.is_affine() {
-            if !self.referenced_unknown_variables().any(|v| v == var) {
-                return 1;
-            }
-
-            expr_degree
-        } else {
-            let mut max_degree = 0;
-
-            for (left, right) in &self.quadratic {
-                let left_contains = left.referenced_unknown_variables().any(|v| v == var);
-                let right_contains = right.referenced_unknown_variables().any(|v| v == var);
-
-                let term_degree = match (left_contains, right_contains) {
-                    (true, true) => 2 * expr_degree,
-                    (true, false) => {
-                        expr_degree
-                            + right.degree_with_virtual_substitution(var, expr, substitution_cache)
-                    }
-                    (false, true) => {
-                        left.degree_with_virtual_substitution(var, expr, substitution_cache)
-                            + expr_degree
-                    }
-                    (false, false) => {
-                        left.degree_with_virtual_substitution(var, expr, substitution_cache)
-                            + right.degree_with_virtual_substitution(var, expr, substitution_cache)
-                    }
-                };
-
-                max_degree = max_degree.max(term_degree);
-            }
-
-            if self.linear.contains_key(var) {
-                max_degree = max_degree.max(expr_degree);
-            } else {
-                max_degree = max_degree.max(1);
-            }
-
-            max_degree
-        }
-    }
-
-    /// Substitutes a variable with an expression.
-    pub fn substitute_variable(&mut self, var: &V, expr: &SymbolicExpression<T, V>) -> bool {
-        let mut made_changes = false;
-
-        for (left, right) in &mut self.quadratic {
-            let left_contains = left.referenced_unknown_variables().any(|v| v == var);
-            let right_contains = right.referenced_unknown_variables().any(|v| v == var);
-
-            if left_contains {
-                made_changes |= left.substitute_variable(var, expr);
-            }
-
-            if right_contains {
-                made_changes |= right.substitute_variable(var, expr);
-            }
-        }
-
-        if let Some(coeff) = self.linear.remove(var) {
-            made_changes = true;
-
-            let new_term = expr.clone() * coeff.clone();
-
-            // TODO: There must be a better way to do this
-            match symbolic_expression_to_quadratic_symbolic_expression(&new_term) {
-                Some(qse) => {
-                    // Add the quadratic terms
-                    self.quadratic.extend(qse.quadratic);
-
-                    // Add the linear terms
-                    for (v, c) in qse.linear {
-                        self.linear
-                            .entry(v)
-                            .and_modify(|existing| *existing += c.clone())
-                            .or_insert(c);
-                    }
-
-                    // Add the constant
-                    self.constant += qse.constant;
-                }
-                None => {
-                    // If conversion fails, put the variable back
-                    self.linear.insert(var.clone(), coeff);
-                    return false;
-                }
-            }
-        }
-
-        made_changes
     }
 }
 
@@ -622,32 +461,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         // This could be fixed by finding a canonical form for the quadratic
         // expression, and normalizing the constants.
         Ok(combine_range_constraints(&left_solution, &right_solution))
-    }
-}
-
-/// Calculates the degree of a symbolic expression.
-fn calculate_symbolic_expression_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    expr: &SymbolicExpression<T, V>,
-) -> usize {
-    match expr {
-        SymbolicExpression::Concrete(_) => 0,
-        SymbolicExpression::Symbol(_, _) => 1,
-        SymbolicExpression::BinaryOperation(left, op, right, _) => {
-            let left_degree = calculate_symbolic_expression_degree(left);
-            let right_degree = calculate_symbolic_expression_degree(right);
-            match op {
-                // For addition and subtraction, the degree is the maximum of the operands
-                BinaryOperator::Add | BinaryOperator::Sub => left_degree.max(right_degree),
-                // For multiplication, the degree is the sum of the operands
-                BinaryOperator::Mul => left_degree + right_degree,
-                // For division, we assume the divisor is constant
-                BinaryOperator::Div => left_degree,
-            }
-        }
-        // For unary operations, the degree is the same as the operand
-        SymbolicExpression::UnaryOperation(_, inner, _) => {
-            calculate_symbolic_expression_degree(inner)
-        }
     }
 }
 
@@ -999,27 +812,24 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * y + a) * b;
         assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
-        t.apply_update(&VariableUpdate {
-            variable: "B",
-            known: true,
-            range_constraint: RangeConstraint::from_value(7.into()),
-        });
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
+        );
         assert!(t.is_quadratic());
         assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
-        t.apply_update(&VariableUpdate {
-            variable: "X",
-            known: true,
-            range_constraint: RangeConstraint::from_range(1.into(), 2.into()),
-        });
+        t.substitute_by_known(
+            &"X",
+            &SymbolicExpression::from_symbol("X", RangeConstraint::from_range(1.into(), 2.into())),
+        );
         assert!(!t.is_quadratic());
-        assert_eq!(t.to_string(), "(X * 7) * Y + (A * 7)");
-        t.apply_update(&VariableUpdate {
-            variable: "Y",
-            known: true,
-            range_constraint: RangeConstraint::from_value(3.into()),
-        });
+        assert_eq!(t.to_string(), "(7 * X) * Y + (A * 7)");
+        t.substitute_by_known(
+            &"Y",
+            &SymbolicExpression::from_symbol("Y", RangeConstraint::from_value(3.into())),
+        );
         assert!(t.try_to_known().is_some());
-        assert_eq!(t.to_string(), "((A * 7) + (3 * (X * 7)))");
+        assert_eq!(t.to_string(), "((A * 7) + ((7 * X) * 3))");
     }
 
     #[test]
@@ -1030,18 +840,38 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * a + y) * b;
         assert_eq!(t.to_string(), "(A * B) * X + B * Y");
-        t.apply_update(&VariableUpdate {
-            variable: "B",
-            known: true,
-            range_constraint: RangeConstraint::from_value(7.into()),
-        });
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
+        );
         assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
-        t.apply_update(&VariableUpdate {
-            variable: "A",
-            known: true,
-            range_constraint: RangeConstraint::from_value(0.into()),
-        });
+        t.substitute_by_known(
+            &"A",
+            &SymbolicExpression::from_symbol("A", RangeConstraint::from_value(0.into())),
+        );
         assert_eq!(t.to_string(), "7 * Y");
+    }
+
+    #[test]
+    fn substitute_known() {
+        let x = Qse::from_unknown_variable("X");
+        let y = Qse::from_unknown_variable("Y");
+        let a = Qse::from_known_symbol("A", RangeConstraint::default());
+        let b = Qse::from_known_symbol("B", RangeConstraint::default());
+        let mut t: Qse = (x * a + y) * b.clone() + b;
+        assert_eq!(t.to_string(), "(A * B) * X + B * Y + B");
+        // We substitute B by an expression containing B on purpose.
+        t.substitute_by_known(
+            &"B",
+            &(SymbolicExpression::from_symbol("B", Default::default())
+                + SymbolicExpression::from(GoldilocksField::from(1))),
+        );
+        assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
+        );
+        assert_eq!(t.to_string(), "(A * 11) * X + 11 * Y + 11");
     }
 
     impl RangeConstraintProvider<GoldilocksField, &'static str>
@@ -1072,16 +902,17 @@ mod tests {
             .is_err());
 
         // The same with range constraints that disallow zero.
-        constr.apply_update(&VariableUpdate {
-            variable: "X",
-            known: true,
-            range_constraint: RangeConstraint::from_value(5.into()),
-        });
-        constr.apply_update(&VariableUpdate {
-            variable: "Y",
-            known: true,
-            range_constraint: RangeConstraint::from_range(100.into(), 102.into()),
-        });
+        constr.substitute_by_known(
+            &"X",
+            &SymbolicExpression::from_symbol("X", RangeConstraint::from_value(5.into())),
+        );
+        constr.substitute_by_known(
+            &"Y",
+            &SymbolicExpression::from_symbol(
+                "Y",
+                RangeConstraint::from_range(100.into(), 102.into()),
+            ),
+        );
         assert!(Qse::from(GoldilocksField::from(10))
             .solve(&NoRangeConstraints)
             .is_err());
@@ -1134,11 +965,7 @@ mod tests {
         // For the latter to take effect, we need to call `apply_update`.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
-        constr.apply_update(&VariableUpdate {
-            variable: "z",
-            known: true,
-            range_constraint: z_rc.clone(),
-        });
+        constr.substitute_by_known(&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
         // Now it should work.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
@@ -1160,32 +987,17 @@ mod tests {
         let z = Qse::from_known_symbol("Z", Default::default());
         // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = Qse::from(GoldilocksField::from(10));
-        let mut constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
+        let constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
             - b * Qse::from(GoldilocksField::from(0x10000))
             + c * Qse::from(GoldilocksField::from(0x1000000))
             + ten.clone()
             + z.clone();
         // Without range constraints on a, this is not solvable.
         let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
-        constr.apply_update(&VariableUpdate {
-            variable: "b",
-            known: false,
-            range_constraint: rc.clone(),
-        });
-        constr.apply_update(&VariableUpdate {
-            variable: "c",
-            known: false,
-            range_constraint: rc.clone(),
-        });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         range_constraints.insert("a", rc.clone());
-        constr.apply_update(&VariableUpdate {
-            variable: "a",
-            known: false,
-            range_constraint: rc.clone(),
-        });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
 
