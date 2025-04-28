@@ -17,7 +17,7 @@ pub struct ConstraintSystem<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
-    pub fn iter(&self) -> Box<dyn Iterator<Item = &QuadraticSymbolicExpression<T, V>> + '_> {
+    pub fn iter(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()
