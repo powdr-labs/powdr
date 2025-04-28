@@ -42,7 +42,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         }
         Ok(SolveResult {
             simplified_algebraic_constraints,
-            ..
+            assignments,
         }) => {
             pil_file
                 .identities
@@ -58,6 +58,14 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 .for_each(|(identity, simplified)| {
                     *identity = quadratic_symbolic_expression_to_algebraic(&simplified);
                 });
+            // We add all assignments because we did not send all references to witnesses to the solver.
+            // It might have removed some variable that are hard-constrained to some value.
+            for (var, value) in assignments {
+                pil_file.append_polynomial_identity(
+                    variable_to_algebraic_expression(var) - AlgebraicExpression::from(value),
+                    Default::default(),
+                );
+            }
         }
     }
 }
