@@ -601,7 +601,7 @@ x * (x - (b0 + b1 + b2 + b3)) = 0;
 }
 
 #[test]
-fn do_not_over_eagerly_optimize() {
+fn do_not_removed_used_witnesses() {
     let input = r#"namespace Add(8);
     col witness x;
     col witness y;
@@ -610,11 +610,14 @@ fn do_not_over_eagerly_optimize() {
     x = 0;
     x + y = z;
 
+    // The reference to `z` is not passed on to the solver.
+    // But because this is here, we should not remove `z`.
     public outz = z(7);"#;
 
-    let expectation = r#"namespace N(65536);
-    col witness x;
-    N::x * (N::x - 3) = 0;
+    let expectation = r#"namespace Add(8);
+    col witness z;
+    public outz = Add::z(7);
+    Add::z = 1;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();

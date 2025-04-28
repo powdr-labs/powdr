@@ -312,7 +312,7 @@ impl<T> Analyzed<T> {
     }
 
     /// Remove some identities by their index (not their ID).
-    /// Does not re-allocate IDs.
+    /// Re-allocates IDs.
     pub fn remove_identities(&mut self, to_remove: &BTreeSet<usize>) {
         let mut shift = 0;
         self.source_order.retain_mut(|s| {
@@ -330,7 +330,24 @@ impl<T> Analyzed<T> {
             let retain = !to_remove.contains(&index);
             index += 1;
             retain
-        })
+        });
+        self.reallocate_identity_ids();
+    }
+
+    fn reallocate_identity_ids(&mut self) {
+        for (index, identity) in self.identities.iter_mut().enumerate() {
+            let id = index as u64;
+            match identity {
+                Identity::Polynomial(identity) => identity.id = id,
+                Identity::Lookup(identity) => identity.id = id,
+                Identity::PhantomLookup(identity) => identity.id = id,
+                Identity::Permutation(identity) => identity.id = id,
+                Identity::PhantomPermutation(identity) => identity.id = id,
+                Identity::Connect(identity) => identity.id = id,
+                Identity::BusInteraction(identity) => identity.id = id,
+                Identity::PhantomBusInteraction(identity) => identity.id = id,
+            }
+        }
     }
 
     /// Removes the given definitions and intermediate columns by name. Those must not be referenced
