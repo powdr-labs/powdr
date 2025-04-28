@@ -7,7 +7,7 @@ use powdr_constraint_solver::{
     range_constraint::RangeConstraint,
     solver::Solver,
 };
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use test_log::test;
 
 pub type Var = &'static str;
@@ -140,7 +140,7 @@ impl BusInteractionHandler for TestBusInteractionHandler {
 
         assert!(multiplicity.is_one(), "Only expected send interactions");
         let byte_constraint = RangeConstraint::from_mask(0xffu32);
-        let payload_constraints = match bus_id.to_degree() {
+        let payload_constraints = match bus_id.to_integer().try_into_u64().unwrap() {
             BYTE_BUS_ID => {
                 assert_eq!(bus_interaction.payload.len(), 1);
                 vec![byte_constraint]
@@ -152,7 +152,10 @@ impl BusInteractionHandler for TestBusInteractionHandler {
                     bus_interaction.payload[1].try_to_single_value(),
                 ) {
                     // Both inputs are known, can compute result concretely
-                    let result = GoldilocksField::from(a.to_degree() ^ b.to_degree());
+                    let result = GoldilocksField::from(
+                        a.to_integer().try_into_u64().unwrap()
+                            ^ b.to_integer().try_into_u64().unwrap(),
+                    );
                     vec![
                         bus_interaction.payload[0].clone(),
                         bus_interaction.payload[1].clone(),
