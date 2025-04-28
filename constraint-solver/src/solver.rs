@@ -1,7 +1,9 @@
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
-use crate::constraint_system::{BusInteractionHandler, ConstraintSystem};
+use crate::constraint_system::{
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
+};
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
@@ -27,14 +29,13 @@ pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: ConstraintSystem<T, V>,
-    /// The handler for bus interactions, if any. If none, bus interactions
-    /// will be ignored.
-    bus_interaction_handler: Option<Box<dyn BusInteractionHandler<T = T, V = V>>>,
+    /// The handler for bus interactions.
+    bus_interaction_handler: Box<dyn BusInteractionHandler<T = T, V = V>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug + 'static> Solver<T, V> {
     #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
@@ -45,7 +46,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Solver {
             constraint_system,
             range_constraints: Default::default(),
-            bus_interaction_handler: None,
+            bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
         }
     }
 
@@ -54,7 +55,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         bus_interaction_handler: Box<dyn BusInteractionHandler<T = T, V = V>>,
     ) -> Self {
         Solver {
-            bus_interaction_handler: Some(bus_interaction_handler),
+            bus_interaction_handler: bus_interaction_handler,
             ..self
         }
     }
@@ -89,20 +90,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                     progress |= self.apply_effect(effect);
                 }
             }
-            if let Some(bus_interaction_handler) = &self.bus_interaction_handler {
-                let effects = self
-                    .constraint_system
-                    .bus_interactions
-                    .iter()
-                    .flat_map(|bus_interaction| {
-                        bus_interaction.solve(&**bus_interaction_handler, &self.range_constraints)
-                    })
-                    // Collect to satisfy borrow checker
-                    .collect::<Vec<_>>();
-                for effect in effects {
-                    progress |= self.apply_effect(effect);
-                }
+            let effects = self
+                .constraint_system
+                .bus_interactions
+                .iter()
+                .flat_map(|bus_interaction| {
+                    bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+                })
+                // Collect to satisfy borrow checker
+                .collect::<Vec<_>>();
+            for effect in effects {
+                progress |= self.apply_effect(effect);
             }
+
             if !progress {
                 break;
             }

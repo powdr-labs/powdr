@@ -144,6 +144,33 @@ pub trait BusInteractionHandler {
     ) -> BusInteraction<RangeConstraint<Self::T>>;
 }
 
+/// A default bus interaction handler that does nothing. Using it is
+/// equivalent to ignoring bus interactions.
+pub struct DefaultBusInteractionHandler<T: FieldElement, V> {
+    _marker: std::marker::PhantomData<(T, V)>,
+}
+
+// Can't derive for if V doesn't implement Default...
+impl<T: FieldElement, V> Default for DefaultBusInteractionHandler<T, V> {
+    fn default() -> Self {
+        DefaultBusInteractionHandler {
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: FieldElement, V> BusInteractionHandler for DefaultBusInteractionHandler<T, V> {
+    type T = T;
+    type V = V;
+
+    fn handle_bus_interaction(
+        &self,
+        bus_interaction: BusInteraction<RangeConstraint<Self::T>>,
+    ) -> BusInteraction<RangeConstraint<Self::T>> {
+        bus_interaction
+    }
+}
+
 fn expr_to_range_constraint<T: FieldElement, V: Clone + Hash + Ord + Eq>(
     expr: &QuadraticSymbolicExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
