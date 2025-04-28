@@ -3,7 +3,6 @@ use powdr_number::FieldElement;
 
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
-use crate::variable_update::VariableUpdate;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
@@ -112,13 +111,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             log::trace!("({variable}: {range_constraint})");
 
             let new_rc = self.range_constraints.get(variable);
-            if new_rc.try_to_single_value().is_some() {
-                // The variable is now known.
-                self.update_constraints(&VariableUpdate {
-                    variable: variable.clone(),
-                    known: true,
-                    range_constraint: new_rc.clone(),
-                });
+            if let Some(value) = new_rc.try_to_single_value() {
+                self.substitute_in_constraints(variable, &value.into());
             }
             true
         } else {
@@ -126,10 +120,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
-    fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
+    fn substitute_in_constraints(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
         // TODO: Make this more efficient by remembering where the variable appears
         for constraint in &mut self.algebraic_constraints {
-            constraint.apply_update(variable_update);
+            constraint.substitute_by_known(variable, substitution);
         }
     }
 }
