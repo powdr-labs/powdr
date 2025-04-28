@@ -599,3 +599,24 @@ x * (x - (b0 + b1 + b2 + b3)) = 0;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn do_not_over_eagerly_optimize() {
+    let input = r#"namespace Add(8);
+    col witness x;
+    col witness y;
+    col witness z;
+    y - 1 = 0;
+    x = 0;
+    x + y = z;
+
+    public outz = z(7);"#;
+
+    let expectation = r#"namespace N(65536);
+    col witness x;
+    N::x * (N::x - 3) = 0;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
