@@ -149,6 +149,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    /// Returns the quadratic, linear and constant components of this expression.
+    #[allow(clippy::type_complexity)]
+    pub fn components(
+        &self,
+    ) -> (
+        &[(Self, Self)],
+        impl Iterator<Item = (&V, &SymbolicExpression<T, V>)>,
+        &SymbolicExpression<T, V>,
+    ) {
+        (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
@@ -371,6 +383,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     component += T::Integer::MAX - T::modulus() + 1.into();
                 };
                 component &= bit_mask;
+                if component >= T::modulus() {
+                    // If the component does not fit the field, the bit mask is not
+                    // tight good enough.
+                    return Ok(ProcessResult::empty());
+                }
                 concrete_assignments.push(Effect::Assignment(
                     variable.clone(),
                     T::from(component >> exponent).into(),
