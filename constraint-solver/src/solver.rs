@@ -35,7 +35,7 @@ pub struct Solver<T: FieldElement, V> {
     range_constraints: RangeConstraints<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug + 'static> Solver<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
