@@ -296,8 +296,8 @@ impl<T> Analyzed<T> {
             .iter()
             .map(|identity| identity.id())
             .max()
-            .unwrap_or_default()
-            + 1;
+            .map(|id| id + 1)
+            .unwrap_or_default();
         self.identities.push(
             PolynomialIdentity {
                 id,
@@ -312,7 +312,7 @@ impl<T> Analyzed<T> {
     }
 
     /// Remove some identities by their index (not their ID).
-    /// Does not re-allocate IDs.
+    /// Re-allocates IDs.
     pub fn remove_identities(&mut self, to_remove: &BTreeSet<usize>) {
         let mut shift = 0;
         self.source_order.retain_mut(|s| {
@@ -330,7 +330,24 @@ impl<T> Analyzed<T> {
             let retain = !to_remove.contains(&index);
             index += 1;
             retain
-        })
+        });
+        self.reallocate_identity_ids();
+    }
+
+    fn reallocate_identity_ids(&mut self) {
+        for (index, identity) in self.identities.iter_mut().enumerate() {
+            let id = index as u64;
+            match identity {
+                Identity::Polynomial(identity) => identity.id = id,
+                Identity::Lookup(identity) => identity.id = id,
+                Identity::PhantomLookup(identity) => identity.id = id,
+                Identity::Permutation(identity) => identity.id = id,
+                Identity::PhantomPermutation(identity) => identity.id = id,
+                Identity::Connect(identity) => identity.id = id,
+                Identity::BusInteraction(identity) => identity.id = id,
+                Identity::PhantomBusInteraction(identity) => identity.id = id,
+            }
+        }
     }
 
     /// Removes the given definitions and intermediate columns by name. Those must not be referenced
@@ -1793,6 +1810,14 @@ impl<T> ops::Sub for AlgebraicExpression<T> {
     }
 }
 
+impl<T> ops::Neg for AlgebraicExpression<T> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self::new_unary(AlgebraicUnaryOperator::Minus, self)
+    }
+}
+
 impl<T> ops::Mul for AlgebraicExpression<T> {
     type Output = Self;
 
@@ -1876,9 +1901,7 @@ mod tests {
     use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
-    use crate::analyzed::{
-        AlgebraicReference, DegreeRange, Identity, PolyID, PolynomialIdentity, PolynomialType,
-    };
+    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1915,11 +1938,7 @@ mod tests {
         let mut pil_result = Analyzed::default();
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
-        if let Identity::Polynomial(PolynomialIdentity { id, .. }) = &mut pil_result.identities[1] {
-            *id = 6;
-        } else {
-            panic!();
-        }
+
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
     }

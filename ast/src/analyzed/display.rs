@@ -484,11 +484,7 @@ impl<T: Display> Display for AlgebraicExpression<T> {
             AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
             AlgebraicExpression::PublicReference(name) => write!(f, "{name}"),
             AlgebraicExpression::Challenge(challenge) => {
-                write!(
-                    f,
-                    "std::prelude::challenge({}, {})",
-                    challenge.stage, challenge.id,
-                )
+                write!(f, "{challenge}")
             }
             AlgebraicExpression::Number(value) => write!(f, "{value}"),
             AlgebraicExpression::BinaryOperation(o) => {
@@ -586,6 +582,12 @@ impl Display for PolynomialReference {
         }
 
         Ok(())
+    }
+}
+
+impl Display for Challenge {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "std::prelude::challenge({}, {})", self.stage, self.id)
     }
 }
 
