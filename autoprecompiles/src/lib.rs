@@ -14,7 +14,8 @@ use powdr_ast::{
     },
 };
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::solver::{SolveResult, Solver};
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use powdr_constraint_solver::solver::Solver;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
@@ -23,6 +24,7 @@ use powdr_pil_analyzer::analyze_ast;
 use powdr_pilopt::optimize;
 use powdr_pilopt::qse_opt::{
     algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
+    Variable,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1064,7 +1066,7 @@ fn try_compute_opcode_map<T: FieldElement>(
         .collect())
 }
 
-// Largely copied from https://github.com/powdr-labs/powdr/pull/2643
+/// Simplifies the constraints as much as possible.
 fn powdr_optimize<P: FieldElement>(mut symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
     let constraint_system = ConstraintSystem {
         algebraic_constraints: symbolic_machine
@@ -1075,81 +1077,110 @@ fn powdr_optimize<P: FieldElement>(mut symbolic_machine: SymbolicMachine<P>) -> 
         bus_interactions: symbolic_machine
             .bus_interactions
             .iter()
-            .map(|bus_interaction| BusInteraction {
-                bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
-                payload: bus_interaction
-                    .args
-                    .iter()
-                    .map(|arg| algebraic_to_quadratic_symbolic_expression(arg))
-                    .collect(),
-                multiplicity: algebraic_to_quadratic_symbolic_expression(&bus_interaction.mult),
-            })
+            .map(symbolic_bus_interaction_to_bus_interaction)
             .collect(),
     };
-    match Solver::new(constraint_system).solve() {
-        Err(_) => {
-            log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
-        }
-        Ok(SolveResult {
-            simplified_constraint_system,
-            ..
-        }) => {
-            symbolic_machine.constraints = symbolic_machine
-                .constraints
-                .iter()
-                .zip_eq(simplified_constraint_system.algebraic_constraints)
-                .filter_map(|(identity, simplified)| {
-                    log::trace!("Before: {identity}");
 
-                    let expr = quadratic_symbolic_expression_to_algebraic(&simplified);
-                    log::trace!("After: {expr}");
+    let constraint_system = solver_based_optimization(constraint_system);
 
-                    if expr == P::zero().into() {
-                        log::trace!("  => Skipping\n");
-                        return None;
-                    }
-                    log::trace!("\n");
+    // TODO: Add equivalent of replace_linear_witness_columns step to make
+    // powdr_optimize_legacy obsolete
 
-                    Some(SymbolicConstraint { expr })
-                })
-                .collect();
+    log::trace!("Solver finished successfully:");
+    symbolic_machine.constraints = symbolic_machine
+        .constraints
+        .iter()
+        .zip_eq(constraint_system.algebraic_constraints)
+        .filter_map(|(constraint, simplified)| {
+            log::trace!("  {constraint}");
+            let constraint =
+                simplify_expression(quadratic_symbolic_expression_to_algebraic(&simplified));
 
-            symbolic_machine.bus_interactions = symbolic_machine
-                .bus_interactions
-                .iter()
-                .zip_eq(simplified_constraint_system.bus_interactions)
-                .filter_map(|(bus_int, simplified)| {
-                    log::trace!("Before: {bus_int}");
+            if constraint == P::zero().into() {
+                log::trace!("    => Removed");
+                return None;
+            } else {
+                log::trace!("    => {constraint}");
+                Some(SymbolicConstraint { expr: constraint })
+            }
+        })
+        .collect();
 
-                    let bus_interaction = SymbolicBusInteraction {
-                        id: bus_int.id,
-                        kind: bus_int.kind.clone(),
-                        args: simplified
-                            .payload
-                            .into_iter()
-                            .map(|arg| quadratic_symbolic_expression_to_algebraic(&arg))
-                            .collect(),
-                        mult: quadratic_symbolic_expression_to_algebraic(&simplified.multiplicity),
-                    };
-                    log::trace!("After: {bus_interaction}");
+    symbolic_machine.bus_interactions = symbolic_machine
+        .bus_interactions
+        .iter()
+        .zip_eq(constraint_system.bus_interactions)
+        .filter_map(|(bus_interaction, simplified)| {
+            log::trace!("  {bus_interaction}");
+            let bus_interaction = bus_interaction_to_symbolic_bus_interaction(
+                simplified,
+                bus_interaction.id,
+                bus_interaction.kind.clone(),
+            );
 
-                    if bus_interaction.mult == P::zero().into() {
-                        log::trace!("  => Skipping\n");
-                        return None;
-                    }
-                    log::trace!("\n");
-
-                    Some(bus_interaction)
-                })
-                .collect();
-        }
-    }
+            if bus_interaction.mult == P::zero().into() {
+                log::trace!("    => Removed\n");
+                None
+            } else {
+                log::trace!("    => {bus_interaction}\n");
+                Some(bus_interaction)
+            }
+        })
+        .collect();
 
     symbolic_machine
 }
 
+fn solver_based_optimization<T: FieldElement>(
+    constraint_system: ConstraintSystem<T, Variable>,
+) -> ConstraintSystem<T, Variable> {
+    Solver::new(constraint_system)
+        .solve()
+        .map_err(|e| {
+            panic!("Solver failed: {e:?}");
+        })
+        .unwrap()
+        .simplified_constraint_system
+}
+
+fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
+    bus_interaction: &SymbolicBusInteraction<P>,
+) -> BusInteraction<QuadraticSymbolicExpression<P, Variable>> {
+    BusInteraction {
+        bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
+        payload: bus_interaction
+            .args
+            .iter()
+            .map(|arg| algebraic_to_quadratic_symbolic_expression(arg))
+            .collect(),
+        multiplicity: algebraic_to_quadratic_symbolic_expression(&bus_interaction.mult),
+    }
+}
+
+fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
+    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, Variable>>,
+    id: u64,
+    kind: BusInteractionKind,
+) -> SymbolicBusInteraction<P> {
+    SymbolicBusInteraction {
+        id,
+        kind,
+        args: bus_interaction
+            .payload
+            .into_iter()
+            .map(|arg| simplify_expression(quadratic_symbolic_expression_to_algebraic(&arg)))
+            .collect(),
+        mult: simplify_expression(quadratic_symbolic_expression_to_algebraic(
+            &bus_interaction.multiplicity,
+        )),
+    }
+}
+
 /// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
 /// Then, translate the optimized constraints and interactions back to a SymbolicMachine
+// TODO: We should remove this step soon as powdr_optimize also in-lines witness columns
+// up to the degree bound. At that point, powdr_optimize_legacy should not yield any
+// optimizations.
 fn powdr_optimize_legacy<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
 ) -> SymbolicMachine<P> {
