@@ -7,6 +7,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge, Identity,
     PolynomialIdentity,
 };
+use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::{self, SolveResult},
@@ -25,7 +26,7 @@ use powdr_number::FieldElement;
 /// This means the syntactic structure (order of additions, etc) is not
 /// preserved.
 pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let identities = pil_file
+    let algebraic_constraints = pil_file
         .identities
         .iter()
         .filter_map(|identity| match identity {
@@ -36,12 +37,21 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect_vec();
 
-    match solver::Solver::new(identities).solve() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints,
+        // TODO: We could convert add Identity::BusInteraction, or even
+        // convert lookups / permutations to bus interactions.
+        // We could also implement a bus interaction handler to at least
+        // handle fixed lookups.
+        bus_interactions: vec![],
+    };
+
+    match solver::Solver::new(constraint_system).solve() {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
         }
         Ok(SolveResult {
-            simplified_algebraic_constraints,
+            simplified_constraint_system,
             assignments,
         }) => {
             pil_file
@@ -54,7 +64,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         None
                     }
                 })
-                .zip_eq(simplified_algebraic_constraints)
+                .zip_eq(simplified_constraint_system.algebraic_constraints)
                 .for_each(|(identity, simplified)| {
                     *identity = quadratic_symbolic_expression_to_algebraic(&simplified);
                 });
