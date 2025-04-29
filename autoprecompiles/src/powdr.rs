@@ -3,7 +3,8 @@ use std::ops::ControlFlow;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    BusInteractionIdentity, PolyID, PolynomialType,
+    AlgebraicReferenceThin, AlgebraicUnaryOperation, BusInteractionIdentity, PolyID,
+    PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::{
@@ -298,7 +299,8 @@ pub fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
 }
 
 pub fn powdr_interaction_to_symbolic<T: FieldElement>(
-    powdr_interaction: BusInteractionIdentity<T>,
+    powdr_interaction: &BusInteractionIdentity<T>,
+    intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
 ) -> SymbolicBusInteraction<T> {
     let kind = match powdr_interaction.latch {
         AlgebraicExpression::Number(n) => {
@@ -325,7 +327,51 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
     SymbolicBusInteraction {
         kind,
         id,
-        mult: powdr_interaction.multiplicity,
-        args: powdr_interaction.payload.0,
+        mult: inline_intermediates(&powdr_interaction.multiplicity, intermediates),
+        args: powdr_interaction
+            .payload
+            .0
+            .iter()
+            .map(|e| inline_intermediates(e, intermediates))
+            .collect(),
+    }
+}
+
+/// Replaces any reference of intermediates with their definitions.
+/// This is needed because powdr Autoprecompiles currently does not implement
+/// immediates.
+pub fn inline_intermediates<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+    intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+) -> AlgebraicExpression<T> {
+    match expr {
+        AlgebraicExpression::Reference(algebraic_reference) => {
+            if algebraic_reference.poly_id.ptype == PolynomialType::Intermediate {
+                inline_intermediates(
+                    intermediates
+                        .get(&algebraic_reference.to_thin())
+                        .expect("Intermediate not found"),
+                    intermediates,
+                )
+            } else {
+                expr.clone()
+            }
+        }
+        AlgebraicExpression::PublicReference(..)
+        | AlgebraicExpression::Challenge(..)
+        | AlgebraicExpression::Number(..) => expr.clone(),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: Box::new(inline_intermediates(left, intermediates)),
+                op: *op,
+                right: Box::new(inline_intermediates(right, intermediates)),
+            })
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: *op,
+                expr: Box::new(inline_intermediates(expr, intermediates)),
+            })
+        }
     }
 }
