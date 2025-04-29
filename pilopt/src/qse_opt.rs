@@ -39,8 +39,8 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
     let constraint_system = ConstraintSystem {
         algebraic_constraints,
-        // TODO: We could convert add Identity::BusInteraction, or even
-        // convert lookups / permutations to bus interactions.
+        // TODO: We could add Identity::BusInteraction, or convert
+        // lookups / permutations to bus interactions.
         // We could also implement a bus interaction handler to at least
         // handle fixed lookups.
         bus_interactions: vec![],
