@@ -339,7 +339,7 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
 
 /// Replaces any reference of intermediates with their definitions.
 /// This is needed because powdr Autoprecompiles currently does not implement
-/// immediates.
+/// intermediates.
 pub fn inline_intermediates<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
     intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
