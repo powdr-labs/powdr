@@ -119,9 +119,7 @@ const BYTE_BUS_ID: u64 = 42;
 const XOR_BUS_ID: u64 = 43;
 
 struct TestBusInteractionHandler {}
-impl BusInteractionHandler for TestBusInteractionHandler {
-    type T = GoldilocksField;
-
+impl BusInteractionHandler<GoldilocksField> for TestBusInteractionHandler {
     fn handle_bus_interaction(
         &self,
         bus_interaction: BusInteraction<RangeConstraint<GoldilocksField>>,
