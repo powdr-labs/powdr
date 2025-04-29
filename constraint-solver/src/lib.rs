@@ -1,5 +1,6 @@
 //! Tooling used for analysis and solving of constraints.
 
+pub mod constraint_system;
 pub mod effect;
 pub mod quadratic_symbolic_expression;
 pub mod range_constraint;

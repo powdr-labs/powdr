@@ -1,15 +1,15 @@
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
+use crate::constraint_system::{
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
+};
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
-use super::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    symbolic_expression::SymbolicExpression,
-};
+use super::symbolic_expression::SymbolicExpression;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -19,32 +19,44 @@ use std::hash::Hash;
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
-    /// The final state of the algebraic constraints, with known variables
+    /// The final state of the constraint system, with known variables
     /// replaced by their values and constraints simplified accordingly.
-    pub simplified_algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub simplified_constraint_system: ConstraintSystem<T, V>,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
-    /// The algebraic constraints to solve.
-    /// Note that these are mutated during the solving process.
-    /// They must be kept consistent with the variable states.
-    algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    /// The constraint system to solve. During the solving process, any expressions will
+    /// be simplified as much as possible.
+    constraint_system: ConstraintSystem<T, V>,
+    /// The handler for bus interactions.
+    bus_interaction_handler: Box<dyn BusInteractionHandler<T = T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug + 'static> Solver<T, V> {
     #[allow(dead_code)]
-    pub fn new(algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>) -> Self {
+    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
-            known_variables(&algebraic_constraints).is_empty(),
+            known_variables(constraint_system.iter()).is_empty(),
             "Expected all variables to be unknown."
         );
 
         Solver {
-            algebraic_constraints,
+            constraint_system,
             range_constraints: Default::default(),
+            bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+        }
+    }
+
+    pub fn with_bus_interaction_handler(
+        self,
+        bus_interaction_handler: Box<dyn BusInteractionHandler<T = T>>,
+    ) -> Self {
+        Solver {
+            bus_interaction_handler,
+            ..self
         }
     }
 
@@ -61,23 +73,36 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .collect();
         Ok(SolveResult {
             assignments,
-            simplified_algebraic_constraints: self.algebraic_constraints,
+            simplified_constraint_system: self.constraint_system,
         })
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
-            for i in 0..self.algebraic_constraints.len() {
+            for i in 0..self.constraint_system.algebraic_constraints.len() {
                 // TODO: Improve efficiency by only running skipping constraints that
                 // have not received any updates since they were last processed.
-                let effects = self.algebraic_constraints[i]
+                let effects = self.constraint_system.algebraic_constraints[i]
                     .solve(&self.range_constraints)?
                     .effects;
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
             }
+            let effects = self
+                .constraint_system
+                .bus_interactions
+                .iter()
+                .flat_map(|bus_interaction| {
+                    bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+                })
+                // Collect to satisfy borrow checker
+                .collect::<Vec<_>>();
+            for effect in effects {
+                progress |= self.apply_effect(effect);
+            }
+
             if !progress {
                 break;
             }
@@ -112,18 +137,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.substitute_in_constraints(variable, &value.into());
+                self.constraint_system.substitute(variable, &value.into());
             }
             true
         } else {
             false
-        }
-    }
-
-    fn substitute_in_constraints(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        for constraint in &mut self.algebraic_constraints {
-            constraint.substitute_by_known(variable, substitution);
         }
     }
 }
