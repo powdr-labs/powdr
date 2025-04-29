@@ -1057,7 +1057,7 @@ fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> Symb
 
     let mut powdr_exprs = Vec::new();
     let mut powdr_bus_interactions = Vec::new();
-    for id in optimized.identities.iter() {
+    for id in optimized.identities.into_iter() {
         match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 powdr_exprs.push(SymbolicConstraint {

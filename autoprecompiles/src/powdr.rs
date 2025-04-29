@@ -316,7 +316,7 @@ pub fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
 }
 
 pub fn powdr_interaction_to_symbolic<T: FieldElement>(
-    powdr_interaction: &BusInteractionIdentity<T>,
+    powdr_interaction: BusInteractionIdentity<T>,
     intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
 ) -> SymbolicBusInteraction<T> {
     let kind = match powdr_interaction.latch {
@@ -344,11 +344,11 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
     SymbolicBusInteraction {
         kind,
         id,
-        mult: inline_intermediates(&powdr_interaction.multiplicity, intermediates),
+        mult: inline_intermediates(powdr_interaction.multiplicity, intermediates),
         args: powdr_interaction
             .payload
             .0
-            .iter()
+            .into_iter()
             .map(|e| inline_intermediates(e, intermediates))
             .collect(),
     }
@@ -358,36 +358,37 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
 /// This is needed because powdr Autoprecompiles currently does not implement
 /// intermediates.
 pub fn inline_intermediates<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
+    expr: AlgebraicExpression<T>,
     intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
 ) -> AlgebraicExpression<T> {
     match expr {
-        AlgebraicExpression::Reference(algebraic_reference) => {
+        AlgebraicExpression::Reference(ref algebraic_reference) => {
             if algebraic_reference.poly_id.ptype == PolynomialType::Intermediate {
                 inline_intermediates(
                     intermediates
                         .get(&algebraic_reference.to_thin())
-                        .expect("Intermediate not found"),
+                        .expect("Intermediate not found")
+                        .clone(),
                     intermediates,
                 )
             } else {
-                expr.clone()
+                expr
             }
         }
         AlgebraicExpression::PublicReference(..)
         | AlgebraicExpression::Challenge(..)
-        | AlgebraicExpression::Number(..) => expr.clone(),
+        | AlgebraicExpression::Number(..) => expr,
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: Box::new(inline_intermediates(left, intermediates)),
-                op: *op,
-                right: Box::new(inline_intermediates(right, intermediates)),
+                left: Box::new(inline_intermediates(*left, intermediates)),
+                op,
+                right: Box::new(inline_intermediates(*right, intermediates)),
             })
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                op: *op,
-                expr: Box::new(inline_intermediates(expr, intermediates)),
+                op,
+                expr: Box::new(inline_intermediates(*expr, intermediates)),
             })
         }
     }
