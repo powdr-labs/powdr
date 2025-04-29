@@ -104,7 +104,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
     /// Returns a list of updates to be executed by the caller.
     pub fn solve(
         &self,
-        bus_interaction_handler: &dyn BusInteractionHandler<T = T>,
+        bus_interaction_handler: &dyn BusInteractionHandler<T>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Vec<Effect<T, V>> {
         let Some(range_constraints) = self.to_range_constraints(range_constraints) else {
@@ -124,9 +124,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
 }
 
 /// A trait for handling bus interactions.
-pub trait BusInteractionHandler {
-    type T: FieldElement;
-
+pub trait BusInteractionHandler<T: FieldElement> {
     /// Handles a bus interaction, by transforming taking a bus interaction
     /// (with the fields represented by range constraints) and returning
     /// updated range constraints.
@@ -139,8 +137,8 @@ pub trait BusInteractionHandler {
     /// trait.
     fn handle_bus_interaction(
         &self,
-        bus_interaction: BusInteraction<RangeConstraint<Self::T>>,
-    ) -> BusInteraction<RangeConstraint<Self::T>>;
+        bus_interaction: BusInteraction<RangeConstraint<T>>,
+    ) -> BusInteraction<RangeConstraint<T>>;
 }
 
 /// A default bus interaction handler that does nothing. Using it is
@@ -150,13 +148,11 @@ pub struct DefaultBusInteractionHandler<T: FieldElement> {
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: FieldElement> BusInteractionHandler for DefaultBusInteractionHandler<T> {
-    type T = T;
-
+impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<T> {
     fn handle_bus_interaction(
         &self,
-        bus_interaction: BusInteraction<RangeConstraint<Self::T>>,
-    ) -> BusInteraction<RangeConstraint<Self::T>> {
+        bus_interaction: BusInteraction<RangeConstraint<T>>,
+    ) -> BusInteraction<RangeConstraint<T>> {
         bus_interaction
     }
 }

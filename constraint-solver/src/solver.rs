@@ -30,7 +30,7 @@ pub struct Solver<T: FieldElement, V> {
     /// be simplified as much as possible.
     constraint_system: ConstraintSystem<T, V>,
     /// The handler for bus interactions.
-    bus_interaction_handler: Box<dyn BusInteractionHandler<T = T>>,
+    bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
 }
@@ -52,7 +52,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug + 'static> So
 
     pub fn with_bus_interaction_handler(
         self,
-        bus_interaction_handler: Box<dyn BusInteractionHandler<T = T>>,
+        bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     ) -> Self {
         Solver {
             bus_interaction_handler,
