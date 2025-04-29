@@ -601,7 +601,7 @@ x * (x - (b0 + b1 + b2 + b3)) = 0;
 }
 
 #[test]
-fn do_not_removed_used_witnesses() {
+fn do_not_remove_used_witnesses() {
     let input = r#"namespace Add(8);
     col witness x;
     col witness y;

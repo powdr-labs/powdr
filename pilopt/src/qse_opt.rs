@@ -154,8 +154,6 @@ where
     assert!(exponent >= 0.into());
     if exponent == 0.into() {
         QuadraticSymbolicExpression::from(T::from(1))
-    } else if exponent == 1.into() {
-        v.clone()
     } else if exponent & 1.into() == 1.into() {
         let r = apply_pow(v, exponent >> 1);
         (r.clone() * r) * v.clone()
