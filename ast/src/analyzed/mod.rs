@@ -296,8 +296,8 @@ impl<T> Analyzed<T> {
             .iter()
             .map(|identity| identity.id())
             .max()
-            .unwrap_or_default()
-            + 1;
+            .map(|id| id + 1)
+            .unwrap_or_default();
         self.identities.push(
             PolynomialIdentity {
                 id,
@@ -1901,9 +1901,7 @@ mod tests {
     use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
-    use crate::analyzed::{
-        AlgebraicReference, DegreeRange, Identity, PolyID, PolynomialIdentity, PolynomialType,
-    };
+    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1940,11 +1938,7 @@ mod tests {
         let mut pil_result = Analyzed::default();
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
-        if let Identity::Polynomial(PolynomialIdentity { id, .. }) = &mut pil_result.identities[1] {
-            *id = 6;
-        } else {
-            panic!();
-        }
+
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
     }
