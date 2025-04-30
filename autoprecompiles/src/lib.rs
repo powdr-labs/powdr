@@ -1064,17 +1064,20 @@ fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> Symb
     let analyzed: Analyzed<P> = analyze_ast(pilfile).expect("Failed to analyze AST");
     let optimized = optimize(analyzed);
 
+    let intermediates = optimized.intermediate_definitions();
+
     let mut powdr_exprs = Vec::new();
     let mut powdr_bus_interactions = Vec::new();
-    for id in optimized.identities.iter() {
+    for id in optimized.identities.into_iter() {
         match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 powdr_exprs.push(SymbolicConstraint {
-                    expr: expression.clone(),
+                    expr: powdr::inline_intermediates(expression, &intermediates),
                 });
             }
             Identity::BusInteraction(powdr_interaction) => {
-                let interaction = powdr::powdr_interaction_to_symbolic(powdr_interaction.clone());
+                let interaction =
+                    powdr::powdr_interaction_to_symbolic(powdr_interaction, &intermediates);
                 powdr_bus_interactions.push(interaction);
             }
             _ => continue,
