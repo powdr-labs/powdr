@@ -1073,19 +1073,8 @@ fn try_compute_opcode_map<T: FieldElement>(
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
-fn powdr_optimize<P: FieldElement>(mut symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: symbolic_machine
-            .constraints
-            .iter()
-            .map(|constraint| algebraic_to_quadratic_symbolic_expression(&constraint.expr))
-            .collect(),
-        bus_interactions: symbolic_machine
-            .bus_interactions
-            .iter()
-            .map(symbolic_bus_interaction_to_bus_interaction)
-            .collect(),
-    };
+fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
+    let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
     log_constraint_system_stats("Starting powdr_optimize()", &constraint_system);
     let constraint_system = solver_based_optimization(constraint_system);
@@ -1096,34 +1085,59 @@ fn powdr_optimize<P: FieldElement>(mut symbolic_machine: SymbolicMachine<P>) -> 
     // TODO: Add equivalent of replace_linear_witness_columns step to make
     // powdr_optimize_legacy obsolete
 
-    log::trace!("Solver finished successfully:");
-    symbolic_machine.constraints = constraint_system
-        .algebraic_constraints
-        .iter()
-        .map(|simplified| SymbolicConstraint {
-            expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(&simplified)),
-        })
-        .collect();
+    constraint_system_to_symbolic_machine(constraint_system)
+}
 
-    symbolic_machine.bus_interactions = constraint_system
-        .bus_interactions
-        .into_iter()
-        .map(bus_interaction_to_symbolic_bus_interaction)
-        .collect();
+fn symbolic_machine_to_constraint_system<P: FieldElement>(
+    symbolic_machine: SymbolicMachine<P>,
+) -> ConstraintSystem<P, Variable> {
+    ConstraintSystem {
+        algebraic_constraints: symbolic_machine
+            .constraints
+            .iter()
+            .map(|constraint| algebraic_to_quadratic_symbolic_expression(&constraint.expr))
+            .collect(),
+        bus_interactions: symbolic_machine
+            .bus_interactions
+            .iter()
+            .map(symbolic_bus_interaction_to_bus_interaction)
+            .collect(),
+    }
+}
 
-    symbolic_machine
+fn constraint_system_to_symbolic_machine<P: FieldElement>(
+    constraint_system: ConstraintSystem<P, Variable>,
+) -> SymbolicMachine<P> {
+    SymbolicMachine {
+        constraints: constraint_system
+            .algebraic_constraints
+            .iter()
+            .map(|constraint| SymbolicConstraint {
+                expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(constraint)),
+            })
+            .collect(),
+        bus_interactions: constraint_system
+            .bus_interactions
+            .into_iter()
+            .map(bus_interaction_to_symbolic_bus_interaction)
+            .collect(),
+    }
 }
 
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
 ) -> ConstraintSystem<T, Variable> {
-    Solver::new(constraint_system)
+    let result = Solver::new(constraint_system)
         .solve()
         .map_err(|e| {
             panic!("Solver failed: {e:?}");
         })
-        .unwrap()
-        .simplified_constraint_system
+        .unwrap();
+    log::trace!("Solver figured out the following assignments:");
+    for (var, value) in result.assignments.iter() {
+        log::trace!("  {var} = {value}");
+    }
+    result.simplified_constraint_system
 }
 
 fn remove_trivial_constraints<P: FieldElement>(
