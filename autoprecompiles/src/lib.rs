@@ -1067,6 +1067,12 @@ fn try_compute_opcode_map<T: FieldElement>(
 }
 
 /// Simplifies the constraints as much as possible.
+/// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
+/// - Runs on the entire constraint system, including bus interactions.
+/// - Panics if the solver fails.
+/// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
+///   from the constraint system.
+/// - Calls `simplify_expression()` on the resulting expressions.
 fn powdr_optimize<P: FieldElement>(mut symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
     let constraint_system = ConstraintSystem {
         algebraic_constraints: symbolic_machine
@@ -1081,51 +1087,28 @@ fn powdr_optimize<P: FieldElement>(mut symbolic_machine: SymbolicMachine<P>) -> 
             .collect(),
     };
 
+    log_constraint_system_stats("Starting powdr_optimize()", &constraint_system);
     let constraint_system = solver_based_optimization(constraint_system);
+    log_constraint_system_stats("After solver-based optimization", &constraint_system);
+    let constraint_system = remove_trivial_constraints(constraint_system);
+    log_constraint_system_stats("After removing trivial constraints", &constraint_system);
 
     // TODO: Add equivalent of replace_linear_witness_columns step to make
     // powdr_optimize_legacy obsolete
 
     log::trace!("Solver finished successfully:");
-    symbolic_machine.constraints = symbolic_machine
-        .constraints
+    symbolic_machine.constraints = constraint_system
+        .algebraic_constraints
         .iter()
-        .zip_eq(constraint_system.algebraic_constraints)
-        .filter_map(|(constraint, simplified)| {
-            log::trace!("  {constraint}");
-            let constraint =
-                simplify_expression(quadratic_symbolic_expression_to_algebraic(&simplified));
-
-            if constraint == P::zero().into() {
-                log::trace!("    => Removed");
-                return None;
-            } else {
-                log::trace!("    => {constraint}");
-                Some(SymbolicConstraint { expr: constraint })
-            }
+        .map(|simplified| SymbolicConstraint {
+            expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(&simplified)),
         })
         .collect();
 
-    symbolic_machine.bus_interactions = symbolic_machine
+    symbolic_machine.bus_interactions = constraint_system
         .bus_interactions
-        .iter()
-        .zip_eq(constraint_system.bus_interactions)
-        .filter_map(|(bus_interaction, simplified)| {
-            log::trace!("  {bus_interaction}");
-            let bus_interaction = bus_interaction_to_symbolic_bus_interaction(
-                simplified,
-                bus_interaction.id,
-                bus_interaction.kind.clone(),
-            );
-
-            if bus_interaction.mult == P::zero().into() {
-                log::trace!("    => Removed\n");
-                None
-            } else {
-                log::trace!("    => {bus_interaction}\n");
-                Some(bus_interaction)
-            }
-        })
+        .into_iter()
+        .map(bus_interaction_to_symbolic_bus_interaction)
         .collect();
 
     symbolic_machine
@@ -1141,6 +1124,19 @@ fn solver_based_optimization<T: FieldElement>(
         })
         .unwrap()
         .simplified_constraint_system
+}
+
+fn remove_trivial_constraints<P: FieldElement>(
+    mut symbolic_machine: ConstraintSystem<P, Variable>,
+) -> ConstraintSystem<P, Variable> {
+    let zero = QuadraticSymbolicExpression::from(P::zero());
+    symbolic_machine
+        .algebraic_constraints
+        .retain(|constraint| constraint != &zero);
+    symbolic_machine
+        .bus_interactions
+        .retain(|bus_interaction| bus_interaction.multiplicity != zero);
+    symbolic_machine
 }
 
 fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
@@ -1159,12 +1155,20 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
 
 fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
     bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, Variable>>,
-    id: u64,
-    kind: BusInteractionKind,
 ) -> SymbolicBusInteraction<P> {
+    // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
+    // so this should always succeed.
+    let id = bus_interaction
+        .bus_id
+        .try_to_number()
+        .unwrap()
+        .to_arbitrary_integer()
+        .try_into()
+        .unwrap();
     SymbolicBusInteraction {
         id,
-        kind,
+        // TODO: The kind of SymbolicBusInteraction is ignored, this field should be removed
+        kind: BusInteractionKind::Send,
         args: bus_interaction
             .payload
             .into_iter()
@@ -1174,6 +1178,42 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
             &bus_interaction.multiplicity,
         )),
     }
+}
+
+fn log_constraint_system_stats<P: FieldElement>(
+    step: &str,
+    constraint_system: &ConstraintSystem<P, Variable>,
+) {
+    let num_constraints = constraint_system.algebraic_constraints.len();
+    let num_bus_interactions = constraint_system.bus_interactions.len();
+    let num_witness_columns = constraint_system
+        .algebraic_constraints
+        .iter()
+        .flat_map(|constraint| constraint.referenced_variables())
+        .chain(
+            constraint_system
+                .bus_interactions
+                .iter()
+                .flat_map(|bus_interaction| bus_interaction.referenced_variables()),
+        )
+        .filter_map(|expr| {
+            if let Variable::Reference(AlgebraicReference {
+                poly_id:
+                    PolyID {
+                        ptype: PolynomialType::Committed,
+                        id,
+                    },
+                ..
+            }) = expr
+            {
+                Some(id)
+            } else {
+                None
+            }
+        })
+        .unique()
+        .count();
+    log::info!("{step} - Constraints: {num_constraints}, Bus Interactions: {num_bus_interactions}, Witness Columns: {num_witness_columns}");
 }
 
 /// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
