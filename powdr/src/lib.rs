@@ -265,9 +265,19 @@ impl Session {
         host.read(1).unwrap()
     }
 
+    pub fn stdout_bytes(&self) -> Vec<u8> {
+        let host = self.pipeline.host_context();
+        host.read_bytes(1).unwrap()
+    }
+
     pub fn stderr<S: serde::de::DeserializeOwned>(&self) -> S {
         let host = self.pipeline.host_context();
         host.read(2).unwrap()
+    }
+
+    pub fn stderr_bytes(&self) -> Vec<u8> {
+        let host = self.pipeline.host_context();
+        host.read_bytes(2).unwrap()
     }
 }
 

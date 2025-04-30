@@ -47,6 +47,15 @@ impl HostContext {
         }
     }
 
+    pub fn read_bytes(&self, fd: u32) -> Result<Vec<u8>, String> {
+        let fs = self.file_data.lock().unwrap();
+        if let Some(data) = fs.get(&fd) {
+            Ok(data.clone())
+        } else {
+            Err(format!("File descriptor {fd} not found"))
+        }
+    }
+
     fn query_callback<T: FieldElement>(&self) -> Arc<dyn QueryCallback<T>> {
         let fs = self.file_data.clone();
         Arc::new(move |query: &str| -> Result<Option<T>, String> {
