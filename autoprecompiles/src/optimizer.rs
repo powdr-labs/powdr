@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, ConstraintSystem},
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::Solver,
     symbolic_expression::SymbolicExpression,
@@ -24,11 +24,14 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, Symb
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
-pub fn optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
+pub fn optimize<P: FieldElement>(
+    symbolic_machine: SymbolicMachine<P>,
+    bus_interaction_handler: impl BusInteractionHandler<P> + 'static,
+) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
     log_constraint_system_stats("Starting optimize()", &constraint_system);
-    let constraint_system = solver_based_optimization(constraint_system);
+    let constraint_system = solver_based_optimization(constraint_system, bus_interaction_handler);
     log_constraint_system_stats("After solver-based optimization", &constraint_system);
     let constraint_system = remove_trivial_constraints(constraint_system);
     log_constraint_system_stats("After removing trivial constraints", &constraint_system);
@@ -77,8 +80,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
 ) -> ConstraintSystem<T, Variable> {
     let result = Solver::new(constraint_system)
+        .with_bus_interaction_handler(Box::new(bus_interaction_handler))
         .solve()
         .map_err(|e| {
             panic!("Solver failed: {e:?}");

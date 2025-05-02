@@ -14,6 +14,7 @@ use powdr_ast::{
         UnaryOperation, UnaryOperator,
     },
 };
+use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
 use powdr_parser_util::SourceRef;
@@ -335,7 +336,10 @@ const PC_LOOKUP_BUS_ID: u64 = 2;
 const RANGE_CHECK_BUS_ID: u64 = 3;
 
 impl<T: FieldElement> Autoprecompiles<T> {
-    pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
+    pub fn build(
+        &self,
+        bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+    ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
         let (mut machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
@@ -362,7 +366,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             }
         }
 
-        machine = optimize(machine);
+        machine = optimize(machine, bus_interaction_handler);
         machine = powdr_optimize_legacy(machine);
         machine = remove_zero_mult(machine);
         machine = remove_zero_constraint(machine);
