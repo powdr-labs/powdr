@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use optimizer::optimize;
 use powdr::collect_cols_algebraic;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::asm::Part;
@@ -17,7 +18,7 @@ use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
 use powdr_parser_util::SourceRef;
 use powdr_pil_analyzer::analyze_ast;
-use powdr_pilopt::optimize;
+use powdr_pilopt::optimize as pilopt_optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -25,6 +26,7 @@ use std::fmt::Display;
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+mod optimizer;
 pub mod powdr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -360,7 +362,8 @@ impl<T: FieldElement> Autoprecompiles<T> {
             }
         }
 
-        machine = powdr_optimize(machine);
+        machine = optimize(machine);
+        machine = powdr_optimize_legacy(machine);
         machine = remove_zero_mult(machine);
         machine = remove_zero_constraint(machine);
 
@@ -1059,10 +1062,15 @@ fn try_compute_opcode_map<T: FieldElement>(
 
 /// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
 /// Then, translate the optimized constraints and interactions back to a SymbolicMachine
-fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
+// TODO: We should remove this step soon as powdr_optimize also in-lines witness columns
+// up to the degree bound. At that point, powdr_optimize_legacy should not yield any
+// optimizations.
+fn powdr_optimize_legacy<P: FieldElement>(
+    symbolic_machine: SymbolicMachine<P>,
+) -> SymbolicMachine<P> {
     let pilfile = symbolic_machine_to_pilfile(symbolic_machine);
     let analyzed: Analyzed<P> = analyze_ast(pilfile).expect("Failed to analyze AST");
-    let optimized = optimize(analyzed);
+    let optimized = pilopt_optimize(analyzed);
 
     let intermediates = optimized.intermediate_definitions();
 
