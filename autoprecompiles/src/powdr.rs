@@ -133,32 +133,6 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     );
 }
 
-pub fn append_suffix_algebraic<T: Clone>(
-    expr: &mut AlgebraicExpression<T>,
-    suffix: &str,
-) -> BTreeMap<Column, Column> {
-    let mut subs = BTreeMap::new();
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                if !["is_first_row", "is_transition", "is_last_row"].contains(&r.name.as_str()) {
-                    let new_name = format!("{}_{suffix}", r.name);
-                    let old_column = Column::from(&*r);
-                    let new_column = Column {
-                        name: new_name.clone(),
-                        ..old_column
-                    };
-                    subs.insert(old_column, new_column);
-                    r.name = new_name;
-                }
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    subs
-}
-
 // After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
 pub fn collect_cols_algebraic<T: Clone + Ord>(
     expr: &AlgebraicExpression<T>,
@@ -296,29 +270,6 @@ pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
                 _ => (),
             }
             ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-}
-
-pub fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
-    expr.visit_expressions_mut(
-        &mut |expr| match expr {
-            Expression::FunctionCall(_, ref mut fun_call) => {
-                for arg in &mut fun_call.arguments {
-                    append_suffix_mut(arg, suffix);
-                }
-                ControlFlow::Break::<()>(())
-            }
-            Expression::Reference(_, ref mut r) => {
-                let name = r.path.try_last_part().unwrap();
-                if name != "pc" && name != "pc_next" && name != "dest" {
-                    let name = format!("{name}_{suffix}");
-                    *r.path.try_last_part_mut().unwrap() = name;
-                }
-                ControlFlow::Continue::<()>(())
-            }
-            _ => ControlFlow::Continue::<()>(()),
         },
         VisitOrder::Pre,
     );
