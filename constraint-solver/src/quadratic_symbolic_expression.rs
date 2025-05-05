@@ -224,7 +224,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
                 let mut term = substitution.clone();
                 term *= &coeff;
                 to_add += term;
-            } else if !coeff.is_known_zero() {
+            } else {
                 self.linear.insert(var, coeff);
             }
         }
