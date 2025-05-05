@@ -895,9 +895,9 @@ pub fn generate_precompile<T: FieldElement>(
         }
     }
 
-    // Sanity check that no two original columns map to the same apc column
+    // Sanity check that no two original columns map to the same apc column in terms of poly_id.id
     assert!(
-        col_subs.iter().flat_map(|m| m.values()).all_unique(),
+        col_subs.iter().flat_map(|m| m.values().map(|v| v.id.id)).all_unique(),
         "At least two original columns map to the same apc column"
     );
     (
