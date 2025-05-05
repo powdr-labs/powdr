@@ -1312,8 +1312,6 @@ Z: [10, 4294967050] & 0xffffffff;
 
     #[test]
     fn test_complex_expression_multiple_substitution() {
-        use GoldilocksField as F;
-
         let mut expr = (var("x") * var("w")) + var("x") + constant(3) * var("y") + constant(5);
         assert_eq!(expr.to_string(), "(x) * (w) + x + 3 * y + 5");
 
@@ -1323,45 +1321,31 @@ Z: [10, 4294967050] & 0xffffffff;
 
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
-        assert_eq!(quadratic.len(), 2, "Expected two quadratic terms");
-
-        assert_eq!(linear[0].0.to_string(), "y");
-        assert_eq!(
-            linear.len(),
-            1,
-            "Expected one remaining linear term in the main qse, got {:?}",
-            linear
-        );
-
-        assert_eq!(
-            constant.try_to_number(),
-            Some(F::from(6)),
-            "Expected constant to be 6"
-        );
 
         assert_eq!(
             expr.to_string(),
             "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
         );
         // Structural validation
+        assert_eq!(quadratic.len(), 2);
         assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
         assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
         assert_eq!(quadratic[0].0.quadratic[0].1.to_string(), "b");
         assert!(quadratic[0].0.linear.is_empty());
         assert_eq!(
             quadratic[0].0.constant.try_to_number(),
-            Some(F::from(1)),
-            "Expected constant to be 1 in (a) * (b) + 1"
+            Some(GoldilocksField::from(1)),
         );
         assert_eq!(quadratic[0].1.to_string(), "w");
         assert_eq!(quadratic[1].0.to_string(), "a");
         assert_eq!(quadratic[1].1.to_string(), "b");
+        assert_eq!(linear[0].0.to_string(), "y");
+        assert_eq!(linear.len(), 1);
+        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(6)),);
     }
 
     #[test]
     fn test_substitute_by_unknown_coeff_distribution() {
-        use GoldilocksField as F;
-
         let mut expr = constant(2) * var("a") + constant(7);
         assert_eq!(expr.to_string(), "2 * a + 7");
 
@@ -1372,16 +1356,12 @@ Z: [10, 4294967050] & 0xffffffff;
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
 
-        assert_eq!(
-            quadratic.len(),
-            1,
-            "Expected one quadratic term from substitution"
-        );
+        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
+
+        assert_eq!(quadratic.len(), 1);
         assert_eq!(quadratic[0].0.to_string(), "2 * x");
         assert_eq!(quadratic[0].1.to_string(), "y");
-        assert!(linear.is_empty(), "Expected no remaining linear terms");
-        assert_eq!(constant.try_to_number(), Some(F::from(7)));
-
-        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
+        assert!(linear.is_empty());
+        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
     }
 }
