@@ -1324,7 +1324,8 @@ Z: [10, 4294967050] & 0xffffffff;
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
         assert_eq!(quadratic.len(), 2, "Expected two quadratic terms");
-        assert_eq!(linear[0].0, &"y");
+
+        assert_eq!(linear[0].0.to_string(), "y");
         assert_eq!(
             linear.len(),
             1,
@@ -1342,6 +1343,19 @@ Z: [10, 4294967050] & 0xffffffff;
             expr.to_string(),
             "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
         );
+        // Structural validation
+        assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
+        assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
+        assert_eq!(quadratic[0].0.quadratic[0].1.to_string(), "b");
+        assert!(quadratic[0].0.linear.is_empty());
+        assert_eq!(
+            quadratic[0].0.constant.try_to_number(),
+            Some(F::from(1)),
+            "Expected constant to be 1 in (a) * (b) + 1"
+        );
+        assert_eq!(quadratic[0].1.to_string(), "w");
+        assert_eq!(quadratic[1].0.to_string(), "a");
+        assert_eq!(quadratic[1].1.to_string(), "b");
     }
 
     #[test]
