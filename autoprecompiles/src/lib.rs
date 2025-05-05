@@ -337,7 +337,9 @@ impl<T: FieldElement> Autoprecompiles<T> {
         }
 
         machine = optimize(machine, bus_interaction_handler);
-        machine = powdr_optimize_legacy(machine);
+        // We do not run pilcom, since it breaks the requirement that transformations should not reassign poly_id.id
+        // TODO: Remove pilcom entirely by covering all its cases in powdr_optimize
+        // machine = powdr_optimize_legacy(machine);
         machine = remove_zero_mult(machine);
         machine = remove_zero_constraint(machine);
 
@@ -893,6 +895,11 @@ pub fn generate_precompile<T: FieldElement>(
         }
     }
 
+    // Sanity check that no two original columns map to the same apc column
+    assert!(
+        col_subs.iter().flat_map(|m| m.values()).all_unique(),
+        "At least two original columns map to the same apc column"
+    );
     (
         SymbolicMachine {
             constraints,
@@ -1047,6 +1054,7 @@ fn try_compute_opcode_map<T: FieldElement>(
 // TODO: We should remove this step soon as powdr_optimize also in-lines witness columns
 // up to the degree bound. At that point, powdr_optimize_legacy should not yield any
 // optimizations.
+#[allow(dead_code)]
 fn powdr_optimize_legacy<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
 ) -> SymbolicMachine<P> {
