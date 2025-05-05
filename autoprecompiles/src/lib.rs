@@ -766,6 +766,15 @@ pub fn generate_precompile<T: FieldElement>(
             | InstructionKind::ConditionalBranch => {
                 let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
 
+                let (next_global_idx, subs, machine) = powdr::reassign_ids(
+                    machine,
+                    global_idx,
+                    &mut global_idx_subs,
+                    &mut global_idx_subs_rev,
+                    i,
+                );
+                global_idx = next_global_idx;
+
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
                     .iter()
@@ -812,7 +821,6 @@ pub fn generate_precompile<T: FieldElement>(
                         }
                     });
 
-                let mut local_subs = BTreeMap::new();
                 let local_identities = machine
                     .constraints
                     .iter()
@@ -821,15 +829,7 @@ pub fn generate_precompile<T: FieldElement>(
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
                         powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                        let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
                         expr = simplify_expression(expr);
-                        global_idx = powdr::reassign_ids_algebraic(
-                            &mut expr,
-                            global_idx,
-                            &mut global_idx_subs,
-                            &mut global_idx_subs_rev,
-                        );
-                        local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
@@ -845,19 +845,11 @@ pub fn generate_precompile<T: FieldElement>(
                             powdr::substitute_algebraic(e, &sub_map);
                             powdr::substitute_algebraic(e, &sub_map_loadstore);
                             *e = simplify_expression(e.clone());
-                            let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
-                            global_idx = powdr::reassign_ids_algebraic(
-                                &mut *e,
-                                global_idx,
-                                &mut global_idx_subs,
-                                &mut global_idx_subs_rev,
-                            );
-                            local_subs.extend(subs);
                         });
                     bus_interactions.push(link);
                 }
 
-                col_subs.push(local_subs);
+                col_subs.push(subs);
 
                 // after the first round of simplifying,
                 // we need to look for register memory bus interactions
@@ -897,7 +889,10 @@ pub fn generate_precompile<T: FieldElement>(
 
     // Sanity check that no two original columns map to the same apc column in terms of poly_id.id
     assert!(
-        col_subs.iter().flat_map(|m| m.values().map(|v| v.id.id)).all_unique(),
+        col_subs
+            .iter()
+            .flat_map(|m| m.values().map(|v| v.id.id))
+            .all_unique(),
         "At least two original columns map to the same apc column"
     );
     (

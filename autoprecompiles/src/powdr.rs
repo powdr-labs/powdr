@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::iter::from_fn;
 use std::ops::ControlFlow;
 
 use itertools::Itertools;
@@ -16,7 +17,7 @@ use powdr_ast::parsed::{
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::{BusInteractionKind, SymbolicBusInteraction};
+use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicMachine};
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
@@ -220,43 +221,55 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
     }
 }
 
-pub fn reassign_ids_algebraic<T: Clone + Ord>(
-    expr: &mut AlgebraicExpression<T>,
+pub fn reassign_ids<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
     mut curr_id: u64,
     subs: &mut BTreeMap<Column, u64>,
     rev_subs: &mut BTreeMap<u64, Column>,
-) -> u64 {
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                let column = Column::from(&*r);
-                match subs.get_mut(&column) {
-                    Some(id) => {
-                        match rev_subs.get(id) {
-                            Some(r_column) => {
-                                assert_eq!(
-                                    *r_column, column,
-                                    "Id {id} already assigned to {column:?}"
-                                );
-                            }
-                            None => {
-                                rev_subs.insert(*id, column.clone());
-                            }
-                        }
-                        r.poly_id.id = *id;
-                    }
-                    None => {
-                        r.poly_id.id = curr_id;
-                        subs.insert(column.clone(), curr_id);
-                        curr_id += 1;
-                    }
-                }
+    suffix: usize,
+) -> (u64, BTreeMap<Column, Column>, SymbolicMachine<T>) {
+    // Build a mapping from local columns to global columns
+    let local_to_global: BTreeMap<Column, Column> = machine
+        .unique_columns()
+        // zip with increasing ids, mutating curr_id
+        .zip(from_fn(|| {
+            let id = curr_id;
+            curr_id += 1;
+            Some(id)
+        }))
+        .map(|(local_column, id)| {
+            assert_eq!(
+                local_column.id.ptype,
+                PolynomialType::Committed,
+                "Expected committed polynomial type"
+            );
+            let global_column = Column {
+                name: format!("{}_{}", local_column.name, suffix),
+                id: PolyID {
+                    id,
+                    ptype: PolynomialType::Committed,
+                },
+            };
+            subs.insert(local_column.clone(), id);
+            rev_subs.insert(id, local_column.clone());
+            (local_column, global_column)
+        })
+        .collect();
+
+    // Update the machine with the new global column names
+    machine.visit_expressions_mut(
+        &mut |e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                let new_col = local_to_global.get(&Column::from(&*r)).unwrap().clone();
+                r.poly_id.id = new_col.id.id;
+                r.name = new_col.name.clone();
             }
             ControlFlow::Continue::<()>(())
         },
         VisitOrder::Pre,
     );
-    curr_id
+
+    (curr_id, local_to_global, machine)
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
