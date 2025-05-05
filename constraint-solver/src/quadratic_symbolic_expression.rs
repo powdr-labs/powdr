@@ -218,61 +218,41 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             return;
         }
 
-        match &self.constant {
-            SymbolicExpression::Symbol(sym, _) if sym == variable => {
-                self.constant = SymbolicExpression::from(T::zero());
-                *self += substitution.clone();
-            }
-            _ => {
-                if let Some(mut qse) =
-                    symbolic_expression_to_quadratic_symbolic_expression(&self.constant)
-                {
-                    qse.substitute_by_unknown(variable, substitution);
-                    self.constant = SymbolicExpression::from(T::zero());
-                    *self += qse;
-                }
-            }
-        }
-
         let mut to_add = QuadraticSymbolicExpression::from(T::zero());
-        for (var, mut coeff) in std::mem::take(&mut self.linear) {
+        for (var, coeff) in std::mem::take(&mut self.linear) {
             if var == *variable {
                 let mut term = substitution.clone();
                 term *= &coeff;
                 to_add += term;
             } else {
-                coeff.substitute(
-                    variable,
-                    substitution
-                        .try_to_known()
-                        .unwrap_or(&SymbolicExpression::from(T::zero())),
-                );
                 if !coeff.is_known_zero() {
                     self.linear.insert(var, coeff);
                 }
             }
         }
 
-        self.quadratic.retain_mut(|(l, r)| {
-            l.substitute_by_unknown(variable, substitution);
-            r.substitute_by_unknown(variable, substitution);
-
-            match (l.try_to_known(), r.try_to_known()) {
-                (Some(lval), Some(rval)) => {
-                    to_add += (lval.clone() * rval.clone()).into();
-                    false
+        self.quadratic = std::mem::take(&mut self.quadratic)
+            .into_iter()
+            .filter_map(|(mut l, mut r)| {
+                l.substitute_by_unknown(variable, substitution);
+                r.substitute_by_unknown(variable, substitution);
+                match (l.try_to_known(), r.try_to_known()) {
+                    (Some(lval), Some(rval)) => {
+                        to_add += (lval * rval).into();
+                        None
+                    }
+                    (Some(lval), None) => {
+                        to_add += r * lval;
+                        None
+                    }
+                    (None, Some(rval)) => {
+                        to_add += l * rval;
+                        None
+                    }
+                    _ => Some((l, r)),
                 }
-                (Some(lval), None) => {
-                    to_add += r.clone() * lval.clone();
-                    false
-                }
-                (None, Some(rval)) => {
-                    to_add += l.clone() * rval.clone();
-                    false
-                }
-                _ => true,
-            }
-        });
+            })
+            .collect();
 
         if !to_add
             .try_to_known()
@@ -862,6 +842,8 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
 mod tests {
     use std::collections::HashMap;
 
+    use crate::test_utils::{constant, var};
+
     use super::*;
     use powdr_number::GoldilocksField;
 
@@ -1291,155 +1273,103 @@ Z: [10, 4294967050] & 0xffffffff;
     }
 
     #[test]
-    fn test_substitute_by_unknown_linear_to_quadratic() {
-        let mut expr = Qse::from_unknown_variable("x");
-        let y = Qse::from_unknown_variable("y");
-        let z = Qse::from_unknown_variable("z");
+    fn test_substitute_by_unknown_basic_replacement() {
+        let mut expr = var("a");
+        let subst = var("x");
 
-        let three = Qse::from(GoldilocksField::from(3));
-        let subst = y.clone() * z.clone() + three.clone();
+        expr.substitute_by_unknown(&"a", &subst);
+        assert_eq!(expr.to_string(), "x");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_linear_to_quadratic() {
+        let mut expr = var("x");
+        let subst = var("y") * var("z") + constant(3);
         expr.substitute_by_unknown(&"x", &subst);
 
+        assert!(expr.is_quadratic());
         assert_eq!(expr.to_string(), "(y) * (z) + 3");
     }
 
     #[test]
-    fn test_substitute_by_unknown_inside_symbolic_expression() {
-        let mut expr = Qse::from_known_symbol("A", Default::default());
-        let subst = Qse::from_unknown_variable("x") * Qse::from_unknown_variable("y");
-
-        expr.substitute_by_unknown(&"A", &subst);
-
-        assert_eq!(expr.to_string(), "(x) * (y)");
-    }
-
-    #[test]
-    fn test_substitute_by_unknown_inside_quadratic_term() {
-        let x = Qse::from_unknown_variable("x");
-        let y = Qse::from_unknown_variable("y");
-        let mut expr = x.clone() * y.clone(); // x * y
-
-        let a = Qse::from_unknown_variable("a");
-        let one = Qse::from(GoldilocksField::from(1));
-        let subst = a.clone() + one; // x = a + 1
+    fn test_substitute_by_unknown_inside_quadratic() {
+        let mut expr = var("x") * var("y");
+        let subst = var("a") + constant(1);
 
         expr.substitute_by_unknown(&"x", &subst);
-
+        assert!(expr.is_quadratic());
         assert_eq!(expr.to_string(), "(a + 1) * (y)");
     }
 
     #[test]
-    fn test_substitute_by_unknown_quadratic_self_product() {
-        let x = Qse::from_unknown_variable("x");
-        let mut expr = x.clone() * x.clone(); // x * x
-
-        let a = Qse::from_unknown_variable("a");
-        let b = Qse::from_unknown_variable("b");
-        let subst = a.clone() + b.clone(); // x = a + b
+    fn test_substitute_by_unknown_linear() {
+        let mut expr = var("x") + var("y");
+        let subst = var("a") + var("b");
 
         expr.substitute_by_unknown(&"x", &subst);
-
-        assert_eq!(expr.to_string(), "(a + b) * (a + b)");
+        assert!(!expr.is_quadratic());
+        assert_eq!(expr.linear.len(), 3);
+        assert_eq!(expr.to_string(), "a + b + y");
     }
 
     #[test]
-    fn test_substitute_linearly_then_result_becomes_quadratic() {
-        let mut expr = Qse {
-            quadratic: vec![],
-            linear: BTreeMap::from([("x", SymbolicExpression::from(GoldilocksField::from(3)))]),
-            constant: SymbolicExpression::from(GoldilocksField::from(0)),
-        };
-
-        let a = Qse::from_unknown_variable("a");
-        let b = Qse::from_unknown_variable("b");
-        let subst = a.clone() * b.clone(); // x = a * b
-
-        expr.substitute_by_unknown(&"x", &subst);
-
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
-        assert_eq!(quadratic.len(), 1, "Expected one quadratic term");
-        assert!(linear.is_empty(), "Expected no linear terms");
-        assert!(constant.is_known_zero(), "Expected constant to be zero");
-
-        assert_eq!(expr.to_string(), "(3 * a) * (b)");
-    }
-
-    #[test]
-    fn test_complex_expression_with_mixed_substitution() {
+    fn test_complex_expression_multiple_substitution() {
         use GoldilocksField as F;
-        use SymbolicExpression as SE;
 
-        let mut expr = Qse {
-            quadratic: vec![(
-                Qse::from_unknown_variable("z"),
-                Qse::from_unknown_variable("w"),
-            )],
-            linear: BTreeMap::from([("x", SE::from(F::from(2))), ("y", SE::from(F::from(3)))]),
-            constant: SE::from(F::from(5)),
-        };
+        let mut expr = (var("x") * var("w")) + var("x") + constant(3) * var("y") + constant(5);
+        assert_eq!(expr.to_string(), "(x) * (w) + x + 3 * y + 5");
 
-        let a = Qse::from_unknown_variable("a");
-        let b = Qse::from_unknown_variable("b");
-        let one = Qse::from(F::from(1));
-        let subst = a.clone() * b.clone() + one;
+        let subst = var("a") * var("b") + constant(1);
 
         expr.substitute_by_unknown(&"x", &subst);
 
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(quadratic.len(), 2, "Expected two quadratic terms");
+        assert_eq!(linear[0].0, &"y");
         assert_eq!(
             linear.len(),
             1,
-            "Expected one remaining linear term (y), got {:?}",
+            "Expected one remaining linear term in the main qse, got {:?}",
             linear
         );
-        assert_eq!(linear[0].0, &"y");
 
-        let expected = F::from(7);
         assert_eq!(
             constant.try_to_number(),
-            Some(expected),
-            "Expected constant to be 7"
+            Some(F::from(6)),
+            "Expected constant to be 6"
         );
 
-        assert_eq!(expr.to_string(), "(z) * (w) + (2 * a) * (b) + 3 * y + 7");
+        assert_eq!(
+            expr.to_string(),
+            "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
+        );
     }
 
     #[test]
-    fn test_substitute_by_unknown_in_constant_and_linear() {
+    fn test_substitute_by_unknown_coeff_distribution() {
         use GoldilocksField as F;
-        use SymbolicExpression as SE;
 
-        let mut expr = Qse {
-            quadratic: vec![],
-            linear: BTreeMap::from([("A", SE::from(F::from(2)))]), // 2 * A
-            constant: SE::from_symbol("A", Default::default()),    // + A
-        };
+        let mut expr = constant(2) * var("a") + constant(7);
+        assert_eq!(expr.to_string(), "2 * a + 7");
 
-        let x = Qse::from_unknown_variable("x");
-        let y = Qse::from_unknown_variable("y");
-        let subst = x.clone() * y.clone();
+        let subst = var("x") * var("y");
 
-        expr.substitute_by_unknown(&"A", &subst);
+        expr.substitute_by_unknown(&"a", &subst);
 
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
 
         assert_eq!(
             quadratic.len(),
-            2,
-            "Expected two quadratic terms from substitution"
+            1,
+            "Expected one quadratic term from substitution"
         );
+        assert_eq!(quadratic[0].0.to_string(), "2 * x");
+        assert_eq!(quadratic[0].1.to_string(), "y");
         assert!(linear.is_empty(), "Expected no remaining linear terms");
-        assert!(
-            constant.is_known_zero(),
-            "Expected constant to be 0 (since both were replaced)"
-        );
+        assert_eq!(constant.try_to_number(), Some(F::from(7)));
 
-        assert_eq!(expr.to_string(), "(x) * (y) + (2 * x) * (y)");
+        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
     }
 }
