@@ -224,8 +224,6 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
 pub fn reassign_ids<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     mut curr_id: u64,
-    subs: &mut BTreeMap<Column, u64>,
-    rev_subs: &mut BTreeMap<u64, Column>,
     suffix: usize,
 ) -> (u64, BTreeMap<Column, Column>, SymbolicMachine<T>) {
     // Build a mapping from local columns to global columns
@@ -250,8 +248,6 @@ pub fn reassign_ids<T: FieldElement>(
                     ptype: PolynomialType::Committed,
                 },
             };
-            subs.insert(local_column.clone(), id);
-            rev_subs.insert(id, local_column.clone());
             (local_column, global_column)
         })
         .collect();

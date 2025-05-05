@@ -756,8 +756,6 @@ pub fn generate_precompile<T: FieldElement>(
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<BTreeMap<Column, Column>> = Vec::new();
     let mut global_idx: u64 = 3;
-    let mut global_idx_subs: BTreeMap<Column, u64> = BTreeMap::new();
-    let mut global_idx_subs_rev: BTreeMap<u64, Column> = BTreeMap::new();
 
     for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
@@ -766,13 +764,7 @@ pub fn generate_precompile<T: FieldElement>(
             | InstructionKind::ConditionalBranch => {
                 let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
 
-                let (next_global_idx, subs, machine) = powdr::reassign_ids(
-                    machine,
-                    global_idx,
-                    &mut global_idx_subs,
-                    &mut global_idx_subs_rev,
-                    i,
-                );
+                let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
                 global_idx = next_global_idx;
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
