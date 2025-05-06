@@ -250,14 +250,12 @@ fn add_with_carry() {
     let solver = Solver::new(constraint_system)
         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
     let final_state = solver.solve().unwrap();
-    let final_state = format!(
-        "{}",
-        final_state
-            .simplified_constraint_system
-            .algebraic_constraints
-            .iter()
-            .join("\n")
-    );
+    let final_state = final_state
+        .simplified_constraint_system
+        .algebraic_constraints
+        .iter()
+        .join("\n")
+        .to_string();
     assert_eq!(
         final_state,
         "(-A + X + -256) * (-A + X)
