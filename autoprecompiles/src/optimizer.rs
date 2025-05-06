@@ -122,9 +122,20 @@ fn remove_trivial_bus_interactions<T: FieldElement>(
                     .all(|val| val.try_to_number().is_some())
                 {
                     // If all values are concrete, we might be able to remove the bus interaction
-                    match bus_interaction_handler.handle_concrete_bus_interaction(bus_interaction) {
+                    let concrete_bus_interaction = BusInteraction {
+                        bus_id: bus_interaction.bus_id.try_to_number().unwrap(),
+                        multiplicity: bus_interaction.multiplicity.try_to_number().unwrap(),
+                        payload: bus_interaction
+                            .payload
+                            .iter()
+                            .map(|v| v.try_to_number().unwrap())
+                            .collect(),
+                    };
+                    match bus_interaction_handler
+                        .handle_concrete_bus_interaction(concrete_bus_interaction)
+                    {
                         ConcreteBusInteractionResult::AlwaysSatisfied => None,
-                        ConcreteBusInteractionResult::HasSideEffects => Some(bus_interaction),
+                        ConcreteBusInteractionResult::HasSideEffects => Some(bus_interaction), // Here we still keep the original bus interation
                         ConcreteBusInteractionResult::ViolatesBusRules => {
                             panic!("Bus interaction violates bus rules: {bus_interaction:?}")
                         }
