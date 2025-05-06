@@ -1,9 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
-use std::hash::Hasher;
 use std::{cmp, ops};
 
 use num_traits::Zero;
-use std::hash::Hash;
 
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
@@ -21,14 +19,6 @@ pub struct RangeConstraint<T: FieldElement> {
     /// Min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
     min: T,
     max: T,
-}
-
-impl<T: FieldElement> Hash for RangeConstraint<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        format!("{:?}", self.mask).hash(state);
-        self.min.hash(state);
-        self.max.hash(state);
-    }
 }
 
 impl<T: FieldElement> RangeConstraint<T> {

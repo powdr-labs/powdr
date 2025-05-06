@@ -4,17 +4,10 @@ use powdr_constraint_solver::{
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use std::hash::Hasher;
 use std::{
-    collections::BTreeSet,
-    hash::{DefaultHasher, Hash},
+    collections::{BTreeSet, HashSet},
+    hash::Hash,
 };
-
-fn hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
-}
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
@@ -51,12 +44,13 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     max_degree: usize,
 ) -> bool {
     let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
+    let mut invalid_subs: HashSet<V> = HashSet::new();
 
     for idx in indices.into_iter().rev() {
         let constraint = &constraint_system.algebraic_constraints[idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if keep.contains(&var) {
+            if keep.contains(&var) || invalid_subs.contains(&var) {
                 continue;
             }
 
@@ -73,15 +67,18 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
                     .enumerate()
                     .filter(|(i, _)| *i != idx)
                     // Fold to ensure substitution is applied to all constraints
-                    .fold(false, |acc, (_, identity)| {
-                        let hash_before = hash(identity);
+                    .fold(true, |acc, (_, identity)| {
                         identity.substitute_by_unknown(&var, &expr);
-                        acc || hash_before != hash(identity)
+                        // This is correct because is_valid_substitution ensures that
+                        //there is at least one constraint to be updated.
+                        acc && !identity.referenced_unknown_variables().any(|v| v == &var)
                     });
 
                 if changed {
                     constraint_system.algebraic_constraints.remove(idx);
                     return true;
+                } else {
+                    invalid_subs.insert(var.clone());
                 }
             }
         }
