@@ -19,8 +19,11 @@ use powdr_number::FieldElement;
 /// by utilizing quadratic symbolic expressions, and the constraint solver
 /// based on those.
 ///
+/// This fully parses the constraints into an internal representation,
 /// optimizes on that representation and converts them back into the
 /// original representation.
+///
+/// This means the syntactic structure (order of additions, etc) is not
 /// preserved.
 pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let algebraic_constraints = pil_file
@@ -80,7 +83,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 }
 
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-pub enum Variable {
+enum Variable {
     Reference(AlgebraicReference),
     PublicReference(String),
     Challenge(Challenge),
