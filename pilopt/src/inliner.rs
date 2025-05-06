@@ -93,7 +93,7 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 /// Finds variables in a constraint that can be isolated as var = expr.
 ///
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variable<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     constraint: &QuadraticSymbolicExpression<T, V>,
 ) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
     let mut substitutions = vec![];
