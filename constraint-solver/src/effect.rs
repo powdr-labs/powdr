@@ -14,6 +14,7 @@ pub enum Effect<T: FieldElement, V> {
     BitDecomposition(BitDecomposition<T, V>),
     /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
+    DisjointSet(DisjointSet<V>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
     /// A variable is assigned one of two alternative expressions, depending on a condition.
@@ -23,6 +24,11 @@ pub enum Effect<T: FieldElement, V> {
         in_range_value: SymbolicExpression<T, V>,
         out_of_range_value: SymbolicExpression<T, V>,
     },
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct DisjointSet<V> {
+    pub variables: Vec<V>,
 }
 
 /// A bit decomposition of a value.

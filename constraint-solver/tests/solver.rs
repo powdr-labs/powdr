@@ -237,3 +237,35 @@ fn xor() {
         vec![("a", 0xa0.into()), ("b", 0x0b.into()), ("c", 0xab.into())],
     );
 }
+
+#[test]
+fn disjoint_flags_exactly_one() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // Boolean flags
+            var("flag0") * (var("flag0") - constant(1)),
+            var("flag1") * (var("flag1") - constant(1)),
+            var("flag2") * (var("flag2") - constant(1)),
+            var("flag3") * (var("flag3") - constant(1)),
+            // Exactly one flag is active
+            var("flag0") + var("flag1") + var("flag2") + var("flag3") - constant(1),
+            // Flag 3 is active
+            var("flag0") * constant(0)
+                + var("flag1") * constant(1)
+                + var("flag2") * constant(2)
+                + var("flag3") * constant(3)
+                - constant(3),
+        ],
+        bus_interactions: vec![],
+    };
+
+    assert_solve_result(
+        Solver::new(constraint_system),
+        vec![
+            ("flag0", 0.into()),
+            ("flag1", 0.into()),
+            ("flag2", 0.into()),
+            ("flag3", 1.into()),
+        ],
+    );
+}

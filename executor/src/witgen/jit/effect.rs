@@ -43,6 +43,7 @@ impl<T: FieldElement, V: Clone> From<ConstraintSolverEffect<T, V>> for Effect<T,
             ConstraintSolverEffect::BitDecomposition(bit_decomp) => {
                 Effect::BitDecomposition(bit_decomp)
             }
+            ConstraintSolverEffect::DisjointSet(..) => todo!(),
             ConstraintSolverEffect::Assertion(assertion) => Effect::Assertion(assertion),
             ConstraintSolverEffect::ConditionalAssignment {
                 variable,

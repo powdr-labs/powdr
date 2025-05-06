@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::Display,
     hash::Hash,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
@@ -10,7 +10,8 @@ use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::{Condition, DisjointSet},
+    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
@@ -237,6 +238,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
+    fn disjoint_set(&self, var: &V) -> Option<DisjointSet<V>>;
 }
 
 pub struct NoRangeConstraints;
@@ -244,9 +246,14 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
     fn get(&self, _var: &V) -> RangeConstraint<T> {
         RangeConstraint::default()
     }
+    fn disjoint_set(&self, _var: &V) -> Option<DisjointSet<V>> {
+        None
+    }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: std::fmt::Debug + Ord + Clone + Hash + Eq + Display>
+    QuadraticSymbolicExpression<T, V>
+{
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
     /// If no way to solve the equation (and no way to derive new range
@@ -257,7 +264,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        Ok(if self.is_quadratic() {
+        let mut result = if self.is_quadratic() {
             self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
             if k.is_known_nonzero() {
@@ -269,7 +276,60 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             }
         } else {
             self.solve_affine(range_constraints)?
-        })
+        };
+        if let Some(disjoint_set) = self.disjoint_set(range_constraints) {
+            result.effects.extend(disjoint_set);
+        }
+        Ok(result)
+    }
+
+    fn disjoint_set(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<Vec<Effect<T, V>>> {
+        if self.is_quadratic() {
+            None
+        } else {
+            let (flags, num_active) = self.sum_of_flags(range_constraints)?;
+            if num_active.is_one() {
+                Some(vec![Effect::DisjointSet(DisjointSet {
+                    variables: flags.into_iter().collect(),
+                })])
+            } else if num_active.is_zero() {
+                Some(
+                    flags
+                        .into_iter()
+                        .map(|v| Effect::Assignment(v, T::zero().into()))
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    fn sum_of_flags(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<(BTreeSet<V>, T)> {
+        if self.is_quadratic() {
+            return None;
+        }
+        let neg_num_active = self.constant.try_to_number()?;
+
+        let is_bool = |var: &V| {
+            let rc = range_constraints.get(var);
+            rc == RangeConstraint::from_value(T::zero())
+                || rc == RangeConstraint::from_value(T::one())
+                || rc == RangeConstraint::from_mask(1)
+        };
+
+        let flags = self
+            .linear
+            .iter()
+            .map(|(var, coeff)| (coeff.is_known_one() && is_bool(var)).then_some(var.clone()))
+            .collect::<Option<BTreeSet<_>>>()?;
+        Some((flags, -neg_num_active))
     }
 
     fn solve_affine(
@@ -301,6 +361,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 ProcessResult::empty()
             }
         } else {
+            if let Some(result) = self.try_solve_one_hot_flags(range_constraints) {
+                return result;
+            }
+
             // Solve expression of the form `a * X + b * Y + ... + self.constant = 0`
             let r = self.solve_bit_decomposition(range_constraints)?;
 
@@ -318,6 +382,57 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     complete: false,
                 }
             }
+        })
+    }
+
+    fn try_solve_one_hot_flags(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<Result<ProcessResult<T, V>, Error>> {
+        assert!(!self.is_quadratic());
+
+        let disjoint_set = range_constraints.disjoint_set(self.linear.keys().next()?)?;
+
+        let mut var_by_coeff = BTreeMap::new();
+        for (var, coeff) in self.linear.iter() {
+            if !disjoint_set.variables.contains(var) {
+                // The variable is not constrained to be a flag.
+                return None;
+            }
+            let coeff = coeff.try_to_number()?;
+            if var_by_coeff.insert(coeff, var).is_some() {
+                // The coefficients are not unique.
+                return None;
+            }
+        }
+
+        // Zero coefficients would have been removed from `self.linear`.
+        if let Some(var) = disjoint_set
+            .variables
+            .iter()
+            .find(|v| !self.linear.contains_key(v))
+        {
+            assert!(var_by_coeff.insert(T::zero(), var).is_none());
+        }
+
+        if disjoint_set.variables.len() != var_by_coeff.len() {
+            // Multiple solution to "activate" coefficient 0.
+            return None;
+        }
+
+        let target = -self.constant.try_to_number()?;
+
+        Some(match var_by_coeff.get(&target) {
+            Some(active_flag) => Ok(ProcessResult::complete(
+                self.linear
+                    .keys()
+                    .map(|var| {
+                        let value = if var == *active_flag { 1 } else { 0 };
+                        Effect::Assignment(var.clone(), T::from(value).into())
+                    })
+                    .collect(),
+            )),
+            None => Err(Error::ConstraintUnsatisfiable),
         })
     }
 
@@ -915,6 +1030,9 @@ mod tests {
     {
         fn get(&self, var: &&'static str) -> RangeConstraint<GoldilocksField> {
             self.get(var).cloned().unwrap_or_default()
+        }
+        fn disjoint_set(&self, _var: &&'static str) -> Option<DisjointSet<&'static str>> {
+            None
         }
     }
 

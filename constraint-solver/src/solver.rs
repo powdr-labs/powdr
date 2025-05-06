@@ -4,13 +4,14 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::effect::DisjointSet;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
 use super::symbolic_expression::SymbolicExpression;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -33,6 +34,7 @@ pub struct Solver<T: FieldElement, V> {
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
+    disjoint_sets: BTreeSet<DisjointSet<V>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -47,6 +49,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             constraint_system,
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            disjoint_sets: BTreeSet::new(),
         }
     }
 
@@ -84,7 +87,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 // TODO: Improve efficiency by only running skipping constraints that
                 // have not received any updates since they were last processed.
                 let effects = self.constraint_system.algebraic_constraints[i]
-                    .solve(&self.range_constraints)?
+                    .solve(self)?
                     .effects;
                 for effect in effects {
                     progress |= self.apply_effect(effect);
@@ -95,7 +98,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 .bus_interactions
                 .iter()
                 .flat_map(|bus_interaction| {
-                    bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+                    bus_interaction.solve(&*self.bus_interaction_handler, self)
                 })
                 // Collect to satisfy borrow checker
                 .collect::<Vec<_>>();
@@ -119,6 +122,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             Effect::BitDecomposition(..) => unreachable!(),
             Effect::Assertion(..) => unreachable!(),
             Effect::ConditionalAssignment { .. } => todo!(),
+            Effect::DisjointSet(disjoint_set) => self.disjoint_sets.insert(disjoint_set),
         }
     }
 
@@ -159,11 +163,21 @@ impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
-    for RangeConstraints<T, V>
-{
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         self.range_constraints.get(var).cloned().unwrap_or_default()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V> for Solver<T, V> {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var)
+    }
+    fn disjoint_set(&self, var: &V) -> Option<DisjointSet<V>> {
+        self.disjoint_sets
+            .iter()
+            .find(|ds| ds.variables.contains(var))
+            .cloned()
     }
 }
 
