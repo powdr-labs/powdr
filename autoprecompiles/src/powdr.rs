@@ -199,9 +199,9 @@ pub fn reassign_ids<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     mut curr_id: u64,
     suffix: usize,
-) -> (u64, BTreeMap<Column, Column>, SymbolicMachine<T>) {
+) -> (u64, Vec<u64>, SymbolicMachine<T>) {
     // Build a mapping from local columns to global columns
-    let local_to_global: BTreeMap<Column, Column> = machine
+    let subs: BTreeMap<Column, Column> = machine
         .unique_columns()
         // zip with increasing ids, mutating curr_id
         .zip(from_fn(|| {
@@ -230,7 +230,7 @@ pub fn reassign_ids<T: FieldElement>(
     machine.visit_expressions_mut(
         &mut |e| {
             if let AlgebraicExpression::Reference(r) = e {
-                let new_col = local_to_global.get(&Column::from(&*r)).unwrap().clone();
+                let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
                 r.poly_id.id = new_col.id.id;
                 r.name = new_col.name.clone();
             }
@@ -239,7 +239,22 @@ pub fn reassign_ids<T: FieldElement>(
         VisitOrder::Pre,
     );
 
-    (curr_id, local_to_global, machine)
+    let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id.id, v.id.id)).collect();
+
+    let poly_id_min = *subs.keys().min().unwrap();
+    let poly_id_max = *subs.keys().max().unwrap();
+    assert_eq!(
+        poly_id_max - poly_id_min,
+        subs.len() as u64 - 1,
+        "The poly_id must be contiguous"
+    );
+
+    // Represent the substitutions as a single vector of the target poly_ids in increasing order of the source poly_ids
+    let subs = (0..subs.len())
+        .map(|i| *subs.get(&(poly_id_min + i as u64)).unwrap())
+        .collect();
+
+    (curr_id, subs, machine)
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {

@@ -313,7 +313,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
         bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
-    ) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
+    ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
         let (mut machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
@@ -751,10 +751,10 @@ pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
-) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
+) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
-    let mut col_subs: Vec<BTreeMap<Column, Column>> = Vec::new();
+    let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 3;
 
     for (i, instr) in statements.iter().enumerate() {
@@ -879,14 +879,6 @@ pub fn generate_precompile<T: FieldElement>(
         }
     }
 
-    // Sanity check that no two original columns map to the same apc column in terms of poly_id.id
-    assert!(
-        col_subs
-            .iter()
-            .flat_map(|m| m.values().map(|v| v.id.id))
-            .all_unique(),
-        "At least two original columns map to the same apc column"
-    );
     (
         SymbolicMachine {
             constraints,
