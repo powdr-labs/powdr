@@ -224,76 +224,44 @@ fn qse_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 
     let linear_deg = if qse.linear.is_empty() { 0 } else { 1 };
 
-    let const_deg = symbolic_expression_degree(&qse.constant);
+    assert!(
+        matches!(qse.constant, SymbolicExpression::Concrete(_)),
+        "Constant should be a concrete value"
+    );
 
-    quad_deg.max(linear_deg).max(const_deg)
+    quad_deg.max(linear_deg)
 }
 
-/// Computes the degree of a SymbolicExpression.
-fn symbolic_expression_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    expr: &SymbolicExpression<T, V>,
-) -> usize {
-    match expr {
-        SymbolicExpression::Concrete(_) => 0,
-        SymbolicExpression::Symbol(_, _) => 1,
-        SymbolicExpression::BinaryOperation(left, op, right, _) => {
-            let left_degree = symbolic_expression_degree(left);
-            let right_degree = symbolic_expression_degree(right);
-            match op {
-                // For addition and subtraction, the degree is the maximum of the operands
-                BinaryOperator::Add | BinaryOperator::Sub => left_degree.max(right_degree),
-                // For multiplication, the degree is the sum of the operands
-                BinaryOperator::Mul => left_degree + right_degree,
-                // For division, we assume the divisor is constant
-                BinaryOperator::Div => left_degree,
-            }
-        }
-        // For unary operations, the degree is the same as the operand
-        SymbolicExpression::UnaryOperation(_, inner, _) => symbolic_expression_degree(inner),
-    }
-}
 #[cfg(test)]
 mod test {
-    use powdr_constraint_solver::constraint_system::BusInteraction;
-    use powdr_number::GoldilocksField;
+    use powdr_constraint_solver::{
+        constraint_system::BusInteraction,
+        test_utils::{constant, var},
+    };
 
     use super::*;
 
     #[test]
     fn test_replace_witness_columns() {
-        type T = powdr_number::GoldilocksField;
-        type Qse = QuadraticSymbolicExpression<T, &'static str>;
-
         let mut identities = Vec::new();
 
-        let col_a = "a";
-        let col_b = "b";
-        let col_c = "c";
-        let col_d = "d";
-
         // a + b + c = 0
-        let constraint1 = Qse::from_unknown_variable(col_a)
-            + Qse::from_unknown_variable(col_b)
-            + Qse::from_unknown_variable(col_c);
+        let constraint1 = var("a") + var("b") + var("c");
         identities.push(constraint1);
 
         // b + d = 0
-        let constraint2 = Qse::from_unknown_variable(col_b) + Qse::from_unknown_variable(col_d);
+        let constraint2 = var("b") + var("d");
         identities.push(constraint2);
 
-        let expr = Qse::from_unknown_variable(col_c)
-            + Qse::from_unknown_variable(col_b)
-            + Qse::from_unknown_variable(col_a)
-            + Qse::from_unknown_variable(col_d);
-
         // c + b + a + d - result = 0
-        let expr_constraint = expr.clone() - Qse::from_unknown_variable("result");
+        let expr = var("c") + var("b") + var("a") + var("d");
+        let expr_constraint = expr.clone() - var("result");
         identities.push(expr_constraint);
 
         // keep column result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![Qse::from_unknown_variable("result")],
+            payload: vec![var("result")],
             multiplicity: constant(1),
         }];
 
@@ -320,38 +288,25 @@ mod test {
 
     #[test]
     fn test_replace_witness_columns_with_multiplication() {
-        type T = powdr_number::GoldilocksField;
-        type Qse = QuadraticSymbolicExpression<T, &'static str>;
-
         let mut identities = Vec::new();
 
-        let col_a = "a";
-        let col_b = "b";
-        let col_c = "c";
-        let col_d = "d";
-
         // a * b = c
-        let constraint1 = Qse::from_unknown_variable(col_c)
-            - Qse::from_unknown_variable(col_a) * Qse::from_unknown_variable(col_b);
+        let constraint1 = var("c") - var("a") * var("b");
         identities.push(constraint1);
 
         // b + d = 0
-        let constraint2 = Qse::from_unknown_variable(col_b) + Qse::from_unknown_variable(col_d);
+        let constraint2 = var("b") + var("d");
         identities.push(constraint2);
 
-        let expr = Qse::from_unknown_variable(col_a)
-            + Qse::from_unknown_variable(col_b)
-            + Qse::from_unknown_variable(col_c)
-            + Qse::from_unknown_variable(col_d);
-
         // a + b + c + d - result = 0
-        let expr_constraint = expr.clone() - Qse::from_unknown_variable("result");
+        let expr = var("a") + var("b") + var("c") + var("d");
+        let expr_constraint = expr.clone() - var("result");
         identities.push(expr_constraint);
 
         // keep column `result`
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![Qse::from_unknown_variable("result")],
+            payload: vec![var("result")],
             multiplicity: constant(1),
         }];
 
@@ -380,39 +335,23 @@ mod test {
 
     #[test]
     fn test_replace_witness_columns_no_keep() {
-        type T = powdr_number::GoldilocksField;
-        type Qse = QuadraticSymbolicExpression<T, &'static str>;
-
         let mut identities = Vec::new();
 
-        let col_a = "a";
-        let col_b = "b";
-        let col_c = "c";
-        let col_d = "d";
-        let col_e = "e";
-
         // a * b = c
-        let constraint1 = Qse::from_unknown_variable(col_c)
-            - Qse::from_unknown_variable(col_a) * Qse::from_unknown_variable(col_b);
+        let constraint1 = var("c") - var("a") * var("b");
         identities.push(constraint1);
 
         // b + d = 0
-        let constraint2 = Qse::from_unknown_variable(col_b) + Qse::from_unknown_variable(col_d);
+        let constraint2 = var("b") + var("d");
         identities.push(constraint2);
 
         // c * d = e
-        let constraint3 = Qse::from_unknown_variable(col_e)
-            - Qse::from_unknown_variable(col_c) * Qse::from_unknown_variable(col_d);
+        let constraint3 = var("e") - var("c") * var("d");
         identities.push(constraint3);
 
-        let expr = Qse::from_unknown_variable(col_a)
-            + Qse::from_unknown_variable(col_b)
-            + Qse::from_unknown_variable(col_c)
-            + Qse::from_unknown_variable(col_d)
-            + Qse::from_unknown_variable(col_e);
-
         // a + b + c + d + e - result = 0
-        let expr_constraint = expr.clone() - Qse::from_unknown_variable("result");
+        let expr = var("a") + var("b") + var("c") + var("d") + var("e");
+        let expr_constraint = expr.clone() - var("result");
         identities.push(expr_constraint);
 
         // no columns to keep
@@ -440,30 +379,24 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_suboptimal() {
-        type T = powdr_number::GoldilocksField;
-        type Qse = QuadraticSymbolicExpression<T, &'static str>;
-
         let mut identities = Vec::new();
 
         // y = x + 3
-        let constraint2 =
-            Qse::from_unknown_variable("y") - (Qse::from_unknown_variable("x") + constant(3));
+        let constraint2 = var("y") - (var("x") + constant(3));
         identities.push(constraint2);
 
         // z = y + 2
-        let constraint3 =
-            Qse::from_unknown_variable("z") - (Qse::from_unknown_variable("y") + constant(2));
+        let constraint3 = var("z") - (var("y") + constant(2));
         identities.push(constraint3);
 
         // result = z + 1
-        let constraint4 =
-            Qse::from_unknown_variable("result") - (Qse::from_unknown_variable("z") + constant(1));
+        let constraint4 = var("result") - (var("z") + constant(1));
         identities.push(constraint4);
 
         // keep column results
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![Qse::from_unknown_variable("result")],
+            payload: vec![var("result")],
             multiplicity: constant(1),
         }];
 
@@ -486,39 +419,30 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        type T = powdr_number::GoldilocksField;
-        type Qse = QuadraticSymbolicExpression<T, &'static str>;
-
         let mut identities = Vec::new();
 
         // a = b + 1
-        let constraint1 =
-            Qse::from_unknown_variable("a") - (Qse::from_unknown_variable("b") + constant(1));
+        let constraint1 = var("a") - (var("b") + constant(1));
         identities.push(constraint1);
 
         // c = a * a
-        let constraint2 = Qse::from_unknown_variable("c")
-            - (Qse::from_unknown_variable("a") * Qse::from_unknown_variable("a"));
+        let constraint2 = var("c") - (var("a") * var("a"));
         identities.push(constraint2);
 
         // d = c * a
-        let constraint3 = Qse::from_unknown_variable("d")
-            - (Qse::from_unknown_variable("c") * Qse::from_unknown_variable("a"));
+        let constraint3 = var("d") - (var("c") * var("a"));
         identities.push(constraint3);
 
         // e = d * a
-        let constraint4 = Qse::from_unknown_variable("e")
-            - (Qse::from_unknown_variable("d") * Qse::from_unknown_variable("a"));
+        let constraint4 = var("e") - (var("d") * var("a"));
         identities.push(constraint4);
 
         // f = e + 5
-        let constraint5 =
-            Qse::from_unknown_variable("f") - (Qse::from_unknown_variable("e") + constant(5));
+        let constraint5 = var("f") - (var("e") + constant(5));
         identities.push(constraint5);
 
         // result = f * 2
-        let constraint6 =
-            Qse::from_unknown_variable("result") - (Qse::from_unknown_variable("f") * constant(2));
+        let constraint6 = var("result") - (var("f") * constant(2));
         identities.push(constraint6);
 
         let mut constraint_system = ConstraintSystem {
@@ -542,7 +466,7 @@ mod test {
         //
         // 4) e = d * a
         //    = c * (b + 1)^2
-        //      → would be (b + 1)^4 if c is inlined ⇒ degree 4 ❌ → STOP
+        //      → would be (b + 1)^4 if c is inlined ⇒ degree 4 → STOP
         //
         // 5) f = e + 5
         //    = c * (b + 1)^2 + 5
@@ -567,9 +491,5 @@ mod test {
             constraint_system.algebraic_constraints[1].to_string(),
             "((-c) * (b + 1)) * (b + 1) + -9223372034707292160 * result + -5"
         );
-    }
-
-    pub fn constant(value: u64) -> QuadraticSymbolicExpression<GoldilocksField, &'static str> {
-        GoldilocksField::from(value).into()
     }
 }
