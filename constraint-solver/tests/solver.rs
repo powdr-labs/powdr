@@ -254,7 +254,7 @@ fn add_with_carry() {
         .simplified_constraint_system
         .algebraic_constraints
         .iter()
-        .join("\n")
+        .format("\n")
         .to_string();
     assert_eq!(
         final_state,
