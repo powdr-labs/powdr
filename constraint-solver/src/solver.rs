@@ -4,6 +4,8 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::quadratic_equivalences;
+use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
@@ -80,34 +82,70 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
-            for i in 0..self.constraint_system.algebraic_constraints.len() {
-                // TODO: Improve efficiency by only running skipping constraints that
-                // have not received any updates since they were last processed.
-                let effects = self.constraint_system.algebraic_constraints[i]
-                    .solve(&self.range_constraints)?
-                    .effects;
-                for effect in effects {
-                    progress |= self.apply_effect(effect);
-                }
-            }
-            let effects = self
-                .constraint_system
-                .bus_interactions
-                .iter()
-                .flat_map(|bus_interaction| {
-                    bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
-                })
-                // Collect to satisfy borrow checker
-                .collect::<Vec<_>>();
-            for effect in effects {
-                progress |= self.apply_effect(effect);
-            }
+            // Try solving constraints in isolation.
+            progress |= self.solve_in_isolation()?;
+            // Try inferring new information using bus interactions.
+            progress |= self.solve_bus_interactions();
+            // Try to find equivalent variables using quadratic constraints.
+            progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
                 break;
             }
         }
         Ok(())
+    }
+
+    /// Tries to make progress by solving each constraint in isolation.
+    fn solve_in_isolation(&mut self) -> Result<bool, Error> {
+        let mut progress = false;
+        for i in 0..self.constraint_system.algebraic_constraints.len() {
+            // TODO: Improve efficiency by only running skipping constraints that
+            // have not received any updates since they were last processed.
+            let effects = self.constraint_system.algebraic_constraints[i]
+                .solve(&self.range_constraints)?
+                .effects;
+            for effect in effects {
+                progress |= self.apply_effect(effect);
+            }
+        }
+        Ok(progress)
+    }
+
+    /// Tries to infer new information using bus interactions.
+    fn solve_bus_interactions(&mut self) -> bool {
+        let mut progress = false;
+        let effects = self
+            .constraint_system
+            .bus_interactions
+            .iter()
+            .flat_map(|bus_interaction| {
+                bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+            })
+            // Collect to satisfy borrow checker
+            .collect::<Vec<_>>();
+        for effect in effects {
+            progress |= self.apply_effect(effect);
+        }
+        progress
+    }
+
+    /// Tries to find equivalent variables using quadratic constraints.
+    fn try_solve_quadratic_equivalences(&mut self) -> bool {
+        let equivalences = quadratic_equivalences::find_quadratic_equalities(
+            &self.constraint_system.algebraic_constraints,
+            &self.range_constraints,
+        );
+        for (x, y) in &equivalences {
+            // TODO can we make this work with Effects?
+            for constraint in &mut self.constraint_system.algebraic_constraints {
+                constraint.substitute_by_unknown(
+                    y,
+                    &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
+                );
+            }
+        }
+        !equivalences.is_empty()
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
@@ -161,6 +199,14 @@ impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
 
 impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
     for RangeConstraints<T, V>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var).cloned().unwrap_or_default()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
+    for &RangeConstraints<T, V>
 {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         self.range_constraints.get(var).cloned().unwrap_or_default()
