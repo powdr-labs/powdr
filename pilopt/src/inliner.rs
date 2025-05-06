@@ -1,7 +1,5 @@
 use powdr_constraint_solver::{
-    constraint_system::ConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    symbolic_expression::SymbolicExpression,
+    constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::{
