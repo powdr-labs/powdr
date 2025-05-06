@@ -1,7 +1,7 @@
 use powdr_constraint_solver::{
     constraint_system::ConstraintSystem,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    symbolic_expression::{BinaryOperator, SymbolicExpression},
+    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::hash::Hasher;
@@ -109,33 +109,9 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 
         assert!(!coeff_const.is_zero());
 
-        let mut rhs = QuadraticSymbolicExpression::from(T::zero());
-
-        for (l, r) in &constraint.quadratic {
-            rhs += l.clone() * r.clone();
-        }
-
-        for (other_var, other_coeff) in &constraint.linear {
-            if other_var != target_var {
-                let var_expr =
-                    QuadraticSymbolicExpression::from_unknown_variable(other_var.clone());
-                rhs += var_expr * other_coeff.clone();
-            }
-        }
-
-        rhs += constraint.constant.clone().into();
-
-        rhs = -rhs;
-
-        let rhs_qse = if coeff_const.is_one() {
-            rhs
-        } else if coeff_const == -T::from(1) {
-            -rhs
-        } else {
-            let inv = SymbolicExpression::Concrete(T::one())
-                .field_div(&SymbolicExpression::Concrete(coeff_const));
-            rhs * inv
-        };
+        let rhs_qse = -constraint.clone()
+            * QuadraticSymbolicExpression::from(T::one() / coeff_const)
+            + QuadraticSymbolicExpression::from_unknown_variable(target_var.clone());
 
         if rhs_qse
             .referenced_unknown_variables()
@@ -158,6 +134,7 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     max_degree: usize,
     exclude_idx: usize,
 ) -> bool {
+    // If there is nothing to check, avoid computing degrees
     let appears_in_other_constraint = identities.iter().enumerate().any(|(idx, constraint)| {
         idx != exclude_idx && constraint.referenced_unknown_variables().any(|v| v == var)
     });
