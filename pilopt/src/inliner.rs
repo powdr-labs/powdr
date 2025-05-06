@@ -4,16 +4,12 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 use std::{
     collections::{BTreeSet, HashSet},
-    fmt::Display,
     hash::Hash,
 };
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
-pub fn replace_constrained_witness_columns<
-    T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display,
->(
+pub fn replace_constrained_witness_columns<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     constraint_system: &mut ConstraintSystem<T, V>,
     max_degree: usize,
 ) {
@@ -40,7 +36,7 @@ pub fn replace_constrained_witness_columns<
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     constraint_system: &mut ConstraintSystem<T, V>,
     keep: &BTreeSet<V>,
     max_degree: usize,
@@ -90,7 +86,7 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     constraint: &QuadraticSymbolicExpression<T, V>,
 ) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
     let mut substitutions = vec![];
