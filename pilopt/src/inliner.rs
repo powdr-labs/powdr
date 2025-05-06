@@ -439,11 +439,6 @@ mod test {
             algebraic_constraints: identities.clone(),
             bus_interactions: vec![],
         };
-
-        let mut opt_5 = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions: vec![],
-        };
         replace_constrained_witness_columns(&mut constraint_system, 3);
         // 1) a = b + 1
         //    ⇒ a = b + 1
