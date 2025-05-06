@@ -10,10 +10,30 @@ use std::hash::Hash;
 /// Description of a constraint system.
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
-    pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
-    pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+}
+
+impl<T: FieldElement, V> ConstraintSystem<T, V> {
+    pub fn new(
+        algebraic_constraints: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    ) -> Self {
+        ConstraintSystem {
+            algebraic_constraints: algebraic_constraints.into_iter().collect(),
+            bus_interactions: bus_interactions.into_iter().collect(),
+        }
+    }
+
+    pub fn algebraic_constraints(&self) -> &[QuadraticSymbolicExpression<T, V>] {
+        &self.algebraic_constraints
+    }
+
+    pub fn bus_interactions(&self) -> &[BusInteraction<QuadraticSymbolicExpression<T, V>>] {
+        &self.bus_interactions
+    }
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
@@ -59,7 +79,7 @@ impl<V> BusInteraction<V> {
         )
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
         Box::new(
             [&mut self.bus_id, &mut self.multiplicity]
                 .into_iter()

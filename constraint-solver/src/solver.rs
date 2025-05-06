@@ -95,10 +95,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// Tries to make progress by solving each constraint in isolation.
     fn solve_in_isolation(&mut self) -> Result<bool, Error> {
         let mut progress = false;
-        for i in 0..self.constraint_system.algebraic_constraints.len() {
+        for i in 0..self.constraint_system.algebraic_constraints().len() {
             // TODO: Improve efficiency by only running skipping constraints that
             // have not received any updates since they were last processed.
-            let effects = self.constraint_system.algebraic_constraints[i]
+            let effects = self.constraint_system.algebraic_constraints()[i]
                 .solve(&self.range_constraints)?
                 .effects;
             for effect in effects {
@@ -113,7 +113,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         let mut progress = false;
         let effects = self
             .constraint_system
-            .bus_interactions
+            .bus_interactions()
             .iter()
             .flat_map(|bus_interaction| {
                 bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)

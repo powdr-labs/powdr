@@ -48,18 +48,15 @@ fn assert_expected_state(
 #[test]
 fn single_variable() {
     assert_solve_result(
-        Solver::new(ConstraintSystem {
-            algebraic_constraints: vec![var("x") - constant(5)],
-            bus_interactions: vec![],
-        }),
+        Solver::new(ConstraintSystem::new(vec![var("x") - constant(5)], vec![])),
         vec![("x", 5.into())],
     );
 }
 
 #[test]
 fn concretely_solvable() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::new(
+        vec![
             var("a") - constant(2),
             var("b") - constant(3),
             // c = a * b = 6
@@ -67,8 +64,8 @@ fn concretely_solvable() {
             // d = c * 4 - a = 22
             var("d") - (var("c") * constant(4) - var("a")),
         ],
-        bus_interactions: vec![],
-    };
+        vec![],
+    );
     assert_solve_result(
         Solver::new(constraint_system),
         vec![
@@ -82,8 +79,8 @@ fn concretely_solvable() {
 
 #[test]
 fn bit_decomposition() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::new(
+        vec![
             // 4 bit-constrained variables:
             var("b0") * (var("b0") - constant(1)),
             var("b1") * (var("b1") - constant(1)),
@@ -93,8 +90,8 @@ fn bit_decomposition() {
             var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
                 - constant(0b1110),
         ],
-        bus_interactions: vec![],
-    };
+        vec![],
+    );
 
     assert_solve_result(
         Solver::new(constraint_system),
@@ -178,8 +175,8 @@ fn send(
 
 #[test]
 fn byte_decomposition() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::new(
+        vec![
             // Byte-decomposition of a concrete value:
             var("b0")
                 + var("b1") * constant(1 << 8)
@@ -188,10 +185,8 @@ fn byte_decomposition() {
                 - constant(0xabcdef12),
         ],
         // Byte range constraints on b0..3
-        bus_interactions: (0..4)
-            .map(|i| send(BYTE_BUS_ID, vec![var(format!("b{i}").leak())]))
-            .collect(),
-    };
+        (0..4).map(|i| send(BYTE_BUS_ID, vec![var(format!("b{i}").leak())])),
+    );
 
     let solver = Solver::new(constraint_system)
         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
@@ -209,8 +204,8 @@ fn byte_decomposition() {
 
 #[test]
 fn xor() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::new(
+        vec![
             // a and b are the byte decomposition of 0xa00b
             // Note that solving this requires range constraints on a and b
             constant(1 << 8) * var("a") + var("b") - constant(0xa00b),
@@ -218,8 +213,8 @@ fn xor() {
         // Send (a, b, c) to the XOR table.
         // Initially, this should return the required range constraints for a and b.
         // Once a and b are known concretely, c can be computed concretely as well.
-        bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
-    };
+        vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
+    );
 
     let solver = Solver::new(constraint_system)
         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
