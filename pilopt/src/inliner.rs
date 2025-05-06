@@ -80,7 +80,7 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
                     constraint_system.algebraic_constraints.remove(idx);
                     return true;
                 } else {
-                    //invalid_subs.insert(var.clone());
+                    invalid_subs.insert(var.clone());
                 }
             }
         }
