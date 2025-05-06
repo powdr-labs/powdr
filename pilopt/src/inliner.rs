@@ -211,6 +211,27 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_no_substitution() {
+        let mut identities = Vec::new();
+
+        // a + b  = 0
+        let constraint1 = var("a") + var("b");
+        identities.push(constraint1);
+
+        // b + d = 0
+        let constraint2 = var("c") + var("d");
+        identities.push(constraint2);
+
+        let mut constraint_system = ConstraintSystem {
+            algebraic_constraints: identities,
+            bus_interactions: vec![],
+        };
+
+        replace_constrained_witness_columns(&mut constraint_system, 3);
+        assert_eq!(constraint_system.algebraic_constraints.len(), 2);
+    }
+
+    #[test]
     fn test_replace_witness_columns() {
         let mut identities = Vec::new();
 
@@ -415,10 +436,14 @@ mod test {
         identities.push(constraint6);
 
         let mut constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
+            algebraic_constraints: identities.clone(),
             bus_interactions: vec![],
         };
 
+        let mut opt_5 = ConstraintSystem {
+            algebraic_constraints: identities,
+            bus_interactions: vec![],
+        };
         replace_constrained_witness_columns(&mut constraint_system, 3);
         // 1) a = b + 1
         //    ⇒ a = b + 1
