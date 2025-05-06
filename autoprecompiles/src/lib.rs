@@ -27,7 +27,7 @@ use std::fmt::Display;
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
-mod optimizer;
+pub mod optimizer;
 pub mod powdr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
