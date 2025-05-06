@@ -208,22 +208,23 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    /// Substitute a variable by an unknown expression (a QuadraticSymbolicExpression).
+    /// Substitute an unknown variable by a QuadraticSymbolicExpression.
+    ///
+    /// Note this does NOT work properly if the variable is used inside a
+    /// known SymbolicExpression.
     pub fn substitute_by_unknown(
         &mut self,
         variable: &V,
         substitution: &QuadraticSymbolicExpression<T, V>,
     ) {
-        if !self.referenced_variables().any(|v| v == variable) {
+        if !self.referenced_unknown_variables().any(|v| v == variable) {
             return;
         }
 
         let mut to_add = QuadraticSymbolicExpression::from(T::zero());
         for (var, coeff) in std::mem::take(&mut self.linear) {
             if var == *variable {
-                let mut term = substitution.clone();
-                term *= &coeff;
-                to_add += term;
+                to_add += substitution.clone() * coeff;
             } else {
                 self.linear.insert(var, coeff);
             }
@@ -252,13 +253,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             })
             .collect();
 
-        if !to_add
-            .try_to_known()
-            .map(|ta| ta.is_known_zero())
-            .unwrap_or(false)
-        {
-            *self += to_add;
-        }
+        *self += to_add;
     }
 
     /// Returns the set of referenced variables, both know and unknown.
