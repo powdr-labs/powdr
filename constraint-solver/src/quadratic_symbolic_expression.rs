@@ -322,7 +322,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     /// `self` is affine and `variable` has a coefficient which is known to be not zero.
     ///
     /// Returns the resulting solved quadratic symbolic expression.
-    pub fn solve_for(&self, variable: &V) -> Option<QuadraticSymbolicExpression<T, V>> {
+    pub fn try_solve_for(&self, variable: &V) -> Option<QuadraticSymbolicExpression<T, V>> {
         if self.is_quadratic() {
             return None;
         }

@@ -148,7 +148,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 .max_by_key(|v| self.range_constraints.get(v).range_width())
                 .unwrap()
                 .clone();
-            let substitution = constr.solve_for(&least_constrained).unwrap();
+            let substitution = constr.try_solve_for(&least_constrained).unwrap();
             self.constraint_system
                 .substitute_by_unknown(&least_constrained, &substitution);
             log::trace!("({least_constrained} := {substitution})");
