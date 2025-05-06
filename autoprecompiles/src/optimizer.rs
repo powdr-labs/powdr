@@ -239,7 +239,7 @@ fn log_constraint_system_stats<P: FieldElement>(
     log::info!("{step} - Constraints: {num_constraints}, Bus Interactions: {num_bus_interactions}, Witness Columns: {num_witness_columns}");
 }
 
-enum ConcreteBusInteractionResult {
+pub enum ConcreteBusInteractionResult {
     /// This bus interaction can always be matched
     AlwaysSatisfied,
     /// This bus interaction can never be matched
