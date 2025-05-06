@@ -4,12 +4,16 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 use std::{
     collections::{BTreeSet, HashSet},
+    fmt::Display,
     hash::Hash,
 };
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
-pub fn replace_constrained_witness_columns<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+pub fn replace_constrained_witness_columns<
+    T: FieldElement,
+    V: Ord + Clone + Hash + Eq + Display,
+>(
     constraint_system: &mut ConstraintSystem<T, V>,
     max_degree: usize,
 ) {
@@ -36,7 +40,7 @@ pub fn replace_constrained_witness_columns<T: FieldElement, V: Ord + Clone + Has
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint_system: &mut ConstraintSystem<T, V>,
     keep: &BTreeSet<V>,
     max_degree: usize,
@@ -76,7 +80,7 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
                     constraint_system.algebraic_constraints.remove(idx);
                     return true;
                 } else {
-                    invalid_subs.insert(var.clone());
+                    //invalid_subs.insert(var.clone());
                 }
             }
         }
@@ -85,10 +89,8 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     false
 }
 
-/// Finds variables in a constraint that can be isolated as var = expr.
-///
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint: &QuadraticSymbolicExpression<T, V>,
 ) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
     let mut substitutions = vec![];
@@ -102,10 +104,12 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 
         assert!(!coeff_const.is_zero());
 
+        // Isolate target_var from the constraint equation.
         let rhs_qse = -constraint.clone()
             * QuadraticSymbolicExpression::from(T::one() / coeff_const)
             + QuadraticSymbolicExpression::from_unknown_variable(target_var.clone());
 
+        // Check if there is any target_var in the substitution .
         if rhs_qse
             .referenced_unknown_variables()
             .any(|v| v == target_var)
@@ -460,5 +464,57 @@ mod test {
             constraint_system.algebraic_constraints[1].to_string(),
             "((-c) * (b + 1)) * (b + 1) + -9223372034707292160 * result + -5"
         );
+    }
+
+    #[test]
+    fn test_inline_max_degree_suboptimal_greedy() {
+        // Show how constraint order affects optimization results
+
+        // Define the constraints in both orders
+        let mut optimal_order_identities = Vec::new();
+        let mut suboptimal_order_identities = Vec::new();
+
+        // a = b * b * b
+        let constraint1 = var("a") - var("b") * var("b") * var("b");
+        // b = c + d
+        let constraint2 = var("b") - (var("c") + var("d"));
+        // a * c * c = 10
+        let constraint3 = var("a") * var("c") * var("c") - constant(10);
+        // c = d * d
+        let constraint4 = var("c") - var("d") * var("d");
+        // a + b + c + d = 100
+        let constraint5 = var("a") + var("b") + var("c") + var("d") - constant(100);
+
+        // Optimal order
+        optimal_order_identities.push(constraint1.clone()); // a = b * b * b
+        optimal_order_identities.push(constraint2.clone()); // b = c + d
+        optimal_order_identities.push(constraint3.clone()); // a * c * c = 10
+        optimal_order_identities.push(constraint4.clone()); // c = d * d
+        optimal_order_identities.push(constraint5.clone()); // a + b + c + d = 100
+
+        // Suboptimal order
+        suboptimal_order_identities.push(constraint5.clone()); // a + b + c + d = 100
+        suboptimal_order_identities.push(constraint3.clone()); // a * c * c = 10
+        suboptimal_order_identities.push(constraint1.clone()); // a = b * b * b
+        suboptimal_order_identities.push(constraint2.clone()); // b = c + d
+        suboptimal_order_identities.push(constraint4.clone()); // c = d * d
+
+        let mut optimal_system = ConstraintSystem {
+            algebraic_constraints: optimal_order_identities,
+            bus_interactions: vec![],
+        };
+
+        let mut suboptimal_system = ConstraintSystem {
+            algebraic_constraints: suboptimal_order_identities,
+            bus_interactions: vec![],
+        };
+
+        // Apply the same optimization to both systems
+        replace_constrained_witness_columns(&mut optimal_system, 5);
+        replace_constrained_witness_columns(&mut suboptimal_system, 5);
+
+        // Assert the difference in optimization results
+        assert_eq!(optimal_system.algebraic_constraints.len(), 3);
+        assert_eq!(suboptimal_system.algebraic_constraints.len(), 4);
     }
 }
