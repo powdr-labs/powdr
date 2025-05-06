@@ -6,20 +6,12 @@ use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::Solver,
+    test_utils::{constant, var},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use test_log::test;
 
 pub type Var = &'static str;
-pub type Qse = QuadraticSymbolicExpression<GoldilocksField, Var>;
-
-pub fn var(name: Var) -> Qse {
-    Qse::from_unknown_variable(name)
-}
-
-pub fn constant(value: u64) -> Qse {
-    GoldilocksField::from(value).into()
-}
 
 pub fn assert_solve_result(
     solver: Solver<GoldilocksField, Var>,

@@ -208,7 +208,58 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    // TODO implement substitute_by_unknown where substitution is a QSE.
+    /// Substitute a variable by an unknown expression (a QuadraticSymbolicExpression).
+    pub fn substitute_by_unknown(
+        &mut self,
+        variable: &V,
+        substitution: &QuadraticSymbolicExpression<T, V>,
+    ) {
+        if !self.referenced_variables().any(|v| v == variable) {
+            return;
+        }
+
+        let mut to_add = QuadraticSymbolicExpression::from(T::zero());
+        for (var, coeff) in std::mem::take(&mut self.linear) {
+            if var == *variable {
+                let mut term = substitution.clone();
+                term *= &coeff;
+                to_add += term;
+            } else {
+                self.linear.insert(var, coeff);
+            }
+        }
+
+        self.quadratic = std::mem::take(&mut self.quadratic)
+            .into_iter()
+            .filter_map(|(mut l, mut r)| {
+                l.substitute_by_unknown(variable, substitution);
+                r.substitute_by_unknown(variable, substitution);
+                match (l.try_to_known(), r.try_to_known()) {
+                    (Some(lval), Some(rval)) => {
+                        to_add += (lval * rval).into();
+                        None
+                    }
+                    (Some(lval), None) => {
+                        to_add += r * lval;
+                        None
+                    }
+                    (None, Some(rval)) => {
+                        to_add += l * rval;
+                        None
+                    }
+                    _ => Some((l, r)),
+                }
+            })
+            .collect();
+
+        if !to_add
+            .try_to_known()
+            .map(|ta| ta.is_known_zero())
+            .unwrap_or(false)
+        {
+            *self += to_add;
+        }
+    }
 
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
@@ -789,6 +840,8 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
 mod tests {
     use std::collections::HashMap;
 
+    use crate::test_utils::{constant, var};
+
     use super::*;
     use powdr_number::GoldilocksField;
 
@@ -1215,5 +1268,100 @@ Z: [10, 4294967050] & 0xffffffff;
             rc,
             RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(5))
         );
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_basic_replacement() {
+        let mut expr = var("a");
+        let subst = var("x");
+
+        expr.substitute_by_unknown(&"a", &subst);
+        assert_eq!(expr.to_string(), "x");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_linear_to_quadratic() {
+        let mut expr = var("x");
+        let subst = var("y") * var("z") + constant(3);
+        expr.substitute_by_unknown(&"x", &subst);
+
+        assert!(expr.is_quadratic());
+        assert_eq!(expr.to_string(), "(y) * (z) + 3");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_inside_quadratic() {
+        let mut expr = var("x") * var("y");
+        let subst = var("a") + constant(1);
+
+        expr.substitute_by_unknown(&"x", &subst);
+        assert!(expr.is_quadratic());
+        assert_eq!(expr.to_string(), "(a + 1) * (y)");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_linear() {
+        let mut expr = var("x") + var("y");
+        let subst = var("a") + var("b");
+
+        expr.substitute_by_unknown(&"x", &subst);
+        assert!(!expr.is_quadratic());
+        assert_eq!(expr.linear.len(), 3);
+        assert_eq!(expr.to_string(), "a + b + y");
+    }
+
+    #[test]
+    fn test_complex_expression_multiple_substitution() {
+        let mut expr = (var("x") * var("w")) + var("x") + constant(3) * var("y") + constant(5);
+        assert_eq!(expr.to_string(), "(x) * (w) + x + 3 * y + 5");
+
+        let subst = var("a") * var("b") + constant(1);
+
+        expr.substitute_by_unknown(&"x", &subst);
+
+        let (quadratic, linear_iter, constant) = expr.components();
+        let linear: Vec<_> = linear_iter.collect();
+
+        assert_eq!(
+            expr.to_string(),
+            "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
+        );
+        // Structural validation
+        assert_eq!(quadratic.len(), 2);
+        assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
+        assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
+        assert_eq!(quadratic[0].0.quadratic[0].1.to_string(), "b");
+        assert!(quadratic[0].0.linear.is_empty());
+        assert_eq!(
+            quadratic[0].0.constant.try_to_number(),
+            Some(GoldilocksField::from(1)),
+        );
+        assert_eq!(quadratic[0].1.to_string(), "w");
+        assert_eq!(quadratic[1].0.to_string(), "a");
+        assert_eq!(quadratic[1].1.to_string(), "b");
+        assert_eq!(linear[0].0.to_string(), "y");
+        assert_eq!(linear.len(), 1);
+        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(6)),);
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_coeff_distribution() {
+        let mut expr = constant(2) * var("a") + constant(7);
+        assert_eq!(expr.to_string(), "2 * a + 7");
+
+        let subst = var("x") * var("y");
+
+        expr.substitute_by_unknown(&"a", &subst);
+
+        let (quadratic, linear_iter, constant) = expr.components();
+        let linear: Vec<_> = linear_iter.collect();
+
+        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
+
+        assert_eq!(quadratic.len(), 1);
+        assert_eq!(quadratic[0].0.to_string(), "2 * x");
+        assert_eq!(quadratic[0].1.to_string(), "y");
+        assert!(linear.is_empty());
+        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
     }
 }

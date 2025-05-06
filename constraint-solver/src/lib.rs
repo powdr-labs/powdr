@@ -7,6 +7,7 @@ pub mod range_constraint;
 pub mod solver;
 pub mod symbolic_expression;
 pub mod symbolic_to_quadratic;
+pub mod test_utils;
 pub mod variable_update;
 
 mod utils;
