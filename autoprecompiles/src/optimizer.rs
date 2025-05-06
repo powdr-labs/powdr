@@ -6,7 +6,6 @@ use powdr_constraint_solver::{
     solver::Solver,
     symbolic_expression::SymbolicExpression,
 };
-use powdr_executor::witgen::Constraint;
 use powdr_number::FieldElement;
 use powdr_pilopt::{
     qse_opt::{
@@ -27,12 +26,16 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, Symb
 /// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + ConcreteBusInteractionHandler<P> + 'static,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + ConcreteBusInteractionHandler<P>
+        + 'static
+        + Clone,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
     log_constraint_system_stats("Starting optimize()", &constraint_system);
-    let constraint_system = solver_based_optimization(constraint_system, bus_interaction_handler);
+    let constraint_system =
+        solver_based_optimization(constraint_system, bus_interaction_handler.clone());
     log_constraint_system_stats("After solver-based optimization", &constraint_system);
     let constraint_system =
         remove_trivial_bus_interactions(constraint_system, bus_interaction_handler);
@@ -137,7 +140,10 @@ fn remove_trivial_bus_interactions<T: FieldElement>(
                         ConcreteBusInteractionResult::AlwaysSatisfied => None,
                         ConcreteBusInteractionResult::HasSideEffects => Some(bus_interaction), // Here we still keep the original bus interation
                         ConcreteBusInteractionResult::ViolatesBusRules => {
-                            panic!("Bus interaction violates bus rules: {bus_interaction:?}")
+                            panic!(
+                                "Bus interaction with id {:?} violates bus rules",
+                                bus_interaction.bus_id
+                            );
                         }
                     }
                 } else {

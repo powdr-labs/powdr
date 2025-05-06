@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use optimizer::optimize;
+use optimizer::{optimize, ConcreteBusInteractionHandler};
 use powdr::collect_cols_algebraic;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::asm::Part;
@@ -338,7 +338,10 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
-        bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+        bus_interaction_handler: impl BusInteractionHandler<T>
+            + ConcreteBusInteractionHandler<T>
+            + 'static
+            + Clone,
     ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
         let (mut machine, subs) = generate_precompile(
             &self.program,
