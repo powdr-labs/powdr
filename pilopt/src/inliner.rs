@@ -55,7 +55,7 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     for idx in indices.into_iter().rev() {
         let constraint = &constraint_system.algebraic_constraints[idx];
 
-        for (var, expr) in find_inlinable_variable(constraint) {
+        for (var, expr) in find_inlinable_variables(constraint) {
             if keep.contains(&var) {
                 continue;
             }
@@ -93,7 +93,7 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 /// Finds variables in a constraint that can be isolated as var = expr.
 ///
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variable<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     constraint: &QuadraticSymbolicExpression<T, V>,
 ) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
     let mut substitutions = vec![];
@@ -107,9 +107,7 @@ fn find_inlinable_variable<T: FieldElement, V: Ord + Clone + Hash + Eq>(
             continue;
         };
 
-        if coeff_const.is_zero() {
-            continue;
-        }
+        assert!(!coeff_const.is_zero());
 
         let mut rhs = QuadraticSymbolicExpression::from(T::zero());
 
