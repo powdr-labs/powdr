@@ -107,9 +107,7 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
             continue;
         };
 
-        if coeff_const.is_zero() {
-            continue;
-        }
+        assert!(!coeff_const.is_zero());
 
         let mut rhs = QuadraticSymbolicExpression::from(T::zero());
 
