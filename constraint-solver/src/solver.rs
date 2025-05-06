@@ -1,9 +1,9 @@
-use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
@@ -18,7 +18,7 @@ use std::hash::Hash;
 #[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    pub assignments: BTreeMap<V, T>,
+    pub assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
     /// The final state of the constraint system, with known variables
     /// replaced by their values and constraints simplified accordingly.
     pub simplified_constraint_system: ConstraintSystem<T, V>,
@@ -33,6 +33,9 @@ pub struct Solver<T: FieldElement, V> {
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
+    /// The concrete variable assignments or replacements that were derived for variables
+    /// that do not occur in the constraints any more.
+    assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -47,6 +50,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             constraint_system,
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            assignments: BTreeMap::new(),
         }
     }
 
@@ -66,13 +70,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
-        let assignments = self
-            .range_constraints
-            .all_range_constraints()
-            .filter_map(|(v, rc)| Some((v, rc.try_to_single_value()?)))
-            .collect();
         Ok(SolveResult {
-            assignments,
+            assignments: self.assignments,
             simplified_constraint_system: self.constraint_system,
         })
     }
@@ -84,6 +83,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.solve_in_isolation()?;
             // Try inferring new information using bus interactions.
             progress |= self.solve_bus_interactions();
+            if !progress {
+                // If there are non-quadratic constraints with more than one variable,
+                // inline the least constrained of them.
+                // To only do this as a last resort to prioritize constant propagation.
+                progress |= self.inline_affine();
+            }
 
             if !progress {
                 break;
@@ -126,6 +131,35 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         progress
     }
 
+    /// If there are non-quadratic constraints with more than one variable,
+    /// inline the least constrained of them.
+    fn inline_affine(&mut self) -> bool {
+        let mut progress = false;
+        for i in 0..self.constraint_system.algebraic_constraints.len() {
+            let constr = &self.constraint_system.algebraic_constraints[i];
+            if !constr.is_affine() {
+                continue;
+            }
+            if constr.referenced_unknown_variables().count() <= 1 {
+                continue;
+            }
+            let least_constrained = constr
+                .referenced_unknown_variables()
+                .max_by_key(|v| self.range_constraints.get(v).range_width())
+                .unwrap()
+                .clone();
+            let substitution = constr.solve_for(&least_constrained).unwrap();
+            self.constraint_system
+                .substitute_by_unknown(&least_constrained, &substitution);
+            log::trace!("({least_constrained} := {substitution})");
+            println!("({least_constrained} := {substitution})");
+            self.assignments
+                .insert(least_constrained.clone(), substitution);
+            progress = true;
+        }
+        progress
+    }
+
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
             Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr),
@@ -153,6 +187,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
+                self.assignments.insert(variable.clone(), value.into());
                 self.constraint_system.substitute(variable, &value.into());
             }
             true
@@ -195,13 +230,5 @@ impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
         } else {
             false
         }
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RangeConstraints<T, V> {
-    fn all_range_constraints(self) -> impl Iterator<Item = (V, RangeConstraint<T>)> {
-        self.range_constraints
-            .into_iter()
-            .sorted_by_key(|(v, _)| v.clone())
     }
 }

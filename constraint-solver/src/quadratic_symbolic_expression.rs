@@ -323,6 +323,22 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         })
     }
 
+    /// Solves the constraint for `variable`. This is only possible if
+    /// `self` is affine and `variable` has a coefficient which is known to be not zero.
+    ///
+    /// Returns the resulting solved quadratic symbolic expression.
+    pub fn solve_for(&self, variable: &V) -> Option<QuadraticSymbolicExpression<T, V>> {
+        if self.is_quadratic() {
+            return None;
+        }
+        let mut result = self.clone();
+        let coefficient = result.linear.remove(variable)?;
+        if !coefficient.is_known_nonzero() {
+            return None;
+        }
+        Some(result * (SymbolicExpression::from(-T::from(1)).field_div(&coefficient)))
+    }
+
     fn solve_affine(
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
