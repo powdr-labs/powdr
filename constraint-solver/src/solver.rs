@@ -152,7 +152,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             self.constraint_system
                 .substitute_by_unknown(&least_constrained, &substitution);
             log::trace!("({least_constrained} := {substitution})");
-            println!("({least_constrained} := {substitution})");
             self.assignments
                 .insert(least_constrained.clone(), substitution);
             progress = true;
