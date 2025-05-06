@@ -114,11 +114,7 @@ fn find_inlinable_variable<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         let mut rhs = QuadraticSymbolicExpression::from(T::zero());
 
         for (l, r) in &constraint.quadratic {
-            rhs += QuadraticSymbolicExpression {
-                quadratic: vec![(l.clone(), r.clone())],
-                linear: Default::default(),
-                constant: T::zero().into(),
-            };
+            rhs += l.clone() * r.clone();
         }
 
         for (other_var, other_coeff) in &constraint.linear {
