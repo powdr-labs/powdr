@@ -95,11 +95,9 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 ) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
     let mut substitutions = vec![];
 
-    if constraint.linear.is_empty() {
-        return substitutions;
-    }
+    let (_, linear, _) = constraint.components();
 
-    for (target_var, coeff) in &constraint.linear {
+    for (target_var, coeff) in linear {
         let Some(coeff_const) = coeff.try_to_number() else {
             continue;
         };
@@ -165,8 +163,9 @@ fn qse_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Hash +
     var: &V,
     replacement_deg: usize,
 ) -> usize {
-    let quad_deg = qse
-        .quadratic
+    let (quadratic, linear, _) = qse.components();
+
+    let quad_deg = quadratic
         .iter()
         .map(|(l, r)| {
             qse_degree_with_virtual_substitution(l, var, replacement_deg)
@@ -175,10 +174,8 @@ fn qse_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Hash +
         .max()
         .unwrap_or(0);
 
-    let linear_deg = qse
-        .linear
-        .keys()
-        .map(|v| if v == var { replacement_deg } else { 1 })
+    let linear_deg = linear
+        .map(|(v, _)| if v == var { replacement_deg } else { 1 })
         .max()
         .unwrap_or(0);
 
@@ -189,19 +186,19 @@ fn qse_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Hash +
 fn qse_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     qse: &QuadraticSymbolicExpression<T, V>,
 ) -> usize {
-    let quad_deg = qse
-        .quadratic
+    let (quadratic, linear, _) = qse.components();
+
+    let quad_deg = quadratic
         .iter()
         .map(|(l, r)| qse_degree(l) + qse_degree(r))
         .max()
         .unwrap_or(0);
 
-    let linear_deg = if qse.linear.is_empty() { 0 } else { 1 };
-
-    assert!(
-        matches!(qse.constant, SymbolicExpression::Concrete(_)),
-        "Constant should be a concrete value"
-    );
+    let linear_deg = if linear.peekable().peek().is_some() {
+        1
+    } else {
+        0
+    };
 
     quad_deg.max(linear_deg)
 }

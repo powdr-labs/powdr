@@ -62,12 +62,12 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
     /// have at least one unknown.
-    pub quadratic: Vec<(Self, Self)>,
+    quadratic: Vec<(Self, Self)>,
     /// Linear terms of the form `a * X`, where `a` is a (symbolically) known
     /// value and `X` is an unknown variable.
-    pub linear: BTreeMap<V, SymbolicExpression<T, V>>,
+    linear: BTreeMap<V, SymbolicExpression<T, V>>,
     /// Constant term, a (symbolically) known value.
-    pub constant: SymbolicExpression<T, V>,
+    constant: SymbolicExpression<T, V>,
 }
 
 impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExpression<T, V> {
