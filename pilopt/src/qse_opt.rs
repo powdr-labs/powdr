@@ -66,7 +66,12 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 })
                 .zip_eq(simplified_constraint_system.algebraic_constraints)
                 .for_each(|(identity, simplified)| {
-                    *identity = quadratic_symbolic_expression_to_algebraic(&simplified);
+                    // We can ignore the negation because it is a polynomial identity
+                    // that is equated to zero.
+                    let (constraint, _) = extract_negation_if_possible(
+                        quadratic_symbolic_expression_to_algebraic(&simplified),
+                    );
+                    *identity = constraint;
                 });
             // We add all assignments because we did not send all references to witnesses to the solver.
             // It might have removed some variable that are hard-constrained to some value.
