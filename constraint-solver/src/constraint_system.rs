@@ -2,7 +2,6 @@ use crate::{
     effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::hash::Hash;
@@ -10,30 +9,10 @@ use std::hash::Hash;
 /// Description of a constraint system.
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
-    algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
-    bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
-}
-
-impl<T: FieldElement, V> ConstraintSystem<T, V> {
-    pub fn new(
-        algebraic_constraints: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
-        bus_interactions: impl IntoIterator<Item = BusInteraction<QuadraticSymbolicExpression<T, V>>>,
-    ) -> Self {
-        ConstraintSystem {
-            algebraic_constraints: algebraic_constraints.into_iter().collect(),
-            bus_interactions: bus_interactions.into_iter().collect(),
-        }
-    }
-
-    pub fn algebraic_constraints(&self) -> &[QuadraticSymbolicExpression<T, V>] {
-        &self.algebraic_constraints
-    }
-
-    pub fn bus_interactions(&self) -> &[BusInteraction<QuadraticSymbolicExpression<T, V>>] {
-        &self.bus_interactions
-    }
+    pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
@@ -43,19 +22,6 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                 .iter()
                 .chain(self.bus_interactions.iter().flat_map(|b| b.iter())),
         )
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq> ConstraintSystem<T, V> {
-    /// Substitutes a variable with a symbolic expression in all algebraic expressions
-    pub fn substitute(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        self.algebraic_constraints
-            .iter_mut()
-            .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut()))
-            .for_each(|expr| {
-                expr.substitute_by_known(variable, substitution);
-            });
     }
 }
 
@@ -79,7 +45,7 @@ impl<V> BusInteraction<V> {
         )
     }
 
-    fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
         Box::new(
             [&mut self.bus_id, &mut self.multiplicity]
                 .into_iter()

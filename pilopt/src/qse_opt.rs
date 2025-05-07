@@ -37,14 +37,14 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect_vec();
 
-    let constraint_system = ConstraintSystem::new(
+    let constraint_system = ConstraintSystem {
         algebraic_constraints,
         // TODO: We could add Identity::BusInteraction, or convert
         // lookups / permutations to bus interactions.
         // We could also implement a bus interaction handler to at least
         // handle fixed lookups.
-        vec![],
-    );
+        bus_interactions: vec![],
+    };
 
     match solver::Solver::new(constraint_system).solve() {
         Err(_) => {
@@ -64,9 +64,9 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         None
                     }
                 })
-                .zip_eq(simplified_constraint_system.algebraic_constraints())
+                .zip_eq(simplified_constraint_system.algebraic_constraints)
                 .for_each(|(identity, simplified)| {
-                    *identity = quadratic_symbolic_expression_to_algebraic(simplified);
+                    *identity = quadratic_symbolic_expression_to_algebraic(&simplified);
                 });
             // We add all assignments because we did not send all references to witnesses to the solver.
             // It might have removed some variable that are hard-constrained to some value.

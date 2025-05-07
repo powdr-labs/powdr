@@ -4,6 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
@@ -28,7 +29,7 @@ pub struct SolveResult<T: FieldElement, V> {
 pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: ConstraintSystem<T, V>,
+    constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
@@ -44,7 +45,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         );
 
         Solver {
-            constraint_system,
+            constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
         }
@@ -73,7 +74,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .collect();
         Ok(SolveResult {
             assignments,
-            simplified_constraint_system: self.constraint_system,
+            simplified_constraint_system: self.constraint_system.into(),
         })
     }
 
@@ -153,7 +154,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.constraint_system.substitute(variable, &value.into());
+                self.constraint_system
+                    .substitute_by_known(variable, &value.into());
             }
             true
         } else {
