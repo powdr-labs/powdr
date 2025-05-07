@@ -121,6 +121,11 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
             })
             .collect()
     }
+
+    /// Returns the set of referenced variables, both know and unknown.
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        Box::new(self.iter().flat_map(|expr| expr.referenced_variables()))
+    }
 }
 
 /// A trait for handling bus interactions.

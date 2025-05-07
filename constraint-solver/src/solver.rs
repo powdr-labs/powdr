@@ -80,34 +80,50 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
-            for i in 0..self.constraint_system.algebraic_constraints.len() {
-                // TODO: Improve efficiency by only running skipping constraints that
-                // have not received any updates since they were last processed.
-                let effects = self.constraint_system.algebraic_constraints[i]
-                    .solve(&self.range_constraints)?
-                    .effects;
-                for effect in effects {
-                    progress |= self.apply_effect(effect);
-                }
-            }
-            let effects = self
-                .constraint_system
-                .bus_interactions
-                .iter()
-                .flat_map(|bus_interaction| {
-                    bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
-                })
-                // Collect to satisfy borrow checker
-                .collect::<Vec<_>>();
-            for effect in effects {
-                progress |= self.apply_effect(effect);
-            }
+            // Try solving constraints in isolation.
+            progress |= self.solve_in_isolation()?;
+            // Try inferring new information using bus interactions.
+            progress |= self.solve_bus_interactions();
 
             if !progress {
                 break;
             }
         }
         Ok(())
+    }
+
+    /// Tries to make progress by solving each constraint in isolation.
+    fn solve_in_isolation(&mut self) -> Result<bool, Error> {
+        let mut progress = false;
+        for i in 0..self.constraint_system.algebraic_constraints.len() {
+            // TODO: Improve efficiency by only running skipping constraints that
+            // have not received any updates since they were last processed.
+            let effects = self.constraint_system.algebraic_constraints[i]
+                .solve(&self.range_constraints)?
+                .effects;
+            for effect in effects {
+                progress |= self.apply_effect(effect);
+            }
+        }
+        Ok(progress)
+    }
+
+    /// Tries to infer new information using bus interactions.
+    fn solve_bus_interactions(&mut self) -> bool {
+        let mut progress = false;
+        let effects = self
+            .constraint_system
+            .bus_interactions
+            .iter()
+            .flat_map(|bus_interaction| {
+                bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+            })
+            // Collect to satisfy borrow checker
+            .collect::<Vec<_>>();
+        for effect in effects {
+            progress |= self.apply_effect(effect);
+        }
+        progress
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
