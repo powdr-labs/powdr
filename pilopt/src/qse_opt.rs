@@ -46,6 +46,8 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         bus_interactions: vec![],
     };
 
+    //replace_constrained_witness_columns(&mut constraint_system, 3);
+
     match solver::Solver::new(constraint_system).solve() {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
