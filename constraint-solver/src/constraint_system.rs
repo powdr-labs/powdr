@@ -2,7 +2,6 @@ use crate::{
     effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::hash::Hash;
@@ -23,19 +22,6 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                 .iter()
                 .chain(self.bus_interactions.iter().flat_map(|b| b.iter())),
         )
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq> ConstraintSystem<T, V> {
-    /// Substitutes a variable with a symbolic expression in all algebraic expressions
-    pub fn substitute(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        self.algebraic_constraints
-            .iter_mut()
-            .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut()))
-            .for_each(|expr| {
-                expr.substitute_by_known(variable, substitution);
-            });
     }
 }
 
