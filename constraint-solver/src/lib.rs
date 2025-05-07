@@ -2,6 +2,7 @@
 
 pub mod constraint_system;
 pub mod effect;
+mod quadratic_equivalences;
 pub mod quadratic_symbolic_expression;
 pub mod range_constraint;
 pub mod solver;
