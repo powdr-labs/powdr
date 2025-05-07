@@ -18,11 +18,11 @@ fn replace_fixed() {
     one * Y = zero * Y + 7 * X * X;
 "#;
     let expectation = r#"namespace N(65536);
-    col witness Y;
+    col witness X;
     query |i| {
         let _: expr = 1_expr;
     };
-    N::Y = 7 * N::Y * N::Y;
+    N::X = 7 * N::X * N::X;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -144,7 +144,7 @@ namespace N(65536);
     col witness x[1];
     col witness y[0];
     col fixed t(i) { std::array::len::<expr>(N::y) };
-    N::x[0] = N::t;
+    N::t = N::x[0];
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -215,7 +215,7 @@ fn remove_unreferenced_parts_of_arrays() {
     let expectation = r#"namespace N(65536);
     col witness x[5];
     col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
-    N::x[2] = N::inte[4];
+    N::inte[4] = N::x[2];
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
     assert_eq!(optimized.intermediate_count(), 5);
@@ -380,13 +380,13 @@ fn handle_array_references_in_prover_functions() {
     "#;
     let expectation = r#"namespace N(8);
     col witness x[1];
-    N::x[0]' = N::x[0] + 1;
     {
         let intermediate = N::x[0_int] + 1_expr;
         query |i| {
             let _: expr = intermediate;
         }
     };
+    N::x[0]' = N::x[0] + 1;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -400,7 +400,7 @@ fn equal_constrained_array_elements_empty() {
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
-    N::w[4] = N::w[7];
+    N::w[7] = N::w[4];
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -417,10 +417,10 @@ fn equal_constrained_array_elements_query() {
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
-    N::w[4] = N::w[7];
     query |i| {
         let _: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
     };
+    N::w[7] = N::w[4];
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -438,9 +438,9 @@ fn equal_constrained_array_elements() {
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
-    N::w[4] = N::w[7];
-    N::w[3] = N::w[5];
-    N::w[1] + N::w[3] + N::w[7] = 5;
+    N::w[4] = 5 - (N::w[1] + N::w[3]);
+    N::w[5] = N::w[3];
+    N::w[7] = 5 - (N::w[1] + N::w[3]);
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -492,14 +492,10 @@ fn replace_witness_by_intermediate() {
     col witness w;
     col fixed f = [1_fe, 0_fe]*;
     col can_be_replaced = 2 * N::w + 3 * N::f + 5;
-    N::w + N::can_be_replaced = 5;
-    col witness linear_with_next_ref;
-    N::linear_with_next_ref = 2 * N::w + 3 * N::f' + 5;
-    N::w + N::linear_with_next_ref = 5;
-    col witness quadratic;
-    N::quadratic = 2 * N::w * N::w + 3 * N::f + 5;
-    N::w + N::quadratic = 5;
+    -(2 * N::w * N::w + N::w + 3 * N::f) = 0;
     col constrained_twice = 2 * N::w + 3 * N::f + 5;
+    N::f' = -N::w;
+    N::can_be_replaced = 5 - N::w;
     N::constrained_twice = N::w + N::f;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
@@ -564,13 +560,8 @@ fn inline_chain_of_substitutions() {
 
     let expectation = r#"namespace N(65536);
     col witness a;
-    col witness b;
-    col x = N::a + N::y;
-    col y = N::b + N::x;
-    col witness m;
-    N::y + N::m = N::x;
-    N::a * N::b = 10;
-    N::m * N::a = 1;
+    -(N::a * N::a + 10) = 0;
+    N::a * N::a = 1;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
