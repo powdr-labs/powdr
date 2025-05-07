@@ -26,6 +26,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 }
 
 /// A bus interaction.
+#[derive(Debug)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
     pub bus_id: V,
