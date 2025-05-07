@@ -127,31 +127,26 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     max_degree: usize,
     exclude_idx: usize,
 ) -> bool {
-    // If there is nothing to check, avoid computing degrees
-    let appears_in_other_constraint = identities.iter().enumerate().any(|(idx, constraint)| {
-        idx != exclude_idx && constraint.referenced_unknown_variables().any(|v| v == var)
-    });
-
-    if !appears_in_other_constraint {
-        return false;
-    }
-
     let replacement_deg = qse_degree(expr);
-    for (idx, constraint) in identities.iter().enumerate() {
-        if idx == exclude_idx {
-            continue;
-        }
+    // Check that the substitution is actually used because empty in any() returns
+    // false and we would be allowing invalid substitutions.
+    let mut found_usage = false;
 
-        if constraint.referenced_unknown_variables().any(|v| v == var) {
-            let degree = qse_degree_with_virtual_substitution(constraint, var, replacement_deg);
-
-            if degree > max_degree {
-                return false;
+    let is_valid = !identities
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, constraint)| {
+            if idx != exclude_idx && constraint.referenced_unknown_variables().any(|v| v == var) {
+                found_usage = true;
+                Some(constraint)
+            } else {
+                None
             }
-        }
-    }
+        })
+        .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
+        .any(|deg| deg > max_degree);
 
-    true
+    found_usage && is_valid
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
