@@ -32,6 +32,7 @@ members = [
     "schemas",
     "backend-utils",
     "executor-utils",
+    "autoprecompiles",
 ]
 
 exclude = ["riscv-runtime"]
