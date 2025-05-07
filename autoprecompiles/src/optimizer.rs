@@ -8,6 +8,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 use powdr_pilopt::{
+    inliner::replace_constrained_witness_columns,
     qse_opt::{
         algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
         Variable,
@@ -43,11 +44,10 @@ pub fn optimize<P: FieldElement>(
         "After removing trivial bus interactions",
         &constraint_system,
     );
-    let constraint_system = remove_trivial_constraints(constraint_system);
+    let mut constraint_system = remove_trivial_constraints(constraint_system);
     log_constraint_system_stats("After removing trivial constraints", &constraint_system);
-
-    // TODO: Add equivalent of replace_linear_witness_columns step to make
-    // powdr_optimize_legacy obsolete
+    replace_constrained_witness_columns(&mut constraint_system, 3);
+    log_constraint_system_stats("After in-lining witness columns", &constraint_system);
 
     constraint_system_to_symbolic_machine(constraint_system)
 }
