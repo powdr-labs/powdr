@@ -78,7 +78,7 @@ impl<T: FieldElement> Effect<T, Variable> {
                     .flat_map(|(v, known)| (!known).then_some(v)),
             ),
             Effect::ProverFunctionCall(ProverFunctionCall { targets, .. }) => {
-                Box::new(targets.iter())
+                Box::new(targets.iter().flatten())
             }
             Effect::Branch(_, first, second) => {
                 Box::new(first.iter().chain(second).flat_map(|e| e.written_vars()))
@@ -106,7 +106,7 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
             Effect::MachineCall(_, _, args) => Box::new(args.iter()),
             Effect::ProverFunctionCall(ProverFunctionCall {
                 targets, inputs, ..
-            }) => Box::new(targets.iter().chain(inputs)),
+            }) => Box::new(targets.iter().flatten().chain(inputs)),
             Effect::Branch(branch_condition, first, second) => Box::new(
                 branch_condition.value.referenced_symbols().chain(
                     [first, second]
@@ -122,8 +122,8 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProverFunctionCall<V> {
-    /// Which variables to assign the result to.
-    pub targets: Vec<V>,
+    /// Which variables to assign the result to. If an element is None, it is ignored.
+    pub targets: Vec<Option<V>>,
     /// The index of the prover function in the list.
     pub function_index: usize,
     /// The row offset to supply to the prover function.
@@ -173,7 +173,13 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
             }) => {
                 format!(
                     "[{}] = prover_function_{function_index}({row_offset}, [{}]);",
-                    targets.iter().join(", "),
+                    targets
+                        .iter()
+                        .map(|v| v
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "_".to_string()))
+                        .join(", "),
                     inputs.iter().join(", ")
                 )
             }
