@@ -1,31 +1,35 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::iter::from_fn;
 use std::ops::ControlFlow;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicReferenceThin, AlgebraicUnaryOperation, BusInteractionIdentity, PolyID,
     PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::{
     visitor::{ExpressionVisitable, VisitOrder},
     NamespacedPolynomialReference, UnaryOperator,
 };
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
-use crate::{BusInteractionKind, SymbolicBusInteraction};
+use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicMachine};
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed
 pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
-    sub: &BTreeMap<String, AlgebraicExpression<T>>,
+    sub: &BTreeMap<Column, AlgebraicExpression<T>>,
 ) {
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                if let Some(sub_expr) = sub.get(name) {
+            if let AlgebraicExpression::Reference(r) = expr {
+                if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
                     *expr = sub_expr.clone();
                 }
             }
@@ -129,27 +133,6 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     );
 }
 
-pub fn append_suffix_algebraic<T: Clone>(
-    expr: &mut AlgebraicExpression<T>,
-    suffix: &str,
-) -> BTreeMap<String, String> {
-    let mut subs = BTreeMap::new();
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                if !["is_first_row", "is_transition", "is_last_row"].contains(&name.as_str()) {
-                    let new_name = format!("{name}_{suffix}");
-                    subs.insert(name.clone(), new_name.clone());
-                    *name = new_name;
-                }
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    subs
-}
-
 // After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
 pub fn collect_cols_algebraic<T: Clone + Ord>(
     expr: &AlgebraicExpression<T>,
@@ -175,71 +158,103 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
-pub fn collect_cols_names_algebraic<T: Clone + Ord + std::fmt::Display>(
-    expr: &AlgebraicExpression<T>,
-) -> BTreeSet<String> {
-    let mut cols: BTreeSet<String> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                cols.insert(name.clone());
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
+pub struct Column {
+    pub name: String,
+    pub id: PolyID,
 }
 
-pub fn collect_cols_ids_algebraic<T: Clone + Ord + std::fmt::Display>(
-    expr: &AlgebraicExpression<T>,
-) -> BTreeSet<u64> {
-    let mut cols: BTreeSet<u64> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = expr {
-                cols.insert(poly_id.id);
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+impl From<&AlgebraicReference> for Column {
+    fn from(r: &AlgebraicReference) -> Self {
+        assert!(!r.next);
+        Column {
+            name: r.name.clone(),
+            id: r.poly_id,
+        }
+    }
 }
 
-pub fn reassign_ids_algebraic<T: Clone + Ord>(
-    expr: &mut AlgebraicExpression<T>,
-    mut curr_id: usize,
-    subs: &mut BTreeMap<String, usize>,
-    rev_subs: &mut BTreeMap<usize, String>,
-) -> usize {
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, poly_id, .. }) = expr {
-                match subs.get_mut(name.as_str()) {
-                    Some(id) => {
-                        match rev_subs.get(id) {
-                            Some(r_name) => {
-                                assert_eq!(r_name, name, "Id {id} already assigned to {name}");
-                            }
-                            None => {
-                                rev_subs.insert(*id, name.clone());
-                            }
-                        }
-                        poly_id.id = *id as u64;
-                    }
-                    None => {
-                        poly_id.id = curr_id as u64;
-                        subs.insert(name.clone(), curr_id);
-                        curr_id += 1;
-                    }
+pub trait UniqueColumns<'a, T: 'a> {
+    /// Returns an iterator over the unique columns
+    fn unique_columns(&'a self) -> impl Iterator<Item = Column>;
+}
+
+impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
+    UniqueColumns<'a, T> for E
+{
+    fn unique_columns(&'a self) -> impl Iterator<Item = Column> {
+        self.all_children()
+            .filter_map(|e| {
+                if let AlgebraicExpression::Reference(r) = e {
+                    Some(Column::from(r))
+                } else {
+                    None
                 }
+            })
+            .unique()
+    }
+}
+
+pub fn reassign_ids<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    mut curr_id: u64,
+    suffix: usize,
+) -> (u64, Vec<u64>, SymbolicMachine<T>) {
+    // Build a mapping from local columns to global columns
+    let subs: BTreeMap<Column, Column> = machine
+        .unique_columns()
+        // zip with increasing ids, mutating curr_id
+        .zip(from_fn(|| {
+            let id = curr_id;
+            curr_id += 1;
+            Some(id)
+        }))
+        .map(|(local_column, id)| {
+            assert_eq!(
+                local_column.id.ptype,
+                PolynomialType::Committed,
+                "Expected committed polynomial type"
+            );
+            let global_column = Column {
+                name: format!("{}_{}", local_column.name, suffix),
+                id: PolyID {
+                    id,
+                    ptype: PolynomialType::Committed,
+                },
+            };
+            (local_column, global_column)
+        })
+        .collect();
+
+    // Update the machine with the new global column names
+    machine.visit_expressions_mut(
+        &mut |e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
+                r.poly_id.id = new_col.id.id;
+                r.name = new_col.name.clone();
             }
             ControlFlow::Continue::<()>(())
         },
         VisitOrder::Pre,
     );
-    curr_id
+
+    let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id.id, v.id.id)).collect();
+
+    let poly_id_min = *subs.keys().min().unwrap();
+    let poly_id_max = *subs.keys().max().unwrap();
+    assert_eq!(
+        poly_id_max - poly_id_min,
+        subs.len() as u64 - 1,
+        "The poly_id must be contiguous"
+    );
+
+    // Represent the substitutions as a single vector of the target poly_ids in increasing order of the source poly_ids
+    let subs = (0..subs.len())
+        .map(|i| *subs.get(&(poly_id_min + i as u64)).unwrap())
+        .collect();
+
+    (curr_id, subs, machine)
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
@@ -270,29 +285,6 @@ pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
                 _ => (),
             }
             ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-}
-
-pub fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
-    expr.visit_expressions_mut(
-        &mut |expr| match expr {
-            Expression::FunctionCall(_, ref mut fun_call) => {
-                for arg in &mut fun_call.arguments {
-                    append_suffix_mut(arg, suffix);
-                }
-                ControlFlow::Break::<()>(())
-            }
-            Expression::Reference(_, ref mut r) => {
-                let name = r.path.try_last_part().unwrap();
-                if name != "pc" && name != "pc_next" && name != "dest" {
-                    let name = format!("{name}_{suffix}");
-                    *r.path.try_last_part_mut().unwrap() = name;
-                }
-                ControlFlow::Continue::<()>(())
-            }
-            _ => ControlFlow::Continue::<()>(()),
         },
         VisitOrder::Pre,
     );

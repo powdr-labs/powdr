@@ -1,8 +1,9 @@
 use itertools::Itertools;
 use optimizer::optimize;
-use powdr::collect_cols_algebraic;
+use powdr::{collect_cols_algebraic, Column, UniqueColumns};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::asm::Part;
+use powdr_ast::parsed::visitor::Children;
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -23,6 +24,7 @@ use powdr_pilopt::optimize as pilopt_optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
+use std::iter::once;
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -61,17 +63,15 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicConstraint<T> {
-    pub fn columns(&self) -> BTreeSet<String> {
-        let mut cols = BTreeSet::new();
-        cols.extend(powdr::collect_cols_names_algebraic(&self.expr));
-        cols
+impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
+    for SymbolicConstraint<T>
+{
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(once(&self.expr))
     }
 
-    pub fn column_ids(&self) -> BTreeSet<u64> {
-        let mut cols = BTreeSet::new();
-        cols.extend(powdr::collect_cols_ids_algebraic(&self.expr));
-        cols
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(once(&mut self.expr))
     }
 }
 
@@ -95,23 +95,15 @@ impl<T: Display> Display for SymbolicBusInteraction<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicBusInteraction<T> {
-    pub fn columns(&self) -> BTreeSet<String> {
-        let mut cols = BTreeSet::new();
-        cols.extend(powdr::collect_cols_names_algebraic(&self.mult));
-        for a in &self.args {
-            cols.extend(powdr::collect_cols_names_algebraic(a));
-        }
-        cols
+impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
+    for SymbolicBusInteraction<T>
+{
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(once(&self.mult).chain(&self.args))
     }
 
-    pub fn column_ids(&self) -> BTreeSet<u64> {
-        let mut cols = BTreeSet::new();
-        cols.extend(powdr::collect_cols_ids_algebraic(&self.mult));
-        for a in &self.args {
-            cols.extend(powdr::collect_cols_ids_algebraic(a));
-        }
-        cols
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(once(&mut self.mult).chain(&mut self.args))
     }
 }
 
@@ -139,55 +131,37 @@ impl<T: Display> Display for SymbolicMachine<T> {
     }
 }
 
-impl<T> SymbolicMachine<T> {
-    pub fn algebraic_expressions(&self) -> impl Iterator<Item = &AlgebraicExpression<T>> {
-        let constraints_exprs = self.constraints.iter().map(|constraint| &constraint.expr);
+impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(
+            self.constraints
+                .iter()
+                .flat_map(|c| c.children())
+                .chain(self.bus_interactions.iter().flat_map(|i| i.children())),
+        )
+    }
 
-        let bus_mult_exprs = self
-            .bus_interactions
-            .iter()
-            .map(|interaction| &interaction.mult);
-
-        let bus_args_exprs = self
-            .bus_interactions
-            .iter()
-            .flat_map(|interaction| interaction.args.iter());
-
-        constraints_exprs
-            .chain(bus_mult_exprs)
-            .chain(bus_args_exprs)
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            self.constraints
+                .iter_mut()
+                .flat_map(|c| c.children_mut())
+                .chain(
+                    self.bus_interactions
+                        .iter_mut()
+                        .flat_map(|i| i.children_mut()),
+                ),
+        )
     }
 }
 
 impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
-    pub fn columns(&self) -> BTreeSet<String> {
-        let mut cols = BTreeSet::new();
-        for c in &self.constraints {
-            cols.extend(c.columns());
-        }
-        for b in &self.bus_interactions {
-            cols.extend(b.columns());
-        }
-        cols
-    }
-
-    pub fn constraint_columns(&self) -> BTreeSet<String> {
-        let mut cols = BTreeSet::new();
-        for c in &self.constraints {
-            cols.extend(c.columns());
-        }
-        cols
-    }
-
-    pub fn column_ids(&self) -> BTreeSet<u64> {
-        let mut cols = BTreeSet::new();
-        for c in &self.constraints {
-            cols.extend(c.column_ids());
-        }
-        for b in &self.bus_interactions {
-            cols.extend(b.column_ids());
-        }
-        cols
+    pub fn constraint_columns(&self) -> BTreeSet<Column> {
+        self.constraints
+            .iter()
+            .flat_map(|c| c.unique_columns())
+            .unique()
+            .collect()
     }
 }
 
@@ -339,17 +313,13 @@ impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
         bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
-    ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
+    ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
         let (mut machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
         );
 
-        let c = machine.columns();
-        let i = machine.column_ids();
-        assert_eq!(c.len(), i.len());
-        assert_eq!(machine.columns().len(), machine.column_ids().len());
         machine = optimize_pc_lookup(machine);
         machine = optimize_exec_bus(machine);
         machine = optimize_precompile(machine);
@@ -367,7 +337,9 @@ impl<T: FieldElement> Autoprecompiles<T> {
         }
 
         machine = optimize(machine, bus_interaction_handler);
-        machine = powdr_optimize_legacy(machine);
+        // We do not run pilcom, since it breaks the requirement that transformations should not reassign poly_id.id
+        // TODO: Remove pilcom entirely by covering all its cases in powdr_optimize
+        // machine = powdr_optimize_legacy(machine);
         machine = remove_zero_mult(machine);
         machine = remove_zero_constraint(machine);
 
@@ -433,7 +405,15 @@ pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sym
 }
 
 pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let max_id = machine.column_ids().iter().max().unwrap() + 1;
+    let max_id = machine
+        .unique_columns()
+        .map(|c| {
+            assert_eq!(c.id.ptype, PolynomialType::Committed);
+            c.id.id
+        })
+        .max()
+        .unwrap()
+        + 1;
 
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
         name: "is_valid".to_string(),
@@ -500,10 +480,10 @@ pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
             return true;
         }
 
-        bus_int.args.iter().any(|a| {
-            let a_cols = powdr::collect_cols_names_algebraic(a);
-            a_cols.iter().any(|c| cols.contains(c))
-        })
+        bus_int
+            .args
+            .iter()
+            .any(|a| a.unique_columns().any(|c| cols.contains(&c)))
     });
 
     machine
@@ -771,13 +751,11 @@ pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
-) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
+) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
-    let mut col_subs: Vec<BTreeMap<String, String>> = Vec::new();
-    let mut global_idx: usize = 3;
-    let mut global_idx_subs: BTreeMap<String, usize> = BTreeMap::new();
-    let mut global_idx_subs_rev: BTreeMap<usize, String> = BTreeMap::new();
+    let mut col_subs: Vec<Vec<u64>> = Vec::new();
+    let mut global_idx: u64 = 3;
 
     for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
@@ -785,6 +763,9 @@ pub fn generate_precompile<T: FieldElement>(
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
                 let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
+
+                let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
+                global_idx = next_global_idx;
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
@@ -796,14 +777,14 @@ pub fn generate_precompile<T: FieldElement>(
                     .exactly_one()
                     .expect("Expected single pc lookup");
 
-                let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
+                let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
                 let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
                 let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
                 let one = AlgebraicExpression::Number(1u64.into());
                 local_constraints.push((is_valid.clone() + one).into());
 
-                let mut sub_map_loadstore: BTreeMap<String, AlgebraicExpression<T>> =
+                let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> =
                     Default::default();
                 if is_loadstore(instr.opcode) {
                     sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
@@ -815,12 +796,12 @@ pub fn generate_precompile<T: FieldElement>(
                 instr
                     .args
                     .iter()
-                    .zip(pc_lookup.args.iter())
+                    .zip_eq(&pc_lookup.args)
                     .for_each(|(instr_arg, pc_arg)| {
                         let arg = AlgebraicExpression::Number(*instr_arg);
                         match pc_arg {
                             AlgebraicExpression::Reference(ref arg_ref) => {
-                                sub_map.insert(arg_ref.name.clone(), arg);
+                                sub_map.insert(Column::from(arg_ref), arg);
                             }
                             AlgebraicExpression::BinaryOperation(_expr) => {
                                 local_constraints.push((arg - pc_arg.clone()).into());
@@ -832,24 +813,15 @@ pub fn generate_precompile<T: FieldElement>(
                         }
                     });
 
-                let mut local_subs = BTreeMap::new();
                 let local_identities = machine
                     .constraints
                     .iter()
-                    .chain(local_constraints.iter())
+                    .chain(&local_constraints)
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
                         powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                        let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
                         expr = simplify_expression(expr);
-                        global_idx = powdr::reassign_ids_algebraic(
-                            &mut expr,
-                            global_idx,
-                            &mut global_idx_subs,
-                            &mut global_idx_subs_rev,
-                        );
-                        local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
@@ -865,19 +837,11 @@ pub fn generate_precompile<T: FieldElement>(
                             powdr::substitute_algebraic(e, &sub_map);
                             powdr::substitute_algebraic(e, &sub_map_loadstore);
                             *e = simplify_expression(e.clone());
-                            let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
-                            global_idx = powdr::reassign_ids_algebraic(
-                                &mut *e,
-                                global_idx,
-                                &mut global_idx_subs,
-                                &mut global_idx_subs_rev,
-                            );
-                            local_subs.extend(subs);
                         });
                     bus_interactions.push(link);
                 }
 
-                col_subs.push(local_subs);
+                col_subs.push(subs);
 
                 // after the first round of simplifying,
                 // we need to look for register memory bus interactions
@@ -1069,6 +1033,7 @@ fn try_compute_opcode_map<T: FieldElement>(
 // TODO: We should remove this step soon as powdr_optimize also in-lines witness columns
 // up to the degree bound. At that point, powdr_optimize_legacy should not yield any
 // optimizations.
+#[allow(dead_code)]
 fn powdr_optimize_legacy<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
 ) -> SymbolicMachine<P> {
@@ -1251,7 +1216,7 @@ fn is_loadstore(opcode: usize) -> bool {
 fn loadstore_chip_info<T: FieldElement>(
     machine: &SymbolicMachine<T>,
     opcode: usize,
-) -> BTreeMap<String, AlgebraicExpression<T>> {
+) -> BTreeMap<Column, AlgebraicExpression<T>> {
     let is_load = if opcode == 0x210 || opcode == 0x211 || opcode == 0x212 {
         T::from(1u32)
     } else {
@@ -1262,9 +1227,11 @@ fn loadstore_chip_info<T: FieldElement>(
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, .. }) => left.clone(),
         _ => panic!("Expected subtraction."),
     };
-    let cols = powdr::collect_cols_names_algebraic(&is_load_expr);
-    assert_eq!(cols.len(), 1);
-    let is_load_col = cols.into_iter().next().unwrap();
+    let is_load_col = if let AlgebraicExpression::Reference(r) = &*is_load_expr {
+        r.into()
+    } else {
+        panic!("expected a single reference")
+    };
 
     [(is_load_col, is_load)].into()
 }
