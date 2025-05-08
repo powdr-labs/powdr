@@ -1,30 +1,21 @@
 use itertools::Itertools;
 use optimizer::{optimize, ConcreteBusInteractionHandler};
-use powdr::collect_cols_algebraic;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_ast::parsed::asm::Part;
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperator, Analyzed, Identity, PolynomialIdentity,
+        AlgebraicUnaryOperator,
     },
-    parsed::{
-        asm::SymbolPath, visitor::AllChildren, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, NamespacedPolynomialReference, Number, PILFile, PilStatement,
-        UnaryOperation, UnaryOperator,
-    },
+    parsed::visitor::AllChildren,
 };
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
-use powdr_parser_util::SourceRef;
-use powdr_pil_analyzer::analyze_ast;
-use powdr_pilopt::optimize as pilopt_optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
 pub mod optimizer;
@@ -363,7 +354,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
         let machine = optimize_exec_bus(machine);
         let machine = optimize_precompile(machine);
         let machine = optimize(machine, bus_interaction_handler, degree_bound);
-        let machine = powdr_optimize_legacy(machine);
         let machine = remove_zero_mult(machine);
         let machine = remove_zero_constraint(machine);
 
@@ -1079,186 +1069,6 @@ fn try_compute_opcode_map<T: FieldElement>(
         })
         .chain(zero_flag.map(|flag| (offset.to_degree(), flag.clone())))
         .collect())
-}
-
-/// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
-/// Then, translate the optimized constraints and interactions back to a SymbolicMachine
-// TODO: We should remove this step soon as powdr_optimize also in-lines witness columns
-// up to the degree bound. At that point, powdr_optimize_legacy should not yield any
-// optimizations.
-fn powdr_optimize_legacy<P: FieldElement>(
-    symbolic_machine: SymbolicMachine<P>,
-) -> SymbolicMachine<P> {
-    let pilfile = symbolic_machine_to_pilfile(symbolic_machine);
-    let analyzed: Analyzed<P> = analyze_ast(pilfile).expect("Failed to analyze AST");
-    let optimized = pilopt_optimize(analyzed);
-
-    let intermediates = optimized.intermediate_definitions();
-
-    let mut powdr_exprs = Vec::new();
-    let mut powdr_bus_interactions = Vec::new();
-    for id in optimized.identities.into_iter() {
-        match id {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                powdr_exprs.push(SymbolicConstraint {
-                    expr: powdr::inline_intermediates(expression, &intermediates),
-                });
-            }
-            Identity::BusInteraction(powdr_interaction) => {
-                let interaction =
-                    powdr::powdr_interaction_to_symbolic(powdr_interaction, &intermediates);
-                powdr_bus_interactions.push(interaction);
-            }
-            _ => continue,
-        }
-    }
-    SymbolicMachine {
-        constraints: powdr_exprs,
-        bus_interactions: powdr_bus_interactions,
-    }
-}
-
-/// Create a PILFile from a SymbolicMachine
-fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> PILFile {
-    let mut program = Vec::new();
-
-    // Collect all unique polynomial references from constraints and bus interactions
-    let refs: BTreeSet<AlgebraicExpression<_>> = symbolic_machine
-        .constraints
-        .iter()
-        .flat_map(|constraint| collect_cols_algebraic(&constraint.expr))
-        .chain(
-            symbolic_machine
-                .bus_interactions
-                .iter()
-                .flat_map(|interaction| {
-                    interaction
-                        .args
-                        .iter()
-                        .chain(std::iter::once(&interaction.mult))
-                        .flat_map(|expr| collect_cols_algebraic(expr))
-                }),
-        )
-        .collect::<BTreeSet<_>>();
-
-    // Add PolynomialCommitDeclaration for all referenced columns into the program
-    for algebraic_ref in &refs {
-        if let AlgebraicExpression::Reference(ref r) = algebraic_ref {
-            program.push(PilStatement::PolynomialCommitDeclaration(
-                SourceRef::unknown(),
-                None,
-                vec![r.name.clone().into()],
-                None,
-            ));
-        }
-    }
-
-    // Add Expressions for all constraints
-    for constraint in &symbolic_machine.constraints {
-        let zero = BigUint::from(0u32).into();
-        let constraint = Expression::new_binary(
-            algebraic_to_expression::<P>(&constraint.expr),
-            BinaryOperator::Identity,
-            zero,
-        );
-        program.push(PilStatement::Expression(SourceRef::unknown(), constraint));
-    }
-
-    // Add Expressions for all bus interactions
-    for interaction in &symbolic_machine.bus_interactions {
-        let mult_expr = algebraic_to_expression::<P>(&interaction.mult);
-        let bus_id_expr = BigUint::from(interaction.id).into();
-
-        let payload_array = Expression::ArrayLiteral(
-            SourceRef::unknown(),
-            ArrayLiteral {
-                items: interaction
-                    .args
-                    .iter()
-                    .map(|arg| algebraic_to_expression::<P>(arg))
-                    .collect(),
-            },
-        );
-
-        let latch_expr = match interaction.kind {
-            BusInteractionKind::Receive => BigUint::from(0u32).into(),
-            BusInteractionKind::Send => BigUint::from(1u32).into(),
-        };
-
-        let path = SymbolPath::from_parts(
-            ["std", "prelude", "Constr", "BusInteraction"]
-                .into_iter()
-                .map(|p| Part::Named(p.to_string())),
-        );
-
-        let bus_interaction_expr = Expression::FunctionCall(
-            SourceRef::unknown(),
-            FunctionCall {
-                function: Box::new(Expression::Reference(
-                    SourceRef::unknown(),
-                    NamespacedPolynomialReference::from(path),
-                )),
-                arguments: vec![mult_expr, bus_id_expr, payload_array, latch_expr],
-            },
-        );
-
-        program.push(PilStatement::Expression(
-            SourceRef::unknown(),
-            bus_interaction_expr,
-        ));
-    }
-
-    PILFile(program)
-}
-
-/// Transforms an AlgebraicExpression from the analyzed AST to the corresponding Expression in the parsed AST.
-fn algebraic_to_expression<P: FieldElement>(expr: &AlgebraicExpression<P>) -> Expression {
-    let dummy_src = SourceRef::unknown();
-
-    match expr {
-        AlgebraicExpression::Reference(reference) => {
-            let parsed_ref = NamespacedPolynomialReference::from_identifier(reference.name.clone());
-            Expression::Reference(dummy_src, parsed_ref)
-        }
-        AlgebraicExpression::PublicReference(_name) => todo!(),
-        AlgebraicExpression::Number(value) => Expression::Number(
-            dummy_src,
-            Number {
-                value: BigUint::from(value.to_integer().try_into_u32().unwrap()),
-                type_: None,
-            },
-        ),
-        AlgebraicExpression::BinaryOperation(bin_op) => {
-            let parsed_operator = match bin_op.op {
-                AlgebraicBinaryOperator::Add => BinaryOperator::Add,
-                AlgebraicBinaryOperator::Sub => BinaryOperator::Sub,
-                AlgebraicBinaryOperator::Mul => BinaryOperator::Mul,
-                AlgebraicBinaryOperator::Pow => BinaryOperator::Pow,
-            };
-
-            let left = Box::new(algebraic_to_expression::<P>(&bin_op.left));
-            let right = Box::new(algebraic_to_expression::<P>(&bin_op.right));
-
-            Expression::BinaryOperation(
-                dummy_src,
-                BinaryOperation {
-                    op: parsed_operator,
-                    left,
-                    right,
-                },
-            )
-        }
-        AlgebraicExpression::UnaryOperation(un_op) => {
-            let op = match un_op.op {
-                AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
-            };
-
-            let expr = Box::new(algebraic_to_expression::<P>(&un_op.expr));
-
-            Expression::UnaryOperation(dummy_src, UnaryOperation { op, expr })
-        }
-        AlgebraicExpression::Challenge(_) => unreachable!(),
-    }
 }
 
 fn is_loadstore(opcode: usize) -> bool {
