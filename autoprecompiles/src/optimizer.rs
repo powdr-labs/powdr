@@ -33,6 +33,7 @@ pub fn optimize<P: FieldElement>(
         + ConcreteBusInteractionHandler<P>
         + 'static
         + Clone,
+    degree_bound: usize,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
@@ -48,7 +49,7 @@ pub fn optimize<P: FieldElement>(
         &constraint_system,
     );
 
-    let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
+    let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
     stats_logger.log("After in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
