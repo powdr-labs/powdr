@@ -47,12 +47,12 @@ pub fn optimize<P: FieldElement>(
         "After removing trivial bus interactions",
         &constraint_system,
     );
-    
-    let mut constraint_system = remove_trivial_constraints(constraint_system);
-    stats_logger.log("After removing trivial constraints", &constraint_system);
-    
-    replace_constrained_witness_columns(&mut constraint_system, 3);
+
+    let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
     stats_logger.log("After in-lining witness columns", &constraint_system);
+
+    let constraint_system = remove_trivial_constraints(constraint_system);
+    stats_logger.log("After removing trivial constraints", &constraint_system);
 
     constraint_system_to_symbolic_machine(constraint_system)
 }
