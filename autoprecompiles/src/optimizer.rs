@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_constraint_solver::{
@@ -34,20 +36,23 @@ pub fn optimize<P: FieldElement>(
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
-    log_constraint_system_stats("Starting optimize()", &constraint_system);
+    let mut stats_logger = StatsLogger::start(&constraint_system);
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
-    log_constraint_system_stats("After solver-based optimization", &constraint_system);
+    stats_logger.log("After solver-based optimization", &constraint_system);
+
     let constraint_system =
         remove_trivial_bus_interactions(constraint_system, bus_interaction_handler);
-    log_constraint_system_stats(
+    stats_logger.log(
         "After removing trivial bus interactions",
         &constraint_system,
     );
+    
     let mut constraint_system = remove_trivial_constraints(constraint_system);
-    log_constraint_system_stats("After removing trivial constraints", &constraint_system);
+    stats_logger.log("After removing trivial constraints", &constraint_system);
+    
     replace_constrained_witness_columns(&mut constraint_system, 3);
-    log_constraint_system_stats("After in-lining witness columns", &constraint_system);
+    stats_logger.log("After in-lining witness columns", &constraint_system);
 
     constraint_system_to_symbolic_machine(constraint_system)
 }
@@ -211,6 +216,30 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         mult: simplify_expression(quadratic_symbolic_expression_to_algebraic(
             &bus_interaction.multiplicity,
         )),
+    }
+}
+
+struct StatsLogger {
+    start_time: Instant,
+}
+
+impl StatsLogger {
+    fn start<P: FieldElement>(constraint_system: &ConstraintSystem<P, Variable>) -> Self {
+        log_constraint_system_stats("Starting optimization", constraint_system);
+        StatsLogger {
+            start_time: Instant::now(),
+        }
+    }
+
+    fn log<P: FieldElement>(
+        &mut self,
+        step: &str,
+        constraint_system: &ConstraintSystem<P, Variable>,
+    ) {
+        let elapsed = self.start_time.elapsed();
+        let step_with_time = format!("{step} (took {elapsed:?})");
+        log_constraint_system_stats(&step_with_time, constraint_system);
+        self.start_time = Instant::now();
     }
 }
 
