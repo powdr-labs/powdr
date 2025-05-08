@@ -3,7 +3,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 use std::fmt::Display;
-use std::{collections::BTreeSet, hash::Hash};
+use std::hash::Hash;
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
@@ -14,20 +14,8 @@ pub fn replace_constrained_witness_columns<
     mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
-    let keep: BTreeSet<V> = constraint_system
-        .bus_interactions
-        .iter()
-        .flat_map(|b| {
-            b.payload.iter().flat_map(|expr| {
-                expr.referenced_unknown_variables()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-        })
-        .collect();
-
     loop {
-        if !try_apply_substitution(&mut constraint_system, &keep, max_degree) {
+        if !try_apply_substitution(&mut constraint_system, max_degree) {
             break;
         }
     }
@@ -41,7 +29,6 @@ pub fn replace_constrained_witness_columns<
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
 fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint_system: &mut ConstraintSystem<T, V>,
-    keep: &BTreeSet<V>,
     max_degree: usize,
 ) -> bool {
     let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
@@ -50,10 +37,6 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
         let constraint = &constraint_system.algebraic_constraints[idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if keep.contains(&var) {
-                continue;
-            }
-
             if is_valid_substitution(
                 &var,
                 &expr,
@@ -62,14 +45,9 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
             ) {
                 log::debug!("Substituting {var} = {expr}");
                 log::debug!("  (from identity {constraint})");
-                constraint_system
-                    .algebraic_constraints
-                    .iter_mut()
-                    .enumerate()
-                    .filter(|(i, _)| *i != idx)
-                    .for_each(|(_, identity)| {
-                        identity.substitute_by_unknown(&var, &expr);
-                    });
+                constraint_system.iter_mut().for_each(|identity| {
+                    identity.substitute_by_unknown(&var, &expr);
+                });
 
                 constraint_system.algebraic_constraints.remove(idx);
                 return true;
@@ -226,10 +204,15 @@ mod test {
         //         = 0 + 0 + d
         //    => result = d
         // ⇒ result - d = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
+        assert_eq!(constraint_system.algebraic_constraints.len(), 0);
+        assert_eq!(constraint_system.bus_interactions.len(), 1);
         assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "b + result"
+            constraint_system.bus_interactions[0].payload[0].to_string(),
+            "result"
+        );
+        assert_eq!(
+            constraint_system.bus_interactions[0].payload[1].to_string(),
+            "-result"
         );
     }
 
@@ -347,10 +330,13 @@ mod test {
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
         // 3) result = z + 1 ⇒ result = (x + 5) + 1 = x + 6
         // ⇒ result - x - 6 = 0 ⇒ result + -x + -6 = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
         assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "result + -x + -6"
+            constraint_system.bus_interactions[0].payload[0].to_string(),
+            "z + 1"
+        );
+        assert_eq!(
+            constraint_system.bus_interactions[0].payload[1].to_string(),
+            "z + -5"
         );
     }
 
@@ -404,14 +390,10 @@ mod test {
         //    Constraint 0 encodes the definition of c without inlining
         //    Constraint 1 uses c symbolically to prevent degree overflow
 
-        assert_eq!(constraint_system.algebraic_constraints.len(), 2);
+        assert_eq!(constraint_system.algebraic_constraints.len(), 0);
         assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "(-b + -1) * (b + 1) + c"
-        );
-        assert_eq!(
-            constraint_system.algebraic_constraints[1].to_string(),
-            "((-c) * (b + 1)) * (b + 1) + -9223372034707292160 * result + -5"
+            constraint_system.bus_interactions[0].payload[0].to_string(),
+            "(((2 * b + 2) * (b + 1)) * (b + 1)) * (b + 1) + 10"
         );
     }
 
