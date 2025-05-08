@@ -60,8 +60,8 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
                 &constraint_system.algebraic_constraints,
                 max_degree,
             ) {
-                log::debug!("Substituting {} = {}", var, expr,);
-                log::debug!("  (from identity {})", constraint);
+                log::debug!("Substituting {var} = {expr}");
+                log::debug!("  (from identity {constraint})");
                 constraint_system
                     .algebraic_constraints
                     .iter_mut()
