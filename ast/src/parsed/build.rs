@@ -48,6 +48,7 @@ pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
 }
 
 pub fn identity(lhs: Expression, rhs: Expression) -> Expression {
+    println!("Identity left and right: {} = {}", lhs, rhs);
     BinaryOperation {
         left: Box::new(lhs),
         op: BinaryOperator::Identity,
