@@ -74,7 +74,7 @@ fn get_possible_assignments_if_few<
         .iter()
         .map(|v| range_constraints.get(v))
         .collect::<Vec<_>>();
-    if has_few_possible_assignments(&range_constraints) {
+    if !has_few_possible_assignments(&range_constraints) {
         return None;
     }
 
@@ -164,6 +164,7 @@ fn try_assignment_candidates<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + D
         for (variable, assignment) in assignments.iter() {
             solver.apply_assignment(variable, &SymbolicExpression::from(*assignment));
         }
+        // Set allow_backtracking to false, to bound the amount of computation happening here.
         if solver.loop_until_no_progress(false).is_ok() {
             match backtracking_state {
                 BacktrackingState::NoSolution => {
