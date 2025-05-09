@@ -347,6 +347,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             + ConcreteBusInteractionHandler<T>
             + 'static
             + Clone,
+        degree_bound: usize,
     ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
         let (machine, subs) = generate_precompile(
             &self.program,
@@ -361,7 +362,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         let machine = optimize_pc_lookup(machine);
         let machine = optimize_exec_bus(machine);
         let machine = optimize_precompile(machine);
-        let machine = optimize(machine, bus_interaction_handler);
+        let machine = optimize(machine, bus_interaction_handler, degree_bound);
         let machine = powdr_optimize_legacy(machine);
         let machine = remove_zero_mult(machine);
         let machine = remove_zero_constraint(machine);
