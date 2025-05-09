@@ -336,6 +336,8 @@ where
     ) -> AlgebraicExpression<T> {
         let mut row_expression = PlonkishExpression::default();
         row_expression.row = *row_offset;
+        *row_offset += 1;
+                
 
         match *op {
             AlgebraicBinaryOperator::Add => {
@@ -347,6 +349,7 @@ where
                     poly_id: left.poly_id,
                     next: left.next,
                 });
+                *poly_id_offset += 1;
                 row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
 
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
@@ -357,6 +360,7 @@ where
                     },
                     next: false,
                 });
+                
             }
             AlgebraicBinaryOperator::Sub => {
                 if left_right_flip {
@@ -373,6 +377,7 @@ where
                     poly_id: left.poly_id,
                     next: left.next,
                 });
+                *poly_id_offset += 1;
                 row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *row_offset),
@@ -382,6 +387,7 @@ where
                     },
                     next: false,
                 });
+                
             }
             AlgebraicBinaryOperator::Mul => {
                 row_expression.qmul = AlgebraicExpression::Number(T::one());
@@ -391,6 +397,7 @@ where
                     poly_id: left.poly_id,
                     next: left.next,
                 });
+                *poly_id_offset += 1;
                 row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
 
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
@@ -401,6 +408,7 @@ where
                     },
                     next: false,
                 });
+                
             }
             _ => {
                 panic!("left poly right poly not implemented for op {:?}", op)
@@ -408,7 +416,6 @@ where
         }
 
         plonkish_expr.push(row_expression.clone());
-        *row_offset += 1;
         row_expression.c.clone()
     }
 
@@ -422,14 +429,13 @@ where
     ) -> AlgebraicExpression<T> {
         let mut row_expression = PlonkishExpression::default();
         row_expression.row = *row_offset;
+        *row_offset += 1;
 
         match *op {
             AlgebraicBinaryOperator::Add => {
                 row_expression.ql = AlgebraicExpression::Number(T::one());
                 row_expression.qr = AlgebraicExpression::Number(T::one());
                 row_expression.qo = AlgebraicExpression::Number(T::one());
-                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
 
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *row_offset),
@@ -439,14 +445,19 @@ where
                     },
                     next: false,
                 });
+                *poly_id_offset += 1;
+                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+                *row_offset += 1;
+                *poly_id_offset += 1;
+                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+
+                
             }
             AlgebraicBinaryOperator::Sub => {
                 row_expression.ql = AlgebraicExpression::Number(-T::one());
                 row_expression.qr = AlgebraicExpression::Number(T::one());
 
                 row_expression.qo = AlgebraicExpression::Number(T::one());
-                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *row_offset),
                     poly_id: PolyID {
@@ -455,13 +466,15 @@ where
                     },
                     next: false,
                 });
+                *poly_id_offset += 1;
+                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+                *row_offset += 1;
+                *poly_id_offset += 1;
+                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
             }
             AlgebraicBinaryOperator::Mul => {
                 row_expression.qmul = AlgebraicExpression::Number(T::one());
                 row_expression.qo = AlgebraicExpression::Number(-T::one());
-                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *row_offset),
                     poly_id: PolyID {
@@ -470,6 +483,11 @@ where
                     },
                     next: false,
                 });
+                *poly_id_offset += 1;
+                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+                *row_offset += 1;
+                *poly_id_offset += 1;
+                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
             }
             _ => {
                 panic!(
@@ -480,7 +498,7 @@ where
         }
 
         plonkish_expr.push(row_expression.clone());
-        *row_offset += 1;
+      
         row_expression.c.clone()
     }
 }
