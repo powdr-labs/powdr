@@ -1,4 +1,4 @@
-use backtracking::try_with_backtracking_impl;
+use backtracking::try_solve_with_backtracking;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -146,7 +146,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
-        if let Some(solver) = try_with_backtracking_impl(self)? {
+        if let Some(solver) = try_solve_with_backtracking(self)? {
             *self = solver;
             Ok(true)
         } else {
