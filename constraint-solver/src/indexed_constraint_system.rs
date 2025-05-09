@@ -55,4 +55,8 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
                 expr.substitute_by_known(variable, substitution);
             });
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+        self.constraint_system.iter()
+    }
 }

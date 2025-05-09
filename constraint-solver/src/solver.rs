@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
@@ -15,6 +15,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::rc::Rc;
+
+const MAX_BACKTRACKING_DEPTH: usize = 32;
 
 /// The result of the solving process.
 #[allow(dead_code)]
@@ -67,7 +69,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// assignments and a simplified version of the algebraic constraints.
     #[allow(dead_code)]
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
-        self.loop_until_no_progress()?;
+        self.loop_until_no_progress(true)?;
 
         let assignments = self
             .range_constraints
@@ -80,17 +82,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         })
     }
 
-    fn loop_until_no_progress(&mut self) -> Result<(), Error> {
+    fn loop_until_no_progress(&mut self, allow_backtracking: bool) -> Result<(), Error> {
         loop {
-            let mut progress = false;
-            // Try solving constraints in isolation.
-            progress |= self.solve_in_isolation()?;
-            // Try inferring new information using bus interactions.
-            progress |= self.solve_bus_interactions();
+            loop {
+                let mut progress = false;
+                // Try solving constraints in isolation.
+                progress |= self.solve_in_isolation()?;
+                // Try inferring new information using bus interactions.
+                progress |= self.solve_bus_interactions();
 
-            if !progress {
+                if !progress {
+                    break;
+                }
+            }
+            let has_unknown_variables = self
+                .constraint_system
+                .iter()
+                .flat_map(|expr| expr.referenced_variables())
+                .next()
+                .is_some();
+            if !allow_backtracking || !has_unknown_variables {
                 break;
             }
+            let Some(solver) = self.try_with_backtracking()? else {
+                break;
+            };
+            *self = solver;
         }
         Ok(())
     }
@@ -127,6 +144,85 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.apply_effect(effect);
         }
         progress
+    }
+
+    fn try_with_backtracking(&mut self) -> Result<Option<Self>, Error> {
+        log::info!("Trying backtracking...");
+        for identity in self.constraint_system.algebraic_constraints() {
+            let variables = identity.referenced_variables().unique().collect::<Vec<_>>();
+            if variables.is_empty() {
+                continue;
+            }
+            if variables.len() > MAX_BACKTRACKING_DEPTH.ilog2() as usize {
+                // Each variable can have at least 2 values, so the number of
+                // combinations is guaranteed to be larger than MAX_BACKTRACKING_DEPTH.
+                continue;
+            }
+            let range_constraints = variables
+                .iter()
+                .map(|v| {
+                    let rc = self.range_constraints.get(v);
+                    if rc.range_width()
+                        <= <T as FieldElement>::Integer::from(MAX_BACKTRACKING_DEPTH as u64)
+                    {
+                        Some(rc)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Option<Vec<_>>>();
+            let Some(range_constraints) = range_constraints else {
+                continue;
+            };
+            let total_allowed_values = range_constraints
+                .iter()
+                .map(|rc| rc.range_width().try_into_u64().unwrap())
+                .product::<u64>();
+            if total_allowed_values > MAX_BACKTRACKING_DEPTH as u64 {
+                continue;
+            }
+
+            let assignments = range_constraints
+                .iter()
+                .map(|rc| {
+                    let (min, max) = rc.range();
+                    assert!(min <= max);
+                    (min.to_integer().try_into_u64().unwrap()
+                        ..=max.to_integer().try_into_u64().unwrap())
+                        .filter(|x| rc.allows_value(T::from(*x)))
+                        .collect::<Vec<_>>()
+                })
+                .multi_cartesian_product();
+            let mut final_solver = None;
+            let mut multiple_solutions = false;
+            for assignment in assignments {
+                let mut solver = self.clone();
+                log::info!("Trying assignment: {assignment:?}");
+                for (variable, assignment) in variables.iter().zip(assignment) {
+                    solver
+                        .apply_assignment(variable, &SymbolicExpression::from(T::from(assignment)));
+                }
+                if solver.loop_until_no_progress(false).is_ok() {
+                    // We found a solution.
+                    if final_solver.is_none() {
+                        final_solver = Some(solver);
+                    } else {
+                        multiple_solutions = true;
+                        break;
+                    }
+                }
+            }
+            if multiple_solutions {
+                // We found multiple solutions, so we can't use this backtracking.
+                continue;
+            }
+            if let Some(solver) = final_solver {
+                return Ok(Some(solver));
+            } else {
+                return Err(Error::BacktrackingFailure);
+            }
+        }
+        Ok(None)
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
