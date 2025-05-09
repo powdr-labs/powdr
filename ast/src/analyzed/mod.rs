@@ -1,4 +1,4 @@
-mod air_to_plonkish;
+pub mod air_to_plonkish;
 mod contains_next_ref;
 mod display;
 pub mod visitor;
