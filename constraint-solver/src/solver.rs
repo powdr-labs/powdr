@@ -1,3 +1,4 @@
+use backtracking::try_solve_with_backtracking;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -14,9 +15,11 @@ use super::symbolic_expression::SymbolicExpression;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::rc::Rc;
+
+mod backtracking;
 
 /// The result of the solving process.
-#[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
@@ -26,18 +29,18 @@ pub struct SolveResult<T: FieldElement, V> {
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
+#[derive(Clone)]
 pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
-    bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
+    bus_interaction_handler: Rc<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
-    #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.iter()).is_empty(),
@@ -47,13 +50,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Solver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
-            bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            bus_interaction_handler: Rc::new(DefaultBusInteractionHandler::default()),
         }
     }
 
     pub fn with_bus_interaction_handler(
         self,
-        bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
+        bus_interaction_handler: Rc<dyn BusInteractionHandler<T>>,
     ) -> Self {
         Solver {
             bus_interaction_handler,
@@ -63,9 +66,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    #[allow(dead_code)]
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
-        self.loop_until_no_progress()?;
+        self.loop_until_no_progress(true)?;
 
         let assignments = self
             .range_constraints
@@ -78,19 +80,35 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         })
     }
 
-    fn loop_until_no_progress(&mut self) -> Result<(), Error> {
+    /// Solves the constraint system as far as possible, until no more progress can be made.
+    /// If `allow_backtracking` is `true`, the solver will additionally try to assign values to
+    /// unknown variables and testing if the assignment is unique.
+    fn loop_until_no_progress(&mut self, allow_backtracking: bool) -> Result<(), Error> {
         loop {
-            let mut progress = false;
-            // Try solving constraints in isolation.
-            progress |= self.solve_in_isolation()?;
-            // Try inferring new information using bus interactions.
-            progress |= self.solve_bus_interactions();
+            loop {
+                let mut progress = false;
+                // Try solving constraints in isolation.
+                progress |= self.solve_in_isolation()?;
+                // Try inferring new information using bus interactions.
+                progress |= self.solve_bus_interactions();
 
-            if !progress {
+                if !progress {
+                    break;
+                }
+            }
+            if !self.is_done() && allow_backtracking && self.solve_with_backtracking()? {
+                // Made progress with backtracking, continue solving.
+            } else {
                 break;
             }
         }
         Ok(())
+    }
+
+    fn is_done(&self) -> bool {
+        self.constraint_system
+            .iter()
+            .all(|expr| expr.referenced_variables().next().is_none())
     }
 
     /// Tries to make progress by solving each constraint in isolation.
@@ -125,6 +143,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.apply_effect(effect);
         }
         progress
+    }
+
+    fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
+        if let Some(solver) = try_solve_with_backtracking(self)? {
+            *self = solver;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
@@ -165,10 +192,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 }
 
 /// The currently known range constraints for the variables.
+#[derive(Clone)]
 struct RangeConstraints<T: FieldElement, V> {
     range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
+// Manual implementation so that we don't have to require `V: Default`.
 impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
     fn default() -> Self {
         RangeConstraints {

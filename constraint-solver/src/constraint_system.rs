@@ -7,6 +7,7 @@ use powdr_number::FieldElement;
 use std::hash::Hash;
 
 /// Description of a constraint system.
+#[derive(Clone)]
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
@@ -34,7 +35,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 }
 
 /// A bus interaction.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
     pub bus_id: V,

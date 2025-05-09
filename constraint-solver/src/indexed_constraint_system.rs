@@ -10,6 +10,7 @@ use crate::{
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
+#[derive(Clone)]
 pub struct IndexedConstraintSystem<T: FieldElement, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
@@ -53,5 +54,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
             .for_each(|expr| {
                 expr.substitute_by_known(variable, substitution);
             });
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+        self.constraint_system.iter()
     }
 }
