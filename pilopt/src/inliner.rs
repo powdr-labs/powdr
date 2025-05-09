@@ -3,7 +3,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 use std::fmt::Display;
-use std::{collections::BTreeSet, hash::Hash};
+use std::hash::Hash;
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
@@ -14,20 +14,8 @@ pub fn replace_constrained_witness_columns<
     mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
-    let keep: BTreeSet<V> = constraint_system
-        .bus_interactions
-        .iter()
-        .flat_map(|b| {
-            b.payload.iter().flat_map(|expr| {
-                expr.referenced_unknown_variables()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-        })
-        .collect();
-
     loop {
-        if !try_apply_substitution(&mut constraint_system, &keep, max_degree) {
+        if !try_apply_substitution(&mut constraint_system, max_degree) {
             break;
         }
     }
@@ -41,7 +29,6 @@ pub fn replace_constrained_witness_columns<
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
 fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint_system: &mut ConstraintSystem<T, V>,
-    keep: &BTreeSet<V>,
     max_degree: usize,
 ) -> bool {
     let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
@@ -50,26 +37,12 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
         let constraint = &constraint_system.algebraic_constraints[idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if keep.contains(&var) {
-                continue;
-            }
-
-            if is_valid_substitution(
-                &var,
-                &expr,
-                &constraint_system.algebraic_constraints,
-                max_degree,
-            ) {
+            if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
                 log::debug!("Substituting {var} = {expr}");
                 log::debug!("  (from identity {constraint})");
-                constraint_system
-                    .algebraic_constraints
-                    .iter_mut()
-                    .enumerate()
-                    .filter(|(i, _)| *i != idx)
-                    .for_each(|(_, identity)| {
-                        identity.substitute_by_unknown(&var, &expr);
-                    });
+                constraint_system.iter_mut().for_each(|identity| {
+                    identity.substitute_by_unknown(&var, &expr);
+                });
 
                 constraint_system.algebraic_constraints.remove(idx);
                 return true;
@@ -118,12 +91,12 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &QuadraticSymbolicExpression<T, V>,
-    identities: &[QuadraticSymbolicExpression<T, V>],
+    constraint_system: &ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> bool {
     let replacement_deg = qse_degree(expr);
 
-    !identities
+    !constraint_system
         .iter()
         .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
         .any(|deg| deg > max_degree)
@@ -211,7 +184,7 @@ mod test {
         let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("a") + var("b") + var("c"),
-                var("b") + var("d"),
+                var("b") + var("d") - constant(1),
                 var("c") + var("b") + var("a") + var("d") - var("result"),
             ],
             bus_interactions,
@@ -219,18 +192,22 @@ mod test {
 
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         // 1) a + b + c = 0        => a = -b - c
-        // 2) b + d = 0            => b = -d
+        // 2) b + d - 1 = 0        => d = -b + 1
         // 3) c + b + a + d = result
         //    =(1)=> c + b + (-b - c) + d
         //         = (c - c) + (b - b) + d
         //         = 0 + 0 + d
-        //    => result = d
-        // ⇒ result - d = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "b + result"
-        );
+        //    => result = d = -b + 1
+        //    => b = -result + 1
+        assert_eq!(constraint_system.algebraic_constraints.len(), 0);
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [result, b] = payload.as_slice() else {
+            panic!();
+        };
+        assert_eq!(result.to_string(), "result");
+        assert_eq!(b.to_string(), "-result + 1");
     }
 
     #[test]
@@ -346,12 +323,14 @@ mod test {
         // 1) y = x + 3
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
         // 3) result = z + 1 ⇒ result = (x + 5) + 1 = x + 6
-        // ⇒ result - x - 6 = 0 ⇒ result + -x + -6 = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "result + -x + -6"
-        );
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [result, x] = payload.as_slice() else {
+            panic!();
+        };
+        assert_eq!(result.to_string(), "z + 1");
+        assert_eq!(x.to_string(), "z + -5");
     }
 
     #[test]
@@ -365,54 +344,49 @@ mod test {
                 var("f") - (var("e") + constant(5)),
                 var("result") - (var("f") * constant(2)),
             ],
-            // Keep result column
+            // Get all variables
             bus_interactions: vec![BusInteraction {
                 bus_id: constant(1),
-                payload: vec![var("result")],
+                payload: vec![
+                    var("a"),
+                    var("b"),
+                    var("c"),
+                    var("d"),
+                    var("e"),
+                    var("f"),
+                    var("result"),
+                ],
                 multiplicity: constant(1),
             }],
         };
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
-        // 1) a = b + 1
-        //    ⇒ a = b + 1
-        //
-        // 2) c = a * a
-        //    ⇒ c = (b + 1)^2
-        //    BUT: we choose not to inline this in further constraints, to prevent exceeding degree 3
-        //    So instead, we keep this as an explicit identity:
-        //    ⇒ (-b - 1)(b + 1) + c = 0
-        //       ⤴ This becomes Constraint 0
-        //
-        // 3) d = c * a
-        //    = c * (b + 1)
-        //
-        // 4) e = d * a
-        //    = c * (b + 1)^2
-        //      → would be (b + 1)^4 if c is inlined ⇒ degree 4 → STOP
-        //
-        // 5) f = e + 5
-        //    = c * (b + 1)^2 + 5
-        //
-        // 6) result = f * 2
-        //    = 2 * (c * (b + 1)^2 + 5)
-        //    = 2 * c * (b + 1)^2 + 10
-        //    ⇒ 0 = result - 2 * c * (b + 1)^2 - 10
-        //    ⇒ 0 = (-c) * (b + 1) * (b + 1) - 2 * result - 5
-        //       ⤴ This becomes Constraint 1
-        //
-        // Final result:
-        //    Constraint 0 encodes the definition of c without inlining
-        //    Constraint 1 uses c symbolically to prevent degree overflow
 
-        assert_eq!(constraint_system.algebraic_constraints.len(), 2);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "(-b + -1) * (b + 1) + c"
-        );
-        assert_eq!(
-            constraint_system.algebraic_constraints[1].to_string(),
-            "((-c) * (b + 1)) * (b + 1) + -9223372034707292160 * result + -5"
-        );
+        let [identity] = &constraint_system.algebraic_constraints[..] else {
+            panic!();
+        };
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [a, b, c, d, e, f, result] = payload.as_slice() else {
+            panic!();
+        };
+        // From first identity: a = b + 1
+        assert_eq!(a.to_string(), "b + 1");
+        // b kept as a symbol
+        assert_eq!(b.to_string(), "b");
+        // From second identity: c = a * a
+        // In-lining c would violate the degree bound, so it is kept as a symbol
+        // with a constraint to enforce the equality.
+        assert_eq!(c.to_string(), "c");
+        assert_eq!(identity.to_string(), "(-b + -1) * (b + 1) + c");
+        // From third identity: d = c * a
+        assert_eq!(d.to_string(), "(c) * (b + 1)");
+        // From fourth identity: e = d * a
+        assert_eq!(e.to_string(), "((c) * (b + 1)) * (b + 1)");
+        // From fifth identity: f = e + 5
+        assert_eq!(f.to_string(), "((c) * (b + 1)) * (b + 1) + 5");
+        // From sixth identity: result = f * 2
+        assert_eq!(result.to_string(), "((2 * c) * (b + 1)) * (b + 1) + 10");
     }
 
     #[test]

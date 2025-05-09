@@ -23,6 +23,14 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                 .chain(self.bus_interactions.iter().flat_map(|b| b.iter())),
         )
     }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> {
+        Box::new(
+            self.algebraic_constraints
+                .iter_mut()
+                .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut())),
+        )
+    }
 }
 
 /// A bus interaction.
