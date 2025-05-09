@@ -10,7 +10,7 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_constraint_solver::{
-    effect::Condition,
+    effect::{Condition, DisjointSet},
     quadratic_symbolic_expression::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
@@ -509,6 +509,10 @@ impl<T: FieldElement, Fixed: FixedEvaluator<T>> RangeConstraintProvider<T, Varia
 {
     fn get(&self, var: &Variable) -> RangeConstraint<T> {
         self.range_constraint(var)
+    }
+
+    fn disjoint_set(&self, _var: &Variable) -> Option<DisjointSet<Variable>> {
+        None
     }
 }
 
