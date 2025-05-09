@@ -2,40 +2,33 @@ use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
-use std::{collections::BTreeSet, hash::Hash};
+use std::fmt::Display;
+use std::hash::Hash;
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
-pub fn replace_constrained_witness_columns<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    constraint_system: &mut ConstraintSystem<T, V>,
+pub fn replace_constrained_witness_columns<
+    T: FieldElement,
+    V: Ord + Clone + Hash + Eq + Display,
+>(
+    mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
-) {
-    let keep: BTreeSet<V> = constraint_system
-        .bus_interactions
-        .iter()
-        .flat_map(|b| {
-            b.payload.iter().flat_map(|expr| {
-                expr.referenced_unknown_variables()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-        })
-        .collect();
-
+) -> ConstraintSystem<T, V> {
     loop {
-        if !try_apply_substitution(constraint_system, &keep, max_degree) {
+        if !try_apply_substitution(&mut constraint_system, max_degree) {
             break;
         }
     }
+
+    constraint_system
 }
 
 /// Attempts to apply one valid variable substitution across the constraint system.
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint_system: &mut ConstraintSystem<T, V>,
-    keep: &BTreeSet<V>,
     max_degree: usize,
 ) -> bool {
     let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
@@ -44,25 +37,12 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         let constraint = &constraint_system.algebraic_constraints[idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if keep.contains(&var) {
-                continue;
-            }
-
-            if is_valid_substitution(
-                &var,
-                &expr,
-                &constraint_system.algebraic_constraints,
-                max_degree,
-                idx,
-            ) {
-                constraint_system
-                    .algebraic_constraints
-                    .iter_mut()
-                    .enumerate()
-                    .filter(|(i, _)| *i != idx)
-                    .for_each(|(_, identity)| {
-                        identity.substitute_by_unknown(&var, &expr);
-                    });
+            if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
+                log::debug!("Substituting {var} = {expr}");
+                log::debug!("  (from identity {constraint})");
+                constraint_system.iter_mut().for_each(|identity| {
+                    identity.substitute_by_unknown(&var, &expr);
+                });
 
                 constraint_system.algebraic_constraints.remove(idx);
                 return true;
@@ -111,30 +91,15 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &QuadraticSymbolicExpression<T, V>,
-    identities: &[QuadraticSymbolicExpression<T, V>],
+    constraint_system: &ConstraintSystem<T, V>,
     max_degree: usize,
-    exclude_idx: usize,
 ) -> bool {
     let replacement_deg = qse_degree(expr);
-    // Check that the substitution is actually used because empty in any() returns
-    // false and we would be allowing invalid substitutions.
-    let mut found_usage = false;
 
-    let is_valid = !identities
+    !constraint_system
         .iter()
-        .enumerate()
-        .filter_map(|(idx, constraint)| {
-            if idx != exclude_idx && constraint.referenced_unknown_variables().any(|v| v == var) {
-                found_usage = true;
-                Some(constraint)
-            } else {
-                None
-            }
-        })
         .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
-        .any(|deg| deg > max_degree);
-
-    found_usage && is_valid
+        .any(|deg| deg > max_degree)
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
@@ -195,68 +160,54 @@ mod test {
 
     #[test]
     fn test_no_substitution() {
-        let mut identities = Vec::new();
-
-        // a + b  = 0
-        let constraint1 = var("a") + var("b");
-        identities.push(constraint1);
-
-        // b + d = 0
-        let constraint2 = var("c") + var("d");
-        identities.push(constraint2);
-
-        let mut constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
+        let constraint_system = ConstraintSystem {
+            algebraic_constraints: vec![
+                var("a") * var("b") + var("c") * var("d"),
+                var("e") * var("e") - constant(2),
+            ],
             bus_interactions: vec![],
         };
 
-        replace_constrained_witness_columns(&mut constraint_system, 3);
+        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         assert_eq!(constraint_system.algebraic_constraints.len(), 2);
     }
 
     #[test]
     fn test_replace_witness_columns() {
-        let mut identities = Vec::new();
-
-        // a + b + c = 0
-        let constraint1 = var("a") + var("b") + var("c");
-        identities.push(constraint1);
-
-        // b + d = 0
-        let constraint2 = var("b") + var("d");
-        identities.push(constraint2);
-
-        // c + b + a + d - result = 0
-        let expr = var("c") + var("b") + var("a") + var("d");
-        let expr_constraint = expr.clone() - var("result");
-        identities.push(expr_constraint);
-
         // keep column result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![var("result")],
+            payload: vec![var("result"), var("b")],
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
+        let constraint_system = ConstraintSystem {
+            algebraic_constraints: vec![
+                var("a") + var("b") + var("c"),
+                var("b") + var("d") - constant(1),
+                var("c") + var("b") + var("a") + var("d") - var("result"),
+            ],
             bus_interactions,
         };
 
-        replace_constrained_witness_columns(&mut constraint_system, 3);
+        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         // 1) a + b + c = 0        => a = -b - c
-        // 2) b + d = 0            => b = -d
+        // 2) b + d - 1 = 0        => d = -b + 1
         // 3) c + b + a + d = result
         //    =(1)=> c + b + (-b - c) + d
         //         = (c - c) + (b - b) + d
         //         = 0 + 0 + d
-        //    => result = d
-        // ⇒ result - d = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "b + result"
-        );
+        //    => result = d = -b + 1
+        //    => b = -result + 1
+        assert_eq!(constraint_system.algebraic_constraints.len(), 0);
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [result, b] = payload.as_slice() else {
+            panic!();
+        };
+        assert_eq!(result.to_string(), "result");
+        assert_eq!(b.to_string(), "-result + 1");
     }
 
     #[test]
@@ -283,12 +234,12 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: identities,
             bus_interactions,
         };
 
-        replace_constrained_witness_columns(&mut constraint_system, 3);
+        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         // 1) b + d = 0            => b = -d
         // 2) a * b = c            => a * (-d) = c => a * d + c = 0
         // 3) a + b + c + d = result
@@ -328,12 +279,12 @@ mod test {
         identities.push(expr_constraint);
 
         // no columns to keep
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: identities,
             bus_interactions: vec![],
         };
 
-        replace_constrained_witness_columns(&mut constraint_system, 3);
+        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         // 1) b + d = 0        => b = -d
         // 2) c * d = e        => e = c * d
         // 3) a + b + c + d + e = result
@@ -352,117 +303,90 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_suboptimal() {
-        let mut identities = Vec::new();
-
-        // y = x + 3
-        let constraint2 = var("y") - (var("x") + constant(3));
-        identities.push(constraint2);
-
-        // z = y + 2
-        let constraint3 = var("z") - (var("y") + constant(2));
-        identities.push(constraint3);
-
-        // result = z + 1
-        let constraint4 = var("result") - (var("z") + constant(1));
-        identities.push(constraint4);
-
-        // keep column results
+        // Keep x and result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![var("result")],
+            payload: vec![var("result"), var("x")],
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
+        let constraint_system = ConstraintSystem {
+            algebraic_constraints: vec![
+                var("y") - (var("x") + constant(3)),
+                var("z") - (var("y") + constant(2)),
+                var("result") - (var("z") + constant(1)),
+            ],
             bus_interactions,
         };
 
-        replace_constrained_witness_columns(&mut constraint_system, 3);
+        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         // 1) y = x + 3
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
         // 3) result = z + 1 ⇒ result = (x + 5) + 1 = x + 6
-        // ⇒ result - x - 6 = 0 ⇒ result + -x + -6 = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "result + -x + -6"
-        );
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [result, x] = payload.as_slice() else {
+            panic!();
+        };
+        assert_eq!(result.to_string(), "z + 1");
+        assert_eq!(x.to_string(), "z + -5");
     }
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        let mut identities = Vec::new();
-
-        // a = b + 1
-        let constraint1 = var("a") - (var("b") + constant(1));
-        identities.push(constraint1);
-
-        // c = a * a
-        let constraint2 = var("c") - (var("a") * var("a"));
-        identities.push(constraint2);
-
-        // d = c * a
-        let constraint3 = var("d") - (var("c") * var("a"));
-        identities.push(constraint3);
-
-        // e = d * a
-        let constraint4 = var("e") - (var("d") * var("a"));
-        identities.push(constraint4);
-
-        // f = e + 5
-        let constraint5 = var("f") - (var("e") + constant(5));
-        identities.push(constraint5);
-
-        // result = f * 2
-        let constraint6 = var("result") - (var("f") * constant(2));
-        identities.push(constraint6);
-
-        let mut constraint_system = ConstraintSystem {
-            algebraic_constraints: identities.clone(),
-            bus_interactions: vec![],
+        let constraint_system = ConstraintSystem {
+            algebraic_constraints: vec![
+                var("a") - (var("b") + constant(1)),
+                var("c") - (var("a") * var("a")),
+                var("d") - (var("c") * var("a")),
+                var("e") - (var("d") * var("a")),
+                var("f") - (var("e") + constant(5)),
+                var("result") - (var("f") * constant(2)),
+            ],
+            // Get all variables
+            bus_interactions: vec![BusInteraction {
+                bus_id: constant(1),
+                payload: vec![
+                    var("a"),
+                    var("b"),
+                    var("c"),
+                    var("d"),
+                    var("e"),
+                    var("f"),
+                    var("result"),
+                ],
+                multiplicity: constant(1),
+            }],
         };
-        replace_constrained_witness_columns(&mut constraint_system, 3);
-        // 1) a = b + 1
-        //    ⇒ a = b + 1
-        //
-        // 2) c = a * a
-        //    ⇒ c = (b + 1)^2
-        //    BUT: we choose not to inline this in further constraints, to prevent exceeding degree 3
-        //    So instead, we keep this as an explicit identity:
-        //    ⇒ (-b - 1)(b + 1) + c = 0
-        //       ⤴ This becomes Constraint 0
-        //
-        // 3) d = c * a
-        //    = c * (b + 1)
-        //
-        // 4) e = d * a
-        //    = c * (b + 1)^2
-        //      → would be (b + 1)^4 if c is inlined ⇒ degree 4 → STOP
-        //
-        // 5) f = e + 5
-        //    = c * (b + 1)^2 + 5
-        //
-        // 6) result = f * 2
-        //    = 2 * (c * (b + 1)^2 + 5)
-        //    = 2 * c * (b + 1)^2 + 10
-        //    ⇒ 0 = result - 2 * c * (b + 1)^2 - 10
-        //    ⇒ 0 = (-c) * (b + 1) * (b + 1) - 2 * result - 5
-        //       ⤴ This becomes Constraint 1
-        //
-        // Final result:
-        //    Constraint 0 encodes the definition of c without inlining
-        //    Constraint 1 uses c symbolically to prevent degree overflow
+        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
 
-        assert_eq!(constraint_system.algebraic_constraints.len(), 2);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "(-b + -1) * (b + 1) + c"
-        );
-        assert_eq!(
-            constraint_system.algebraic_constraints[1].to_string(),
-            "((-c) * (b + 1)) * (b + 1) + -9223372034707292160 * result + -5"
-        );
+        let [identity] = &constraint_system.algebraic_constraints[..] else {
+            panic!();
+        };
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [a, b, c, d, e, f, result] = payload.as_slice() else {
+            panic!();
+        };
+        // From first identity: a = b + 1
+        assert_eq!(a.to_string(), "b + 1");
+        // b kept as a symbol
+        assert_eq!(b.to_string(), "b");
+        // From second identity: c = a * a
+        // In-lining c would violate the degree bound, so it is kept as a symbol
+        // with a constraint to enforce the equality.
+        assert_eq!(c.to_string(), "c");
+        assert_eq!(identity.to_string(), "(-b + -1) * (b + 1) + c");
+        // From third identity: d = c * a
+        assert_eq!(d.to_string(), "(c) * (b + 1)");
+        // From fourth identity: e = d * a
+        assert_eq!(e.to_string(), "((c) * (b + 1)) * (b + 1)");
+        // From fifth identity: f = e + 5
+        assert_eq!(f.to_string(), "((c) * (b + 1)) * (b + 1) + 5");
+        // From sixth identity: result = f * 2
+        assert_eq!(result.to_string(), "((2 * c) * (b + 1)) * (b + 1) + 10");
     }
 
     #[test]
@@ -498,19 +422,19 @@ mod test {
         suboptimal_order_identities.push(constraint2.clone()); // b = c + d
         suboptimal_order_identities.push(constraint4.clone()); // c = d * d
 
-        let mut optimal_system = ConstraintSystem {
+        let optimal_system = ConstraintSystem {
             algebraic_constraints: optimal_order_identities,
             bus_interactions: vec![],
         };
 
-        let mut suboptimal_system = ConstraintSystem {
+        let suboptimal_system = ConstraintSystem {
             algebraic_constraints: suboptimal_order_identities,
             bus_interactions: vec![],
         };
 
         // Apply the same optimization to both systems
-        replace_constrained_witness_columns(&mut optimal_system, 5);
-        replace_constrained_witness_columns(&mut suboptimal_system, 5);
+        let optimal_system = replace_constrained_witness_columns(optimal_system, 5);
+        let suboptimal_system = replace_constrained_witness_columns(suboptimal_system, 5);
 
         // Assert the difference in optimization results
         assert_eq!(optimal_system.algebraic_constraints.len(), 3);
