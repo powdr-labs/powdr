@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
@@ -194,7 +194,7 @@ fn byte_decomposition() {
     };
 
     let solver = Solver::new(constraint_system)
-        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+        .with_bus_interaction_handler(Rc::new(TestBusInteractionHandler {}));
 
     assert_solve_result(
         solver,
@@ -222,7 +222,7 @@ fn xor() {
     };
 
     let solver = Solver::new(constraint_system)
-        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+        .with_bus_interaction_handler(Rc::new(TestBusInteractionHandler {}));
 
     assert_solve_result(
         solver,

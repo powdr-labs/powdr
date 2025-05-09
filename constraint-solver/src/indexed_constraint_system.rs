@@ -10,6 +10,7 @@ use crate::{
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
+#[derive(Clone)]
 pub struct IndexedConstraintSystem<T: FieldElement, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,

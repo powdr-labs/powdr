@@ -14,6 +14,7 @@ use super::symbolic_expression::SymbolicExpression;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::rc::Rc;
 
 /// The result of the solving process.
 #[allow(dead_code)]
@@ -26,12 +27,13 @@ pub struct SolveResult<T: FieldElement, V> {
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
+#[derive(Clone)]
 pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
-    bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
+    bus_interaction_handler: Rc<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
 }
@@ -47,13 +49,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Solver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
-            bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            bus_interaction_handler: Rc::new(DefaultBusInteractionHandler::default()),
         }
     }
 
     pub fn with_bus_interaction_handler(
         self,
-        bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
+        bus_interaction_handler: Rc<dyn BusInteractionHandler<T>>,
     ) -> Self {
         Solver {
             bus_interaction_handler,
@@ -165,10 +167,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 }
 
 /// The currently known range constraints for the variables.
+#[derive(Clone)]
 struct RangeConstraints<T: FieldElement, V> {
     range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
+// Manual implementation so that we don't have to require `V: Default`.
 impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
     fn default() -> Self {
         RangeConstraints {
