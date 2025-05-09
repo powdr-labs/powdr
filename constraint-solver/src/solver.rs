@@ -5,6 +5,7 @@ use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
@@ -16,10 +17,10 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::rc::Rc;
 
-const MAX_BACKTRACKING_DEPTH: usize = 32;
+/// The maximum number of possible assignments to try when backtracking.
+const MAX_BACKTRACKING_WIDTH: usize = 32;
 
 /// The result of the solving process.
-#[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
@@ -41,7 +42,6 @@ pub struct Solver<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
-    #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.iter()).is_empty(),
@@ -67,7 +67,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    #[allow(dead_code)]
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress(true)?;
 
@@ -82,6 +81,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         })
     }
 
+    /// Solves the constraint system as far as possible, until no more progress can be made.
+    /// If `allow_backtracking` is `true`, the solver will additionally try to assign values to
+    /// unknown variables and testing if the assignment is unique.
     fn loop_until_no_progress(&mut self, allow_backtracking: bool) -> Result<(), Error> {
         loop {
             loop {
@@ -95,21 +97,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                     break;
                 }
             }
-            let has_unknown_variables = self
-                .constraint_system
-                .iter()
-                .flat_map(|expr| expr.referenced_variables())
-                .next()
-                .is_some();
-            if !allow_backtracking || !has_unknown_variables {
+            if !self.is_done() && allow_backtracking && self.solve_with_backtracking()? {
+                // Made progress with backtracking, continue solving.
+            } else {
                 break;
             }
-            let Some(solver) = self.try_with_backtracking()? else {
-                break;
-            };
-            *self = solver;
         }
         Ok(())
+    }
+
+    fn is_done(&self) -> bool {
+        self.constraint_system
+            .iter()
+            .all(|expr| expr.referenced_variables().next().is_none())
     }
 
     /// Tries to make progress by solving each constraint in isolation.
@@ -146,90 +146,121 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         progress
     }
 
-    fn try_with_backtracking(&mut self) -> Result<Option<Self>, Error> {
+    fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
+        if let Some(solver) = self.try_with_backtracking_impl()? {
+            *self = solver;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn try_with_backtracking_impl(&self) -> Result<Option<Self>, Error> {
         log::debug!("Trying backtracking...");
-        for identity in self.constraint_system.algebraic_constraints() {
-            let variables = identity.referenced_variables().unique().collect::<Vec<_>>();
-            if variables.is_empty() {
-                continue;
-            }
-            if variables.len() > MAX_BACKTRACKING_DEPTH.ilog2() as usize {
-                // Each variable can have at least 2 values, so the number of
-                // combinations is guaranteed to be larger than MAX_BACKTRACKING_DEPTH.
-                continue;
-            }
-            let range_constraints = variables
-                .iter()
-                .map(|v| {
-                    let rc = self.range_constraints.get(v);
-                    if rc.range_width()
-                        <= <T as FieldElement>::Integer::from(MAX_BACKTRACKING_DEPTH as u64)
-                    {
-                        Some(rc)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Option<Vec<_>>>();
-            let Some(range_constraints) = range_constraints else {
+        for identity in self.constraint_system.iter() {
+            let Some(assignments) = self.find_assignments(identity) else {
                 continue;
             };
-            let total_allowed_values = range_constraints
-                .iter()
-                .map(|rc| rc.range_width().try_into_u64().unwrap())
-                .product::<u64>();
-            if total_allowed_values > MAX_BACKTRACKING_DEPTH as u64 {
-                continue;
-            }
 
-            log::debug!("  Tries backtracking with variables: {variables:?} ({total_allowed_values} possible assignments)");
+            let mut backtracking_state = BacktrackingState::NoSolution;
 
-            let assignments = range_constraints
-                .iter()
-                .map(|rc| {
-                    let (min, max) = rc.range();
-                    assert!(min <= max);
-                    (min.to_integer().try_into_u64().unwrap()
-                        ..=max.to_integer().try_into_u64().unwrap())
-                        .filter(|x| rc.allows_value(T::from(*x)))
-                        .collect::<Vec<_>>()
-                })
-                .multi_cartesian_product();
-            let mut final_solver = None;
-            let mut multiple_solutions = false;
             for assignment in assignments {
                 let mut solver = self.clone();
-                for (variable, assignment) in variables.iter().zip(&assignment) {
-                    solver.apply_assignment(
-                        variable,
-                        &SymbolicExpression::from(T::from(*assignment)),
-                    );
+                for (variable, assignment) in assignment.iter() {
+                    solver.apply_assignment(variable, &SymbolicExpression::from(*assignment));
                 }
                 if solver.loop_until_no_progress(false).is_ok() {
-                    // We found a solution.
-                    if final_solver.is_none() {
-                        final_solver = Some((solver, assignment));
-                    } else {
-                        multiple_solutions = true;
-                        break;
+                    match backtracking_state {
+                        BacktrackingState::NoSolution => {
+                            backtracking_state =
+                                BacktrackingState::UniqueSolution(solver, assignment);
+                        }
+                        BacktrackingState::UniqueSolution(_, _) => {
+                            backtracking_state = BacktrackingState::MultipleSolutions;
+                            break;
+                        }
+                        BacktrackingState::MultipleSolutions => unreachable!(),
                     }
-                } else {
-                    log::debug!("  Found a contradiction for assignment {assignment:?}");
                 }
             }
-            if multiple_solutions {
-                // We found multiple solutions, so we can't use this backtracking.
-                log::debug!("  Found multiple solutions, skipping backtracking.");
-                continue;
-            }
-            if let Some((solver, assignment)) = final_solver {
-                log::debug!("  Found a unique solution: {assignment:?}");
-                return Ok(Some(solver));
-            } else {
-                return Err(Error::BacktrackingFailure);
+
+            match backtracking_state {
+                BacktrackingState::NoSolution => {
+                    return Err(Error::BacktrackingFailure);
+                }
+                BacktrackingState::UniqueSolution(solver, assignment) => {
+                    log::debug!("  Found a unique solution: {assignment:?}");
+                    return Ok(Some(solver));
+                }
+                BacktrackingState::MultipleSolutions => {
+                    log::debug!(
+                        "  Found multiple solutions, continuing to the next set of assignments."
+                    );
+                }
             }
         }
         Ok(None)
+    }
+
+    fn find_assignments(
+        &self,
+        expr: &QuadraticSymbolicExpression<T, V>,
+    ) -> Option<impl Iterator<Item = BTreeMap<V, T>> + '_> {
+        let variables = expr.referenced_variables().unique().collect::<Vec<_>>();
+        if variables.is_empty() {
+            return None;
+        }
+        if variables.len() > MAX_BACKTRACKING_WIDTH.ilog2() as usize {
+            // Each variable can have at least 2 values, so the number of
+            // combinations is guaranteed to be larger than MAX_BACKTRACKING_DEPTH.
+            return None;
+        }
+        let range_constraints = variables
+            .iter()
+            .map(|v| {
+                let rc = self.range_constraints.get(v);
+                if rc.range_width()
+                    <= <T as FieldElement>::Integer::from(MAX_BACKTRACKING_WIDTH as u64)
+                {
+                    Some(rc)
+                } else {
+                    None
+                }
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let total_allowed_values = range_constraints
+            .iter()
+            .map(|rc| rc.range_width().try_into_u64().unwrap())
+            .product::<u64>();
+        if total_allowed_values > MAX_BACKTRACKING_WIDTH as u64 {
+            return None;
+        }
+
+        log::debug!("  Tries backtracking with variables: {variables:?} ({total_allowed_values} possible assignments)");
+
+        let assignments = range_constraints
+            .iter()
+            .map(|rc| {
+                let (min, max) = rc.range();
+                assert!(min <= max);
+                (min.to_integer().try_into_u64().unwrap()
+                    ..=max.to_integer().try_into_u64().unwrap())
+                    .filter(|x| rc.allows_value(T::from(*x)))
+                    .collect::<Vec<_>>()
+            })
+            .multi_cartesian_product();
+        Some(
+            assignments
+                .map(|assignment| {
+                    let mut assignments = BTreeMap::new();
+                    for (&variable, value) in variables.iter().zip(assignment) {
+                        assignments.insert(variable.clone(), T::from(value));
+                    }
+                    assignments
+                })
+                .collect::<Vec<_>>()
+                .into_iter(),
+        )
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
@@ -267,6 +298,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             false
         }
     }
+}
+
+enum BacktrackingState<T: FieldElement, V> {
+    NoSolution,
+    UniqueSolution(Solver<T, V>, BTreeMap<V, T>),
+    MultipleSolutions,
 }
 
 /// The currently known range constraints for the variables.
