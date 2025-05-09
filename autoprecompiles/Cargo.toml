@@ -13,7 +13,6 @@ powdr-parser.workspace = true
 powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-pilopt.workspace = true
-powdr-executor.workspace = true
 powdr-constraint-solver.workspace = true
 
 itertools = "0.13"
