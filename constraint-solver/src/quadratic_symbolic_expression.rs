@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fmt::Display,
     hash::Hash,
+    iter::Product,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -796,6 +797,16 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
                 constant: T::from(0).into(),
             }
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Product for QuadraticSymbolicExpression<T, V> {
+    fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut result = T::from(1).into();
+        for item in iter {
+            result = result * item;
+        }
+        result
     }
 }
 

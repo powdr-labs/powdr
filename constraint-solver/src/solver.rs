@@ -147,7 +147,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     fn try_with_backtracking(&mut self) -> Result<Option<Self>, Error> {
-        log::info!("Trying backtracking...");
+        log::debug!("Trying backtracking...");
         for identity in self.constraint_system.algebraic_constraints() {
             let variables = identity.referenced_variables().unique().collect::<Vec<_>>();
             if variables.is_empty() {
@@ -182,6 +182,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 continue;
             }
 
+            log::debug!("  Tries backtracking with variables: {variables:?} ({total_allowed_values} possible assignments)");
+
             let assignments = range_constraints
                 .iter()
                 .map(|rc| {
@@ -197,26 +199,31 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             let mut multiple_solutions = false;
             for assignment in assignments {
                 let mut solver = self.clone();
-                log::info!("Trying assignment: {assignment:?}");
-                for (variable, assignment) in variables.iter().zip(assignment) {
-                    solver
-                        .apply_assignment(variable, &SymbolicExpression::from(T::from(assignment)));
+                for (variable, assignment) in variables.iter().zip(&assignment) {
+                    solver.apply_assignment(
+                        variable,
+                        &SymbolicExpression::from(T::from(*assignment)),
+                    );
                 }
                 if solver.loop_until_no_progress(false).is_ok() {
                     // We found a solution.
                     if final_solver.is_none() {
-                        final_solver = Some(solver);
+                        final_solver = Some((solver, assignment));
                     } else {
                         multiple_solutions = true;
                         break;
                     }
+                } else {
+                    log::debug!("  Found a contradiction for assignment {assignment:?}");
                 }
             }
             if multiple_solutions {
                 // We found multiple solutions, so we can't use this backtracking.
+                log::debug!("  Found multiple solutions, skipping backtracking.");
                 continue;
             }
-            if let Some(solver) = final_solver {
+            if let Some((solver, assignment)) = final_solver {
+                log::debug!("  Found a unique solution: {assignment:?}");
                 return Ok(Some(solver));
             } else {
                 return Err(Error::BacktrackingFailure);
