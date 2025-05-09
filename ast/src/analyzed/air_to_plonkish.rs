@@ -13,7 +13,6 @@ pub struct PlonkishExpression<T>
 where
     T: FieldElement,
 {
-    pub row: u64,
     pub ql: AlgebraicExpression<T>,
     pub qr: AlgebraicExpression<T>,
     pub qo: AlgebraicExpression<T>,
@@ -30,7 +29,6 @@ where
 {
     fn default() -> Self {
         PlonkishExpression {
-            row: 0,
             ql: AlgebraicExpression::Number(T::zero()),
             qr: AlgebraicExpression::Number(T::zero()),
             qo: AlgebraicExpression::Number(T::zero()),
@@ -47,16 +45,14 @@ impl<T> AlgebraicExpression<T>
 where
     T: FieldElement,
 {
-    pub fn build_plonkish(&self, row_offset: u64) -> Vec<PlonkishExpression<T>> {
-        let mut row = row_offset;
+    pub fn build_plonkish(&self) -> Vec<PlonkishExpression<T>> {
         let mut plonkish_expr = Vec::<PlonkishExpression<T>>::new();
         let mut poly_id_offset = 1000;
-        self.to_plonkish(&mut row, &mut plonkish_expr, &mut poly_id_offset);
+        self.to_plonkish(&mut plonkish_expr, &mut poly_id_offset);
         plonkish_expr
     }
     pub fn to_plonkish(
         &self,
-        row_offset: &mut u64,
         plonkish_expr: &mut Vec<PlonkishExpression<T>>,
         poly_id_offset: &mut u64,
     ) -> AlgebraicExpression<T> {
@@ -83,7 +79,6 @@ where
                             op,
                             left,
                             right,
-                            row_offset,
                             plonkish_expr,
                             poly_id_offset,
                         ),
@@ -92,7 +87,7 @@ where
                                 op,
                                 left,
                                 right,
-                                row_offset,
+                            
                                 plonkish_expr,
                                 poly_id_offset,
                                 false,
@@ -103,7 +98,7 @@ where
                                 op,
                                 right,
                                 left,
-                                row_offset,
+                             
                                 plonkish_expr,
                                 poly_id_offset,
                                 false,
@@ -113,7 +108,7 @@ where
                             op,
                             left,
                             right,
-                            row_offset,
+                          
                             plonkish_expr,
                             poly_id_offset,
                         ),
@@ -126,7 +121,7 @@ where
                             op,
                             left,
                             right,
-                            row_offset,
+                            
                             plonkish_expr,
                             poly_id_offset,
                         ),
@@ -135,7 +130,7 @@ where
                                 op,
                                 left,
                                 right,
-                                row_offset,
+                               
                                 plonkish_expr,
                                 poly_id_offset,
                                 false,
@@ -146,7 +141,7 @@ where
                                 op,
                                 right,
                                 left,
-                                row_offset,
+                               
                                 plonkish_expr,
                                 poly_id_offset,
                                 true,
@@ -156,7 +151,7 @@ where
                             op,
                             left,
                             right,
-                            row_offset,
+                            
                             plonkish_expr,
                             poly_id_offset,
                         ),
@@ -173,7 +168,7 @@ where
                             op,
                             left,
                             right,
-                            row_offset,
+                            
                             plonkish_expr,
                             poly_id_offset,
                         ),
@@ -181,8 +176,7 @@ where
                             Self::op_left_poly_right_recursive(
                                 op,
                                 right,
-                                left,
-                                row_offset,
+                                left,    
                                 plonkish_expr,
                                 poly_id_offset,
                                 false,
@@ -193,7 +187,7 @@ where
                                 op,
                                 left,
                                 right,
-                                row_offset,
+                                
                                 plonkish_expr,
                                 poly_id_offset,
                                 false,
@@ -204,7 +198,7 @@ where
                                 op,
                                 left,
                                 right,
-                                row_offset,
+                              
                                 plonkish_expr,
                                 poly_id_offset,
                             )
@@ -239,12 +233,10 @@ where
         op: &AlgebraicBinaryOperator,
         left: &AlgebraicReference,
         right: &AlgebraicReference,
-        row_offset: &mut u64,
         plonkish_expr: &mut Vec<PlonkishExpression<T>>,
         poly_id_offset: &mut u64,
     ) -> AlgebraicExpression<T> {
         let mut row_expression = PlonkishExpression::default();
-        row_expression.row = *row_offset;
 
         match *op {
             AlgebraicBinaryOperator::Add => {
@@ -262,7 +254,7 @@ where
                     next: right.next,
                 });
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -285,7 +277,7 @@ where
                     next: right.next,
                 });
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -307,7 +299,7 @@ where
                     next: right.next,
                 });
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -321,7 +313,6 @@ where
         }
 
         plonkish_expr.push(row_expression.clone());
-        *row_offset += 1;
         row_expression.c.clone()
     }
 
@@ -329,14 +320,11 @@ where
         op: &AlgebraicBinaryOperator,
         left: &AlgebraicReference,
         right: &AlgebraicExpression<T>,
-        row_offset: &mut u64,
         plonkish_expr: &mut Vec<PlonkishExpression<T>>,
         poly_id_offset: &mut u64,
         left_right_flip: bool,
     ) -> AlgebraicExpression<T> {
         let mut row_expression = PlonkishExpression::default();
-        row_expression.row = *row_offset;
-        *row_offset += 1;
                 
 
         match *op {
@@ -349,11 +337,11 @@ where
                     poly_id: left.poly_id,
                     next: left.next,
                 });
+                
+                row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
                 *poly_id_offset += 1;
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -377,10 +365,11 @@ where
                     poly_id: left.poly_id,
                     next: left.next,
                 });
+                
+                row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
                 *poly_id_offset += 1;
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -397,11 +386,11 @@ where
                     poly_id: left.poly_id,
                     next: left.next,
                 });
+                
+                row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
                 *poly_id_offset += 1;
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -423,13 +412,11 @@ where
         op: &AlgebraicBinaryOperator,
         left: &AlgebraicExpression<T>,
         right: &AlgebraicExpression<T>,
-        row_offset: &mut u64,
         plonkish_expr: &mut Vec<PlonkishExpression<T>>,
         poly_id_offset: &mut u64,
     ) -> AlgebraicExpression<T> {
         let mut row_expression = PlonkishExpression::default();
-        row_expression.row = *row_offset;
-        *row_offset += 1;
+
 
         match *op {
             AlgebraicBinaryOperator::Add => {
@@ -438,7 +425,7 @@ where
                 row_expression.qo = AlgebraicExpression::Number(T::one());
 
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -446,10 +433,9 @@ where
                     next: false,
                 });
                 *poly_id_offset += 1;
-                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-                *row_offset += 1;
+                row_expression.a = left.to_plonkish( plonkish_expr, poly_id_offset);
                 *poly_id_offset += 1;
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+                row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
 
                 
             }
@@ -459,7 +445,7 @@ where
 
                 row_expression.qo = AlgebraicExpression::Number(T::one());
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -467,16 +453,15 @@ where
                     next: false,
                 });
                 *poly_id_offset += 1;
-                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-                *row_offset += 1;
+                row_expression.a = left.to_plonkish( plonkish_expr, poly_id_offset);
                 *poly_id_offset += 1;
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+                row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
             }
             AlgebraicBinaryOperator::Mul => {
                 row_expression.qmul = AlgebraicExpression::Number(T::one());
                 row_expression.qo = AlgebraicExpression::Number(-T::one());
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
-                    name: format!("temp_{}", *row_offset),
+                    name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
                         id: *poly_id_offset,
                         ptype: PolynomialType::Committed,
@@ -484,10 +469,9 @@ where
                     next: false,
                 });
                 *poly_id_offset += 1;
-                row_expression.a = left.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
-                *row_offset += 1;
+                row_expression.a = left.to_plonkish( plonkish_expr, poly_id_offset);
                 *poly_id_offset += 1;
-                row_expression.b = right.to_plonkish(row_offset, plonkish_expr, poly_id_offset);
+                row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
             }
             _ => {
                 panic!(
