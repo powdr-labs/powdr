@@ -7,11 +7,12 @@ use crate::analyzed::AlgebraicReference;
 use crate::analyzed::PolyID;
 use crate::analyzed::PolynomialType;
 use powdr_number::FieldElement;
+use openvm_stark_backend::p3_field::PrimeField32;
 
 #[derive(Clone, Debug)]
 pub struct PlonkishExpression<T>
 where
-    T: FieldElement,
+    T: PrimeField32,
 {
     pub ql: AlgebraicExpression<T>,
     pub qr: AlgebraicExpression<T>,
@@ -25,25 +26,25 @@ where
 
 impl<T> Default for PlonkishExpression<T>
 where
-    T: FieldElement,
+    T: PrimeField32,
 {
     fn default() -> Self {
         PlonkishExpression {
-            ql: AlgebraicExpression::Number(T::zero()),
-            qr: AlgebraicExpression::Number(T::zero()),
-            qo: AlgebraicExpression::Number(T::zero()),
-            qmul: AlgebraicExpression::Number(T::zero()),
-            qconst: AlgebraicExpression::Number(T::zero()),
-            a: AlgebraicExpression::Number(T::zero()),
-            b: AlgebraicExpression::Number(T::zero()),
-            c: AlgebraicExpression::Number(T::zero()),
+            ql: AlgebraicExpression::Number(T::ZERO),
+            qr: AlgebraicExpression::Number(T::ZERO),
+            qo: AlgebraicExpression::Number(T::ZERO),
+            qmul: AlgebraicExpression::Number(T::ZERO),
+            qconst: AlgebraicExpression::Number(T::ZERO),
+            a: AlgebraicExpression::Number(T::ZERO),
+            b: AlgebraicExpression::Number(T::ZERO),
+            c: AlgebraicExpression::Number(T::ZERO),
         }
     }
 }
 
 impl<T> AlgebraicExpression<T>
 where
-    T: FieldElement,
+    T: PrimeField32,
 {
     pub fn build_plonkish(&self) -> Vec<PlonkishExpression<T>> {
         let mut plonkish_expr = Vec::<PlonkishExpression<T>>::new();
@@ -240,9 +241,9 @@ where
 
         match *op {
             AlgebraicBinaryOperator::Add => {
-                row_expression.ql = AlgebraicExpression::Number(T::one());
-                row_expression.qr = AlgebraicExpression::Number(T::one());
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.ql = AlgebraicExpression::Number(T::ONE);
+                row_expression.qr = AlgebraicExpression::Number(T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.a = AlgebraicExpression::Reference(AlgebraicReference {
                     name: left.name.clone(),
                     poly_id: left.poly_id,
@@ -263,9 +264,9 @@ where
                 });
             }
             AlgebraicBinaryOperator::Sub => {
-                row_expression.ql = AlgebraicExpression::Number(T::one());
-                row_expression.qr = AlgebraicExpression::Number(-T::one());
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.ql = AlgebraicExpression::Number(T::ONE);
+                row_expression.qr = AlgebraicExpression::Number(-T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.a = AlgebraicExpression::Reference(AlgebraicReference {
                     name: left.name.clone(),
                     poly_id: left.poly_id,
@@ -286,8 +287,8 @@ where
                 });
             }
             AlgebraicBinaryOperator::Mul => {
-                row_expression.qmul = AlgebraicExpression::Number(T::one());
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.qmul = AlgebraicExpression::Number(T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.a = AlgebraicExpression::Reference(AlgebraicReference {
                     name: left.name.clone(),
                     poly_id: left.poly_id,
@@ -329,9 +330,9 @@ where
 
         match *op {
             AlgebraicBinaryOperator::Add => {
-                row_expression.ql = AlgebraicExpression::Number(T::one());
-                row_expression.qr = AlgebraicExpression::Number(T::one());
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.ql = AlgebraicExpression::Number(T::ONE);
+                row_expression.qr = AlgebraicExpression::Number(T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.a = AlgebraicExpression::Reference(AlgebraicReference {
                     name: left.name.clone(),
                     poly_id: left.poly_id,
@@ -352,14 +353,14 @@ where
             }
             AlgebraicBinaryOperator::Sub => {
                 if left_right_flip {
-                    row_expression.ql = AlgebraicExpression::Number(-T::one());
-                    row_expression.qr = AlgebraicExpression::Number(T::one());
+                    row_expression.ql = AlgebraicExpression::Number(-T::ONE);
+                    row_expression.qr = AlgebraicExpression::Number(T::ONE);
                 } else {
-                    row_expression.ql = AlgebraicExpression::Number(T::one());
-                    row_expression.qr = AlgebraicExpression::Number(-T::one());
+                    row_expression.ql = AlgebraicExpression::Number(T::ONE);
+                    row_expression.qr = AlgebraicExpression::Number(-T::ONE);
                 }
 
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.a = AlgebraicExpression::Reference(AlgebraicReference {
                     name: left.name.clone(),
                     poly_id: left.poly_id,
@@ -379,8 +380,8 @@ where
                 
             }
             AlgebraicBinaryOperator::Mul => {
-                row_expression.qmul = AlgebraicExpression::Number(T::one());
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.qmul = AlgebraicExpression::Number(T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.a = AlgebraicExpression::Reference(AlgebraicReference {
                     name: left.name.clone(),
                     poly_id: left.poly_id,
@@ -420,9 +421,9 @@ where
 
         match *op {
             AlgebraicBinaryOperator::Add => {
-                row_expression.ql = AlgebraicExpression::Number(T::one());
-                row_expression.qr = AlgebraicExpression::Number(T::one());
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.ql = AlgebraicExpression::Number(T::ONE);
+                row_expression.qr = AlgebraicExpression::Number(T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
 
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *poly_id_offset),
@@ -440,10 +441,10 @@ where
                 
             }
             AlgebraicBinaryOperator::Sub => {
-                row_expression.ql = AlgebraicExpression::Number(-T::one());
-                row_expression.qr = AlgebraicExpression::Number(T::one());
+                row_expression.ql = AlgebraicExpression::Number(-T::ONE);
+                row_expression.qr = AlgebraicExpression::Number(T::ONE);
 
-                row_expression.qo = AlgebraicExpression::Number(T::one());
+                row_expression.qo = AlgebraicExpression::Number(T::ONE);
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
@@ -458,8 +459,8 @@ where
                 row_expression.b = right.to_plonkish( plonkish_expr, poly_id_offset);
             }
             AlgebraicBinaryOperator::Mul => {
-                row_expression.qmul = AlgebraicExpression::Number(T::one());
-                row_expression.qo = AlgebraicExpression::Number(-T::one());
+                row_expression.qmul = AlgebraicExpression::Number(T::ONE);
+                row_expression.qo = AlgebraicExpression::Number(-T::ONE);
                 row_expression.c = AlgebraicExpression::Reference(AlgebraicReference {
                     name: format!("temp_{}", *poly_id_offset),
                     poly_id: PolyID {
