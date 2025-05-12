@@ -48,7 +48,7 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
+impl<T> Children<AlgebraicExpression<T>>
     for SymbolicConstraint<T>
 {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
@@ -80,7 +80,7 @@ impl<T: Display> Display for SymbolicBusInteraction<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
+impl<T> Children<AlgebraicExpression<T>>
     for SymbolicBusInteraction<T>
 {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
@@ -116,7 +116,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
+impl<T: Clone + Ord> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
             self.constraints
@@ -140,7 +140,7 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for Sy
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+impl<T> SymbolicMachine<T> {
     pub fn constraint_columns(&self) -> BTreeSet<Column> {
         self.constraints
             .iter()

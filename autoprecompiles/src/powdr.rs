@@ -179,7 +179,7 @@ pub trait UniqueColumns<'a, T: 'a> {
     fn unique_columns(&'a self) -> impl Iterator<Item = Column>;
 }
 
-impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
+impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>>
     UniqueColumns<'a, T> for E
 {
     fn unique_columns(&'a self) -> impl Iterator<Item = Column> {
