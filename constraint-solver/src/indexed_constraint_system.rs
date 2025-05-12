@@ -195,10 +195,10 @@ mod tests {
 
     #[test]
     fn substitute_by_unknown() {
-        type QSE = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
-        let x = QSE::from_unknown_variable("x");
-        let y = QSE::from_unknown_variable("y");
-        let z = QSE::from_unknown_variable("z");
+        type Qse = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
+        let x = Qse::from_unknown_variable("x");
+        let y = Qse::from_unknown_variable("y");
+        let z = Qse::from_unknown_variable("z");
         let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
@@ -213,7 +213,7 @@ mod tests {
         }
         .into();
 
-        s.substitute_by_unknown(&"x", &QSE::from_unknown_variable("z"));
+        s.substitute_by_unknown(&"x", &Qse::from_unknown_variable("z"));
 
         assert_eq!(
             format_system(&s),
@@ -222,8 +222,8 @@ mod tests {
 
         s.substitute_by_unknown(
             &"z",
-            &(QSE::from_unknown_variable("x")
-                + QSE::from(SymbolicExpression::from(GoldilocksField::from(7)))),
+            &(Qse::from_unknown_variable("x")
+                + Qse::from(SymbolicExpression::from(GoldilocksField::from(7)))),
         );
 
         assert_eq!(
