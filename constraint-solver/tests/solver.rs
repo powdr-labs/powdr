@@ -235,10 +235,16 @@ fn xor() {
 
 #[test]
 fn add_with_carry() {
+    // This tests a case of equivalent constraints that appear in the
+    // way "add with carry" is performed in openvm.
+    // X and Y end up being equivalent because they are both either
+    // A or A - 256, depending on whether the value of A is between
+    // 0 and 255 or not.
+    // A is the result of an addition with carry.
     let constraint_system = ConstraintSystem {
         algebraic_constraints: vec![
-            (var("X") - var("A") - constant(256)) * (var("X") - var("A")),
-            (var("Y") - var("A") - constant(256)) * (var("Y") - var("A")),
+            (var("X") - var("A") + constant(256)) * (var("X") - var("A")),
+            (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
         ],
         // Byte range constraints on X and Y
         bus_interactions: vec![
@@ -258,7 +264,7 @@ fn add_with_carry() {
         .to_string();
     assert_eq!(
         final_state,
-        "(-A + X + -256) * (-A + X)
-(-A + X + -256) * (-A + X)"
+        "(-A + X + 256) * (-A + X)
+(-A + X + 256) * (-A + X)"
     );
 }
