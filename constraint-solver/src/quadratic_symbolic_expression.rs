@@ -38,7 +38,7 @@ impl<T: FieldElement, V> ProcessResult<T, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// The range constraints of the parts do not cover the full constant sum.
     ConflictingRangeConstraints,

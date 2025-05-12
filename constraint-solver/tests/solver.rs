@@ -6,7 +6,7 @@ use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
-    solver::Solver,
+    solver::{Error, Solver},
     test_utils::{constant, var},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -231,6 +231,28 @@ fn xor() {
         solver,
         vec![("a", 0xa0.into()), ("b", 0x0b.into()), ("c", 0xab.into())],
     );
+}
+
+#[test]
+fn xor_invalid() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            var("a") - constant(0xa0),
+            var("b") - constant(0x0b),
+            var("c") - constant(0xff),
+        ],
+        // Send (a, b, c) to the XOR table.
+        // Note that this violates the bus rules, because 0xa0 ^ 0x0b != 0xff.
+        bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
+    };
+
+    let solver = Solver::new(constraint_system)
+        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+
+    match solver.solve() {
+        Err(e) => assert_eq!(e, Error::BusInteractionError),
+        _ => panic!("Expected error!"),
+    }
 }
 
 #[test]
