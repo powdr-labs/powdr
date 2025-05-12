@@ -1,35 +1,27 @@
 use itertools::Itertools;
-use optimizer::optimize;
-use powdr::{collect_cols_algebraic, Column, UniqueColumns};
+use optimizer::{optimize, ConcreteBusInteractionHandler};
+use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_ast::parsed::asm::Part;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperator, Analyzed, Identity, PolynomialIdentity,
+        AlgebraicUnaryOperator,
     },
-    parsed::{
-        asm::SymbolPath, visitor::AllChildren, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, NamespacedPolynomialReference, Number, PILFile, PilStatement,
-        UnaryOperation, UnaryOperator,
-    },
+    parsed::visitor::AllChildren,
 };
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
-use powdr_parser_util::SourceRef;
-use powdr_pil_analyzer::analyze_ast;
-use powdr_pilopt::optimize as pilopt_optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::iter::once;
 
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
-mod optimizer;
+pub mod optimizer;
 pub mod powdr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,13 +29,6 @@ pub struct SymbolicInstructionStatement<T> {
     pub name: String,
     pub opcode: usize,
     pub args: Vec<T>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicInstructionDefinition {
-    pub name: String,
-    pub inputs: Vec<String>,
-    pub outputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,7 +162,7 @@ pub enum InstructionKind {
 pub struct Autoprecompiles<T> {
     pub program: Vec<SymbolicInstructionStatement<T>>,
     pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -262,19 +247,25 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> From<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
-    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
-        let ty = bus_interaction.args[0].clone().into();
-        let op = bus_interaction.kind.clone().into();
-        let addr = bus_interaction.args[1].clone();
-        let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
-        MemoryBusInteraction {
-            ty,
-            op,
-            addr,
-            data,
-            bus_interaction,
-        }
+impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
+    type Error = ();
+
+    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+        (bus_interaction.id == MEMORY_BUS_ID)
+            .then(|| {
+                let ty = bus_interaction.args[0].clone().into();
+                let op = bus_interaction.kind.clone().into();
+                let addr = bus_interaction.args[1].clone();
+                let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
+                MemoryBusInteraction {
+                    ty,
+                    op,
+                    addr,
+                    data,
+                    bus_interaction,
+                }
+            })
+            .ok_or(())
     }
 }
 
@@ -286,17 +277,23 @@ pub struct PcLookupBusInteraction<T> {
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
-impl<T: FieldElement> From<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
-    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
-        let from_pc = bus_interaction.args[0].clone();
-        let op = bus_interaction.args[1].clone();
-        let args = bus_interaction.args[2..].to_vec();
-        PcLookupBusInteraction {
-            from_pc,
-            op,
-            args,
-            bus_interaction,
-        }
+impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
+    type Error = ();
+
+    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+        (bus_interaction.id == PC_LOOKUP_BUS_ID)
+            .then(|| {
+                let from_pc = bus_interaction.args[0].clone();
+                let op = bus_interaction.args[1].clone();
+                let args = bus_interaction.args[2..].to_vec();
+                PcLookupBusInteraction {
+                    from_pc,
+                    op,
+                    args,
+                    bus_interaction,
+                }
+            })
+            .ok_or(())
     }
 }
 
@@ -312,39 +309,27 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
-        bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+        bus_interaction_handler: impl BusInteractionHandler<T>
+            + ConcreteBusInteractionHandler<T>
+            + 'static
+            + Clone,
+        degree_bound: usize,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        let (mut machine, subs) = generate_precompile(
+        let (machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
         );
 
-        machine = optimize_pc_lookup(machine);
-        machine = optimize_exec_bus(machine);
-        machine = optimize_precompile(machine);
-
-        let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
-        for b in &machine.bus_interactions {
-            match bus.get_mut(&b.id) {
-                Some(v) => {
-                    v.push(b);
-                }
-                None => {
-                    bus.insert(b.id, vec![&b]);
-                }
-            }
-        }
-
-        machine = optimize(machine, bus_interaction_handler);
-        // We do not run pilcom, since it breaks the requirement that transformations should not reassign poly_id.id
-        // TODO: Remove pilcom entirely by covering all its cases in powdr_optimize
-        // machine = powdr_optimize_legacy(machine);
-        machine = remove_zero_mult(machine);
-        machine = remove_zero_constraint(machine);
+        let machine = optimize_pc_lookup(machine);
+        let machine = optimize_exec_bus(machine);
+        let machine = optimize_precompile(machine);
+        let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        let machine = remove_zero_mult(machine);
+        let machine = remove_zero_constraint(machine);
 
         // add guards to constraints that are not satisfied by zeroes
-        machine = add_guards(machine);
+        let machine = add_guards(machine);
 
         (machine, subs)
     }
@@ -381,21 +366,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
     }
 }
 
-pub fn replace_autoprecompile_basic_blocks<T: Clone>(
-    blocks: &[BasicBlock<T>],
-    selected: &BTreeMap<u64, SymbolicInstructionStatement<T>>,
-) -> Vec<SymbolicInstructionStatement<T>> {
-    let mut new_program = Vec::new();
-    for (i, block) in blocks.iter().enumerate() {
-        if let Some(instr) = selected.get(&(i as u64)) {
-            new_program.push(instr.clone());
-        } else {
-            new_program.extend(block.statements.clone());
-        }
-    }
-    new_program
-}
-
+// TODO: This should probably be done by pilopt
 pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     machine
         .bus_interactions
@@ -404,6 +375,10 @@ pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sym
     machine
 }
 
+/// Adds an `is_valid` guard to all constraints and bus interactions.
+/// Assumptions:
+/// - There are exactly one execution bus receive and one execution bus send, in this order.
+/// - There is exactly one program bus send.
 pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let max_id = machine
         .unique_columns()
@@ -435,27 +410,58 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         }
     }
 
-    let mut is_valid_mults = Vec::new();
-    let mut receive_exec = true;
+    let [execution_bus_receive, execution_bus_send] = machine
+        .bus_interactions
+        .iter_mut()
+        .filter_map(|bus_int| match bus_int.id {
+            EXECUTION_BUS_ID => Some(bus_int),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    execution_bus_receive.mult =
+        AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
+    execution_bus_send.mult = is_valid.clone();
+
+    let [program_bus_send] = machine
+        .bus_interactions
+        .iter_mut()
+        .filter_map(|bus_int| match bus_int.id {
+            PC_LOOKUP_BUS_ID => Some(bus_int),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    program_bus_send.mult = is_valid.clone();
+
+    let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        if b.id == EXECUTION_BUS_ID && receive_exec {
-            b.mult =
-                AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
-            receive_exec = !receive_exec;
-        } else if (b.id == EXECUTION_BUS_ID && !receive_exec) || b.id == PC_LOOKUP_BUS_ID {
-            b.mult = is_valid.clone();
-        } else {
-            let mut zeroed_expr = b.mult.clone();
-            powdr::make_refs_zero(&mut zeroed_expr);
-            let zeroed_expr = simplify_expression(zeroed_expr);
-            if !powdr::is_zero(&zeroed_expr) {
-                b.mult = is_valid.clone() * b.mult.clone();
-                // TODO this would not have to be cloned if we had *=
-                //c.expr *= guard.clone();
-            } else {
-                let one = AlgebraicExpression::Number(1u64.into());
-                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                is_valid_mults.push(e);
+        match b.id {
+            EXECUTION_BUS_ID => {
+                // already handled
+            }
+            PC_LOOKUP_BUS_ID => {
+                // already handled
+            }
+            _ => {
+                // We check the value of the multiplicity when all variables are set to zero
+                let mut zeroed_expr = b.mult.clone();
+                powdr::make_refs_zero(&mut zeroed_expr);
+                let zeroed_expr = simplify_expression(zeroed_expr);
+                if !powdr::is_zero(&zeroed_expr) {
+                    // if it's not zero, then we guard the multiplicity by `is_valid`
+                    b.mult = is_valid.clone() * b.mult.clone();
+                    // TODO this would not have to be cloned if we had *=
+                    //c.expr *= guard.clone();
+                } else {
+                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                    let one = AlgebraicExpression::Number(1u64.into());
+                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                    is_valid_mults.push(e);
+                }
             }
         }
     }
@@ -465,6 +471,7 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     machine
 }
 
+// TODO: This should probably be done by pilopt
 pub fn remove_zero_constraint<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
 ) -> SymbolicMachine<T> {
@@ -516,11 +523,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         .iter()
         .enumerate()
         .for_each(|(i, bus_int)| {
-            if bus_int.id != MEMORY_BUS_ID {
-                return;
-            }
-
-            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
+                Ok(mem_int) => mem_int,
+                Err(_) => {
+                    return;
+                }
+            };
 
             if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
                 return;
@@ -575,11 +583,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         .into_iter()
         .enumerate()
         .filter_map(|(i, bus_int)| {
-            if bus_int.id != MEMORY_BUS_ID {
-                return Some(bus_int);
-            }
-
-            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
+                Ok(mem_int) => mem_int,
+                Err(_) => {
+                    return Some(bus_int);
+                }
+            };
 
             if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
                 return Some(bus_int);
@@ -750,7 +759,7 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
 pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
@@ -762,7 +771,7 @@ pub fn generate_precompile<T: FieldElement>(
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
+                let machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
                 global_idx = next_global_idx;
@@ -770,10 +779,7 @@ pub fn generate_precompile<T: FieldElement>(
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
                     .iter()
-                    .filter_map(|bus_int| match bus_int.id {
-                        PC_LOOKUP_BUS_ID => Some(bus_int.clone().into()),
-                        _ => None,
-                    })
+                    .filter_map(|bus_int| bus_int.clone().try_into().ok())
                     .exactly_one()
                     .expect("Expected single pc lookup");
 
@@ -1026,187 +1032,6 @@ fn try_compute_opcode_map<T: FieldElement>(
         })
         .chain(zero_flag.map(|flag| (offset.to_degree(), flag.clone())))
         .collect())
-}
-
-/// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
-/// Then, translate the optimized constraints and interactions back to a SymbolicMachine
-// TODO: We should remove this step soon as powdr_optimize also in-lines witness columns
-// up to the degree bound. At that point, powdr_optimize_legacy should not yield any
-// optimizations.
-#[allow(dead_code)]
-fn powdr_optimize_legacy<P: FieldElement>(
-    symbolic_machine: SymbolicMachine<P>,
-) -> SymbolicMachine<P> {
-    let pilfile = symbolic_machine_to_pilfile(symbolic_machine);
-    let analyzed: Analyzed<P> = analyze_ast(pilfile).expect("Failed to analyze AST");
-    let optimized = pilopt_optimize(analyzed);
-
-    let intermediates = optimized.intermediate_definitions();
-
-    let mut powdr_exprs = Vec::new();
-    let mut powdr_bus_interactions = Vec::new();
-    for id in optimized.identities.into_iter() {
-        match id {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                powdr_exprs.push(SymbolicConstraint {
-                    expr: powdr::inline_intermediates(expression, &intermediates),
-                });
-            }
-            Identity::BusInteraction(powdr_interaction) => {
-                let interaction =
-                    powdr::powdr_interaction_to_symbolic(powdr_interaction, &intermediates);
-                powdr_bus_interactions.push(interaction);
-            }
-            _ => continue,
-        }
-    }
-    SymbolicMachine {
-        constraints: powdr_exprs,
-        bus_interactions: powdr_bus_interactions,
-    }
-}
-
-/// Create a PILFile from a SymbolicMachine
-fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> PILFile {
-    let mut program = Vec::new();
-
-    // Collect all unique polynomial references from constraints and bus interactions
-    let refs: BTreeSet<AlgebraicExpression<_>> = symbolic_machine
-        .constraints
-        .iter()
-        .flat_map(|constraint| collect_cols_algebraic(&constraint.expr))
-        .chain(
-            symbolic_machine
-                .bus_interactions
-                .iter()
-                .flat_map(|interaction| {
-                    interaction
-                        .args
-                        .iter()
-                        .chain(std::iter::once(&interaction.mult))
-                        .flat_map(|expr| collect_cols_algebraic(expr))
-                }),
-        )
-        .collect::<BTreeSet<_>>();
-
-    // Add PolynomialCommitDeclaration for all referenced columns into the program
-    for algebraic_ref in &refs {
-        if let AlgebraicExpression::Reference(ref r) = algebraic_ref {
-            program.push(PilStatement::PolynomialCommitDeclaration(
-                SourceRef::unknown(),
-                None,
-                vec![r.name.clone().into()],
-                None,
-            ));
-        }
-    }
-
-    // Add Expressions for all constraints
-    for constraint in &symbolic_machine.constraints {
-        let zero = BigUint::from(0u32).into();
-        let constraint = Expression::new_binary(
-            algebraic_to_expression::<P>(&constraint.expr),
-            BinaryOperator::Identity,
-            zero,
-        );
-        program.push(PilStatement::Expression(SourceRef::unknown(), constraint));
-    }
-
-    // Add Expressions for all bus interactions
-    for interaction in &symbolic_machine.bus_interactions {
-        let mult_expr = algebraic_to_expression::<P>(&interaction.mult);
-        let bus_id_expr = BigUint::from(interaction.id).into();
-
-        let payload_array = Expression::ArrayLiteral(
-            SourceRef::unknown(),
-            ArrayLiteral {
-                items: interaction
-                    .args
-                    .iter()
-                    .map(|arg| algebraic_to_expression::<P>(arg))
-                    .collect(),
-            },
-        );
-
-        let latch_expr = match interaction.kind {
-            BusInteractionKind::Receive => BigUint::from(0u32).into(),
-            BusInteractionKind::Send => BigUint::from(1u32).into(),
-        };
-
-        let path = SymbolPath::from_parts(
-            ["std", "prelude", "Constr", "BusInteraction"]
-                .into_iter()
-                .map(|p| Part::Named(p.to_string())),
-        );
-
-        let bus_interaction_expr = Expression::FunctionCall(
-            SourceRef::unknown(),
-            FunctionCall {
-                function: Box::new(Expression::Reference(
-                    SourceRef::unknown(),
-                    NamespacedPolynomialReference::from(path),
-                )),
-                arguments: vec![mult_expr, bus_id_expr, payload_array, latch_expr],
-            },
-        );
-
-        program.push(PilStatement::Expression(
-            SourceRef::unknown(),
-            bus_interaction_expr,
-        ));
-    }
-
-    PILFile(program)
-}
-
-/// Transforms an AlgebraicExpression from the analyzed AST to the corresponding Expression in the parsed AST.
-fn algebraic_to_expression<P: FieldElement>(expr: &AlgebraicExpression<P>) -> Expression {
-    let dummy_src = SourceRef::unknown();
-
-    match expr {
-        AlgebraicExpression::Reference(reference) => {
-            let parsed_ref = NamespacedPolynomialReference::from_identifier(reference.name.clone());
-            Expression::Reference(dummy_src, parsed_ref)
-        }
-        AlgebraicExpression::PublicReference(_name) => todo!(),
-        AlgebraicExpression::Number(value) => Expression::Number(
-            dummy_src,
-            Number {
-                value: BigUint::from(value.to_integer().try_into_u32().unwrap()),
-                type_: None,
-            },
-        ),
-        AlgebraicExpression::BinaryOperation(bin_op) => {
-            let parsed_operator = match bin_op.op {
-                AlgebraicBinaryOperator::Add => BinaryOperator::Add,
-                AlgebraicBinaryOperator::Sub => BinaryOperator::Sub,
-                AlgebraicBinaryOperator::Mul => BinaryOperator::Mul,
-                AlgebraicBinaryOperator::Pow => BinaryOperator::Pow,
-            };
-
-            let left = Box::new(algebraic_to_expression::<P>(&bin_op.left));
-            let right = Box::new(algebraic_to_expression::<P>(&bin_op.right));
-
-            Expression::BinaryOperation(
-                dummy_src,
-                BinaryOperation {
-                    op: parsed_operator,
-                    left,
-                    right,
-                },
-            )
-        }
-        AlgebraicExpression::UnaryOperation(un_op) => {
-            let op = match un_op.op {
-                AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
-            };
-
-            let expr = Box::new(algebraic_to_expression::<P>(&un_op.expr));
-
-            Expression::UnaryOperation(dummy_src, UnaryOperation { op, expr })
-        }
-        AlgebraicExpression::Challenge(_) => unreachable!(),
-    }
 }
 
 fn is_loadstore(opcode: usize) -> bool {
