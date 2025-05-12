@@ -4,6 +4,7 @@ use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::quadratic_equivalences;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
@@ -84,6 +85,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.solve_in_isolation()?;
             // Try inferring new information using bus interactions.
             progress |= self.solve_bus_interactions();
+            // Try to find equivalent variables using quadratic constraints.
+            progress |= self.try_solve_quadratic_equivalences();
             if !progress {
                 // If there are non-quadratic constraints with more than one variable,
                 // inline the least constrained of them.
@@ -130,6 +133,22 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.apply_effect(effect);
         }
         progress
+    }
+
+    /// Tries to find equivalent variables using quadratic constraints.
+    fn try_solve_quadratic_equivalences(&mut self) -> bool {
+        let equivalences = quadratic_equivalences::find_quadratic_equalities(
+            self.constraint_system.algebraic_constraints(),
+            &self.range_constraints,
+        );
+        for (x, y) in &equivalences {
+            // TODO can we make this work with Effects?
+            self.constraint_system.substitute_by_unknown(
+                y,
+                &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
+            );
+        }
+        !equivalences.is_empty()
     }
 
     /// If there are non-quadratic constraints with more than one variable,
@@ -216,6 +235,14 @@ impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
 
 impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
     for RangeConstraints<T, V>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var).cloned().unwrap_or_default()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
+    for &RangeConstraints<T, V>
 {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         self.range_constraints.get(var).cloned().unwrap_or_default()
