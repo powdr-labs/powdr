@@ -21,18 +21,11 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         .filter_map(QuadraticEqualityCandidate::try_from_qse)
         .filter(|c| c.variables.len() >= 2)
         .collect::<Vec<_>>();
-    let mut result = vec![];
-    for (i, c1) in candidates.iter().enumerate() {
-        for c2 in &candidates[(i + 1)..] {
-            result.extend(process_quadratic_equality_candidate_pair(
-                c1,
-                c2,
-                &range_constraints,
-            ))
-        }
-    }
-
-    result
+    candidates
+        .iter()
+        .tuple_combinations()
+        .flat_map(|(c1, c2)| process_quadratic_equality_candidate_pair(c1, c2, &range_constraints))
+        .collect()
 }
 
 /// If we have two constraints of the form
@@ -95,6 +88,7 @@ fn process_quadratic_equality_candidate_pair<
 struct QuadraticEqualityCandidate<T: FieldElement, V: Ord + Clone + Hash + Eq> {
     expr: QuadraticSymbolicExpression<T, V>,
     offset: T,
+    /// All unknown variables in `expr`.
     variables: HashSet<V>,
 }
 
