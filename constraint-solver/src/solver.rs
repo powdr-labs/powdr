@@ -134,17 +134,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// Tries to find equivalent variables using quadratic constraints.
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
         let equivalences = quadratic_equivalences::find_quadratic_equalities(
-            &self.constraint_system.algebraic_constraints,
+            &self.constraint_system.algebraic_constraints(),
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
             // TODO can we make this work with Effects?
-            for constraint in &mut self.constraint_system.algebraic_constraints {
-                constraint.substitute_by_unknown(
-                    y,
-                    &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
-                );
-            }
+            self.constraint_system.substitute_by_unknown(
+                y,
+                &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
+            );
         }
         !equivalences.is_empty()
     }
