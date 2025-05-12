@@ -492,7 +492,7 @@ fn replace_witness_by_intermediate() {
     col witness w;
     col fixed f = [1_fe, 0_fe]*;
     col can_be_replaced = 2 * N::w + 3 * N::f + 5;
-    -(2 * N::w * N::w + N::w + 3 * N::f) = 0;
+    2 * N::w * N::w + N::w + 3 * N::f = 0;
     col constrained_twice = 2 * N::w + 3 * N::f + 5;
     N::f' = -N::w;
     N::can_be_replaced = 5 - N::w;
@@ -560,7 +560,7 @@ fn inline_chain_of_substitutions() {
 
     let expectation = r#"namespace N(65536);
     col witness a;
-    -(N::a * N::a + 10) = 0;
+    N::a * N::a + 10 = 0;
     N::a * N::a = 1;
 "#;
 
