@@ -332,6 +332,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
                 let value = self.constant.field_div(&-coeff);
+                let rc = range_constraints.get(var);
+                if rc.is_disjoint(&value.range_constraint()) {
+                    return Err(Error::ConflictingRangeConstraints);
+                }
                 ProcessResult::complete(vec![Effect::Assignment(var.clone(), value)])
             } else if self.constant.is_known_nonzero() {
                 // If the offset is not zero, then the coefficient must be non-zero,
@@ -1358,5 +1362,13 @@ Z: [10, 4294967050] & 0xffffffff;
         assert_eq!(quadratic[0].1.to_string(), "y");
         assert!(linear.is_empty());
         assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
+    }
+
+    #[test]
+    fn bool_plus_one_cant_be_zero() {
+        let expr = var("a") + constant(1);
+        let rc = RangeConstraint::from_mask(0x1u64);
+        let range_constraints = HashMap::from([("a", rc.clone())]);
+        assert!(expr.solve(&range_constraints).is_err());
     }
 }
