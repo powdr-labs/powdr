@@ -87,7 +87,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             if !progress {
                 // If there are non-quadratic constraints with more than one variable,
                 // inline the least constrained of them.
-                // To only do this as a last resort to prioritize constant propagation.
+                // We only do this as a last resort to prioritize constant propagation.
                 progress |= self.inline_affine();
             }
 
@@ -136,8 +136,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// inline the least constrained of them.
     fn inline_affine(&mut self) -> bool {
         let mut progress = false;
-        for i in 0..self.constraint_system.algebraic_constraints.len() {
-            let constr = &self.constraint_system.algebraic_constraints[i];
+        for i in 0..self.constraint_system.algebraic_constraints().len() {
+            let constr = &self.constraint_system.algebraic_constraints()[i];
             if !constr.is_affine() {
                 continue;
             }
