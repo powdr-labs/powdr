@@ -116,7 +116,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
     }
 }
 
-impl<T: Clone + Ord> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
+impl<T> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
             self.constraints
