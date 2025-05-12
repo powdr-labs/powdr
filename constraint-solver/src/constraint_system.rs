@@ -157,7 +157,7 @@ pub trait BusInteractionHandler<T: FieldElement> {
         let previous_constraints = bus_interaction.clone();
         let new_constraints = self.handle_bus_interaction(bus_interaction);
 
-        // Intersect the old and new range constraints. If they don't intersect,
+        // Intersect the old and new range constraints. If they don't overlap,
         // there is a contradiction.
         for (previous_rc, new_rc) in previous_constraints.iter().zip_eq(new_constraints.iter()) {
             if previous_rc.is_disjoint(new_rc) {
