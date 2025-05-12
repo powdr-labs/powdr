@@ -3,8 +3,8 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
@@ -72,7 +72,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         self.loop_until_no_progress()?;
 
         Ok(SolveResult {
-            assignments,
+            assignments: self.assignments,
             simplified_constraint_system: self.constraint_system.into(),
         })
     }
