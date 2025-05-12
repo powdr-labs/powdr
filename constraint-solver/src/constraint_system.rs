@@ -31,22 +31,6 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                 .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut())),
         )
     }
-
-    /// Substitute an unknown variable by a quadratic symbolic expression (which can
-    /// contain other unknown variables).
-    pub fn substitute_by_unknown(
-        &mut self,
-        variable: &V,
-        substitution: &QuadraticSymbolicExpression<T, V>,
-    ) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        self.algebraic_constraints
-            .iter_mut()
-            .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut()))
-            .for_each(|expr| {
-                expr.substitute_by_unknown(variable, substitution);
-            });
-    }
 }
 
 /// A bus interaction.
