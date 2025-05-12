@@ -53,7 +53,7 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
-    /// Substitutes a variable with a symbolic expression in all algebraic expressions
+    /// Substitutes a variable with a symbolic expression in the whole system
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
         // Since we substitute by a known value, we do not need to update variable_occurrences.
         for item in self
@@ -62,6 +62,39 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
             .unwrap_or(&Vec::new())
         {
             substitute_by_known_in_item(&mut self.constraint_system, *item, variable, substitution);
+        }
+    }
+
+    /// Substitute an unknown variable by a QuadraticSymbolicExpression in the whole system.
+    ///
+    /// Note this does NOT work properly if the variable is used inside a
+    /// known SymbolicExpression.
+    pub fn substitute_by_unknown(
+        &mut self,
+        variable: &V,
+        substitution: &QuadraticSymbolicExpression<T, V>,
+    ) {
+        let items = self
+            .variable_occurrences
+            .get(variable)
+            .cloned()
+            .unwrap_or(Vec::new());
+        for item in &items {
+            substitute_by_unknown_in_item(
+                &mut self.constraint_system,
+                *item,
+                variable,
+                substitution,
+            );
+        }
+
+        // We just add all variables in the substitution to the items.
+        // It might be that cancellations occur, but we assume it is not worth the overhead.
+        for var in substitution.referenced_unknown_variables().unique() {
+            self.variable_occurrences
+                .get_mut(var)
+                .unwrap_or_default()
+                .extend(items);
         }
     }
 }
@@ -111,6 +144,25 @@ fn substitute_by_known_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
             constraint_system.bus_interactions[i]
                 .iter_mut()
                 .for_each(|expr| expr.substitute_by_known(variable, substitution));
+        }
+    }
+}
+
+fn substitute_by_unknown_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    constraint_system: &mut ConstraintSystem<T, V>,
+    item: ConstraintSystemItem,
+    variable: &V,
+    substitution: &QuadraticSymbolicExpression<T, V>,
+) {
+    match item {
+        ConstraintSystemItem::AlgebraicConstraint(i) => {
+            constraint_system.algebraic_constraints[i]
+                .substitute_by_unknown(variable, substitution);
+        }
+        ConstraintSystemItem::BusInteraction(i) => {
+            constraint_system.bus_interactions[i]
+                .iter_mut()
+                .for_each(|expr| expr.substitute_by_unknown(variable, substitution));
         }
     }
 }
