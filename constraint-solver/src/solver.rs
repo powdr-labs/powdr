@@ -173,6 +173,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     fn apply_assignment(&mut self, variable: &V, expr: &SymbolicExpression<T, V>) -> bool {
+        assert!(expr.try_to_number().is_some());
         self.apply_range_constraint_update(variable, expr.range_constraint())
     }
 
@@ -183,12 +184,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
             // The range constraint was updated.
-            log::trace!("({variable}: {range_constraint})");
 
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
+                log::trace!("({variable} := {value})");
                 self.constraint_system
                     .substitute_by_known(variable, &value.into());
+                self.assignments.insert(variable.clone(), value.into());
+            } else {
+                log::trace!("({variable}: {range_constraint})");
             }
             true
         } else {
