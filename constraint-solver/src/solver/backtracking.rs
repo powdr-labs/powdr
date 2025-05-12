@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
+use crate::indexed_constraint_system::ConstraintSystemItem;
 use crate::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
 use crate::symbolic_expression::SymbolicExpression;
@@ -26,9 +27,9 @@ pub fn try_solve_with_backtracking<
     let candidates = solver
         .constraint_system
         .iter()
-        .map(|identity| {
+        .map(|expression| {
             // Heuristic: Variables that appear together in an identity are likely to be interdependent.
-            identity
+            expression
                 .referenced_variables()
                 .cloned()
                 .collect::<BTreeSet<_>>()
@@ -111,8 +112,10 @@ fn get_possible_assignments_if_few<
     let assignments = range_constraints
         .iter()
         .map(|rc| {
-            let (min, max) = rc.range();
-            assert!(min <= max);
+            let (mut min, mut max) = rc.range();
+            if min > max {
+                (min, max) = (max, min);
+            }
             (0..=(max - min).to_integer().try_into_u64().unwrap())
                 // Note that this filter step might lead to there being fewer assignments than
                 // previously calculated from the range alone.
@@ -197,16 +200,36 @@ fn check_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debu
     solver: &Solver<T, V>,
     assignments: &BTreeMap<V, T>,
 ) -> bool {
-    let identities = solver
+    let constraints = solver
         .constraint_system
-        .get_identities(assignments.keys().cloned());
+        .get_constraints(assignments.keys().cloned());
 
-    for mut identity in identities {
-        for (variable, value) in assignments.iter() {
-            identity.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
-        }
-        if identity.solve(&solver.range_constraints).is_err() {
-            return false;
+    for constraint in constraints {
+        match constraint {
+            ConstraintSystemItem::AlgebraicConstraint(index) => {
+                let mut identity = solver.constraint_system.algebraic_constraints()[index].clone();
+                for (variable, value) in assignments.iter() {
+                    identity.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                }
+                if identity.solve(&solver.range_constraints).is_err() {
+                    return false;
+                }
+            }
+            ConstraintSystemItem::BusInteraction(index) => {
+                let mut bus_interaction =
+                    solver.constraint_system.bus_interactions()[index].clone();
+                for (variable, value) in assignments.iter() {
+                    bus_interaction.iter_mut().for_each(|expr| {
+                        expr.substitute_by_known(variable, &SymbolicExpression::Concrete(*value))
+                    })
+                }
+                if bus_interaction
+                    .solve(&*solver.bus_interaction_handler, &solver.range_constraints)
+                    .is_err()
+                {
+                    return false;
+                }
+            }
         }
     }
 

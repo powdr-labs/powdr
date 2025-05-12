@@ -19,7 +19,7 @@ pub struct IndexedConstraintSystem<T: FieldElement, V> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-enum ConstraintSystemItem {
+pub enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     BusInteraction(usize),
 }
@@ -57,22 +57,13 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
-    pub fn get_identities(
-        &self,
-        variables: impl Iterator<Item = V>,
-    ) -> Vec<QuadraticSymbolicExpression<T, V>> {
+    pub fn get_constraints(&self, variables: impl Iterator<Item = V>) -> Vec<ConstraintSystemItem> {
         variables
             .flat_map(|v| match self.variable_occurrences.get(&v) {
                 Some(items) => items.clone(),
                 None => vec![],
             })
             .unique()
-            .filter_map(|item| match item {
-                ConstraintSystemItem::AlgebraicConstraint(i) => {
-                    Some(self.algebraic_constraints()[i].clone())
-                }
-                ConstraintSystemItem::BusInteraction(_) => None,
-            })
             .collect()
     }
 
