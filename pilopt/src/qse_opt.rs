@@ -46,6 +46,8 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         bus_interactions: vec![],
     };
 
+    //replace_constrained_witness_columns(&mut constraint_system, 3);
+
     match solver::Solver::new(constraint_system).solve() {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
@@ -66,7 +68,12 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 })
                 .zip_eq(simplified_constraint_system.algebraic_constraints)
                 .for_each(|(identity, simplified)| {
-                    *identity = quadratic_symbolic_expression_to_algebraic(&simplified);
+                    // We can ignore the negation because it is a polynomial identity
+                    // that is equated to zero.
+                    let (constraint, _) = extract_negation_if_possible(
+                        quadratic_symbolic_expression_to_algebraic(&simplified),
+                    );
+                    *identity = constraint;
                 });
             // We add all assignments because we did not send all references to witnesses to the solver.
             // It might have removed some variable that are hard-constrained to some value.
@@ -81,7 +88,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 }
 
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-enum Variable {
+pub enum Variable {
     Reference(AlgebraicReference),
     PublicReference(String),
     Challenge(Challenge),
@@ -100,7 +107,7 @@ impl Display for Variable {
 /// Turns an algebraic expression into a quadratic symbolic expression,
 /// assuming all [`AlgebraicReference`]s, public references and challenges
 /// are unknown variables.
-fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
+pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> QuadraticSymbolicExpression<T, Variable> {
     match expr {
@@ -166,7 +173,7 @@ where
 /// Turns a quadratic symbolic expression back into an algebraic expression.
 /// Tries to simplify the expression wrt negation and constant factors
 /// to aid human readability.
-fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
+pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
     // Turn the expression into a list of to-be-summed items and try to

@@ -4,6 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_equivalences;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
@@ -30,7 +31,7 @@ pub struct SolveResult<T: FieldElement, V> {
 pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: ConstraintSystem<T, V>,
+    constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
@@ -46,7 +47,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         );
 
         Solver {
-            constraint_system,
+            constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
         }
@@ -75,7 +76,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .collect();
         Ok(SolveResult {
             assignments,
-            simplified_constraint_system: self.constraint_system,
+            simplified_constraint_system: self.constraint_system.into(),
         })
     }
 
@@ -99,10 +100,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// Tries to make progress by solving each constraint in isolation.
     fn solve_in_isolation(&mut self) -> Result<bool, Error> {
         let mut progress = false;
-        for i in 0..self.constraint_system.algebraic_constraints.len() {
+        for i in 0..self.constraint_system.algebraic_constraints().len() {
             // TODO: Improve efficiency by only running skipping constraints that
             // have not received any updates since they were last processed.
-            let effects = self.constraint_system.algebraic_constraints[i]
+            let effects = self.constraint_system.algebraic_constraints()[i]
                 .solve(&self.range_constraints)?
                 .effects;
             for effect in effects {
@@ -117,7 +118,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         let mut progress = false;
         let effects = self
             .constraint_system
-            .bus_interactions
+            .bus_interactions()
             .iter()
             .flat_map(|bus_interaction| {
                 bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
@@ -175,7 +176,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.constraint_system.substitute(variable, &value.into());
+                self.constraint_system
+                    .substitute_by_known(variable, &value.into());
             }
             true
         } else {
