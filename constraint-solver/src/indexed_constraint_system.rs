@@ -1,5 +1,6 @@
-use std::hash::Hash;
+use std::{collections::HashMap, hash::Hash};
 
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
@@ -13,11 +14,25 @@ use crate::{
 pub struct IndexedConstraintSystem<T: FieldElement, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
+    /// Stores where each unknown variable appears.
+    variable_occurrences: HashMap<V, Vec<ConstraintSystemItem>>,
 }
 
-impl<T: FieldElement, V> From<ConstraintSystem<T, V>> for IndexedConstraintSystem<T, V> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+enum ConstraintSystemItem {
+    AlgebraicConstraint(usize),
+    BusInteraction(usize),
+}
+
+impl<T: FieldElement, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>>
+    for IndexedConstraintSystem<T, V>
+{
     fn from(constraint_system: ConstraintSystem<T, V>) -> Self {
-        IndexedConstraintSystem { constraint_system }
+        let variable_occurrences = variable_occurrences(&constraint_system);
+        IndexedConstraintSystem {
+            constraint_system,
+            variable_occurrences,
+        }
     }
 }
 
@@ -40,18 +55,62 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     /// Substitutes a variable with a symbolic expression in all algebraic expressions
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        self.constraint_system
-            .algebraic_constraints
-            .iter_mut()
-            .chain(
-                self.constraint_system
-                    .bus_interactions
-                    .iter_mut()
-                    .flat_map(|b| b.iter_mut()),
-            )
-            .for_each(|expr| {
-                expr.substitute_by_known(variable, substitution);
-            });
+        // Since we substitute by a known value, we do not need to update variable_occurrences.
+        for item in self
+            .variable_occurrences
+            .get(variable)
+            .unwrap_or(&Vec::new())
+        {
+            substitute_by_known_in_item(&mut self.constraint_system, *item, variable, substitution);
+        }
+    }
+}
+
+/// Returns a hash map mapping all unknown variables in the constraint system
+/// to the items they occur in.
+fn variable_occurrences<T: FieldElement, V: Hash + Eq + Clone + Ord>(
+    constraint_system: &ConstraintSystem<T, V>,
+) -> HashMap<V, Vec<ConstraintSystemItem>> {
+    let occurrences_in_algebraic_constraints = constraint_system
+        .algebraic_constraints
+        .iter()
+        .enumerate()
+        .flat_map(|(i, constraint)| {
+            constraint
+                .referenced_unknown_variables()
+                .unique()
+                .map(move |v| (v.clone(), ConstraintSystemItem::AlgebraicConstraint(i)))
+        });
+    let occurrences_in_bus_interactions = constraint_system
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .flat_map(|(i, bus_interaction)| {
+            bus_interaction
+                .iter()
+                .flat_map(|c| c.referenced_unknown_variables())
+                .unique()
+                .map(move |v| (v.clone(), ConstraintSystemItem::BusInteraction(i)))
+        });
+    occurrences_in_algebraic_constraints
+        .chain(occurrences_in_bus_interactions)
+        .into_group_map()
+}
+
+fn substitute_by_known_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    constraint_system: &mut ConstraintSystem<T, V>,
+    item: ConstraintSystemItem,
+    variable: &V,
+    substitution: &SymbolicExpression<T, V>,
+) {
+    match item {
+        ConstraintSystemItem::AlgebraicConstraint(i) => {
+            constraint_system.algebraic_constraints[i].substitute_by_known(variable, substitution);
+        }
+        ConstraintSystemItem::BusInteraction(i) => {
+            constraint_system.bus_interactions[i]
+                .iter_mut()
+                .for_each(|expr| expr.substitute_by_known(variable, substitution));
+        }
     }
 }
