@@ -336,6 +336,8 @@ impl<T: FieldElement> Autoprecompiles<T> {
         &self,
         bus_interaction_handler: impl BusInteractionHandler<T>
             + ConcreteBusInteractionHandler<T>
+            + Sync
+            + Send
             + 'static
             + Clone,
         degree_bound: usize,

@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
@@ -31,6 +31,8 @@ pub fn optimize<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
     bus_interaction_handler: impl BusInteractionHandler<P>
         + ConcreteBusInteractionHandler<P>
+        + Send
+        + Sync
         + 'static
         + Clone,
     degree_bound: usize,
@@ -96,10 +98,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Send + Sync + 'static,
 ) -> ConstraintSystem<T, Variable> {
     let result = Solver::new(constraint_system)
-        .with_bus_interaction_handler(Rc::new(bus_interaction_handler))
+        .with_bus_interaction_handler(Arc::new(bus_interaction_handler))
         .solve()
         .map_err(|e| {
             panic!("Solver failed: {e:?}");

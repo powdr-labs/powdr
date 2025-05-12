@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
@@ -17,40 +18,51 @@ const MAX_BACKTRACKING_WIDTH: usize = 32;
 /// Tries to find a set of variables with few possible assignments, and tries them all.
 /// If there is a unique solution, it returns an updated solver with fewer unknown variables.
 pub fn try_solve_with_backtracking<
-    T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display + Debug,
+    T: FieldElement + Send + Sync,
+    V: Ord + Clone + Hash + Eq + Display + Debug + Send + Sync,
 >(
     solver: &Solver<T, V>,
 ) -> Result<Option<Solver<T, V>>, Error> {
     log::debug!("Trying backtracking...");
-    for identity in solver.constraint_system.iter() {
-        // Consider all sets of variables that appear together in an expression.
-        let Some(assignment_candidates) = get_possible_assignments_if_few(
-            &solver.range_constraints,
-            identity.referenced_variables().unique().cloned().collect(),
-        ) else {
-            // Too many possible assignments...
-            continue;
-        };
-        let assignment_candidates = assignment_candidates.collect::<Vec<_>>();
+    let candidates = solver
+        .constraint_system
+        .iter()
+        .filter_map(|identity| {
+            // Consider all sets of variables that appear together in an expression.
+            let Some(assignment_candidates) = get_possible_assignments_if_few(
+                &solver.range_constraints,
+                identity.referenced_variables().unique().cloned().collect(),
+            ) else {
+                // Too many possible assignments...
+                return None;
+            };
+            Some(assignment_candidates.collect::<Vec<_>>())
+        })
+        .collect_vec();
 
-        match try_assignment_candidates(solver, &assignment_candidates) {
-            BacktrackingState::NoSolution => {
-                log::error!("  None of the following assignments satisfied the constraint system: {assignment_candidates:?}");
-                return Err(Error::BacktrackingFailure);
+    if let Some(r ) = candidates.par_iter()
+        .map(|assignment_candidates| {
+            match try_assignment_candidates(solver, assignment_candidates) {
+                BacktrackingState::NoSolution => {
+                    log::error!("  None of the following assignments satisfied the constraint system: {assignment_candidates:?}");
+                    Some(Err(Error::BacktrackingFailure))
+                }
+                BacktrackingState::UniqueSolution(solver, assignment) => {
+                    log::debug!("  Found a unique solution: {assignment:?}");
+                    Some(Ok(Some(solver)))
+                }
+                BacktrackingState::MultipleSolutions => {
+                    log::debug!(
+                        "  Found multiple solutions, continuing to the next set of assignments."
+                    );
+                    None
+                }
             }
-            BacktrackingState::UniqueSolution(solver, assignment) => {
-                log::debug!("  Found a unique solution: {assignment:?}");
-                return Ok(Some(solver));
-            }
-            BacktrackingState::MultipleSolutions => {
-                log::debug!(
-                    "  Found multiple solutions, continuing to the next set of assignments."
-                );
-            }
-        }
-    }
-    Ok(None)
+        })
+        .filter_map(|r| r)
+        .find_any(|_| true) {
+            r
+        } else {Ok(None)}
 }
 
 /// Returns an iterator over all possible assignments for the given variables, if the number of
@@ -154,7 +166,11 @@ enum BacktrackingState<'a, T: FieldElement, V> {
 /// - Apply the assignments.
 /// - Do a round of `loop_until_no_progress`, to see if the assignment leads to a contradiction.
 /// - Return the backtracking state. If there is a unique solution, this contains the updated solver.
-fn try_assignment_candidates<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug>(
+fn try_assignment_candidates<
+    'a,
+    T: FieldElement,
+    V: Ord + Clone + Hash + Eq + Display + Debug + Send + Sync,
+>(
     solver: &Solver<T, V>,
     assignment_candidates: &'a [BTreeMap<V, T>],
 ) -> BacktrackingState<'a, T, V> {

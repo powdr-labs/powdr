@@ -15,7 +15,7 @@ use super::symbolic_expression::SymbolicExpression;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::rc::Rc;
+use std::sync::Arc;
 
 mod backtracking;
 
@@ -35,12 +35,14 @@ pub struct Solver<T: FieldElement, V> {
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
-    bus_interaction_handler: Rc<dyn BusInteractionHandler<T>>,
+    bus_interaction_handler: Arc<dyn BusInteractionHandler<T> + Sync + Send + 'static>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement + Send + Sync, V: Ord + Clone + Hash + Eq + Display + Debug + Send + Sync>
+    Solver<T, V>
+{
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.iter()).is_empty(),
@@ -50,13 +52,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Solver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
-            bus_interaction_handler: Rc::new(DefaultBusInteractionHandler::default()),
+            bus_interaction_handler: Arc::new(DefaultBusInteractionHandler::default()),
         }
     }
 
     pub fn with_bus_interaction_handler(
         self,
-        bus_interaction_handler: Rc<dyn BusInteractionHandler<T>>,
+        bus_interaction_handler: Arc<dyn BusInteractionHandler<T> + Sync + Send + 'static>,
     ) -> Self {
         Solver {
             bus_interaction_handler,
