@@ -50,9 +50,32 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     pub fn bus_interactions(&self) -> &[BusInteraction<QuadraticSymbolicExpression<T, V>>] {
         &self.constraint_system.bus_interactions
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+        self.constraint_system.iter()
+    }
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
+    pub fn get_identities(
+        &self,
+        variables: impl Iterator<Item = V>,
+    ) -> Vec<QuadraticSymbolicExpression<T, V>> {
+        variables
+            .flat_map(|v| match self.variable_occurrences.get(&v) {
+                Some(items) => items.clone(),
+                None => vec![],
+            })
+            .unique()
+            .filter_map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => {
+                    Some(self.algebraic_constraints()[i].clone())
+                }
+                ConstraintSystemItem::BusInteraction(_) => None,
+            })
+            .collect()
+    }
+
     /// Substitutes a variable with a symbolic expression in the whole system
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
         // Since we substitute by a known value, we do not need to update variable_occurrences.

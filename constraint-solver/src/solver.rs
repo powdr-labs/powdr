@@ -1,3 +1,4 @@
+use backtracking::try_solve_with_backtracking;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -17,6 +18,8 @@ use super::symbolic_expression::SymbolicExpression;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+
+mod backtracking;
 
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
@@ -47,7 +50,7 @@ pub struct Solver<T: FieldElement, V> {
     range_constraints: RangeConstraints<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement + Send + Sync, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.iter()).is_empty(),
@@ -87,6 +90,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         })
     }
 
+    /// Solves the constraint system as far as possible, until no more progress can be made.
+    /// If `allow_backtracking` is `true`, the solver will additionally try to assign values to
+    /// unknown variables and testing if the assignment is unique.
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
@@ -98,10 +104,20 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
-                break;
+                if !self.is_done() && self.solve_with_backtracking()? {
+                    // Made progress with backtracking, continue solving.
+                } else {
+                    break;
+                }
             }
         }
         Ok(())
+    }
+
+    fn is_done(&self) -> bool {
+        self.constraint_system
+            .iter()
+            .all(|expr| expr.referenced_variables().next().is_none())
     }
 
     /// Tries to make progress by solving each constraint in isolation.
@@ -154,6 +170,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             );
         }
         !equivalences.is_empty()
+    }
+
+    fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
+        if let Some(assignments) =
+            try_solve_with_backtracking(self).map_err(Error::QseSolvingError)?
+        {
+            for (variable, value) in assignments {
+                self.apply_assignment(&variable, &value.into());
+            }
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
@@ -210,6 +239,7 @@ struct RangeConstraints<T: FieldElement, V> {
     range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
+// Manual implementation so that we don't have to require `V: Default`.
 impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
     fn default() -> Self {
         RangeConstraints {

@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fmt::Display,
     hash::Hash,
+    iter::Product,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -44,6 +45,7 @@ pub enum Error {
     ConflictingRangeConstraints,
     /// An equality constraint evaluates to a known-nonzero value.
     ConstraintUnsatisfiable,
+    BacktrackingFailure,
 }
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)
@@ -816,6 +818,16 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
                 constant: T::from(0).into(),
             }
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Product for QuadraticSymbolicExpression<T, V> {
+    fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut result = T::from(1).into();
+        for item in iter {
+            result = result * item;
+        }
+        result
     }
 }
 

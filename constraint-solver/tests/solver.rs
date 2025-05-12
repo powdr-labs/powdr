@@ -7,7 +7,7 @@ use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::{Error, Solver},
-    test_utils::{constant, var},
+    test_utils::{constant, var, Qse},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use test_log::test;
@@ -288,5 +288,86 @@ fn add_with_carry() {
         final_state,
         "(-A + X + 256) * (-A + X)
 (-A + X + 256) * (-A + X)"
+    );
+}
+
+#[test]
+fn one_hot_flags() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // Boolean flags
+            var("flag0") * (var("flag0") - constant(1)),
+            var("flag1") * (var("flag1") - constant(1)),
+            var("flag2") * (var("flag2") - constant(1)),
+            var("flag3") * (var("flag3") - constant(1)),
+            // Exactly one flag is active
+            var("flag0") + var("flag1") + var("flag2") + var("flag3") - constant(1),
+            // Flag 2 is active
+            var("flag0") * constant(0)
+                + var("flag1") * constant(1)
+                + var("flag2") * constant(2)
+                + var("flag3") * constant(3)
+                - constant(2),
+        ],
+        bus_interactions: vec![],
+    };
+
+    // This can be solved via backtracking:
+    // For any given flag, setting it to 1 will set the other flags to 0.
+    // For any flag except flag2, this will lead to a contradiction in the last constraint.
+    // So, the solver can just set the flags one-by-one, finding a unique assignment in each step.
+    assert_solve_result(
+        Solver::new(constraint_system),
+        vec![
+            ("flag0", 0.into()),
+            ("flag1", 0.into()),
+            ("flag2", 1.into()),
+            ("flag3", 0.into()),
+        ],
+    );
+}
+
+#[test]
+fn binary_flags() {
+    let index_to_expression = |i: usize| -> Qse {
+        (0..3)
+            .map(move |j| {
+                if i & (1 << j) != 0 {
+                    var(format!("flag{j}").leak())
+                } else {
+                    constant(1) - var(format!("flag{j}").leak())
+                }
+            })
+            .product()
+    };
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // Boolean flags
+            var("flag0") * (var("flag0") - constant(1)),
+            var("flag1") * (var("flag1") - constant(1)),
+            var("flag2") * (var("flag2") - constant(1)),
+            index_to_expression(0b000) * constant(101)
+                + index_to_expression(0b001) * constant(102)
+                + index_to_expression(0b010) * constant(103)
+                + index_to_expression(0b011) * constant(104)
+                + index_to_expression(0b100) * constant(105)
+                + index_to_expression(0b101) * constant(106)
+                + index_to_expression(0b110) * constant(107)
+                + index_to_expression(0b111) * constant(108)
+                - constant(104),
+        ],
+        bus_interactions: vec![],
+    };
+
+    // Contrary to the `one_hot_flags` test, we can't solve for the flags one-by-one.
+    // But in combination, (flag0, flag1, flag2) only have 8 possible assignments, and
+    // exactly one of them will satisfy the last constraint.
+    assert_solve_result(
+        Solver::new(constraint_system),
+        vec![
+            ("flag0", 1.into()),
+            ("flag1", 1.into()),
+            ("flag2", 0.into()),
+        ],
     );
 }
