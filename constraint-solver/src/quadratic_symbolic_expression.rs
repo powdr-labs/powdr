@@ -256,7 +256,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         *self += to_add;
     }
 
-    /// Returns the set of referenced variables, both know and unknown.
+    /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
             .quadratic
@@ -271,7 +271,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         Box::new(quadr.chain(linear).chain(constant))
     }
 
-    /// Returns the set of referenced unknown variables.
+    /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
             a.referenced_unknown_variables()

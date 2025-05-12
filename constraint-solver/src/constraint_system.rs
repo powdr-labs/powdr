@@ -2,7 +2,6 @@ use crate::{
     effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::hash::Hash;
@@ -24,18 +23,13 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                 .chain(self.bus_interactions.iter().flat_map(|b| b.iter())),
         )
     }
-}
 
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq> ConstraintSystem<T, V> {
-    /// Substitutes a variable with a symbolic expression in all algebraic expressions
-    pub fn substitute(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
-        // TODO: Make this more efficient by remembering where the variable appears
-        self.algebraic_constraints
-            .iter_mut()
-            .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut()))
-            .for_each(|expr| {
-                expr.substitute_by_known(variable, substitution);
-            });
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> {
+        Box::new(
+            self.algebraic_constraints
+                .iter_mut()
+                .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut())),
+        )
     }
 
     /// Substitute an unknown variable by a quadratic symbolic expression (which can
@@ -56,6 +50,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> ConstraintSystem<T, V> {
 }
 
 /// A bus interaction.
+#[derive(Debug)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
     pub bus_id: V,
@@ -136,6 +131,11 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
                 None
             })
             .collect()
+    }
+
+    /// Returns the set of referenced variables, both know and unknown.
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        Box::new(self.iter().flat_map(|expr| expr.referenced_variables()))
     }
 }
 
