@@ -92,9 +92,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
         // It might be that cancellations occur, but we assume it is not worth the overhead.
         for var in substitution.referenced_unknown_variables().unique() {
             self.variable_occurrences
-                .get_mut(var)
-                .unwrap_or_default()
-                .extend(items);
+                .entry(var.clone())
+                .or_default()
+                .extend(items.iter().cloned());
         }
     }
 }
@@ -164,5 +164,71 @@ fn substitute_by_unknown_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
                 .iter_mut()
                 .for_each(|expr| expr.substitute_by_unknown(variable, substitution));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use powdr_number::GoldilocksField;
+
+    use super::*;
+
+    fn format_system(s: &IndexedConstraintSystem<GoldilocksField, &'static str>) -> String {
+        format!(
+            "{}  |  {}",
+            s.algebraic_constraints().iter().format("  |  "),
+            s.bus_interactions()
+                .iter()
+                .map(
+                    |BusInteraction {
+                         bus_id,
+                         payload,
+                         multiplicity,
+                     }| format!(
+                        "{bus_id}: {multiplicity} * [{}]",
+                        payload.iter().format(", ")
+                    )
+                )
+                .format("  |  ")
+        )
+    }
+
+    #[test]
+    fn substitute_by_unknown() {
+        type QSE = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
+        let x = QSE::from_unknown_variable("x");
+        let y = QSE::from_unknown_variable("y");
+        let z = QSE::from_unknown_variable("z");
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
+            algebraic_constraints: vec![
+                x.clone() + y.clone(),
+                x.clone() - z.clone(),
+                y.clone() - z.clone(),
+            ],
+            bus_interactions: vec![BusInteraction {
+                bus_id: x,
+                payload: vec![y.clone(), z],
+                multiplicity: y,
+            }],
+        }
+        .into();
+
+        s.substitute_by_unknown(&"x", &QSE::from_unknown_variable("z"));
+
+        assert_eq!(
+            format_system(&s),
+            "y + z  |  0  |  y + -z  |  z: y * [y, z]"
+        );
+
+        s.substitute_by_unknown(
+            &"z",
+            &(QSE::from_unknown_variable("x")
+                + QSE::from(SymbolicExpression::from(GoldilocksField::from(7)))),
+        );
+
+        assert_eq!(
+            format_system(&s),
+            "x + y + 7  |  0  |  -x + y + -7  |  x + 7: y * [y, x + 7]"
+        );
     }
 }
