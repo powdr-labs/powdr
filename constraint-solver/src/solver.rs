@@ -4,6 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::effect::Condition;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_equivalences;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
@@ -11,20 +12,28 @@ use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
 
 use super::effect::Effect;
-use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
+use super::quadratic_symbolic_expression::{Error as QseError, RangeConstraintProvider};
 use super::symbolic_expression::SymbolicExpression;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 /// The result of the solving process.
-#[allow(dead_code)]
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
     pub assignments: BTreeMap<V, T>,
     /// The final state of the constraint system, with known variables
     /// replaced by their values and constraints simplified accordingly.
     pub simplified_constraint_system: ConstraintSystem<T, V>,
+}
+
+/// An error occurred while solving the constraint system.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Error {
+    /// An error occurred while calling `QuadraticSymbolicExpression::solve`
+    QseSolvingError(QseError),
+    /// The bus interaction handler reported that some sent data was invalid.
+    BusInteractionError,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
@@ -39,7 +48,6 @@ pub struct Solver<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
-    #[allow(dead_code)]
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.iter()).is_empty(),
@@ -65,7 +73,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    #[allow(dead_code)]
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
@@ -86,7 +93,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             // Try solving constraints in isolation.
             progress |= self.solve_in_isolation()?;
             // Try inferring new information using bus interactions.
-            progress |= self.solve_bus_interactions();
+            progress |= self.solve_bus_interactions()?;
             // Try to find equivalent variables using quadratic constraints.
             progress |= self.try_solve_quadratic_equivalences();
 
@@ -104,7 +111,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             // TODO: Improve efficiency by only running skipping constraints that
             // have not received any updates since they were last processed.
             let effects = self.constraint_system.algebraic_constraints()[i]
-                .solve(&self.range_constraints)?
+                .solve(&self.range_constraints)
+                .map_err(Error::QseSolvingError)?
                 .effects;
             for effect in effects {
                 progress |= self.apply_effect(effect);
@@ -114,21 +122,22 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     /// Tries to infer new information using bus interactions.
-    fn solve_bus_interactions(&mut self) -> bool {
+    fn solve_bus_interactions(&mut self) -> Result<bool, Error> {
         let mut progress = false;
         let effects = self
             .constraint_system
             .bus_interactions()
             .iter()
-            .flat_map(|bus_interaction| {
+            .map(|bus_interaction| {
                 bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
             })
             // Collect to satisfy borrow checker
-            .collect::<Vec<_>>();
-        for effect in effects {
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_e| Error::BusInteractionError)?;
+        for effect in effects.into_iter().flatten() {
             progress |= self.apply_effect(effect);
         }
-        progress
+        Ok(progress)
     }
 
     /// Tries to find equivalent variables using quadratic constraints.
@@ -155,7 +164,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             }
             Effect::BitDecomposition(..) => unreachable!(),
             Effect::Assertion(..) => unreachable!(),
-            Effect::ConditionalAssignment { .. } => todo!(),
+            Effect::ConditionalAssignment {
+                variable,
+                condition: Condition { value, condition },
+                in_range_value,
+                out_of_range_value,
+            } => {
+                let value = value.try_to_number().unwrap();
+                if condition.allows_value(value) {
+                    self.apply_assignment(&variable, &in_range_value)
+                } else {
+                    self.apply_assignment(&variable, &out_of_range_value)
+                }
+            }
         }
     }
 

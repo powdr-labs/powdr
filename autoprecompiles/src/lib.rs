@@ -176,6 +176,7 @@ pub enum MemoryType {
     Constant,
     Register,
     Memory,
+    Native,
 }
 
 impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
@@ -187,7 +188,8 @@ impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
                     0 => MemoryType::Constant,
                     1 => MemoryType::Register,
                     2 => MemoryType::Memory,
-                    _ => unreachable!("Expected 0, 1 or 2 but got {n}"),
+                    3 => MemoryType::Native,
+                    _ => unreachable!("Expected 0, 1, 2 or 3 but got {n}"),
                 }
             }
             _ => unreachable!("Expected number"),
@@ -201,6 +203,7 @@ impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
             MemoryType::Constant => AlgebraicExpression::Number(T::from(0u32)),
             MemoryType::Register => AlgebraicExpression::Number(T::from(1u32)),
             MemoryType::Memory => AlgebraicExpression::Number(T::from(2u32)),
+            MemoryType::Native => AlgebraicExpression::Number(T::from(3u32)),
         }
     }
 }
@@ -314,10 +317,11 @@ impl<T: FieldElement> Autoprecompiles<T> {
             + 'static
             + Clone,
         degree_bound: usize,
+        opcode: u32,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
         let (machine, subs) = generate_precompile(&self.program, &self.instructions_by_name);
 
-        let machine = optimize_pc_lookup(machine);
+        let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
         let machine = optimize_precompile(machine);
         let machine = optimize(machine, bus_interaction_handler, degree_bound);
@@ -526,13 +530,16 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                 }
             };
 
-            if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
+            if !matches!(mem_int.ty, MemoryType::Register) {
                 return;
             }
 
             let addr = match mem_int.try_addr_u32() {
                 None => {
-                    panic!("Register memory access must have constant address");
+                    panic!(
+                        "Register memory access must have constant address but found {}",
+                        mem_int.addr
+                    );
                 }
                 Some(addr) => addr,
             };
@@ -586,13 +593,16 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                 }
             };
 
-            if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
+            if !matches!(mem_int.ty, MemoryType::Register) {
                 return Some(bus_int);
             }
 
             let addr = match mem_int.try_addr_u32() {
                 None => {
-                    panic!("Register memory access must have constant address");
+                    panic!(
+                        "Register memory access must have constant address but found {}",
+                        mem_int.addr
+                    );
                 }
                 Some(addr) => addr,
             };
@@ -650,7 +660,10 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     machine
 }
 
-pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+pub fn optimize_pc_lookup<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    opcode: u32,
+) -> SymbolicMachine<T> {
     let mut first_pc = None;
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id == PC_LOOKUP_BUS_ID {
@@ -663,7 +676,7 @@ pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>) -> S
     });
     let mut first_pc = first_pc.unwrap();
     assert_eq!(first_pc.args.len(), 9);
-    first_pc.args[1] = AlgebraicExpression::Number(T::from(4351u32));
+    first_pc.args[1] = AlgebraicExpression::Number(T::from(opcode));
     first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
     first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
     first_pc.args[4] = AlgebraicExpression::Number(T::from(0u32));
