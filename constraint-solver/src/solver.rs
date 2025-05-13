@@ -105,7 +105,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
             if !progress {
                 // Find groups of variables with a small set of possible assignments.
-                // If there is exactly one assignment, apply it.
+                // If there is exactly one assignment that does not lead to a contradiction,
+                // apply it.
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
                 progress |= self.solve_with_backtracking()?;
