@@ -93,9 +93,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         })
     }
 
-    /// Solves the constraint system as far as possible, until no more progress can be made.
-    /// If `allow_backtracking` is `true`, the solver will additionally try to assign values to
-    /// unknown variables and testing if the assignment is unique.
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
@@ -107,20 +104,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
-                if !self.is_done() && self.solve_with_backtracking()? {
-                    // Made progress with backtracking, continue solving.
-                } else {
-                    break;
-                }
+                // Find groups of variables with a small set of possible assignments.
+                // If there is exactly one assignment, apply it.
+                // This might be expensive, so we only do it if we made no progress
+                // in the previous steps.
+                progress |= self.solve_with_backtracking()?;
+            }
+
+            if !progress {
+                break;
             }
         }
         Ok(())
-    }
-
-    fn is_done(&self) -> bool {
-        self.constraint_system
-            .iter()
-            .all(|expr| expr.referenced_variables().next().is_none())
     }
 
     /// Tries to make progress by solving each constraint in isolation.
@@ -234,6 +229,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
+    /// Given a set of variable assignments, checks if they satisfy all the constraints.
+    /// Note that this might return false positives, because it does not propagate any values.
     fn check_assignments(&self, assignments: &BTreeMap<V, T>) -> bool {
         let constraints = self
             .constraint_system

@@ -57,6 +57,7 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
+    /// Get all constraints that contain at least one of the given variables.
     pub fn get_constraints(&self, variables: impl Iterator<Item = V>) -> Vec<ConstraintSystemItem> {
         variables
             .flat_map(|v| match self.variable_occurrences.get(&v) {
