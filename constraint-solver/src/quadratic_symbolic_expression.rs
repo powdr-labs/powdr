@@ -9,12 +9,13 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
-use crate::witgen::{
-    jit::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect},
-    range_constraints::RangeConstraint,
+use crate::{
+    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
-use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
+use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
+use super::range_constraint::RangeConstraint;
+use super::symbolic_expression::SymbolicExpression;
 
 #[derive(Default)]
 pub struct ProcessResult<T: FieldElement, V> {
@@ -56,7 +57,7 @@ pub enum Error {
 /// It also provides ways to quickly update the expression when the value of
 /// an unknown variable gets known and provides functions to solve
 /// (some kinds of) equations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
@@ -107,31 +108,74 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    /// Returns true if this expression does not contain any quadratic terms.
+    pub fn is_affine(&self) -> bool {
+        !self.is_quadratic()
+    }
+
+    /// If the expression is a known number, returns it.
+    pub fn try_to_number(&self) -> Option<T> {
+        self.try_to_known()?.try_to_number()
+    }
+
+    /// If the expression is equal to `QuadraticSymbolicExpression::from_unknown_variable(v)`, returns `v`.
+    pub fn try_to_simple_unknown(&self) -> Option<V> {
+        if self.is_quadratic() || !self.constant.is_known_zero() {
+            return None;
+        }
+        let Ok((var, coeff)) = self.linear.iter().exactly_one() else {
+            return None;
+        };
+        if !coeff.is_known_one() {
+            return None;
+        }
+        Some(var.clone())
+    }
+
     /// Returns true if this expression contains at least one quadratic term.
     pub fn is_quadratic(&self) -> bool {
         !self.quadratic.is_empty()
     }
 
-    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
-        let VariableUpdate {
-            variable,
-            known,
-            range_constraint,
-        } = var_update;
-        self.constant.apply_update(var_update);
+    /// Returns `(l, r)` if `self == l * r`.
+    pub fn try_as_single_product(&self) -> Option<(&Self, &Self)> {
+        if self.linear.is_empty() && self.constant.is_known_zero() {
+            match self.quadratic.as_slice() {
+                [(l, r)] => Some((l, r)),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns the quadratic, linear and constant components of this expression.
+    #[allow(clippy::type_complexity)]
+    pub fn components(
+        &self,
+    ) -> (
+        &[(Self, Self)],
+        impl Iterator<Item = (&V, &SymbolicExpression<T, V>)>,
+        &SymbolicExpression<T, V>,
+    ) {
+        (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
+    /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
+    /// If it was already known, it will be substituted in the known expressions.
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
+        self.constant.substitute(variable, substitution);
+
         if self.linear.contains_key(variable) {
             // If the variable is a key in `linear`, it must be unknown
             // and thus can only occur there. Otherwise, it can be in
             // any symbolic expression.
-            if *known {
-                let coeff = self.linear.remove(variable).unwrap();
-                let expr =
-                    SymbolicExpression::from_symbol(variable.clone(), range_constraint.clone());
-                self.constant += expr * coeff;
-            }
+            // We replace the variable by a symbolic expression, so it goes into the constant part.
+            let coeff = self.linear.remove(variable).unwrap();
+            self.constant += &coeff * substitution;
         } else {
             for coeff in self.linear.values_mut() {
-                coeff.apply_update(var_update);
+                coeff.substitute(variable, substitution);
             }
             self.linear.retain(|_, f| !f.is_known_zero());
         }
@@ -141,8 +185,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
         let mut to_add = QuadraticSymbolicExpression::from(T::zero());
         self.quadratic.retain_mut(|(l, r)| {
-            l.apply_update(var_update);
-            r.apply_update(var_update);
+            l.substitute_by_known(variable, substitution);
+            r.substitute_by_known(variable, substitution);
             match (l.try_to_known(), r.try_to_known()) {
                 (Some(l), Some(r)) => {
                     to_add += (l * r).into();
@@ -164,7 +208,55 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    /// Returns the set of referenced variables, both know and unknown.
+    /// Substitute an unknown variable by a QuadraticSymbolicExpression.
+    ///
+    /// Note this does NOT work properly if the variable is used inside a
+    /// known SymbolicExpression.
+    pub fn substitute_by_unknown(
+        &mut self,
+        variable: &V,
+        substitution: &QuadraticSymbolicExpression<T, V>,
+    ) {
+        if !self.referenced_unknown_variables().any(|v| v == variable) {
+            return;
+        }
+
+        let mut to_add = QuadraticSymbolicExpression::from(T::zero());
+        for (var, coeff) in std::mem::take(&mut self.linear) {
+            if var == *variable {
+                to_add += substitution.clone() * coeff;
+            } else {
+                self.linear.insert(var, coeff);
+            }
+        }
+
+        self.quadratic = std::mem::take(&mut self.quadratic)
+            .into_iter()
+            .filter_map(|(mut l, mut r)| {
+                l.substitute_by_unknown(variable, substitution);
+                r.substitute_by_unknown(variable, substitution);
+                match (l.try_to_known(), r.try_to_known()) {
+                    (Some(lval), Some(rval)) => {
+                        to_add += (lval * rval).into();
+                        None
+                    }
+                    (Some(lval), None) => {
+                        to_add += r * lval;
+                        None
+                    }
+                    (None, Some(rval)) => {
+                        to_add += l * rval;
+                        None
+                    }
+                    _ => Some((l, r)),
+                }
+            })
+            .collect();
+
+        *self += to_add;
+    }
+
+    /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
             .quadratic
@@ -179,7 +271,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         Box::new(quadr.chain(linear).chain(constant))
     }
 
-    /// Returns the set of referenced unknown variables.
+    /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
             a.referenced_unknown_variables()
@@ -191,6 +283,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
+}
+
+pub struct NoRangeConstraints;
+impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
+    fn get(&self, _var: &V) -> RangeConstraint<T> {
+        RangeConstraint::default()
+    }
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
@@ -205,7 +304,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.is_quadratic() {
-            ProcessResult::empty()
+            self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
             if k.is_known_nonzero() {
                 return Err(Error::ConstraintUnsatisfiable);
@@ -330,6 +429,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     component += T::Integer::MAX - T::modulus() + 1.into();
                 };
                 component &= bit_mask;
+                if component >= T::modulus() {
+                    // If the component does not fit the field, the bit mask is not
+                    // tight good enough.
+                    return Ok(ProcessResult::empty());
+                }
                 concrete_assignments.push(Effect::Assignment(
                     variable.clone(),
                     T::from(component >> exponent).into(),
@@ -405,6 +509,156 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             constraint
         };
         Some(Effect::RangeConstraint(solve_for.clone(), constraint))
+    }
+
+    fn solve_quadratic(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Result<ProcessResult<T, V>, Error> {
+        let Some((left, right)) = self.try_as_single_product() else {
+            return Ok(ProcessResult::empty());
+        };
+        // Now we have `left * right = 0`, i.e. one (or both) of them has to be zero.
+        let (left_solution, right_solution) = match (
+            left.solve(range_constraints),
+            right.solve(range_constraints),
+        ) {
+            // If one of them is always unsatisfiable, it is equivalent to just solving the other one for zero.
+            (Err(_), o) | (o, Err(_)) => {
+                return o;
+            }
+            (Ok(left), Ok(right)) => (left, right),
+        };
+
+        if let Some(result) =
+            combine_to_conditional_assignment(&left_solution, &right_solution, range_constraints)
+        {
+            return Ok(result);
+        }
+
+        // Now at least combine new range constraints on the same variable.
+        // TODO: This will correctly find a bit range constraint on
+        // `(X - 1) * X = 0`, but it fails to detect the case of
+        // `X * X - X`.
+        // This could be fixed by finding a canonical form for the quadratic
+        // expression, and normalizing the constants.
+        Ok(combine_range_constraints(&left_solution, &right_solution))
+    }
+}
+
+/// Tries to combine two process results from alternative branches into a
+/// conditional assignment.
+fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    left: &ProcessResult<T, V>,
+    right: &ProcessResult<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Option<ProcessResult<T, V>> {
+    let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
+        return None;
+    };
+    let [Effect::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
+        return None;
+    };
+
+    if first_var != second_var {
+        return None;
+    }
+
+    // At this point, we have two assignments to the same variable, i.e.
+    // "`X = A` or `X = B`". If the two alternatives can never be satisfied at
+    // the same time (i.e. the "or" is exclusive), we can turn this into a
+    // conditional assignment.
+
+    let diff = symbolic_expression_to_quadratic_symbolic_expression(
+        &(first_assignment.clone() + -second_assignment.clone()),
+    )?;
+    let diff = diff.try_to_known()?.try_to_number()?;
+    // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
+    // Now if `rc + diff` is disjoint from `rc`, it means
+    // that if the value that `A` evaluates to falls into the allowed range for `X`,
+    // then `B = A + diff` is not a possible value for `X` and vice-versa.
+    // This means the two alternatives are disjoint and we can use a conditional assignment.
+    let rc = range_constraints.get(first_var);
+    if !rc
+        .combine_sum(&RangeConstraint::from_value(diff))
+        .is_disjoint(&rc)
+    {
+        return None;
+    }
+
+    Some(ProcessResult {
+        effects: vec![Effect::ConditionalAssignment {
+            variable: first_var.clone(),
+            condition: Condition {
+                value: first_assignment.clone(),
+                condition: rc,
+            },
+            in_range_value: first_assignment.clone(),
+            out_of_range_value: second_assignment.clone(),
+        }],
+        complete: left.complete && right.complete,
+    })
+}
+
+/// Tries to combine range constraint results from two alternative branches.
+/// In some cases, if both branches produce a complete range constraint for the same variable,
+/// and those range constraints can be combined without loss, the result is complete as well.
+fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    left: &ProcessResult<T, V>,
+    right: &ProcessResult<T, V>,
+) -> ProcessResult<T, V> {
+    let left_constraints = left
+        .effects
+        .iter()
+        .filter_map(|e| effect_to_range_constraint(e))
+        .into_grouping_map()
+        .reduce(|rc1, _, rc2| rc1.conjunction(&rc2));
+    let right_constraints = right
+        .effects
+        .iter()
+        .filter_map(|e| effect_to_range_constraint(e))
+        .into_grouping_map()
+        .reduce(|rc1, _, rc2| rc1.conjunction(&rc2));
+
+    let effects = left_constraints
+        .iter()
+        .filter_map(|(v, rc1)| {
+            let rc2 = right_constraints.get(v)?;
+            let rc = rc1.disjunction(rc2);
+            // This does not capture all cases where the disjunction does not lose information,
+            // but we want this to be an indicator of whether we can remove the original
+            // constraint, and thus we want it to only hit the "single value" case.
+            let complete = rc1.try_to_single_value().is_some()
+                && rc2.try_to_single_value().is_some()
+                && rc.range_width() <= 2.into();
+            Some((v, rc, complete))
+        })
+        .collect_vec();
+    // The completeness is tricky, but if there is just a single left effect
+    // and a single right effect and the final range constraint is complete,
+    // it means that both branches have a concrete assignment for the variable
+    // and thus the range constraint is exactly what the original constraint captures.
+    let complete = left.effects.len() == 1
+        && right.effects.len() == 1
+        && effects.len() == 1
+        && effects.iter().all(|(_, _, complete)| *complete);
+    ProcessResult {
+        effects: effects
+            .into_iter()
+            .map(|(v, rc, _)| Effect::RangeConstraint(v.clone(), rc))
+            .collect(),
+        complete,
+    }
+}
+
+/// Turns an effect into a range constraint on a variable.
+fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    effect: &Effect<T, V>,
+) -> Option<(V, RangeConstraint<T>)> {
+    match effect {
+        Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
+        Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
+        _ => None,
     }
 }
 
@@ -581,8 +835,9 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
 mod tests {
     use std::collections::HashMap;
 
+    use crate::test_utils::{constant, var};
+
     use super::*;
-    use crate::witgen::range_constraints::RangeConstraint;
     use powdr_number::GoldilocksField;
 
     use pretty_assertions::assert_eq;
@@ -641,27 +896,24 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * y + a) * b;
         assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
-        t.apply_update(&VariableUpdate {
-            variable: "B",
-            known: true,
-            range_constraint: RangeConstraint::from_value(7.into()),
-        });
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
+        );
         assert!(t.is_quadratic());
         assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
-        t.apply_update(&VariableUpdate {
-            variable: "X",
-            known: true,
-            range_constraint: RangeConstraint::from_range(1.into(), 2.into()),
-        });
+        t.substitute_by_known(
+            &"X",
+            &SymbolicExpression::from_symbol("X", RangeConstraint::from_range(1.into(), 2.into())),
+        );
         assert!(!t.is_quadratic());
-        assert_eq!(t.to_string(), "(X * 7) * Y + (A * 7)");
-        t.apply_update(&VariableUpdate {
-            variable: "Y",
-            known: true,
-            range_constraint: RangeConstraint::from_value(3.into()),
-        });
+        assert_eq!(t.to_string(), "(7 * X) * Y + (A * 7)");
+        t.substitute_by_known(
+            &"Y",
+            &SymbolicExpression::from_symbol("Y", RangeConstraint::from_value(3.into())),
+        );
         assert!(t.try_to_known().is_some());
-        assert_eq!(t.to_string(), "((A * 7) + (3 * (X * 7)))");
+        assert_eq!(t.to_string(), "((A * 7) + ((7 * X) * 3))");
     }
 
     #[test]
@@ -672,25 +924,38 @@ mod tests {
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * a + y) * b;
         assert_eq!(t.to_string(), "(A * B) * X + B * Y");
-        t.apply_update(&VariableUpdate {
-            variable: "B",
-            known: true,
-            range_constraint: RangeConstraint::from_value(7.into()),
-        });
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
+        );
         assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
-        t.apply_update(&VariableUpdate {
-            variable: "A",
-            known: true,
-            range_constraint: RangeConstraint::from_value(0.into()),
-        });
+        t.substitute_by_known(
+            &"A",
+            &SymbolicExpression::from_symbol("A", RangeConstraint::from_value(0.into())),
+        );
         assert_eq!(t.to_string(), "7 * Y");
     }
 
-    struct NoRangeConstraints;
-    impl RangeConstraintProvider<GoldilocksField, &'static str> for NoRangeConstraints {
-        fn get(&self, _var: &&'static str) -> RangeConstraint<GoldilocksField> {
-            RangeConstraint::default()
-        }
+    #[test]
+    fn substitute_known() {
+        let x = Qse::from_unknown_variable("X");
+        let y = Qse::from_unknown_variable("Y");
+        let a = Qse::from_known_symbol("A", RangeConstraint::default());
+        let b = Qse::from_known_symbol("B", RangeConstraint::default());
+        let mut t: Qse = (x * a + y) * b.clone() + b;
+        assert_eq!(t.to_string(), "(A * B) * X + B * Y + B");
+        // We substitute B by an expression containing B on purpose.
+        t.substitute_by_known(
+            &"B",
+            &(SymbolicExpression::from_symbol("B", Default::default())
+                + SymbolicExpression::from(GoldilocksField::from(1))),
+        );
+        assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
+        t.substitute_by_known(
+            &"B",
+            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
+        );
+        assert_eq!(t.to_string(), "(A * 11) * X + 11 * Y + 11");
     }
 
     impl RangeConstraintProvider<GoldilocksField, &'static str>
@@ -721,16 +986,17 @@ mod tests {
             .is_err());
 
         // The same with range constraints that disallow zero.
-        constr.apply_update(&VariableUpdate {
-            variable: "X",
-            known: true,
-            range_constraint: RangeConstraint::from_value(5.into()),
-        });
-        constr.apply_update(&VariableUpdate {
-            variable: "Y",
-            known: true,
-            range_constraint: RangeConstraint::from_range(100.into(), 102.into()),
-        });
+        constr.substitute_by_known(
+            &"X",
+            &SymbolicExpression::from_symbol("X", RangeConstraint::from_value(5.into())),
+        );
+        constr.substitute_by_known(
+            &"Y",
+            &SymbolicExpression::from_symbol(
+                "Y",
+                RangeConstraint::from_range(100.into(), 102.into()),
+            ),
+        );
         assert!(Qse::from(GoldilocksField::from(10))
             .solve(&NoRangeConstraints)
             .is_err());
@@ -783,11 +1049,7 @@ mod tests {
         // For the latter to take effect, we need to call `apply_update`.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
-        constr.apply_update(&VariableUpdate {
-            variable: "z",
-            known: true,
-            range_constraint: z_rc.clone(),
-        });
+        constr.substitute_by_known(&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
         // Now it should work.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
@@ -809,32 +1071,17 @@ mod tests {
         let z = Qse::from_known_symbol("Z", Default::default());
         // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = Qse::from(GoldilocksField::from(10));
-        let mut constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
+        let constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
             - b * Qse::from(GoldilocksField::from(0x10000))
             + c * Qse::from(GoldilocksField::from(0x1000000))
             + ten.clone()
             + z.clone();
         // Without range constraints on a, this is not solvable.
         let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
-        constr.apply_update(&VariableUpdate {
-            variable: "b",
-            known: false,
-            range_constraint: rc.clone(),
-        });
-        constr.apply_update(&VariableUpdate {
-            variable: "c",
-            known: false,
-            range_constraint: rc.clone(),
-        });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         range_constraints.insert("a", rc.clone());
-        constr.apply_update(&VariableUpdate {
-            variable: "a",
-            known: false,
-            range_constraint: rc.clone(),
-        });
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
 
@@ -903,5 +1150,213 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
 Z: [10, 4294967050] & 0xffffffff;
 "
         );
+    }
+
+    #[test]
+    fn solve_quadratic() {
+        let rc = RangeConstraint::from_mask(0xffu32);
+        let a = Qse::from_unknown_variable("a");
+        let b = Qse::from_known_symbol("b", rc.clone());
+        let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
+        let ten = Qse::from(GoldilocksField::from(10));
+        let two_pow8 = Qse::from(GoldilocksField::from(0x100));
+        let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let effects = result
+            .effects
+            .into_iter()
+            .map(|effect| match effect {
+                Effect::ConditionalAssignment {
+                    variable,
+                    condition: Condition { value, condition },
+                    in_range_value,
+                    out_of_range_value,
+                } => {
+                    format!("{variable} = if {value} in {condition} {{ {in_range_value} }} else {{ {out_of_range_value} }}\n")
+                }
+                _ => panic!(),
+            })
+            .format("")
+            .to_string();
+        assert_eq!(
+            effects,
+            "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
+"
+        );
+    }
+
+    fn unpack_range_constraint(
+        process_result: &ProcessResult<GoldilocksField, &'static str>,
+    ) -> (&'static str, RangeConstraint<GoldilocksField>) {
+        let [effect] = &process_result.effects[..] else {
+            panic!();
+        };
+        let Effect::RangeConstraint(var, rc) = effect else {
+            panic!();
+        };
+        (var, rc.clone())
+    }
+
+    #[test]
+    fn detect_bit_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let one = Qse::from(GoldilocksField::from(1));
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // All these constraints should be equivalent to a bit constraint.
+        let constraints = [
+            a.clone() * (a.clone() - one.clone()),
+            (a.clone() - one.clone()) * a.clone(),
+            (three * a.clone()) * (five.clone() * a.clone() - five),
+        ];
+
+        for constraint in constraints {
+            let result = constraint.solve(&NoRangeConstraints).unwrap();
+            assert!(result.complete);
+            let (var, rc) = unpack_range_constraint(&result);
+            assert_eq!(var.to_string(), "a");
+            assert_eq!(rc, RangeConstraint::from_mask(1u64));
+        }
+    }
+
+    #[test]
+    fn detect_complete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let four = Qse::from(GoldilocksField::from(4));
+
+        // `a` can be 3 or 4, which is can be completely represented by
+        // RangeConstraint::from_range(3, 4), so the identity should be
+        // marked as complete.
+        let constraint = (a.clone() - three) * (a - four);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4))
+        );
+    }
+
+    #[test]
+    fn detect_incomplete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // `a` can be 3 or 5, so there is a range constraint
+        // RangeConstraint::from_range(3, 5) on `a`.
+        // However, the identity is not complete, because the
+        // range constraint allows for a value of 4, so removing
+        // the identity would loose information.
+        let constraint = (a.clone() - three) * (a - five);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(!result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(5))
+        );
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_basic_replacement() {
+        let mut expr = var("a");
+        let subst = var("x");
+
+        expr.substitute_by_unknown(&"a", &subst);
+        assert_eq!(expr.to_string(), "x");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_linear_to_quadratic() {
+        let mut expr = var("x");
+        let subst = var("y") * var("z") + constant(3);
+        expr.substitute_by_unknown(&"x", &subst);
+
+        assert!(expr.is_quadratic());
+        assert_eq!(expr.to_string(), "(y) * (z) + 3");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_inside_quadratic() {
+        let mut expr = var("x") * var("y");
+        let subst = var("a") + constant(1);
+
+        expr.substitute_by_unknown(&"x", &subst);
+        assert!(expr.is_quadratic());
+        assert_eq!(expr.to_string(), "(a + 1) * (y)");
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_linear() {
+        let mut expr = var("x") + var("y");
+        let subst = var("a") + var("b");
+
+        expr.substitute_by_unknown(&"x", &subst);
+        assert!(!expr.is_quadratic());
+        assert_eq!(expr.linear.len(), 3);
+        assert_eq!(expr.to_string(), "a + b + y");
+    }
+
+    #[test]
+    fn test_complex_expression_multiple_substitution() {
+        let mut expr = (var("x") * var("w")) + var("x") + constant(3) * var("y") + constant(5);
+        assert_eq!(expr.to_string(), "(x) * (w) + x + 3 * y + 5");
+
+        let subst = var("a") * var("b") + constant(1);
+
+        expr.substitute_by_unknown(&"x", &subst);
+
+        let (quadratic, linear_iter, constant) = expr.components();
+        let linear: Vec<_> = linear_iter.collect();
+
+        assert_eq!(
+            expr.to_string(),
+            "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
+        );
+        // Structural validation
+        assert_eq!(quadratic.len(), 2);
+        assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
+        assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
+        assert_eq!(quadratic[0].0.quadratic[0].1.to_string(), "b");
+        assert!(quadratic[0].0.linear.is_empty());
+        assert_eq!(
+            quadratic[0].0.constant.try_to_number(),
+            Some(GoldilocksField::from(1)),
+        );
+        assert_eq!(quadratic[0].1.to_string(), "w");
+        assert_eq!(quadratic[1].0.to_string(), "a");
+        assert_eq!(quadratic[1].1.to_string(), "b");
+        assert_eq!(linear[0].0.to_string(), "y");
+        assert_eq!(linear.len(), 1);
+        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(6)),);
+    }
+
+    #[test]
+    fn test_substitute_by_unknown_coeff_distribution() {
+        let mut expr = constant(2) * var("a") + constant(7);
+        assert_eq!(expr.to_string(), "2 * a + 7");
+
+        let subst = var("x") * var("y");
+
+        expr.substitute_by_unknown(&"a", &subst);
+
+        let (quadratic, linear_iter, constant) = expr.components();
+        let linear: Vec<_> = linear_iter.collect();
+
+        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
+
+        assert_eq!(quadratic.len(), 1);
+        assert_eq!(quadratic[0].0.to_string(), "2 * x");
+        assert_eq!(quadratic[0].1.to_string(), "y");
+        assert!(linear.is_empty());
+        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
     }
 }

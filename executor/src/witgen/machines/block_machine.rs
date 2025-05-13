@@ -16,7 +16,6 @@ use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::jit::function_cache::FunctionCache;
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
-use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::{Row, RowIndex};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
@@ -25,7 +24,9 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::AffineExpression;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause, QueryCallback};
 use bit_vec::BitVec;
+
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {

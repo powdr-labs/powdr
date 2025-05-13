@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
+use std::iter::from_fn;
 use std::ops::ControlFlow;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    BusInteractionIdentity, PolyID, PolynomialType,
+    AlgebraicReferenceThin, AlgebraicUnaryOperation, BusInteractionIdentity, PolyID,
+    PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::visitor::AllChildren;
@@ -15,7 +17,7 @@ use powdr_ast::parsed::{
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::{BusInteractionKind, SymbolicBusInteraction};
+use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicMachine};
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
@@ -164,43 +166,66 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
     }
 }
 
-/// Given an expression `expr`
-/// - Reassign the IDs of all references in the expression to be unique and larger or equal than `curr_id`
-/// - Add a suffix to the name of each reference, so that `foo` becomes `foo_suffix`
-///
-/// Return the next available ID.
-/// Assumptions:
-/// - The substitution map already contains substitutions for constant columns. Failing to do so will result in a panic.
-pub fn local_to_global<T: Clone + Ord>(
-    expr: &mut AlgebraicExpression<T>,
+pub fn reassign_ids<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
     mut curr_id: u64,
-    subs: &mut BTreeMap<Column, Column>,
     suffix: usize,
-) -> u64 {
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                let old_column = Column::from(&*r);
-                let new_column = subs.entry(old_column.clone()).or_insert_with(|| {
-                    assert_eq!(r.poly_id.ptype, PolynomialType::Committed);
-                    let new_column = Column {
-                        name: format!("{}_{}", old_column.name, suffix),
-                        id: PolyID {
-                            id: curr_id,
-                            ptype: PolynomialType::Committed,
-                        },
-                    };
-                    curr_id += 1;
-                    new_column
-                });
-                r.poly_id = new_column.id;
-                r.name = new_column.name.clone();
+) -> (u64, Vec<u64>, SymbolicMachine<T>) {
+    // Build a mapping from local columns to global columns
+    let subs: BTreeMap<Column, Column> = machine
+        .unique_columns()
+        // zip with increasing ids, mutating curr_id
+        .zip(from_fn(|| {
+            let id = curr_id;
+            curr_id += 1;
+            Some(id)
+        }))
+        .map(|(local_column, id)| {
+            assert_eq!(
+                local_column.id.ptype,
+                PolynomialType::Committed,
+                "Expected committed polynomial type"
+            );
+            let global_column = Column {
+                name: format!("{}_{}", local_column.name, suffix),
+                id: PolyID {
+                    id,
+                    ptype: PolynomialType::Committed,
+                },
+            };
+            (local_column, global_column)
+        })
+        .collect();
+
+    // Update the machine with the new global column names
+    machine.visit_expressions_mut(
+        &mut |e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
+                r.poly_id.id = new_col.id.id;
+                r.name = new_col.name.clone();
             }
             ControlFlow::Continue::<()>(())
         },
         VisitOrder::Pre,
     );
-    curr_id
+
+    let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id.id, v.id.id)).collect();
+
+    let poly_id_min = *subs.keys().min().unwrap();
+    let poly_id_max = *subs.keys().max().unwrap();
+    assert_eq!(
+        poly_id_max - poly_id_min,
+        subs.len() as u64 - 1,
+        "The poly_id must be contiguous"
+    );
+
+    // Represent the substitutions as a single vector of the target poly_ids in increasing order of the source poly_ids
+    let subs = (0..subs.len())
+        .map(|i| *subs.get(&(poly_id_min + i as u64)).unwrap())
+        .collect();
+
+    (curr_id, subs, machine)
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
@@ -238,6 +263,7 @@ pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
 
 pub fn powdr_interaction_to_symbolic<T: FieldElement>(
     powdr_interaction: BusInteractionIdentity<T>,
+    intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
 ) -> SymbolicBusInteraction<T> {
     let kind = match powdr_interaction.latch {
         AlgebraicExpression::Number(n) => {
@@ -264,7 +290,52 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
     SymbolicBusInteraction {
         kind,
         id,
-        mult: powdr_interaction.multiplicity,
-        args: powdr_interaction.payload.0,
+        mult: inline_intermediates(powdr_interaction.multiplicity, intermediates),
+        args: powdr_interaction
+            .payload
+            .0
+            .into_iter()
+            .map(|e| inline_intermediates(e, intermediates))
+            .collect(),
+    }
+}
+
+/// Replaces any reference of intermediates with their definitions.
+/// This is needed because powdr Autoprecompiles currently does not implement
+/// intermediates.
+pub fn inline_intermediates<T: FieldElement>(
+    expr: AlgebraicExpression<T>,
+    intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+) -> AlgebraicExpression<T> {
+    match expr {
+        AlgebraicExpression::Reference(ref algebraic_reference) => {
+            if algebraic_reference.poly_id.ptype == PolynomialType::Intermediate {
+                inline_intermediates(
+                    intermediates
+                        .get(&algebraic_reference.to_thin())
+                        .expect("Intermediate not found")
+                        .clone(),
+                    intermediates,
+                )
+            } else {
+                expr
+            }
+        }
+        AlgebraicExpression::PublicReference(..)
+        | AlgebraicExpression::Challenge(..)
+        | AlgebraicExpression::Number(..) => expr,
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: Box::new(inline_intermediates(*left, intermediates)),
+                op,
+                right: Box::new(inline_intermediates(*right, intermediates)),
+            })
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op,
+                expr: Box::new(inline_intermediates(*expr, intermediates)),
+            })
+        }
     }
 }

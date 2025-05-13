@@ -1,33 +1,28 @@
 use itertools::Itertools;
+use optimizer::{optimize, ConcreteBusInteractionHandler};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_ast::parsed::asm::Part;
 use powdr_ast::parsed::visitor::{Children, ExpressionVisitable, VisitOrder};
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperator, Analyzed, Identity, PolynomialIdentity,
+        AlgebraicUnaryOperator,
     },
-    parsed::{
-        asm::SymbolPath, visitor::AllChildren, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, NamespacedPolynomialReference, Number, PILFile, PilStatement,
-        UnaryOperation, UnaryOperator,
-    },
+    parsed::visitor::AllChildren,
 };
+use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
-use powdr_parser_util::SourceRef;
-use powdr_pil_analyzer::analyze_ast;
-use powdr_pilopt::optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::iter::once;
 use std::ops::ControlFlow;
 
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+pub mod optimizer;
 pub mod powdr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,7 +308,14 @@ const PC_LOOKUP_BUS_ID: u64 = 2;
 const RANGE_CHECK_BUS_ID: u64 = 3;
 
 impl<T: FieldElement> Autoprecompiles<T> {
-    pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
+    pub fn build(
+        &self,
+        bus_interaction_handler: impl BusInteractionHandler<T>
+            + ConcreteBusInteractionHandler<T>
+            + 'static
+            + Clone,
+        degree_bound: usize,
+    ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
         let (machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
@@ -323,7 +325,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         let machine = optimize_pc_lookup(machine);
         let machine = optimize_exec_bus(machine);
         let machine = optimize_precompile(machine);
-        let machine = powdr_optimize(machine);
+        let machine = optimize(machine, bus_interaction_handler, degree_bound);
         let machine = remove_zero_mult(machine);
         let machine = remove_zero_constraint(machine);
 
@@ -755,146 +757,142 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
     machine
 }
 
+#[derive(Default)]
+struct CompilationState<T> {
+    apc: SymbolicMachine<T>,
+    col_subs: Vec<Vec<u64>>,
+    global_idx: u64,
+}
+
 pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
-) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
-    let mut result = SymbolicMachine::default();
-    let mut col_subs: Vec<BTreeMap<Column, Column>> = Vec::new();
-    let mut global_idx: u64 = 0;
+) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+    let CompilationState { apc, col_subs, .. } = statements.iter().enumerate().fold(
+        Default::default(),
+        |CompilationState {
+             mut apc,
+             mut col_subs,
+             mut global_idx,
+         },
+         (i, instr)| {
+            match instruction_kinds.get(&instr.name).unwrap() {
+                InstructionKind::Normal
+                | InstructionKind::UnconditionalBranch
+                | InstructionKind::ConditionalBranch => {
+                    let machine = instruction_machines.get(&instr.name).unwrap().clone();
 
-    // Initialize the substitutions by mapping the constant columns to themselves, as they can be reused across instructions.
-    // It could be cleaner to have one instance per instruction (`is_first_row_1`, `is_first_row_2`, etc.) and adding constraints between them
-    // This would remove this edge case but also would require fully supporting constant columns, which is not the case in `local_to_global`
-    let constant_subs: BTreeMap<Column, Column> = ["is_first_row", "is_transition", "is_last_row"]
-        .iter()
-        .map(|name| {
-            let col = Column {
-                name: name.to_string(),
-                id: PolyID {
-                    ptype: PolynomialType::Constant,
-                    id: global_idx,
-                },
-            };
-            global_idx += 1;
-            (col.clone(), col)
-        })
-        .collect();
+                    let (next_global_idx, subs, mut machine) =
+                        powdr::reassign_ids(machine, global_idx, i);
+                    global_idx = next_global_idx;
 
-    for (i, instr) in statements.iter().enumerate() {
-        match instruction_kinds.get(&instr.name).unwrap() {
-            InstructionKind::Normal
-            | InstructionKind::UnconditionalBranch
-            | InstructionKind::ConditionalBranch => {
-                let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
+                    let pc_lookup: PcLookupBusInteraction<T> = machine
+                        .bus_interactions
+                        .iter()
+                        .filter_map(|bus_int| bus_int.clone().try_into().ok())
+                        .exactly_one()
+                        .expect("Expected single pc lookup");
 
-                let pc_lookup: PcLookupBusInteraction<T> = machine
-                    .bus_interactions
-                    .iter()
-                    .filter_map(|bus_int| bus_int.clone().try_into().ok())
-                    .exactly_one()
-                    .expect("Expected single pc lookup");
+                    let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
+                    let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-                let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
-                let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+                    let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
+                    let one = AlgebraicExpression::Number(1u64.into());
+                    local_constraints.push((is_valid.clone() + one).into());
 
-                let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
-                let one = AlgebraicExpression::Number(1u64.into());
-                local_constraints.push((is_valid.clone() + one).into());
+                    let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> =
+                        Default::default();
+                    if is_loadstore(instr.opcode) {
+                        sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
+                    }
 
-                let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> =
-                    Default::default();
-                if is_loadstore(instr.opcode) {
-                    sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
-                }
+                    add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
 
-                add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
-
-                assert_eq!(instr.args.len(), pc_lookup.args.len());
-                instr
-                    .args
-                    .iter()
-                    .zip_eq(&pc_lookup.args)
-                    .for_each(|(instr_arg, pc_arg)| {
-                        let arg = AlgebraicExpression::Number(*instr_arg);
-                        match pc_arg {
-                            AlgebraicExpression::Reference(ref arg_ref) => {
-                                sub_map.insert(Column::from(arg_ref), arg);
+                    assert_eq!(instr.args.len(), pc_lookup.args.len());
+                    instr
+                        .args
+                        .iter()
+                        .zip_eq(&pc_lookup.args)
+                        .for_each(|(instr_arg, pc_arg)| {
+                            let arg = AlgebraicExpression::Number(*instr_arg);
+                            match pc_arg {
+                                AlgebraicExpression::Reference(ref arg_ref) => {
+                                    sub_map.insert(Column::from(arg_ref), arg);
+                                }
+                                AlgebraicExpression::BinaryOperation(_expr) => {
+                                    local_constraints.push((arg - pc_arg.clone()).into());
+                                }
+                                AlgebraicExpression::UnaryOperation(_expr) => {
+                                    local_constraints.push((arg - pc_arg.clone()).into());
+                                }
+                                _ => {}
                             }
-                            AlgebraicExpression::BinaryOperation(_expr) => {
-                                local_constraints.push((arg - pc_arg.clone()).into());
-                            }
-                            AlgebraicExpression::UnaryOperation(_expr) => {
-                                local_constraints.push((arg - pc_arg.clone()).into());
-                            }
-                            _ => {}
+                        });
+
+                    // Process all expressions in the machine
+                    machine.visit_expressions_mut(
+                        &mut |expr| {
+                            *expr = {
+                                let mut expr = expr.clone();
+                                powdr::substitute_algebraic(&mut expr, &sub_map);
+                                powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
+                                simplify_expression(expr)
+                            };
+                            ControlFlow::Continue::<()>(())
+                        },
+                        VisitOrder::Pre,
+                    );
+
+                    apc.constraints.extend(machine.constraints);
+                    apc.bus_interactions.extend(machine.bus_interactions);
+                    col_subs.push(subs);
+
+                    // after the first round of simplifying,
+                    // we need to look for register memory bus interactions
+                    // and replace the addr by the first argument of the instruction
+                    for bus_int in &mut apc.bus_interactions {
+                        if bus_int.id != MEMORY_BUS_ID {
+                            continue;
                         }
-                    });
 
-                machine.constraints.extend(local_constraints);
-
-                // Start the local substitutions with the constant columns
-                let mut local_subs = constant_subs.clone();
-
-                // Process all expressions in the machine
-                machine.visit_expressions_mut(
-                    &mut |expr| {
-                        *expr = {
-                            let mut expr = expr.clone();
-                            powdr::substitute_algebraic(&mut expr, &sub_map);
-                            powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                            let mut expr = simplify_expression(expr);
-                            global_idx =
-                                powdr::local_to_global(&mut expr, global_idx, &mut local_subs, i);
-                            expr
+                        let addr_space = match bus_int.args[0] {
+                            AlgebraicExpression::Number(n) => {
+                                n.to_integer().try_into_u32().unwrap()
+                            }
+                            _ => panic!(
+                                "Address space must be a constant but got {}",
+                                bus_int.args[0]
+                            ),
                         };
-                        ControlFlow::Continue::<()>(())
-                    },
-                    VisitOrder::Pre,
-                );
 
-                result.constraints.extend(machine.constraints);
-                result.bus_interactions.extend(machine.bus_interactions);
-                col_subs.push(local_subs);
-
-                // after the first round of simplifying,
-                // we need to look for register memory bus interactions
-                // and replace the addr by the first argument of the instruction
-                for bus_int in &mut result.bus_interactions {
-                    if bus_int.id != MEMORY_BUS_ID {
-                        continue;
-                    }
-
-                    let addr_space = match bus_int.args[0] {
-                        AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
-                        _ => panic!(
-                            "Address space must be a constant but got {}",
-                            bus_int.args[0]
-                        ),
-                    };
-
-                    if addr_space != 1 {
-                        continue;
-                    }
-
-                    match bus_int.args[1] {
-                        AlgebraicExpression::Number(_) => {}
-                        _ => {
-                            if let Some(arg) = bus_int.args.get_mut(1) {
-                                *arg = instr.args[0].into();
-                            } else {
-                                panic!("Expected address argument");
-                            }
+                        if addr_space != 1 {
+                            continue;
                         }
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
 
-    (result, col_subs)
+                        match bus_int.args[1] {
+                            AlgebraicExpression::Number(_) => {}
+                            _ => {
+                                if let Some(arg) = bus_int.args.get_mut(1) {
+                                    *arg = instr.args[0].into();
+                                } else {
+                                    panic!("Expected address argument");
+                                }
+                            }
+                        };
+                    }
+                }
+                _ => {}
+            }
+            CompilationState {
+                apc,
+                col_subs,
+                global_idx,
+            }
+        },
+    );
+
+    (apc, col_subs)
 }
 
 fn add_opcode_constraints<T: FieldElement>(
@@ -1035,154 +1033,6 @@ fn try_compute_opcode_map<T: FieldElement>(
         })
         .chain(zero_flag.map(|flag| (offset.to_degree(), flag.clone())))
         .collect())
-}
-
-/// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
-/// Then, translate the optimized constraints and interactions back to a SymbolicMachine
-fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
-    let pilfile = symbolic_machine_to_pilfile(symbolic_machine);
-    let analyzed: Analyzed<P> = analyze_ast(pilfile).expect("Failed to analyze AST");
-    let optimized = optimize(analyzed);
-
-    let mut powdr_exprs = Vec::new();
-    let mut powdr_bus_interactions = Vec::new();
-    for id in optimized.identities.iter() {
-        match id {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                powdr_exprs.push(SymbolicConstraint {
-                    expr: expression.clone(),
-                });
-            }
-            Identity::BusInteraction(powdr_interaction) => {
-                let interaction = powdr::powdr_interaction_to_symbolic(powdr_interaction.clone());
-                powdr_bus_interactions.push(interaction);
-            }
-            _ => continue,
-        }
-    }
-    SymbolicMachine {
-        constraints: powdr_exprs,
-        bus_interactions: powdr_bus_interactions,
-    }
-}
-
-/// Create a PILFile from a SymbolicMachine
-fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> PILFile {
-    let mut program = Vec::new();
-
-    // Add PolynomialCommitDeclaration for all referenced columns into the program
-    program.extend(symbolic_machine.unique_columns().map(|column| {
-        PilStatement::PolynomialCommitDeclaration(
-            SourceRef::unknown(),
-            None,
-            vec![column.name.clone().into()],
-            None,
-        )
-    }));
-
-    // Add Expressions for all constraints
-    program.extend(symbolic_machine.constraints.iter().map(|constraint| {
-        let zero = BigUint::from(0u32).into();
-        let constraint = Expression::new_binary(
-            algebraic_to_expression::<P>(&constraint.expr),
-            BinaryOperator::Identity,
-            zero,
-        );
-        PilStatement::Expression(SourceRef::unknown(), constraint)
-    }));
-
-    // Add Expressions for all bus interactions
-    program.extend(symbolic_machine.bus_interactions.iter().map(|interaction| {
-        let mult_expr = algebraic_to_expression::<P>(&interaction.mult);
-        let bus_id_expr = BigUint::from(interaction.id).into();
-
-        let payload_array = Expression::ArrayLiteral(
-            SourceRef::unknown(),
-            ArrayLiteral {
-                items: interaction
-                    .args
-                    .iter()
-                    .map(|arg| algebraic_to_expression::<P>(arg))
-                    .collect(),
-            },
-        );
-
-        let latch_expr = match interaction.kind {
-            BusInteractionKind::Receive => BigUint::from(0u32).into(),
-            BusInteractionKind::Send => BigUint::from(1u32).into(),
-        };
-
-        let path = SymbolPath::from_parts(
-            ["std", "prelude", "Constr", "BusInteraction"]
-                .into_iter()
-                .map(|p| Part::Named(p.to_string())),
-        );
-
-        let bus_interaction_expr = Expression::FunctionCall(
-            SourceRef::unknown(),
-            FunctionCall {
-                function: Box::new(Expression::Reference(
-                    SourceRef::unknown(),
-                    NamespacedPolynomialReference::from(path),
-                )),
-                arguments: vec![mult_expr, bus_id_expr, payload_array, latch_expr],
-            },
-        );
-
-        PilStatement::Expression(SourceRef::unknown(), bus_interaction_expr)
-    }));
-
-    PILFile(program)
-}
-
-/// Transforms an AlgebraicExpression from the analyzed AST to the corresponding Expression in the parsed AST.
-fn algebraic_to_expression<P: FieldElement>(expr: &AlgebraicExpression<P>) -> Expression {
-    let dummy_src = SourceRef::unknown();
-
-    match expr {
-        AlgebraicExpression::Reference(reference) => {
-            let parsed_ref = NamespacedPolynomialReference::from_identifier(reference.name.clone());
-            Expression::Reference(dummy_src, parsed_ref)
-        }
-        AlgebraicExpression::PublicReference(_name) => todo!(),
-        AlgebraicExpression::Number(value) => Expression::Number(
-            dummy_src,
-            Number {
-                value: BigUint::from(value.to_integer().try_into_u32().unwrap()),
-                type_: None,
-            },
-        ),
-        AlgebraicExpression::BinaryOperation(bin_op) => {
-            let parsed_operator = match bin_op.op {
-                AlgebraicBinaryOperator::Add => BinaryOperator::Add,
-                AlgebraicBinaryOperator::Sub => BinaryOperator::Sub,
-                AlgebraicBinaryOperator::Mul => BinaryOperator::Mul,
-                AlgebraicBinaryOperator::Pow => BinaryOperator::Pow,
-            };
-
-            let left = Box::new(algebraic_to_expression::<P>(&bin_op.left));
-            let right = Box::new(algebraic_to_expression::<P>(&bin_op.right));
-
-            Expression::BinaryOperation(
-                dummy_src,
-                BinaryOperation {
-                    op: parsed_operator,
-                    left,
-                    right,
-                },
-            )
-        }
-        AlgebraicExpression::UnaryOperation(un_op) => {
-            let op = match un_op.op {
-                AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
-            };
-
-            let expr = Box::new(algebraic_to_expression::<P>(&un_op.expr));
-
-            Expression::UnaryOperation(dummy_src, UnaryOperation { op, expr })
-        }
-        AlgebraicExpression::Challenge(_) => unreachable!(),
-    }
 }
 
 fn is_loadstore(opcode: usize) -> bool {

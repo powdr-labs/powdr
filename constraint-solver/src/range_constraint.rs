@@ -244,6 +244,18 @@ impl<T: FieldElement> RangeConstraint<T> {
             None
         }
     }
+
+    /// Returns true if no value can satisfy both range constraints at the same time.
+    pub fn is_disjoint(&self, other: &RangeConstraint<T>) -> bool {
+        // True if the intersection allows zero.
+        let zero_allowed = self.allows_value(T::zero()) && other.allows_value(T::zero());
+        // True if the intersection is empty when looking at the masks (and zero) only.
+        let masks_disjoint = !zero_allowed && (self.mask & other.mask).is_zero();
+        // True if the intersection is empty when looking at ranges only.
+        let intervals_disjoint =
+            interval_intersection((self.min, self.max), (other.min, other.max)).is_none();
+        masks_disjoint || intervals_disjoint
+    }
 }
 
 impl<T: FieldElement> Default for RangeConstraint<T> {
@@ -341,7 +353,6 @@ mod test {
     use itertools::Itertools;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
-    use test_log::test;
 
     use super::*;
 
@@ -772,5 +783,29 @@ mod test {
     fn bisect_single() {
         let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 10.into());
         a.bisect();
+    }
+
+    #[test]
+    fn is_disjoint() {
+        type F = GoldilocksField;
+        let a = RangeConstraint::<F>::from_range(10.into(), 20.into());
+        let b = RangeConstraint::<F>::from_range(20.into(), 30.into());
+        assert!(!a.is_disjoint(&b));
+        let b = RangeConstraint::<F>::from_range(21.into(), 30.into());
+        assert!(a.is_disjoint(&b));
+        let b = RangeConstraint::<F>::from_range(21.into(), 9.into());
+        assert!(a.is_disjoint(&b));
+        let b = RangeConstraint::<F>::from_range(21.into(), 10.into());
+        assert!(!a.is_disjoint(&b));
+
+        let b = RangeConstraint::<F>::from_mask(0x100u32);
+        assert!(b.range() == (0.into(), 0x100u32.into()));
+        assert!(a.is_disjoint(&b));
+
+        let c = RangeConstraint::<F>::from_mask(0xffu32);
+        // They are not disjoint, because they both allow zero.
+        assert!(!c.is_disjoint(&b));
+        let d = c.conjunction(&RangeConstraint::from_range(1.into(), 5000.into()));
+        assert!(d.is_disjoint(&b));
     }
 }

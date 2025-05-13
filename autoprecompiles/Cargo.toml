@@ -14,6 +14,7 @@ powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-pilopt.workspace = true
 powdr-executor.workspace = true
+powdr-constraint-solver.workspace = true
 
 itertools = "0.13"
 lazy_static = "1.4.0"
@@ -25,3 +26,6 @@ development = ["env_logger"]
 
 [lints]
 workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
