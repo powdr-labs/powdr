@@ -312,10 +312,8 @@ fn one_hot_flags() {
         bus_interactions: vec![],
     };
 
-    // This can be solved via backtracking:
-    // For any given flag, setting it to 1 will set the other flags to 0.
-    // For any flag except flag2, this will lead to a contradiction in the last constraint.
-    // So, the solver can just set the flags one-by-one, finding a unique assignment in each step.
+    // This can be solved via backtracking: There are 2^16 possible assignments
+    // for the 4 flags, but only 1 of them satisfies all the constraints.
     assert_solve_result(
         Solver::new(constraint_system),
         vec![
@@ -357,9 +355,6 @@ fn binary_flags() {
         bus_interactions: vec![],
     };
 
-    // Contrary to the `one_hot_flags` test, we can't solve for the flags one-by-one.
-    // But in combination, (flag0, flag1, flag2) only have 8 possible assignments, and
-    // exactly one of them will satisfy the last constraint.
     assert_solve_result(
         Solver::new(constraint_system),
         vec![
