@@ -443,13 +443,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     return Ok(ProcessResult::empty());
                 }
                 concrete_assignments.push(
-                    // TODO: This would be the right thing to do, but it
-                    // leads to failing tests...
-                    // assignment_if_satisfies_range_constraints(
-                    //     variable.clone(),
-                    //     T::from(component >> exponent).into(),
-                    //     range_constraints,
-                    // )?,
+                    // We're not using assignment_if_satisfies_range_constraints here, because we
+                    // might still exit early. The error case is handled below.
                     Effect::Assignment(variable.clone(), T::from(component >> exponent).into()),
                 );
                 if is_negative {
