@@ -6,7 +6,7 @@ use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::effect::Condition;
-use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::indexed_constraint_system::{ConstraintSystemItem, IndexedConstraintSystem};
 use crate::quadratic_equivalences;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
@@ -232,6 +232,48 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         } else {
             false
         }
+    }
+
+    fn check_assignments(&self, assignments: &BTreeMap<V, T>) -> bool {
+        let constraints = self
+            .constraint_system
+            .get_constraints(assignments.keys().cloned());
+
+        for constraint in constraints {
+            match constraint {
+                ConstraintSystemItem::AlgebraicConstraint(index) => {
+                    let mut identity =
+                        self.constraint_system.algebraic_constraints()[index].clone();
+                    for (variable, value) in assignments.iter() {
+                        identity
+                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                    }
+                    if identity.solve(&self.range_constraints).is_err() {
+                        return false;
+                    }
+                }
+                ConstraintSystemItem::BusInteraction(index) => {
+                    let mut bus_interaction =
+                        self.constraint_system.bus_interactions()[index].clone();
+                    for (variable, value) in assignments.iter() {
+                        bus_interaction.iter_mut().for_each(|expr| {
+                            expr.substitute_by_known(
+                                variable,
+                                &SymbolicExpression::Concrete(*value),
+                            )
+                        })
+                    }
+                    if bus_interaction
+                        .solve(&*self.bus_interaction_handler, &self.range_constraints)
+                        .is_err()
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
     }
 }
 

@@ -1,10 +1,8 @@
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
-use crate::indexed_constraint_system::ConstraintSystemItem;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
 use crate::range_constraint::RangeConstraint;
-use crate::symbolic_expression::SymbolicExpression;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
@@ -177,7 +175,7 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
     ) -> Option<&'a BTreeMap<V, T>> {
         let mut assignment = None;
         for assignments in assignment_candidates {
-            if self.check_assignment(assignments) {
+            if self.solver.check_assignments(assignments) {
                 match assignment {
                     None => {
                         assignment = Some(assignments);
@@ -190,51 +188,5 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
             }
         }
         assignment
-    }
-
-    fn check_assignment(&self, assignments: &BTreeMap<V, T>) -> bool {
-        let constraints = self
-            .solver
-            .constraint_system
-            .get_constraints(assignments.keys().cloned());
-
-        for constraint in constraints {
-            match constraint {
-                ConstraintSystemItem::AlgebraicConstraint(index) => {
-                    let mut identity =
-                        self.solver.constraint_system.algebraic_constraints()[index].clone();
-                    for (variable, value) in assignments.iter() {
-                        identity
-                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
-                    }
-                    if identity.solve(&self.solver.range_constraints).is_err() {
-                        return false;
-                    }
-                }
-                ConstraintSystemItem::BusInteraction(index) => {
-                    let mut bus_interaction =
-                        self.solver.constraint_system.bus_interactions()[index].clone();
-                    for (variable, value) in assignments.iter() {
-                        bus_interaction.iter_mut().for_each(|expr| {
-                            expr.substitute_by_known(
-                                variable,
-                                &SymbolicExpression::Concrete(*value),
-                            )
-                        })
-                    }
-                    if bus_interaction
-                        .solve(
-                            &*self.solver.bus_interaction_handler,
-                            &self.solver.range_constraints,
-                        )
-                        .is_err()
-                    {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        true
     }
 }
