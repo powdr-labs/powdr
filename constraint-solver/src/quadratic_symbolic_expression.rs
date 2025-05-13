@@ -44,7 +44,6 @@ pub enum Error {
     ConflictingRangeConstraints,
     /// An equality constraint evaluates to a known-nonzero value.
     ConstraintUnsatisfiable,
-    BacktrackingFailure,
 }
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)

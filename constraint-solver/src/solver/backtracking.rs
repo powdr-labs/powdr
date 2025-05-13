@@ -2,7 +2,7 @@ use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::indexed_constraint_system::ConstraintSystemItem;
-use crate::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
+use crate::quadratic_symbolic_expression::RangeConstraintProvider;
 use crate::range_constraint::RangeConstraint;
 use crate::symbolic_expression::SymbolicExpression;
 
@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-use super::Solver;
+use super::{Error, Solver};
 
 /// The maximum number of possible assignments to try when backtracking.
 const MAX_BACKTRACKING_WIDTH: usize = 1 << 12;
@@ -67,7 +67,7 @@ pub fn try_solve_with_backtracking<
     for (variable, value) in all_assignments {
         if let Some(old_value) = result.insert(variable.clone(), *value) {
             if old_value != *value {
-                return Err(Error::BacktrackingFailure);
+                return Err(Error::BacktrackingError);
             }
         }
     }

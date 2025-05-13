@@ -37,6 +37,9 @@ pub enum Error {
     QseSolvingError(QseError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
+    /// During backtracking, we came across a combination of variables for which
+    /// no assignment would satisfy all the constraints.
+    BacktrackingError,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
@@ -173,9 +176,7 @@ impl<T: FieldElement + Send + Sync, V: Ord + Clone + Hash + Eq + Display + Debug
     }
 
     fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
-        if let Some(assignments) =
-            try_solve_with_backtracking(self).map_err(Error::QseSolvingError)?
-        {
+        if let Some(assignments) = try_solve_with_backtracking(self)? {
             for (variable, value) in assignments {
                 self.apply_assignment(&variable, &value.into());
             }
