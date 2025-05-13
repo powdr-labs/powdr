@@ -24,30 +24,34 @@ impl<'a, T: FieldElement, V> Backtracker<'a, T, V> {
 }
 
 impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<'a, T, V> {
+    /// Returns a map of variable assignments that are unique in the constraint system.
+    /// Returns an error a contradiction was found.
     pub fn get_unique_assignments(&self) -> Result<BTreeMap<V, T>, Error> {
         log::debug!("Starting backtracking with maximum width {MAX_BACKTRACKING_WIDTH}");
-        let candidates = self.get_brute_force_candidates();
+        let variable_sets = self.get_brute_force_candidates();
 
         log::debug!(
             "Found {} sets of variables with few possible assignments. Checking each set...",
-            candidates.len()
+            variable_sets.len()
         );
 
-        let all_assignments = candidates
+        let unique_assignments = variable_sets
             .iter()
             .map(|assignment_candidates| self.find_unique_assignment(assignment_candidates))
+            // Might error out of a contradiction was found.
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
+            // Might return None if the assignment is not unique.
             .filter_map(|assignment| assignment)
             .collect::<Vec<_>>();
 
         log::debug!(
             "{} variable sets with unique assignments found",
-            all_assignments.len()
+            unique_assignments.len()
         );
 
         let mut result = BTreeMap::new();
-        for (variable, value) in all_assignments.iter().flatten() {
+        for (variable, value) in unique_assignments.iter().flatten() {
             if let Some(old_value) = result.insert(variable.clone(), *value) {
                 if old_value != *value {
                     // Two assignments contradict each other.
@@ -64,12 +68,14 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
         Ok(result)
     }
 
+    /// Returns all unique sets of variables that appear together in an identity
+    /// (either in an algebraic constraint or in the same field of a bus interaction),
+    /// IF the number of possible assignments is less than `MAX_BACKTRACKING_WIDTH`.
     fn get_brute_force_candidates(&self) -> Vec<BTreeSet<V>> {
         self.solver
             .constraint_system
             .iter()
             .map(|expression| {
-                // Heuristic: Variables that appear together in an identity are likely to be interdependent.
                 expression
                     .referenced_variables()
                     .cloned()
@@ -81,8 +87,8 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
             .collect()
     }
 
-    /// Returns true if the given range constraints allow for at most `MAX_BACKTRACKING_WIDTH` possible assignments,
-    /// based on the range widths of the constraints.
+    /// Returns true if the given range constraints allow for at most `MAX_BACKTRACKING_WIDTH``
+    /// possible assignments for the given variables.
     fn has_few_possible_assignments(&self, variables: impl Iterator<Item = V>) -> bool {
         self.range_constraints(variables)
             .iter()
@@ -93,15 +99,18 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
             .unwrap_or(false)
     }
 
+    /// Returns the range constraints for the given variables.
     fn range_constraints(&self, variables: impl Iterator<Item = V>) -> Vec<RangeConstraint<T>> {
         variables
             .map(|v| self.solver.range_constraints.get(&v))
             .collect()
     }
 
-    /// Checks each assignment in the given list of candidates. If exactly one assignment satisfies the
-    /// constraint system (and all others lead to a contradiction), it returns that assignment.
+    /// Goes through all possible assignments for the given variables and checks whether they satisfy
+    /// all constraints. If exactly one assignment satisfies the constraint system (and all others
+    /// lead to a contradiction), it returns that assignment.
     /// If multiple assignments satisfy the constraint system, it returns `None`.
+    /// Returns an error if a contradiction was found.
     fn find_unique_assignment(
         &self,
         variables: &BTreeSet<V>,
@@ -123,34 +132,26 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
         Ok(assignment)
     }
 
-    /// Returns an iterator over all possible assignments for the given variables, if the number of
-    /// possible assignments is nonzero and smaller than `MAX_BACKTRACKING_WIDTH`. Otherwise, returns None.
+    /// Returns all possible assignments for the given variables.
     fn get_all_possible_assignments(
         &self,
         variables: &BTreeSet<V>,
     ) -> impl Iterator<Item = BTreeMap<V, T>> {
-        let assignments = self
-            .range_constraints(variables.iter().cloned())
+        self.range_constraints(variables.iter().cloned())
             .iter()
             .map(|rc| {
                 let (min, _) = rc.range();
                 (0..=rc.range_width().try_into_u64().unwrap())
-                    // Note that this filter step might lead to there being fewer assignments than
-                    // previously calculated from the range alone.
                     .filter(|offset| rc.allows_value(min + T::from(*offset)))
                     .collect::<Vec<_>>()
             })
             .multi_cartesian_product()
-            .collect::<Vec<_>>();
-
-        assignments
-            .into_iter()
             .map(|assignment| {
-                let mut assignments = BTreeMap::new();
-                for (variable, value) in variables.iter().zip(assignment) {
-                    assignments.insert(variable.clone(), T::from(value));
-                }
-                assignments
+                variables
+                    .iter()
+                    .zip(assignment)
+                    .map(|(variable, value)| (variable.clone(), T::from(value)))
+                    .collect::<BTreeMap<_, _>>()
             })
             .collect::<Vec<_>>()
             .into_iter()
