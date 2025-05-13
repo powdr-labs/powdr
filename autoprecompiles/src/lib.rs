@@ -757,11 +757,168 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
     machine
 }
 
-#[derive(Default)]
-struct CompilationState<T> {
+struct ApcBuilder<'a, T> {
+    /// The symbolic machine that is being built.
     apc: SymbolicMachine<T>,
+    /// The column substitutions for each instruction.
     col_subs: Vec<Vec<u64>>,
-    global_idx: u64,
+    /// The next free column index.
+    next_column_index: u64,
+    /// The instruction machines
+    instruction_machines: &'a BTreeMap<String, SymbolicMachine<T>>,
+    /// The instruction kinds.
+    instruction_kinds: &'a BTreeMap<String, InstructionKind>,
+}
+
+impl<'a, T: FieldElement> ApcBuilder<'a, T> {
+    /// Creates a new APC builder from the given instruction machines and instruction kinds.
+    fn new(
+        instruction_machines: &'a BTreeMap<String, SymbolicMachine<T>>,
+        instruction_kinds: &'a BTreeMap<String, InstructionKind>,
+    ) -> Self {
+        ApcBuilder {
+            apc: SymbolicMachine::default(),
+            col_subs: Vec::new(),
+            next_column_index: 0,
+            instruction_machines,
+            instruction_kinds,
+        }
+    }
+
+    /// Returns the apc and the column substitutions.
+    fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+        (self.apc, self.col_subs)
+    }
+
+    fn instruction_index(&self) -> usize {
+        self.col_subs.len()
+    }
+
+    /// Adds an instruction to the APC builder.
+    fn add_instruction(self, instr: &SymbolicInstructionStatement<T>) -> Self {
+        let instruction_index = self.instruction_index();
+
+        let ApcBuilder {
+            mut apc,
+            mut col_subs,
+            mut next_column_index,
+            instruction_machines,
+            instruction_kinds,
+        } = self;
+
+        match instruction_kinds.get(&instr.name).unwrap() {
+            InstructionKind::Normal
+            | InstructionKind::UnconditionalBranch
+            | InstructionKind::ConditionalBranch => {
+                let machine = instruction_machines.get(&instr.name).unwrap().clone();
+
+                let (i, subs, mut machine) =
+                    powdr::reassign_ids(machine, next_column_index, instruction_index);
+                next_column_index = i;
+
+                let pc_lookup: PcLookupBusInteraction<T> = machine
+                    .bus_interactions
+                    .iter()
+                    .filter_map(|bus_int| bus_int.clone().try_into().ok())
+                    .exactly_one()
+                    .expect("Expected single pc lookup");
+
+                let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
+                let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+
+                let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
+                let one = AlgebraicExpression::Number(1u64.into());
+                local_constraints.push((is_valid.clone() + one).into());
+
+                let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> =
+                    Default::default();
+                if is_loadstore(instr.opcode) {
+                    sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
+                }
+
+                add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
+
+                assert_eq!(instr.args.len(), pc_lookup.args.len());
+                instr
+                    .args
+                    .iter()
+                    .zip_eq(&pc_lookup.args)
+                    .for_each(|(instr_arg, pc_arg)| {
+                        let arg = AlgebraicExpression::Number(*instr_arg);
+                        match pc_arg {
+                            AlgebraicExpression::Reference(ref arg_ref) => {
+                                sub_map.insert(Column::from(arg_ref), arg);
+                            }
+                            AlgebraicExpression::BinaryOperation(_expr) => {
+                                local_constraints.push((arg - pc_arg.clone()).into());
+                            }
+                            AlgebraicExpression::UnaryOperation(_expr) => {
+                                local_constraints.push((arg - pc_arg.clone()).into());
+                            }
+                            _ => {}
+                        }
+                    });
+
+                // Process all expressions in the machine
+                machine.visit_expressions_mut(
+                    &mut |expr| {
+                        *expr = {
+                            let mut expr = expr.clone();
+                            powdr::substitute_algebraic(&mut expr, &sub_map);
+                            powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
+                            simplify_expression(expr)
+                        };
+                        ControlFlow::Continue::<()>(())
+                    },
+                    VisitOrder::Pre,
+                );
+
+                apc.constraints.extend(machine.constraints);
+                apc.bus_interactions.extend(machine.bus_interactions);
+                col_subs.push(subs);
+
+                // after the first round of simplifying,
+                // we need to look for register memory bus interactions
+                // and replace the addr by the first argument of the instruction
+                for bus_int in &mut apc.bus_interactions {
+                    if bus_int.id != MEMORY_BUS_ID {
+                        continue;
+                    }
+
+                    let addr_space = match bus_int.args[0] {
+                        AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
+                        _ => panic!(
+                            "Address space must be a constant but got {}",
+                            bus_int.args[0]
+                        ),
+                    };
+
+                    if addr_space != 1 {
+                        continue;
+                    }
+
+                    match bus_int.args[1] {
+                        AlgebraicExpression::Number(_) => {}
+                        _ => {
+                            if let Some(arg) = bus_int.args.get_mut(1) {
+                                *arg = instr.args[0].into();
+                            } else {
+                                panic!("Expected address argument");
+                            }
+                        }
+                    };
+                }
+            }
+            _ => {}
+        }
+        ApcBuilder {
+            apc,
+            col_subs,
+            next_column_index,
+            instruction_machines,
+            instruction_kinds,
+        }
+    }
 }
 
 pub fn generate_precompile<T: FieldElement>(
@@ -769,130 +926,13 @@ pub fn generate_precompile<T: FieldElement>(
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-    let CompilationState { apc, col_subs, .. } = statements.iter().enumerate().fold(
-        Default::default(),
-        |CompilationState {
-             mut apc,
-             mut col_subs,
-             mut global_idx,
-         },
-         (i, instr)| {
-            match instruction_kinds.get(&instr.name).unwrap() {
-                InstructionKind::Normal
-                | InstructionKind::UnconditionalBranch
-                | InstructionKind::ConditionalBranch => {
-                    let machine = instruction_machines.get(&instr.name).unwrap().clone();
-
-                    let (next_global_idx, subs, mut machine) =
-                        powdr::reassign_ids(machine, global_idx, i);
-                    global_idx = next_global_idx;
-
-                    let pc_lookup: PcLookupBusInteraction<T> = machine
-                        .bus_interactions
-                        .iter()
-                        .filter_map(|bus_int| bus_int.clone().try_into().ok())
-                        .exactly_one()
-                        .expect("Expected single pc lookup");
-
-                    let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
-                    let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-
-                    let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
-                    let one = AlgebraicExpression::Number(1u64.into());
-                    local_constraints.push((is_valid.clone() + one).into());
-
-                    let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> =
-                        Default::default();
-                    if is_loadstore(instr.opcode) {
-                        sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
-                    }
-
-                    add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
-
-                    assert_eq!(instr.args.len(), pc_lookup.args.len());
-                    instr
-                        .args
-                        .iter()
-                        .zip_eq(&pc_lookup.args)
-                        .for_each(|(instr_arg, pc_arg)| {
-                            let arg = AlgebraicExpression::Number(*instr_arg);
-                            match pc_arg {
-                                AlgebraicExpression::Reference(ref arg_ref) => {
-                                    sub_map.insert(Column::from(arg_ref), arg);
-                                }
-                                AlgebraicExpression::BinaryOperation(_expr) => {
-                                    local_constraints.push((arg - pc_arg.clone()).into());
-                                }
-                                AlgebraicExpression::UnaryOperation(_expr) => {
-                                    local_constraints.push((arg - pc_arg.clone()).into());
-                                }
-                                _ => {}
-                            }
-                        });
-
-                    // Process all expressions in the machine
-                    machine.visit_expressions_mut(
-                        &mut |expr| {
-                            *expr = {
-                                let mut expr = expr.clone();
-                                powdr::substitute_algebraic(&mut expr, &sub_map);
-                                powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                                simplify_expression(expr)
-                            };
-                            ControlFlow::Continue::<()>(())
-                        },
-                        VisitOrder::Pre,
-                    );
-
-                    apc.constraints.extend(machine.constraints);
-                    apc.bus_interactions.extend(machine.bus_interactions);
-                    col_subs.push(subs);
-
-                    // after the first round of simplifying,
-                    // we need to look for register memory bus interactions
-                    // and replace the addr by the first argument of the instruction
-                    for bus_int in &mut apc.bus_interactions {
-                        if bus_int.id != MEMORY_BUS_ID {
-                            continue;
-                        }
-
-                        let addr_space = match bus_int.args[0] {
-                            AlgebraicExpression::Number(n) => {
-                                n.to_integer().try_into_u32().unwrap()
-                            }
-                            _ => panic!(
-                                "Address space must be a constant but got {}",
-                                bus_int.args[0]
-                            ),
-                        };
-
-                        if addr_space != 1 {
-                            continue;
-                        }
-
-                        match bus_int.args[1] {
-                            AlgebraicExpression::Number(_) => {}
-                            _ => {
-                                if let Some(arg) = bus_int.args.get_mut(1) {
-                                    *arg = instr.args[0].into();
-                                } else {
-                                    panic!("Expected address argument");
-                                }
-                            }
-                        };
-                    }
-                }
-                _ => {}
-            }
-            CompilationState {
-                apc,
-                col_subs,
-                global_idx,
-            }
-        },
-    );
-
-    (apc, col_subs)
+    statements
+        .iter()
+        .fold(
+            ApcBuilder::new(instruction_machines, instruction_kinds),
+            ApcBuilder::add_instruction,
+        )
+        .into_parts()
 }
 
 fn add_opcode_constraints<T: FieldElement>(
