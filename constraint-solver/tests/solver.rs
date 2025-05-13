@@ -329,16 +329,14 @@ fn one_hot_flags() {
 
 #[test]
 fn binary_flags() {
+    let bit_to_expression = |bit, var| match bit {
+        true => var,
+        false => constant(1) - var,
+    };
     let index_to_expression = |i: usize| -> Qse {
         (0..3)
-            .map(move |j| {
-                if i & (1 << j) != 0 {
-                    var(format!("flag{j}").leak())
-                } else {
-                    constant(1) - var(format!("flag{j}").leak())
-                }
-            })
-            .product()
+            .map(move |j| bit_to_expression(i & (1 << j) != 0, var(format!("flag{j}").leak())))
+            .fold(constant(1), |acc, x| acc * x)
     };
     let constraint_system = ConstraintSystem {
         algebraic_constraints: vec![

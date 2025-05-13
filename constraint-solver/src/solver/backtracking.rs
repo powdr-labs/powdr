@@ -11,7 +11,7 @@ use std::hash::Hash;
 use super::{Error, Solver};
 
 /// The maximum number of possible assignments to try when backtracking.
-const MAX_BACKTRACKING_WIDTH: usize = 1 << 12;
+const MAX_BACKTRACKING_WIDTH: u64 = 1 << 12;
 
 pub struct Backtracker<'a, T: FieldElement, V> {
     solver: &'a Solver<T, V>,
@@ -41,7 +41,7 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
             .filter_map(|variables| {
                 // Consider all sets of variables that appear together in an expression.
                 let variables = variables.into_iter().collect::<Vec<_>>();
-                self.get_possible_assignments_if_few(&variables, MAX_BACKTRACKING_WIDTH)
+                self.get_possible_assignments_if_few(&variables)
                     .map(|candidates| candidates.collect::<Vec<_>>())
             })
             .collect_vec();
@@ -84,12 +84,11 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
     fn get_possible_assignments_if_few(
         &self,
         variables: &[V],
-        max_width: usize,
     ) -> Option<impl Iterator<Item = BTreeMap<V, T>>> {
         if variables.is_empty() {
             return None;
         }
-        if variables.len() > max_width.ilog2() as usize {
+        if variables.len() > MAX_BACKTRACKING_WIDTH.ilog2() as usize {
             // Each variable can have at least 2 values (otherwise it would have a concrete solution),
             // so the number of combinations is guaranteed to be larger than MAX_BACKTRACKING_DEPTH.
             return None;
@@ -98,18 +97,15 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
             .iter()
             .map(|v| self.solver.range_constraints.get(v))
             .collect::<Vec<_>>();
-        if !self.has_few_possible_assignments(&range_constraints, max_width) {
+        if !self.has_few_possible_assignments(&range_constraints) {
             return None;
         }
 
         let assignments = range_constraints
             .iter()
             .map(|rc| {
-                let (mut min, mut max) = rc.range();
-                if min > max {
-                    (min, max) = (max, min);
-                }
-                (0..=(max - min).to_integer().try_into_u64().unwrap())
+                let (min, _) = rc.range();
+                (0..=rc.range_width().try_into_u64().unwrap())
                     // Note that this filter step might lead to there being fewer assignments than
                     // previously calculated from the range alone.
                     .filter(|offset| rc.allows_value(min + T::from(*offset)))
@@ -135,35 +131,21 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
 
     /// Returns true if the given range constraints allow for at most `MAX_BACKTRACKING_WIDTH` possible assignments,
     /// based on the range widths of the constraints.
-    fn has_few_possible_assignments(
-        &self,
-        range_constraints: &[RangeConstraint<T>],
-        max_width: usize,
-    ) -> bool {
+    fn has_few_possible_assignments(&self, range_constraints: &[RangeConstraint<T>]) -> bool {
         let widths = range_constraints
             .iter()
-            .map(|rc| {
-                rc.range_width()
-                    .try_into_u64()
-                    .and_then(|width| (width < max_width as u64).then_some(width))
-            })
+            .map(|rc| rc.range_width().try_into_u64())
             .collect::<Option<Vec<_>>>();
 
         if let Some(widths) = widths {
-            let product_bits = widths
+            widths
                 .iter()
-                .map(|width| (width.ilog2() as usize) + 1)
-                .sum::<usize>();
-            if product_bits >= 64 {
-                // Possible overflow
-                return false;
-            }
-            let total_width = widths.iter().product::<u64>();
-            if total_width <= max_width as u64 {
-                return true;
-            }
+                .try_fold(1u64, |acc, &x| acc.checked_mul(x))
+                .map(|total_width| total_width < MAX_BACKTRACKING_WIDTH)
+                .unwrap_or(false)
+        } else {
+            false
         }
-        false
     }
 
     /// Checks each assignment in the given list of candidates. If exactly one assignment satisfies the
