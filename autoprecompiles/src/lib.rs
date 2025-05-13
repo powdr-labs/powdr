@@ -162,8 +162,7 @@ pub enum InstructionKind {
 #[derive(Debug, Clone)]
 pub struct Autoprecompiles<T> {
     pub program: Vec<SymbolicInstructionStatement<T>>,
-    pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
+    pub instructions_by_name: BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
 }
 
 #[derive(Debug, Clone)]
@@ -316,11 +315,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             + Clone,
         degree_bound: usize,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        let (machine, subs) = generate_precompile(
-            &self.program,
-            &self.instruction_kind,
-            &self.instruction_machines,
-        );
+        let (machine, subs) = generate_precompile(&self.program, &self.instructions_by_name);
 
         let machine = optimize_pc_lookup(machine);
         let machine = optimize_exec_bus(machine);
@@ -342,7 +337,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             statements: Vec::new(),
         };
         for (i, instr) in self.program.iter().enumerate() {
-            match self.instruction_kind.get(&instr.name).unwrap() {
+            match self.instructions_by_name.get(&instr.name).unwrap().1 {
                 InstructionKind::Normal => {
                     curr_block.statements.push(instr.clone());
                 }
@@ -764,24 +759,20 @@ struct ApcBuilder<'a, T> {
     col_subs: Vec<Vec<u64>>,
     /// The next free column index.
     next_column_index: u64,
-    /// The instruction machines
-    instruction_machines: &'a BTreeMap<String, SymbolicMachine<T>>,
-    /// The instruction kinds.
-    instruction_kinds: &'a BTreeMap<String, InstructionKind>,
+    /// The instruction machines and their kinds.
+    instructions_by_name: &'a BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
 }
 
 impl<'a, T: FieldElement> ApcBuilder<'a, T> {
     /// Creates a new APC builder from the given instruction machines and instruction kinds.
     fn new(
-        instruction_machines: &'a BTreeMap<String, SymbolicMachine<T>>,
-        instruction_kinds: &'a BTreeMap<String, InstructionKind>,
+        instructions_by_name: &'a BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
     ) -> Self {
         ApcBuilder {
             apc: SymbolicMachine::default(),
             col_subs: Vec::new(),
             next_column_index: 0,
-            instruction_machines,
-            instruction_kinds,
+            instructions_by_name,
         }
     }
 
@@ -802,18 +793,17 @@ impl<'a, T: FieldElement> ApcBuilder<'a, T> {
             mut apc,
             mut col_subs,
             mut next_column_index,
-            instruction_machines,
-            instruction_kinds,
+            instructions_by_name,
         } = self;
 
-        match instruction_kinds.get(&instr.name).unwrap() {
+        let (machine, kind) = instructions_by_name.get(&instr.name).unwrap();
+
+        match kind {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let machine = instruction_machines.get(&instr.name).unwrap().clone();
-
                 let (i, subs, mut machine) =
-                    powdr::reassign_ids(machine, next_column_index, instruction_index);
+                    powdr::reassign_ids(machine.clone(), next_column_index, instruction_index);
                 next_column_index = i;
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
@@ -915,21 +905,19 @@ impl<'a, T: FieldElement> ApcBuilder<'a, T> {
             apc,
             col_subs,
             next_column_index,
-            instruction_machines,
-            instruction_kinds,
+            instructions_by_name,
         }
     }
 }
 
 pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
-    instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
+    instructions_by_name: &BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     statements
         .iter()
         .fold(
-            ApcBuilder::new(instruction_machines, instruction_kinds),
+            ApcBuilder::new(instructions_by_name),
             ApcBuilder::add_instruction,
         )
         .into_parts()
