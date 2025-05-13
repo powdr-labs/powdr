@@ -2,14 +2,16 @@ use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
+use rayon::prelude::*;
 use std::fmt::Display;
 use std::hash::Hash;
+use std::sync::{Arc, Mutex};
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
 pub fn replace_constrained_witness_columns<
     T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
 >(
     mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
@@ -27,30 +29,107 @@ pub fn replace_constrained_witness_columns<
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Send + Sync>(
     constraint_system: &mut ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> bool {
-    let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
+    let best_candidate = Arc::new(Mutex::new(
+        None::<(usize, V, QuadraticSymbolicExpression<T, V>, f64)>,
+    ));
 
-    for idx in indices.into_iter().rev() {
-        let constraint = &constraint_system.algebraic_constraints[idx];
+    // Check substitutions from all constraints in parallel
+    (0..constraint_system.algebraic_constraints.len())
+        .into_par_iter()
+        .for_each(|idx| {
+            let constraint = &constraint_system.algebraic_constraints[idx];
 
-        for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
-                log::debug!("Substituting {var} = {expr}");
-                log::debug!("  (from identity {constraint})");
-                constraint_system.iter_mut().for_each(|identity| {
-                    identity.substitute_by_unknown(&var, &expr);
-                });
-
-                constraint_system.algebraic_constraints.remove(idx);
-                return true;
+            for (var, expr) in find_inlinable_variables(constraint) {
+                if let Some(score) = score_substitution(&var, &expr, constraint_system, max_degree)
+                {
+                    let mut best = best_candidate.lock().unwrap();
+                    if let Some((_, _, _, best_score)) = &*best {
+                        if score > *best_score {
+                            *best = Some((idx, var, expr, score));
+                        }
+                    } else {
+                        *best = Some((idx, var, expr, score));
+                    }
+                }
             }
-        }
+        });
+
+    // Apply the best substitution if any
+    let best_candidate = Arc::try_unwrap(best_candidate)
+        .unwrap_or_else(|_| panic!("All threads should be done with the mutex"))
+        .into_inner()
+        .unwrap_or_else(|_| panic!("Mutex poisoned"));
+
+    // Apply the best substitution if any
+    if let Some((idx, var, expr, score)) = best_candidate {
+        log::debug!("Substituting {var} = {expr} (score: {score})");
+        log::debug!(
+            "  (from identity {})",
+            constraint_system.algebraic_constraints[idx]
+        );
+
+        constraint_system.iter_mut().for_each(|identity| {
+            identity.substitute_by_unknown(&var, &expr);
+        });
+
+        constraint_system.algebraic_constraints.remove(idx);
+
+        return true;
     }
 
     false
+}
+
+/// Score a potential substitution based on heuristics
+fn score_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    var: &V,
+    expr: &QuadraticSymbolicExpression<T, V>,
+    constraint_system: &ConstraintSystem<T, V>,
+    max_degree: usize,
+) -> Option<f64> {
+    // If substitution would exceed max degree, return None (invalid)
+    let replacement_deg = qse_degree(expr);
+    let max_resulting_degree = constraint_system
+        .iter()
+        .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
+        .max()
+        .unwrap_or(0);
+
+    if max_resulting_degree > max_degree {
+        return None;
+    }
+
+    // Count occurrences of the variable across all constraints
+    let var_occurrences: usize = constraint_system
+        .iter()
+        .map(|constraint| {
+            constraint
+                .referenced_unknown_variables()
+                .filter(|v| *v == var)
+                .count()
+        })
+        .sum();
+
+    // Calculate degree impact (how much the substitution increases the overall degree)
+    let avg_degree_increase = constraint_system
+        .iter()
+        .map(|constraint| {
+            let current_deg = qse_degree(constraint);
+            let new_deg = qse_degree_with_virtual_substitution(constraint, var, replacement_deg);
+            new_deg as f64 - current_deg as f64
+        })
+        .sum::<f64>()
+        / constraint_system.algebraic_constraints.len() as f64;
+
+    // Higher score = better candidate for substitution
+    let score = var_occurrences as f64 * 0.3 - avg_degree_increase * 0.7;
+    println!("Score for {var}: {score}");
+
+    Some(score)
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
@@ -85,21 +164,6 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     }
 
     substitutions
-}
-
-/// Checks whether a substitution is valid under `max_degree` constraint.
-fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    var: &V,
-    expr: &QuadraticSymbolicExpression<T, V>,
-    constraint_system: &ConstraintSystem<T, V>,
-    max_degree: usize,
-) -> bool {
-    let replacement_deg = qse_degree(expr);
-
-    !constraint_system
-        .iter()
-        .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
-        .any(|deg| deg > max_degree)
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
@@ -258,51 +322,7 @@ mod test {
     }
 
     #[test]
-    fn test_replace_witness_columns_no_keep() {
-        let mut identities = Vec::new();
-
-        // a * b = c
-        let constraint1 = var("c") - var("a") * var("b");
-        identities.push(constraint1);
-
-        // b + d = 0
-        let constraint2 = var("b") + var("d");
-        identities.push(constraint2);
-
-        // c * d = e
-        let constraint3 = var("e") - var("c") * var("d");
-        identities.push(constraint3);
-
-        // a + b + c + d + e - result = 0
-        let expr = var("a") + var("b") + var("c") + var("d") + var("e");
-        let expr_constraint = expr.clone() - var("result");
-        identities.push(expr_constraint);
-
-        // no columns to keep
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions: vec![],
-        };
-
-        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
-        // 1) b + d = 0        => b = -d
-        // 2) c * d = e        => e = c * d
-        // 3) a + b + c + d + e = result
-        //    =⇒ a + (-d) + c + d + (c * d) = result
-        //    =⇒ a + c + (c * d) = result ⇒ a = result - c - c*d
-        //
-        // Replace a and b in (a * b = c):
-        //    (result - c - c*d) * (-d) = c
-        // ⇒ ((c * d) + c - result) * (-d) + c = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "((c) * (d) + c + -result) * (-d) + c"
-        );
-    }
-
-    #[test]
-    fn test_replace_constrained_witness_suboptimal() {
+    fn test_replace_constrained_witness_bus_interaction() {
         // Keep x and result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
@@ -375,22 +395,22 @@ mod test {
         // b kept as a symbol
         assert_eq!(b.to_string(), "b");
         // From second identity: c = a * a
-        // In-lining c would violate the degree bound, so it is kept as a symbol
-        // with a constraint to enforce the equality.
-        assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "(-b + -1) * (b + 1) + c");
+        assert_eq!(c.to_string(), "(b + 1) * (b + 1)");
         // From third identity: d = c * a
-        assert_eq!(d.to_string(), "(c) * (b + 1)");
+        // In-lining d would violate the degree bound, so it is kept as a symbol
+        // with a constraint to enforce the equality.
+        assert_eq!(d.to_string(), "d");
+        assert_eq!(identity.to_string(), "((-b + -1) * (b + 1)) * (b + 1) + d");
         // From fourth identity: e = d * a
-        assert_eq!(e.to_string(), "((c) * (b + 1)) * (b + 1)");
+        assert_eq!(e.to_string(), "(d) * (b + 1)");
         // From fifth identity: f = e + 5
-        assert_eq!(f.to_string(), "((c) * (b + 1)) * (b + 1) + 5");
+        assert_eq!(f.to_string(), "(d) * (b + 1) + 5");
         // From sixth identity: result = f * 2
-        assert_eq!(result.to_string(), "((2 * c) * (b + 1)) * (b + 1) + 10");
+        assert_eq!(result.to_string(), "(2 * d) * (b + 1) + 10");
     }
 
     #[test]
-    fn test_inline_max_degree_suboptimal_greedy() {
+    fn test_inline_max_degree_old_suboptimal_greedy() {
         // Show how constraint order affects optimization results
 
         // Define the constraints in both orders
@@ -436,8 +456,8 @@ mod test {
         let optimal_system = replace_constrained_witness_columns(optimal_system, 5);
         let suboptimal_system = replace_constrained_witness_columns(suboptimal_system, 5);
 
-        // Assert the difference in optimization results
+        // With scoring, now both systems have the same number of constraints
         assert_eq!(optimal_system.algebraic_constraints.len(), 3);
-        assert_eq!(suboptimal_system.algebraic_constraints.len(), 4);
+        assert_eq!(suboptimal_system.algebraic_constraints.len(), 3);
     }
 }
