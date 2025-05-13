@@ -655,7 +655,10 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     machine
 }
 
-pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>, opcode: u32) -> SymbolicMachine<T> {
+pub fn optimize_pc_lookup<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    opcode: u32,
+) -> SymbolicMachine<T> {
     let mut first_pc = None;
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id == PC_LOOKUP_BUS_ID {
