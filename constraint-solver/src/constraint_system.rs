@@ -3,6 +3,7 @@ use crate::{
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
 };
+use itertools::Itertools;
 use powdr_number::FieldElement;
 use std::hash::Hash;
 
@@ -34,7 +35,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 }
 
 /// A bus interaction.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
     pub bus_id: V,
@@ -97,24 +98,27 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
     /// Refines range constraints of the bus interaction's fields
     /// using the provided `BusInteractionHandler`.
     /// Returns a list of updates to be executed by the caller.
+    /// Forwards and error by the bus interaction handler.
     pub fn solve(
         &self,
         bus_interaction_handler: &dyn BusInteractionHandler<T>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> Vec<Effect<T, V>> {
+    ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
         let Some(range_constraints) = self.to_range_constraints(range_constraints) else {
-            return vec![];
+            return Ok(vec![]);
         };
-        let range_constraints = bus_interaction_handler.handle_bus_interaction(range_constraints);
-        self.iter()
-            .zip(range_constraints.iter())
+        let range_constraints =
+            bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
+        Ok(self
+            .iter()
+            .zip_eq(range_constraints.iter())
             .filter_map(|(expr, rc)| {
                 if let Some(var) = expr.try_to_simple_unknown() {
                     return Some(Effect::RangeConstraint(var, rc.clone()));
                 }
                 None
             })
-            .collect()
+            .collect())
     }
 
     /// Returns the set of referenced variables, both know and unknown.
@@ -122,6 +126,10 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
         Box::new(self.iter().flat_map(|expr| expr.referenced_variables()))
     }
 }
+
+/// The sent / received data could not be received / sent.
+#[derive(Debug)]
+pub struct ViolatesBusRules {}
 
 /// A trait for handling bus interactions.
 pub trait BusInteractionHandler<T: FieldElement> {
@@ -139,6 +147,25 @@ pub trait BusInteractionHandler<T: FieldElement> {
         &self,
         bus_interaction: BusInteraction<RangeConstraint<T>>,
     ) -> BusInteraction<RangeConstraint<T>>;
+
+    /// Like handle_bus_interaction, but returns an error if the current bus
+    /// interaction violates the rules of the bus (e.g. [1234] in [BYTES]).
+    fn handle_bus_interaction_checked(
+        &self,
+        bus_interaction: BusInteraction<RangeConstraint<T>>,
+    ) -> Result<BusInteraction<RangeConstraint<T>>, ViolatesBusRules> {
+        let previous_constraints = bus_interaction.clone();
+        let new_constraints = self.handle_bus_interaction(bus_interaction);
+
+        // Intersect the old and new range constraints. If they don't overlap,
+        // there is a contradiction.
+        for (previous_rc, new_rc) in previous_constraints.iter().zip_eq(new_constraints.iter()) {
+            if previous_rc.is_disjoint(new_rc) {
+                return Err(ViolatesBusRules {});
+            }
+        }
+        Ok(new_constraints)
+    }
 }
 
 /// A default bus interaction handler that does nothing. Using it is
