@@ -23,7 +23,7 @@ impl<'a, T: FieldElement, V> Backtracker<'a, T, V> {
     }
 }
 
-impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<'a, T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<'_, T, V> {
     /// Returns a map of variable assignments that are unique in the constraint system.
     /// Returns an error a contradiction was found.
     pub fn get_unique_assignments(&self) -> Result<BTreeMap<V, T>, Error> {
@@ -42,7 +42,7 @@ impl<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtrac
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             // Might return None if the assignment is not unique.
-            .filter_map(|assignment| assignment)
+            .flatten()
             .collect::<Vec<_>>();
 
         log::debug!(

@@ -176,7 +176,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let mut progress = false;
         for (variable, value) in &assignments {
-            progress |= self.apply_assignment(&variable, &(*value).into());
+            progress |= self.apply_assignment(variable, &(*value).into());
         }
 
         Ok(progress)
