@@ -64,7 +64,6 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display 
         .into_inner()
         .unwrap_or_else(|_| panic!("Mutex poisoned"));
 
-    // Apply the best substitution if any
     if let Some((idx, var, expr, score)) = best_candidate {
         log::debug!("Substituting {var} = {expr} (score: {score})");
         log::debug!(
@@ -127,7 +126,6 @@ fn score_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
 
     // Higher score = better candidate for substitution
     let score = var_occurrences as f64 * 0.3 - avg_degree_increase * 0.7;
-    println!("Score for {var}: {score}");
 
     Some(score)
 }
