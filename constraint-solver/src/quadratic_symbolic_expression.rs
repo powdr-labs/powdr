@@ -586,8 +586,16 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
         return None;
     }
 
-    Some(ProcessResult {
-        effects: vec![Effect::ConditionalAssignment {
+    let assignment = if let Some(first_assignment_value) = first_assignment.try_to_number() {
+        // We can check the condition now and return an assignment.
+        if rc.allows_value(first_assignment_value) {
+            Effect::Assignment(first_var.clone(), first_assignment.clone())
+        } else {
+            Effect::Assignment(first_var.clone(), second_assignment.clone())
+        }
+    } else {
+        // We only know the value of the first assignment at runtime, return a conditional assignment.
+        Effect::ConditionalAssignment {
             variable: first_var.clone(),
             condition: Condition {
                 value: first_assignment.clone(),
@@ -595,7 +603,11 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
             },
             in_range_value: first_assignment.clone(),
             out_of_range_value: second_assignment.clone(),
-        }],
+        }
+    };
+
+    Some(ProcessResult {
+        effects: vec![assignment],
         complete: left.complete && right.complete,
     })
 }
@@ -1184,6 +1196,18 @@ Z: [10, 4294967050] & 0xffffffff;
             "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
 "
         );
+
+        // Do the same, but setting b to a concrete value (2).
+        // The result should be an unconditional assignment to b + 10 = 12.
+        let mut constr = constr;
+        constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
+            panic!("Expected 1 assignment");
+        };
+        assert_eq!(var, &"a");
+        assert_eq!(expr.to_string(), "12");
     }
 
     fn unpack_range_constraint(
