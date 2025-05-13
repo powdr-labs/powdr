@@ -332,18 +332,22 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
                 let value = self.constant.field_div(&-coeff);
-                let rc = range_constraints.get(var);
-                if rc.is_disjoint(&value.range_constraint()) {
-                    return Err(Error::ConflictingRangeConstraints);
-                }
-                ProcessResult::complete(vec![Effect::Assignment(var.clone(), value)])
+                ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
+                    var.clone(),
+                    value,
+                    range_constraints,
+                )?])
             } else if self.constant.is_known_nonzero() {
                 // If the offset is not zero, then the coefficient must be non-zero,
                 // otherwise the constraint is violated.
                 let value = self.constant.field_div(&-coeff);
                 ProcessResult::complete(vec![
                     Assertion::assert_is_nonzero(coeff.clone()),
-                    Effect::Assignment(var.clone(), value),
+                    assignment_if_satisfies_range_constraints(
+                        var.clone(),
+                        value,
+                        range_constraints,
+                    )?,
                 ])
             } else {
                 // If this case, we could have an equation of the form
@@ -438,10 +442,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     // tight good enough.
                     return Ok(ProcessResult::empty());
                 }
-                concrete_assignments.push(Effect::Assignment(
+                concrete_assignments.push(assignment_if_satisfies_range_constraints(
                     variable.clone(),
                     T::from(component >> exponent).into(),
-                ));
+                    range_constraints,
+                )?);
                 if is_negative {
                     *offset += T::from(component);
                 } else {
@@ -653,6 +658,18 @@ fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Displ
             .collect(),
         complete,
     }
+}
+
+fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    var: V,
+    value: SymbolicExpression<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Result<Effect<T, V>, Error> {
+    let rc = range_constraints.get(&var);
+    if rc.is_disjoint(&value.range_constraint()) {
+        return Err(Error::ConflictingRangeConstraints);
+    }
+    Ok(Effect::Assignment(var, value))
 }
 
 /// Turns an effect into a range constraint on a variable.
