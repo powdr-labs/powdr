@@ -1,4 +1,4 @@
-use backtracking::try_solve_with_backtracking;
+use backtracking::Backtracker;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -53,7 +53,7 @@ pub struct Solver<T: FieldElement, V> {
     range_constraints: RangeConstraints<T, V>,
 }
 
-impl<T: FieldElement + Send + Sync, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.iter()).is_empty(),
@@ -176,14 +176,14 @@ impl<T: FieldElement + Send + Sync, V: Ord + Clone + Hash + Eq + Display + Debug
     }
 
     fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
-        if let Some(assignments) = try_solve_with_backtracking(self)? {
-            for (variable, value) in assignments {
-                self.apply_assignment(&variable, &value.into());
-            }
-            Ok(true)
-        } else {
-            Ok(false)
+        let assignments = Backtracker::new(self).get_unique_assignments()?;
+
+        let mut progress = false;
+        for (variable, value) in &assignments {
+            progress |= self.apply_assignment(&variable, &(*value).into());
         }
+
+        Ok(progress)
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
