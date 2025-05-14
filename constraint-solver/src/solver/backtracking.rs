@@ -37,13 +37,16 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
 
         let unique_assignments = variable_sets
             .iter()
-            .map(|assignment_candidates| self.find_unique_assignment(assignment_candidates))
-            // Might error out if a contradiction was found.
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            // Might return None if the assignment is not unique.
-            .flatten()
-            .collect::<Vec<_>>();
+            .filter_map(|assignment_candidates| {
+                match self.find_unique_assignment(assignment_candidates) {
+                    Ok(Some(assignments)) => Some(Ok(assignments)),
+                    // Might return None if the assignment is not unique.
+                    Ok(None) => None,
+                    // Might error out if a contradiction was found.
+                    Err(e) => Some(Err(e)),
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         log::debug!(
             "{} variable sets with unique assignments found",
