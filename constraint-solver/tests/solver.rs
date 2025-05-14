@@ -265,7 +265,8 @@ fn add_with_carry() {
     // A is the result of an addition with carry.
     let constraint_system = ConstraintSystem {
         algebraic_constraints: vec![
-            (var("X") - var("A") + constant(256)) * (var("X") - var("A")),
+            (var("X") * constant(7) - var("A") * constant(7) + constant(256) * constant(7))
+                * (var("X") * constant(7) - var("A") * constant(7)),
             (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
         ],
         // Byte range constraints on X and Y
@@ -286,7 +287,7 @@ fn add_with_carry() {
         .to_string();
     assert_eq!(
         final_state,
-        "(-A + X + 256) * (-A + X)
+        "(-7 * A + 7 * X + 1792) * (-7 * A + 7 * X)
 (-A + X + 256) * (-A + X)"
     );
 }

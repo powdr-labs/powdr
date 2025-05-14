@@ -31,7 +31,7 @@ pub fn symbolic_expression_to_quadratic_symbolic_expression<
                 BinaryOperator::Mul => left * right,
                 BinaryOperator::Div => {
                     if let Some(right) = right.try_to_known() {
-                        left * SymbolicExpression::from(T::from(1)).field_div(right)
+                        left * right.field_inverse()
                     } else {
                         return None;
                     }

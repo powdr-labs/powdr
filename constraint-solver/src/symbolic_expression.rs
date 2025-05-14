@@ -395,4 +395,26 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
             )
         }
     }
+
+    /// Returns the multiplicative inverse in the field.
+    pub fn field_inverse(&self) -> Self {
+        if let SymbolicExpression::Concrete(x) = self {
+            assert!(x != &T::from(0));
+            SymbolicExpression::Concrete(T::from(1) / *x)
+        } else if let SymbolicExpression::BinaryOperation(x, BinaryOperator::Div, y, _) = self {
+            SymbolicExpression::BinaryOperation(
+                y.clone(),
+                BinaryOperator::Div,
+                x.clone(),
+                Default::default(),
+            )
+        } else {
+            SymbolicExpression::BinaryOperation(
+                Arc::new(Self::from(T::from(1))),
+                BinaryOperator::Div,
+                Arc::new(self.clone()),
+                Default::default(),
+            )
+        }
+    }
 }
