@@ -1,3 +1,4 @@
+use exhaustive_search::ExhaustiveSearch;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -5,8 +6,7 @@ use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::effect::Condition;
-use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::quadratic_equivalences;
+use crate::indexed_constraint_system::{ConstraintRef, IndexedConstraintSystem};
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
@@ -18,6 +18,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
+mod exhaustive_search;
+mod quadratic_equivalences;
+
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
@@ -28,12 +31,16 @@ pub struct SolveResult<T: FieldElement, V> {
 }
 
 /// An error occurred while solving the constraint system.
+/// This means that the constraint system is unsatisfiable.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// An error occurred while calling `QuadraticSymbolicExpression::solve`
     QseSolvingError(QseError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
+    /// During exhaustive search, we came across a combination of variables for which
+    /// no assignment would satisfy all the constraints.
+    ExhaustiveSearchError,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
@@ -98,6 +105,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
+                // This might be expensive, so we only do it if we made no progress
+                // in the previous steps.
+                progress |= self.exhaustive_search()?;
+            }
+
+            if !progress {
                 break;
             }
         }
@@ -156,6 +169,20 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         !equivalences.is_empty()
     }
 
+    /// Find groups of variables with a small set of possible assignments.
+    /// If there is exactly one assignment that does not lead to a contradiction,
+    /// apply it. This might be expensive.
+    fn exhaustive_search(&mut self) -> Result<bool, Error> {
+        let assignments = ExhaustiveSearch::new(self).get_unique_assignments()?;
+
+        let mut progress = false;
+        for (variable, value) in &assignments {
+            progress |= self.apply_assignment(variable, &(*value).into());
+        }
+
+        Ok(progress)
+    }
+
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
             Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr),
@@ -203,6 +230,37 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             false
         }
     }
+
+    /// Given a set of variable assignments, checks if they violate any constraint.
+    /// Note that this might return false negatives, because it does not propagate any values.
+    fn is_assignment_conflicting(&self, assignments: &BTreeMap<V, T>) -> bool {
+        self.constraint_system
+            .constraints_referencing_variables(assignments.keys().cloned())
+            .any(|constraint| match constraint {
+                ConstraintRef::AlgebraicConstraint(identity) => {
+                    let mut identity = identity.clone();
+                    for (variable, value) in assignments.iter() {
+                        identity
+                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                    }
+                    identity.solve(&self.range_constraints).is_err()
+                }
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    let mut bus_interaction = bus_interaction.clone();
+                    for (variable, value) in assignments.iter() {
+                        bus_interaction.iter_mut().for_each(|expr| {
+                            expr.substitute_by_known(
+                                variable,
+                                &SymbolicExpression::Concrete(*value),
+                            )
+                        })
+                    }
+                    bus_interaction
+                        .solve(&*self.bus_interaction_handler, &self.range_constraints)
+                        .is_err()
+                }
+            })
+    }
 }
 
 /// The currently known range constraints for the variables.
@@ -210,6 +268,7 @@ struct RangeConstraints<T: FieldElement, V> {
     range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
+// Manual implementation so that we don't have to require `V: Default`.
 impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
     fn default() -> Self {
         RangeConstraints {
