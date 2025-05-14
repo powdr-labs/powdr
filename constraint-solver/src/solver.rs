@@ -230,9 +230,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
-    /// Given a set of variable assignments, checks if they satisfy all the constraints.
-    /// Note that this might return false positives, because it does not propagate any values.
-    fn check_assignments(&self, assignments: &BTreeMap<V, T>) -> bool {
+    /// Given a set of variable assignments, checks if they violate any constraint.
+    /// Note that this might return false negatives, because it does not propagate any values.
+    fn is_assignment_conflicting(&self, assignments: &BTreeMap<V, T>) -> bool {
         let constraints = self
             .constraint_system
             .constraints_referencing_variables(assignments.keys().cloned());
@@ -246,7 +246,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                             .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
                     }
                     if identity.solve(&self.range_constraints).is_err() {
-                        return false;
+                        return true;
                     }
                 }
                 ConstraintRef::BusInteraction(bus_interaction) => {
@@ -263,13 +263,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                         .solve(&*self.bus_interaction_handler, &self.range_constraints)
                         .is_err()
                     {
-                        return false;
+                        return true;
                     }
                 }
             }
         }
 
-        true
+        false
     }
 }
 

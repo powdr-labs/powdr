@@ -117,7 +117,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
     ) -> Result<Option<BTreeMap<V, T>>, Error> {
         let mut assignment = None;
         for assignments in self.get_all_possible_assignments(variables) {
-            if self.solver.check_assignments(&assignments) {
+            if !self.solver.is_assignment_conflicting(&assignments) {
                 if assignment.is_some() {
                     // The assignment is not unique.
                     return Ok(None);
