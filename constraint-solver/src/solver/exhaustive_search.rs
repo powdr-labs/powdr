@@ -23,8 +23,11 @@ impl<'a, T: FieldElement, V> ExhaustiveSearch<'a, T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> ExhaustiveSearch<'_, T, V> {
-    /// Returns a map of variable assignments if these assignments are the only non-contradicting for these variables.
-    /// Returns an error if all assignments for some variables are contradictory.
+    /// Tries to find unique assignments via exhaustive search: For any group of variables that
+    /// appear together in an identity, if there are fewer than `MAX_SEARCH_WIDTH` possible
+    /// assignments, it tries them all and returns any unique assignments.
+    /// Returns an error if there are any contradictions between those assignments, or if no
+    /// assignment satisfies the constraint system for any group of variables.
     pub fn get_unique_assignments(&self) -> Result<BTreeMap<V, T>, Error> {
         log::debug!("Starting exhaustive search with maximum width {MAX_SEARCH_WIDTH}");
         let variable_sets = self.get_brute_force_candidates().collect::<Vec<_>>();
