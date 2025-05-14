@@ -28,7 +28,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
     /// Returns an error if all assignments for some variables are contradictory.
     pub fn get_unique_assignments(&self) -> Result<BTreeMap<V, T>, Error> {
         log::debug!("Starting backtracking with maximum width {MAX_BACKTRACKING_WIDTH}");
-        let variable_sets = self.get_brute_force_candidates();
+        let variable_sets = self.get_brute_force_candidates().collect::<Vec<_>>();
 
         log::debug!(
             "Found {} sets of variables with few possible assignments. Checking each set...",
@@ -74,7 +74,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
     /// Returns all unique sets of variables that appear together in an identity
     /// (either in an algebraic constraint or in the same field of a bus interaction),
     /// IF the number of possible assignments is less than `MAX_BACKTRACKING_WIDTH`.
-    fn get_brute_force_candidates(&self) -> Vec<BTreeSet<V>> {
+    fn get_brute_force_candidates(&self) -> impl Iterator<Item = BTreeSet<V>> + '_ {
         self.solver
             .constraint_system
             .expressions()
@@ -87,26 +87,17 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
             .unique()
             .filter(|variables| !variables.is_empty())
             .filter(|variables| self.has_few_possible_assignments(variables.iter().cloned()))
-            .collect()
     }
 
     /// Returns true if the given range constraints allow for at most `MAX_BACKTRACKING_WIDTH``
     /// possible assignments for the given variables.
     fn has_few_possible_assignments(&self, variables: impl Iterator<Item = V>) -> bool {
-        self.range_constraints(variables)
-            .iter()
-            .map(|rc| rc.range_width().try_into_u64())
-            .collect::<Option<Vec<_>>>()
-            .and_then(|widths| widths.iter().try_fold(1u64, |acc, &x| acc.checked_mul(x)))
-            .map(|total_width| total_width < MAX_BACKTRACKING_WIDTH)
-            .unwrap_or(false)
-    }
-
-    /// Returns the range constraints for the given variables.
-    fn range_constraints(&self, variables: impl Iterator<Item = V>) -> Vec<RangeConstraint<T>> {
         variables
             .map(|v| self.solver.range_constraints.get(&v))
-            .collect()
+            .map(|rc| rc.range_width().try_into_u64())
+            .try_fold(1u64, |acc, x| acc.checked_mul(x?))
+            .map(|total_width| total_width < MAX_BACKTRACKING_WIDTH)
+            .unwrap_or(false)
     }
 
     /// Goes through all possible assignments for the given variables and checks whether they satisfy
@@ -140,8 +131,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
         &self,
         variables: &BTreeSet<V>,
     ) -> impl Iterator<Item = BTreeMap<V, T>> {
-        self.range_constraints(variables.iter().cloned())
+        variables
             .iter()
+            .map(|v| self.solver.range_constraints.get(v))
             .map(|rc| {
                 let (min, _) = rc.range();
                 (0..=rc.range_width().try_into_u64().unwrap())
