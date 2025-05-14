@@ -237,39 +237,26 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .constraint_system
             .constraints_referencing_variables(assignments.keys().cloned());
 
-        for constraint in constraints {
-            match constraint {
-                ConstraintRef::AlgebraicConstraint(identity) => {
-                    let mut identity = identity.clone();
-                    for (variable, value) in assignments.iter() {
-                        identity
-                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
-                    }
-                    if identity.solve(&self.range_constraints).is_err() {
-                        return true;
-                    }
+        constraints.iter().any(|constraint| match *constraint {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                let mut identity = identity.clone();
+                for (variable, value) in assignments.iter() {
+                    identity.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
                 }
-                ConstraintRef::BusInteraction(bus_interaction) => {
-                    let mut bus_interaction = bus_interaction.clone();
-                    for (variable, value) in assignments.iter() {
-                        bus_interaction.iter_mut().for_each(|expr| {
-                            expr.substitute_by_known(
-                                variable,
-                                &SymbolicExpression::Concrete(*value),
-                            )
-                        })
-                    }
-                    if bus_interaction
-                        .solve(&*self.bus_interaction_handler, &self.range_constraints)
-                        .is_err()
-                    {
-                        return true;
-                    }
-                }
+                identity.solve(&self.range_constraints).is_err()
             }
-        }
-
-        false
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                let mut bus_interaction = bus_interaction.clone();
+                for (variable, value) in assignments.iter() {
+                    bus_interaction.iter_mut().for_each(|expr| {
+                        expr.substitute_by_known(variable, &SymbolicExpression::Concrete(*value))
+                    })
+                }
+                bus_interaction
+                    .solve(&*self.bus_interaction_handler, &self.range_constraints)
+                    .is_err()
+            }
+        })
     }
 }
 
