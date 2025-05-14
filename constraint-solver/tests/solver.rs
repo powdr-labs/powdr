@@ -312,7 +312,7 @@ fn one_hot_flags() {
         bus_interactions: vec![],
     };
 
-    // This can be solved via backtracking: There are 2^16 possible assignments
+    // This can be solved via backtracking: There are 16 possible assignments
     // for the 4 flags, but only 1 of them satisfies all the constraints.
     assert_solve_result(
         Solver::new(constraint_system),

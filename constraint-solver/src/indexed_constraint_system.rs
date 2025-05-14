@@ -62,7 +62,7 @@ pub enum ConstraintRef<'a, T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
-    /// Get all constraints that contain at least one of the given variables.
+    /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables(
         &self,
         variables: impl Iterator<Item = V>,
