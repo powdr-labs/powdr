@@ -51,7 +51,7 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
         &self.constraint_system.bus_interactions
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+    pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         self.constraint_system.iter()
     }
 }

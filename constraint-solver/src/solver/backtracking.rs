@@ -74,7 +74,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
     fn get_brute_force_candidates(&self) -> Vec<BTreeSet<V>> {
         self.solver
             .constraint_system
-            .iter()
+            .expressions()
             .map(|expression| {
                 expression
                     .referenced_variables()
