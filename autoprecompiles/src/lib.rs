@@ -784,7 +784,7 @@ impl<'a, T: FieldElement> ApcBuilder<'a, T> {
         ApcBuilder {
             apc: SymbolicMachine::default(),
             col_subs: Vec::new(),
-            next_column_index: 0,
+            next_column_index: 3,
             instructions_by_name,
         }
     }
