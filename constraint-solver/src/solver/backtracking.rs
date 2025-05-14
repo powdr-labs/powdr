@@ -24,8 +24,8 @@ impl<'a, T: FieldElement, V> Backtracker<'a, T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<'_, T, V> {
-    /// Returns a map of variable assignments that are unique in the constraint system.
-    /// Returns an error a contradiction was found.
+    /// Returns a map of variable assignments if these assignments are the only non-contradicting for these variables.
+    /// Returns an error if all assignments for some variables are contradictory.
     pub fn get_unique_assignments(&self) -> Result<BTreeMap<V, T>, Error> {
         log::debug!("Starting backtracking with maximum width {MAX_BACKTRACKING_WIDTH}");
         let variable_sets = self.get_brute_force_candidates();
@@ -38,7 +38,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
         let unique_assignments = variable_sets
             .iter()
             .map(|assignment_candidates| self.find_unique_assignment(assignment_candidates))
-            // Might error out of a contradiction was found.
+            // Might error out if a contradiction was found.
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             // Might return None if the assignment is not unique.
@@ -110,7 +110,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
     /// all constraints. If exactly one assignment satisfies the constraint system (and all others
     /// lead to a contradiction), it returns that assignment.
     /// If multiple assignments satisfy the constraint system, it returns `None`.
-    /// Returns an error if a contradiction was found.
+    /// Returns an error if all assignments are contradictory.
     fn find_unique_assignment(
         &self,
         variables: &BTreeSet<V>,
