@@ -2,7 +2,6 @@ use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
-use crate::range_constraint::RangeConstraint;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
@@ -38,7 +37,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
         let unique_assignments = variable_sets
             .iter()
             .filter_map(|assignment_candidates| {
-                match self.find_unique_assignment(assignment_candidates) {
+                match self.find_unique_assignment_for_set(assignment_candidates) {
                     Ok(Some(assignments)) => Some(Ok(assignments)),
                     // Might return None if the assignment is not unique.
                     Ok(None) => None,
@@ -105,7 +104,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
     /// lead to a contradiction), it returns that assignment.
     /// If multiple assignments satisfy the constraint system, it returns `None`.
     /// Returns an error if all assignments are contradictory.
-    fn find_unique_assignment(
+    fn find_unique_assignment_for_set(
         &self,
         variables: &BTreeSet<V>,
     ) -> Result<Option<BTreeMap<V, T>>, Error> {
