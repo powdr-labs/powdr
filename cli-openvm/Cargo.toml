@@ -11,55 +11,18 @@ name = "powdr_openvm"
 path = "src/main.rs"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049", default-features = false }
-openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
 openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049", default-features = false }
-openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049", default-features = false }
-
 openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
 openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
 
-powdr.workspace = true
-powdr-autoprecompiles.workspace = true
-powdr-constraint-solver.workspace = true
 powdr-openvm.workspace = true
 
 eyre = "0.6.12"
-serde = "1.0.217"
-derive_more = { version = "2.0.1", default-features = false, features = [
-  "from",
-] }
-strum = "0.26.3"
-itertools = "0.14.0"
-
-base64ct = "=1.6.0"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 
 clap = { version = "^4.3", features = ["derive"] }
 
-log = "0.4.17"
 serde_cbor = "0.11.2"
-
-[dev-dependencies]
-test-log = { version = "0.2.17", features = ["trace"] }
 
 [lints]
 workspace = true
