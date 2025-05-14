@@ -1,8 +1,8 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
-use powdr_ast::parsed::visitor::AllChildren;
-use powdr_number::FieldElement;
 use std::hash::Hash;
+use std::ops::Sub;
+use std::ops::{AddAssign, MulAssign};
 use std::{
     fmt::{self, Display, Formatter},
     iter,
@@ -10,7 +10,9 @@ use std::{
     sync::Arc,
 };
 
-use crate::witgen::range_constraints::RangeConstraint;
+use powdr_number::FieldElement;
+
+use super::range_constraint::RangeConstraint;
 
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
@@ -26,7 +28,7 @@ pub enum SymbolicExpression<T: FieldElement, S> {
     UnaryOperation(UnaryOperator, Arc<Self>, RangeConstraint<T>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -54,17 +56,21 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             SymbolicExpression::Concrete(_) | SymbolicExpression::Symbol(..) => iter::empty(),
         }
     }
-}
 
-impl<T: FieldElement, S> AllChildren<SymbolicExpression<T, S>> for SymbolicExpression<T, S> {
-    fn all_children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
+    /// Returns an iterator over all direct and indirect children of this expression, including
+    /// the expression itself.
+    pub fn all_children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
         Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
 }
 
 impl<T: FieldElement, S> SymbolicExpression<T, S> {
     pub fn from_symbol(symbol: S, rc: RangeConstraint<T>) -> Self {
-        SymbolicExpression::Symbol(symbol, rc)
+        if let Some(v) = rc.try_to_single_value() {
+            SymbolicExpression::Concrete(v)
+        } else {
+            SymbolicExpression::Symbol(symbol, rc)
+        }
     }
 
     pub fn is_known_zero(&self) -> bool {
@@ -100,6 +106,46 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             SymbolicExpression::Symbol(..)
             | SymbolicExpression::BinaryOperation(..)
             | SymbolicExpression::UnaryOperation(..) => None,
+        }
+    }
+}
+
+impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
+    /// Applies a variable substitution and returns a modified version if there was a change.
+    pub fn compute_substitution(&self, variable: &S, substitution: &Self) -> Option<Self> {
+        match self {
+            SymbolicExpression::Concrete(_) => None,
+            SymbolicExpression::Symbol(v, _) => (v == variable).then(|| substitution.clone()),
+            SymbolicExpression::BinaryOperation(left, op, right, _) => {
+                let (l, r) = match (
+                    left.compute_substitution(variable, substitution),
+                    right.compute_substitution(variable, substitution),
+                ) {
+                    (None, None) => return None,
+                    (Some(l), None) => (l, (**right).clone()),
+                    (None, Some(r)) => ((**left).clone(), r),
+                    (Some(l), Some(r)) => (l, r),
+                };
+                match op {
+                    BinaryOperator::Add => Some(l + r),
+                    BinaryOperator::Sub => Some(l - r),
+                    BinaryOperator::Mul => Some(l * r),
+                    BinaryOperator::Div => Some(l.field_div(&r)),
+                }
+            }
+            SymbolicExpression::UnaryOperation(op, inner, _) => {
+                let inner = inner.compute_substitution(variable, substitution)?;
+                match op {
+                    UnaryOperator::Neg => Some(-inner),
+                }
+            }
+        }
+    }
+
+    /// Applies a variable substitution in place.
+    pub fn substitute(&mut self, variable: &S, substitution: &Self) {
+        if let Some(updated) = self.compute_substitution(variable, substitution) {
+            *self = updated;
         }
     }
 }
@@ -191,6 +237,44 @@ impl<T: FieldElement, V: Clone> Add for SymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone> AddAssign for SymbolicExpression<T, V> {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = self.clone() + rhs;
+    }
+}
+
+impl<T: FieldElement, V: Clone> Sub for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        if self.is_known_zero() {
+            return -rhs.clone();
+        }
+        if rhs.is_known_zero() {
+            return self.clone();
+        }
+        match (self, rhs) {
+            (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) => {
+                SymbolicExpression::Concrete(*a - *b)
+            }
+            _ => SymbolicExpression::BinaryOperation(
+                Arc::new(self.clone()),
+                BinaryOperator::Sub,
+                Arc::new(rhs.clone()),
+                self.range_constraint()
+                    .combine_sum(&rhs.range_constraint().neg()),
+            ),
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone> Sub for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
+    }
+}
+
 impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
@@ -199,6 +283,37 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
             SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(-*n),
             SymbolicExpression::UnaryOperation(UnaryOperator::Neg, expr, _) => {
                 expr.as_ref().clone()
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Add, rhs, _) => {
+                -(**lhs).clone() + -(**rhs).clone()
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Sub, rhs, _) => {
+                SymbolicExpression::BinaryOperation(
+                    rhs.clone(),
+                    BinaryOperator::Sub,
+                    lhs.clone(),
+                    self.range_constraint().multiple(-T::from(1)),
+                )
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Mul, rhs, _)
+                if matches!(**lhs, SymbolicExpression::Concrete(_)) =>
+            {
+                SymbolicExpression::BinaryOperation(
+                    Arc::new(-(**lhs).clone()),
+                    BinaryOperator::Mul,
+                    rhs.clone(),
+                    self.range_constraint().multiple(-T::from(1)),
+                )
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Mul, rhs, _)
+                if matches!(**rhs, SymbolicExpression::Concrete(_)) =>
+            {
+                SymbolicExpression::BinaryOperation(
+                    lhs.clone(),
+                    BinaryOperator::Mul,
+                    Arc::new(-(**rhs).clone()),
+                    self.range_constraint().multiple(-T::from(1)),
+                )
             }
             _ => SymbolicExpression::UnaryOperation(
                 UnaryOperator::Neg,
@@ -251,8 +366,14 @@ impl<T: FieldElement, V: Clone> Mul for SymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone> MulAssign for SymbolicExpression<T, V> {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = self.clone() * rhs;
+    }
+}
+
 impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
-    /// Field element division. See `integer_div` for integer division.
+    /// Field element division.
     /// If you use this, you must ensure that the divisor is not zero.
     pub fn field_div(&self, rhs: &Self) -> Self {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {

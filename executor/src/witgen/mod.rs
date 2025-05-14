@@ -41,7 +41,6 @@ mod machines;
 mod multiplicity_column_generator;
 mod processor;
 mod query_processor;
-mod range_constraints;
 mod rows;
 mod sequence_iterator;
 mod util;
@@ -409,7 +408,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             bus_receives,
             fixed_cols,
             witness_cols,
-            column_by_name: analyzed.name_to_poly_id().into_iter().collect(),
+            column_by_name: analyzed.name_to_poly_id().collect(),
             challenges,
             global_range_constraints,
             intermediate_definitions,

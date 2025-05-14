@@ -10,6 +10,7 @@ members = [
     "cargo-powdr",
     "cli",
     "cli-rs",
+    "constraint-solver",
     "executor",
     "jit-compiler",
     "riscv",
@@ -31,6 +32,7 @@ members = [
     "schemas",
     "backend-utils",
     "executor-utils",
+    "autoprecompiles",
 ]
 
 exclude = ["riscv-runtime"]
@@ -48,6 +50,7 @@ powdr = { path = "./powdr", version = "0.1.4" }
 powdr-airgen = { path = "./airgen", version = "0.1.4" }
 powdr-ast = { path = "./ast", version = "0.1.4" }
 powdr-asm-to-pil = { path = "./asm-to-pil", version = "0.1.4" }
+powdr-constraint-solver = { path = "./constraint-solver", version = "0.1.4" }
 powdr-isa-utils = { path = "./isa-utils", version = "0.1.4" }
 powdr-analysis = { path = "./analysis", version = "0.1.4" }
 powdr-asmopt = { path = "./asmopt", version = "0.1.4" }

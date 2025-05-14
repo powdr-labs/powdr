@@ -44,10 +44,24 @@ impl From<Goldilocks> for OpaqueGoldilocks {
 }
 
 /// Extract the Goldilocks values from the OpaqueGoldilocks values.
-pub fn extract_opaque_vec8(vec: &[OpaqueGoldilocks; 8]) -> [u64; 8] {
+///
+/// The array size must be a multiple of 4.
+pub fn extract_opaque_vec<const N: usize>(vec: &[OpaqueGoldilocks; N]) -> [u64; N] {
+    assert_eq!(N % 4, 0);
     unsafe {
-        let mut output: MaybeUninit<[u64; 8]> = MaybeUninit::uninit();
-        ecall!(Syscall::SplitGLVec, in("a0") vec, in("a1") output.as_mut_ptr());
+        let mut output: MaybeUninit<[u64; N]> = MaybeUninit::uninit();
+
+        let input_ptr = vec.as_ptr();
+        let output_ptr = (*output.as_mut_ptr()).as_mut_ptr();
+
+        for i in 0..(N / 4) {
+            ecall!(
+                Syscall::SplitGLVec,
+                in("a0") input_ptr.add(i * 4),
+                in("a1") output_ptr.add(i * 4)
+            );
+        }
+
         output.assume_init()
     }
 }

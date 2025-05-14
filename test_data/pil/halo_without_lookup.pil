@@ -2,4 +2,4 @@
 namespace Assembly(4);
     col fixed C = [0, 1, 2, 3];
     col witness w;
-    w = C;
+    w = C * C;

@@ -1,0 +1,31 @@
+[package]
+name = "powdr-constraint-solver"
+description = "powdr tools to analyze and solve algebraic constraints"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+powdr-number.workspace = true
+
+itertools = "0.13"
+num-traits = "0.2.15"
+derive_more = "0.99.17"
+auto_enums = "0.8.5"
+log = "0.4.27"
+
+[dev-dependencies]
+pretty_assertions = "1.4.0"
+env_logger = "0.10.0"
+test-log = "0.2.12"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]
+
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
