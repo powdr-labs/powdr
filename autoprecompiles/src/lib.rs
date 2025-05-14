@@ -1,15 +1,12 @@
 use itertools::Itertools;
 use optimizer::{optimize, ConcreteBusInteractionHandler};
 use powdr::{Column, UniqueColumns};
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperator,
+};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::{
-    analyzed::{
-        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperator,
-    },
-    parsed::visitor::AllChildren,
-};
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -807,7 +804,9 @@ pub fn generate_precompile<T: FieldElement>(
                     sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
 
-                add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
+                // Constrain the opcode expression to equal the actual opcode.
+                let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
+                local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 instr
@@ -903,72 +902,6 @@ pub fn generate_precompile<T: FieldElement>(
         },
         col_subs,
     )
-}
-
-fn add_opcode_constraints<T: FieldElement>(
-    constraints: &mut Vec<SymbolicConstraint<T>>,
-    opcode: usize,
-    expected_opcode: &AlgebraicExpression<T>,
-) {
-    if try_set_loadstore_flags(constraints, opcode, expected_opcode).is_err() {
-        // We were not able to extract the flags, so we keep them as witness columns
-        // and add a constraint that the expected opcode needs to equal the compile-time opcode.
-        constraints.push(
-            (expected_opcode.clone() - AlgebraicExpression::Number((opcode as u64).into())).into(),
-        );
-    }
-}
-
-// See: https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/transpiler/src/instructions.rs#L100-L113
-const LOADW_OPCODE: usize = 0x210;
-const STOREW_OPCODE: usize = 0x210 + 3;
-
-fn try_set_loadstore_flags<T: FieldElement>(
-    constraints: &mut Vec<SymbolicConstraint<T>>,
-    opcode: usize,
-    expected_opcode: &AlgebraicExpression<T>,
-) -> Result<(), ()> {
-    if opcode != LOADW_OPCODE && opcode != STOREW_OPCODE {
-        // For other instructions, the flags are not unique :/
-        return Err(());
-    }
-    // Find the 4 flags, sorted by name.
-    let flag_refs = expected_opcode
-        .all_children()
-        .filter_map(|expr| match expr {
-            AlgebraicExpression::Reference(column_reference) => {
-                Some((column_reference.name.clone(), column_reference))
-            }
-            _ => None,
-        })
-        .sorted_by(|(n1, _), (n2, _)| n1.cmp(n2))
-        .unique_by(|(name, _)| name.clone())
-        .map(|(_, column_reference)| column_reference)
-        .collect::<Vec<_>>();
-    assert_eq!(flag_refs.len(), 4);
-
-    let mut set_flag = |column_ref: &AlgebraicReference, value: u64| {
-        let value = AlgebraicExpression::Number(value.into());
-        let flag_expr = AlgebraicExpression::Reference(column_ref.clone());
-        let constraint = flag_expr - value;
-        constraints.push(constraint.into());
-    };
-
-    let mut set_flags = |f1, f2, f3, f4| {
-        set_flag(flag_refs[0], f1);
-        set_flag(flag_refs[1], f2);
-        set_flag(flag_refs[2], f3);
-        set_flag(flag_refs[3], f4);
-    };
-
-    // See: https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/circuit/src/loadstore/core.rs#L311-L330
-    match opcode {
-        LOADW_OPCODE => set_flags(2, 0, 0, 0),
-        STOREW_OPCODE => set_flags(0, 0, 0, 1),
-        _ => panic!(),
-    }
-
-    Ok(())
 }
 
 fn is_loadstore(opcode: usize) -> bool {
