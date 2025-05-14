@@ -8,6 +8,7 @@ use powdr_number::FieldElement;
 use crate::{
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
+    symbolic_expression::SymbolicExpression,
 };
 
 /// Given a list of constraints in the form of quadratic symbolic expressions, tries to determine
@@ -44,10 +45,7 @@ fn process_quadratic_equality_candidate_pair<
     c2: &QuadraticEqualityCandidate<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<(V, V)> {
-    if c1.offset != c2.offset {
-        return None;
-    }
-    if !(c1.variables.len() == c2.variables.len() && c1.variables.len() >= 2) {
+    if c1.variables.len() != c2.variables.len() || c1.variables.len() < 2 {
         return None;
     }
     let c1_var = c1.variables.difference(&c2.variables).exactly_one().ok()?;
@@ -55,39 +53,55 @@ fn process_quadratic_equality_candidate_pair<
     // The expressions differ in exactly one variable.
     let rc1 = range_constraints.get(c1_var);
     let rc2 = range_constraints.get(c2_var);
+
+    // And those variables have the same range constraint.
     if rc1 != rc2 {
         return None;
     }
 
-    // TODO at this point we should normalize the two candidates WRT the coefficients
-    // of the variables. I think it only works with coefficients of 1 and -1, but I need to check.
-    // Note that this could influence the offset above.
+    let c1 = c1.normalized_for_var(c1_var);
+    let c2 = c2.normalized_for_var(c2_var);
 
-    // And those variables have the same range constraint.
-    if !rc1.is_disjoint(&rc1.combine_sum(&RangeConstraint::from_value(c1.offset))) {
+    let c1_offset = c1.offset.try_to_number()?;
+    let c2_offset = c2.offset.try_to_number()?;
+
+    if c1_offset != c2_offset {
         return None;
     }
-    // And the offset (the difference between the two alternatives) determines if we are inside the range constraint or not.
+
+    // And the offset (the difference between the two alternatives) determines if
+    // we are inside the range constraint or not.
+    if !rc1.is_disjoint(&rc1.combine_sum(&RangeConstraint::from_value(c1_offset))) {
+        return None;
+    }
 
     // Now the only remaining check is to see if the affine expressions are the same.
     // This could have been the first step, but it is rather expensive, so we do it last.
-
-    if c1.expr.clone() - QuadraticSymbolicExpression::from_unknown_variable(c1_var.clone())
-        != c2.expr.clone() - QuadraticSymbolicExpression::from_unknown_variable(c2_var.clone())
+    if c1.expr - QuadraticSymbolicExpression::from_unknown_variable(c1_var.clone())
+        != c2.expr - QuadraticSymbolicExpression::from_unknown_variable(c2_var.clone())
     {
         return None;
     }
+
+    // Now we have `(X + A) * (X + A + offset) = 0` and `(Y + A) * (Y + A + offset) = 0`
+    // Furthermore, the range constraints of `X` and `Y` are such that for both identities,
+    // the two alternatives can never be satisfied at the same time. Since both variables
+    // have the same range constraint, depending on the value of `A`, we either have
+    // - X = -A and Y = -A, or
+    // - X = -A - offset and Y = -A - offset
+    // Since `A` has to have some value, we can conclude `X = Y`.
 
     Some((c1_var.clone(), c2_var.clone()))
 }
 
 /// This represents an identity `expr * (expr + offset) = 0`,
-/// where `expr` is an affine expression and `offset` is a known number.
+/// where `expr` is an affine expression and `offset` is a symbolic expression
+/// without unknown variables.
 ///
 /// All unknown variables appearing in `expr` are stored in `variables`.
 struct QuadraticEqualityCandidate<T: FieldElement, V: Ord + Clone + Hash + Eq> {
     expr: QuadraticSymbolicExpression<T, V>,
-    offset: T,
+    offset: SymbolicExpression<T, V>,
     /// All unknown variables in `expr`.
     variables: HashSet<V>,
 }
@@ -108,8 +122,30 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, 
             .collect::<HashSet<_>>();
         Some(Self {
             expr: right.clone(),
-            offset,
+            offset: offset.into(),
             variables,
         })
+    }
+
+    /// Returns an equivalent candidate that is normalized
+    /// such that `var` has a coefficient of `1`.
+    fn normalized_for_var(&self, var: &V) -> Self {
+        let inverse_coefficient = self
+            .expr
+            .coefficient_of_variable(var)
+            .unwrap()
+            .field_inverse();
+
+        // self represents
+        // `(coeff * var + X) * (coeff * var + X + offset) = 0`
+        // Dividing by `coeff` twice results in
+        // `(var + X / coeff) * (var + X / coeff + offset / coeff) = 0`
+        let offset = &self.offset * &inverse_coefficient;
+        let expr = self.expr.clone() * inverse_coefficient;
+        Self {
+            expr,
+            offset,
+            variables: self.variables.clone(),
+        }
     }
 }
