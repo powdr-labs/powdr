@@ -19,7 +19,7 @@ pub struct IndexedConstraintSystem<T: FieldElement, V> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub enum ConstraintSystemItem {
+enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     BusInteraction(usize),
 }
@@ -56,15 +56,29 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     }
 }
 
+pub enum ConstraintRef<'a, T: FieldElement, V> {
+    AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
+    BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
+}
+
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     /// Get all constraints that contain at least one of the given variables.
-    pub fn get_constraints(&self, variables: impl Iterator<Item = V>) -> Vec<ConstraintSystemItem> {
+    pub fn constraints_referencing_variables(
+        &self,
+        variables: impl Iterator<Item = V>,
+    ) -> Vec<ConstraintRef<T, V>> {
         variables
-            .flat_map(|v| match self.variable_occurrences.get(&v) {
-                Some(items) => items.clone(),
-                None => vec![],
-            })
+            .filter_map(|v| self.variable_occurrences.get(&v))
+            .flatten()
             .unique()
+            .map(|&item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
+                    &self.constraint_system.algebraic_constraints[i],
+                ),
+                ConstraintSystemItem::BusInteraction(i) => {
+                    ConstraintRef::BusInteraction(&self.constraint_system.bus_interactions[i])
+                }
+            })
             .collect()
     }
 
