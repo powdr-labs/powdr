@@ -163,10 +163,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
     /// Panics if the expression is quadratic.
-    pub fn coefficient_of_variable(&self, var: &V) -> Option<&SymbolicExpression<T,V>> { 
+    pub fn coefficient_of_variable(&self, var: &V) -> Option<&SymbolicExpression<T, V>> {
         assert!(!self.is_quadratic());
-        self.linear
-            .get(var)
+        self.linear.get(var)
     }
 
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
