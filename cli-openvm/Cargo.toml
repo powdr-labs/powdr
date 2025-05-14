@@ -26,3 +26,6 @@ serde_cbor = "0.11.2"
 
 [lints]
 workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
