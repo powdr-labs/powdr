@@ -1,4 +1,4 @@
-use backtracking::Backtracker;
+use exhaustive_search::ExhaustiveSearch;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-mod backtracking;
+mod exhaustive_search;
 mod quadratic_equivalences;
 
 /// The result of the solving process.
@@ -37,9 +37,9 @@ pub enum Error {
     QseSolvingError(QseError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
-    /// During backtracking, we came across a combination of variables for which
+    /// During exhaustive search, we came across a combination of variables for which
     /// no assignment would satisfy all the constraints.
-    BacktrackingError,
+    ExhaustiveSearchError,
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
@@ -109,7 +109,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 // apply it.
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
-                progress |= self.solve_with_backtracking()?;
+                progress |= self.exhaustive_search()?;
             }
 
             if !progress {
@@ -171,8 +171,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         !equivalences.is_empty()
     }
 
-    fn solve_with_backtracking(&mut self) -> Result<bool, Error> {
-        let assignments = Backtracker::new(self).get_unique_assignments()?;
+    fn exhaustive_search(&mut self) -> Result<bool, Error> {
+        let assignments = ExhaustiveSearch::new(self).get_unique_assignments()?;
 
         let mut progress = false;
         for (variable, value) in &assignments {

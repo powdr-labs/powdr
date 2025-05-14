@@ -9,24 +9,24 @@ use std::hash::Hash;
 
 use super::{Error, Solver};
 
-/// The maximum number of possible assignments to try when backtracking.
-const MAX_BACKTRACKING_WIDTH: u64 = 1 << 12;
+/// The maximum number of possible assignments to try when doing exhaustive search.
+const MAX_SEARCH_WIDTH: u64 = 1 << 12;
 
-pub struct Backtracker<'a, T: FieldElement, V> {
+pub struct ExhaustiveSearch<'a, T: FieldElement, V> {
     solver: &'a Solver<T, V>,
 }
 
-impl<'a, T: FieldElement, V> Backtracker<'a, T, V> {
+impl<'a, T: FieldElement, V> ExhaustiveSearch<'a, T, V> {
     pub fn new(solver: &'a Solver<T, V>) -> Self {
-        Backtracker { solver }
+        ExhaustiveSearch { solver }
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<'_, T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> ExhaustiveSearch<'_, T, V> {
     /// Returns a map of variable assignments if these assignments are the only non-contradicting for these variables.
     /// Returns an error if all assignments for some variables are contradictory.
     pub fn get_unique_assignments(&self) -> Result<BTreeMap<V, T>, Error> {
-        log::debug!("Starting backtracking with maximum width {MAX_BACKTRACKING_WIDTH}");
+        log::debug!("Starting exhaustive search with maximum width {MAX_SEARCH_WIDTH}");
         let variable_sets = self.get_brute_force_candidates().collect::<Vec<_>>();
 
         log::debug!(
@@ -57,7 +57,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
             if let Some(old_value) = result.insert(variable.clone(), *value) {
                 if old_value != *value {
                     // Two assignments contradict each other.
-                    return Err(Error::BacktrackingError);
+                    return Err(Error::ExhaustiveSearchError);
                 }
             }
         }
@@ -72,7 +72,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
 
     /// Returns all unique sets of variables that appear together in an identity
     /// (either in an algebraic constraint or in the same field of a bus interaction),
-    /// IF the number of possible assignments is less than `MAX_BACKTRACKING_WIDTH`.
+    /// IF the number of possible assignments is less than `MAX_SEARCH_WIDTH`.
     fn get_brute_force_candidates(&self) -> impl Iterator<Item = BTreeSet<V>> + '_ {
         self.solver
             .constraint_system
@@ -88,14 +88,14 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
             .filter(|variables| self.has_few_possible_assignments(variables.iter().cloned()))
     }
 
-    /// Returns true if the given range constraints allow for at most `MAX_BACKTRACKING_WIDTH``
+    /// Returns true if the given range constraints allow for at most `MAX_SEARCH_WIDTH``
     /// possible assignments for the given variables.
     fn has_few_possible_assignments(&self, variables: impl Iterator<Item = V>) -> bool {
         variables
             .map(|v| self.solver.range_constraints.get(&v))
             .map(|rc| rc.range_width().try_into_u64())
             .try_fold(1u64, |acc, x| acc.checked_mul(x?))
-            .map(|total_width| total_width < MAX_BACKTRACKING_WIDTH)
+            .map(|total_width| total_width < MAX_SEARCH_WIDTH)
             .unwrap_or(false)
     }
 
@@ -120,7 +120,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
                     Ok(None)
                 } else {
                     // No assignment satisfied the constraint system.
-                    Err(Error::BacktrackingError)
+                    Err(Error::ExhaustiveSearchError)
                 }
             }
         }
