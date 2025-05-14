@@ -134,18 +134,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
         variables
             .iter()
             .map(|v| self.solver.range_constraints.get(v))
-            .map(|rc| {
-                let (min, _) = rc.range();
-                (0..=rc.range_width().try_into_u64().unwrap())
-                    .filter(|offset| rc.allows_value(min + T::from(*offset)))
-                    .collect::<Vec<_>>()
-            })
+            .map(|rc| rc.allowed_values().collect::<Vec<_>>())
             .multi_cartesian_product()
             .map(|assignment| {
                 variables
                     .iter()
+                    .cloned()
                     .zip(assignment)
-                    .map(|(variable, value)| (variable.clone(), T::from(value)))
                     .collect::<BTreeMap<_, _>>()
             })
             .collect::<Vec<_>>()
