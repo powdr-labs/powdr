@@ -7,7 +7,6 @@ use crate::constraint_system::{
 };
 use crate::effect::Condition;
 use crate::indexed_constraint_system::{ConstraintRef, IndexedConstraintSystem};
-use crate::quadratic_equivalences;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
@@ -20,6 +19,7 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 mod backtracking;
+mod quadratic_equivalences;
 
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
