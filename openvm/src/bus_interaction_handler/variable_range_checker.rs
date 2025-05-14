@@ -16,7 +16,7 @@ pub fn handle_variable_range_checker<T: FieldElement>(
     match bits.try_to_single_value() {
         Some(bits_value) => {
             let bits_value = bits_value.to_integer().try_into_u64().unwrap();
-            assert!(bits_value > 0 && bits_value <= MAX_BITS);
+            assert!(bits_value <= MAX_BITS);
             let mask = (1u64 << bits_value) - 1;
             vec![RangeConstraint::from_mask(mask), bits.clone()]
         }
