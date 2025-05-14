@@ -108,21 +108,22 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Backtracker<
         &self,
         variables: &BTreeSet<V>,
     ) -> Result<Option<BTreeMap<V, T>>, Error> {
-        let mut assignment = None;
-        for assignments in self.get_all_possible_assignments(variables) {
-            if !self.solver.is_assignment_conflicting(&assignments) {
-                if assignment.is_some() {
-                    // The assignment is not unique.
-                    return Ok(None);
+        match self
+            .get_all_possible_assignments(variables)
+            .filter(|assignments| !self.solver.is_assignment_conflicting(&assignments))
+            .exactly_one()
+        {
+            Ok(assignments) => Ok(Some(assignments)),
+            Err(mut iter) => {
+                if iter.next().is_some() {
+                    // There are at least two assignments, so there is no unique assignment.
+                    Ok(None)
+                } else {
+                    // No assignment satisfied the constraint system.
+                    Err(Error::BacktrackingError)
                 }
-                assignment = Some(assignments);
             }
         }
-        if assignment.is_none() {
-            // No assignment satisfied the constraint system.
-            return Err(Error::BacktrackingError);
-        }
-        Ok(assignment)
     }
 
     /// Returns all possible assignments for the given variables.
