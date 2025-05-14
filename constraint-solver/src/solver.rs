@@ -95,7 +95,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             // Try inferring new information using bus interactions.
             progress |= self.solve_bus_interactions()?;
             // Try to find equivalent variables using quadratic constraints.
-            progress |= self.try_solve_quadratic_equivalences();
+            //progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
                 break;
