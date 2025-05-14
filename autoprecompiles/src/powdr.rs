@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::from_fn;
 use std::ops::ControlFlow;
 
@@ -22,7 +22,6 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicMachine};
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed
-/// Substitute all references in the algebraic expression if they are in the provided substitution map.
 pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<Column, AlgebraicExpression<T>>,
@@ -40,7 +39,6 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
-/// Substitute all references in the algebraic expression with the zero literal.
 pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     let zero = AlgebraicExpression::Number(T::zero());
     expr.visit_expressions_mut(
@@ -54,8 +52,6 @@ pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     );
 }
 
-/// Returns whether the expression is a zero literal.
-/// Note that this assumes that the expression is already maximally simplified, so for example `1 - 1` returns false.
 pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     match expr {
         AlgebraicExpression::Number(n) => *n == T::zero(),
@@ -63,13 +59,11 @@ pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     }
 }
 
-/// Returns the first match of the pattern `a + b * 2^17` applied to an expression and all its subexpressions.
-/// The first match is returned as a tuple `(a, b)`.
-/// Panics if no match is found.
 pub fn find_byte_decomp<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {
-    let mut result = None;
+    let mut e1 = None;
+    let mut e2 = None;
     expr.visit_expressions(
         &mut |expr| {
             if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -84,36 +78,46 @@ pub fn find_byte_decomp<T: FieldElement>(
                     right: inner_right,
                 }) = &**right
                 {
-                    if matches!(&**inner_right, AlgebraicExpression::Number(n) if *n == 2u32.pow(17).into())
-                        && is_ref(&**left)
-                        && is_ref(&**inner_left)
-                    {
-                        result = Some((left.as_ref().clone(), inner_left.as_ref().clone()));
+                    let is_mul_by_2_17 = matches!(&**inner_right, AlgebraicExpression::Number(n) if *n == 131072u32.into());
+                    if is_ref(&**left) && is_ref(&**inner_left) && is_mul_by_2_17 {
+                        assert!(e1.is_none());
+                        assert!(e2.is_none());
+                        e1 = Some((**left).clone());
+                        e2 = Some((**inner_left).clone());
                         return ControlFlow::Break(());
                     }
                 }
             }
-            ControlFlow::Continue(())
+            ControlFlow::Continue::<()>(())
         },
         VisitOrder::Pre,
     );
-    result.expect("No byte decomposition found")
+    (e1.unwrap(), e2.unwrap())
 }
 
-/// Returns true iff a given expression features another expression as a subexpression.
 pub fn has_ref<T: Clone + std::cmp::PartialEq>(
     expr: &AlgebraicExpression<T>,
     r: &AlgebraicExpression<T>,
 ) -> bool {
-    expr.all_children().any(|e| e == r)
+    let mut seen = false;
+    expr.visit_expressions(
+        &mut |expr| {
+            if expr == r {
+                seen = true;
+                ControlFlow::Break::<()>(())
+            } else {
+                ControlFlow::Continue::<()>(())
+            }
+        },
+        VisitOrder::Pre,
+    );
+    seen
 }
 
-/// Returns true iff a given expression is a reference.
 pub fn is_ref<T: Clone>(expr: &AlgebraicExpression<T>) -> bool {
     matches!(expr, AlgebraicExpression::Reference(_))
 }
 
-/// Substitute all subexpressions in the algebraic expression with the corresponding subexpression in the provided substitution map.
 pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
@@ -127,6 +131,31 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
         },
         VisitOrder::Pre,
     );
+}
+
+// After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
+pub fn collect_cols_algebraic<T: Clone + Ord>(
+    expr: &AlgebraicExpression<T>,
+) -> BTreeSet<AlgebraicExpression<T>> {
+    let mut cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
+    expr.visit_expressions(
+        &mut |expr| {
+            if let AlgebraicExpression::Reference(AlgebraicReference {
+                poly_id:
+                    PolyID {
+                        ptype: PolynomialType::Committed,
+                        ..
+                    },
+                ..
+            }) = expr
+            {
+                cols.insert(expr.clone());
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    cols
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
