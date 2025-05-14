@@ -21,6 +21,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         .filter_map(QuadraticEqualityCandidate::try_from_qse)
         .filter(|c| c.variables.len() >= 2)
         .collect::<Vec<_>>();
+    println!("Candidates: {}", candidates.len());
     candidates
         .iter()
         .tuple_combinations()
@@ -44,30 +45,70 @@ fn process_quadratic_equality_candidate_pair<
     c2: &QuadraticEqualityCandidate<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<(V, V)> {
-    if c1.offset != c2.offset {
+    // if c1.offset != c2.offset {
+    //     return None;
+    // }
+    // println!(
+    //     "vars1: {}, vars2: {}",
+    //     c1.variables.len(),
+    //     c2.variables.len()
+    // );
+    if c1.variables.len() != c2.variables.len() {
         return None;
     }
-    if !(c1.variables.len() == c2.variables.len() && c1.variables.len() >= 2) {
-        return None;
+    assert!(c1.variables.len() >= 2 && c2.variables.len() >= 2);
+
+    if c1
+        .variables
+        .iter()
+        .any(|v| &v.to_string() == "mem_ptr_limbs__0_242")
+    {
+        println!(
+            "c1: {} off {}\nc2: {} off {}",
+            c1.expr, c1.offset, c2.expr, c2.offset
+        );
     }
+
+    // The expressions differ in exactly one variable,
     let c1_var = c1.variables.difference(&c2.variables).exactly_one().ok()?;
     let c2_var = c2.variables.difference(&c1.variables).exactly_one().ok()?;
-    // The expressions differ in exactly one variable.
+
+    // if &c1_var.to_string() == "mem_ptr_limbs__0_242"
+    //     && &c2_var.to_string() == &"mem_ptr_limbs__0_522"
+    {
+        println!(
+            "RC: {}, {}",
+            range_constraints.get(c1_var),
+            range_constraints.get(c2_var)
+        );
+    }
+
+    // and those variables have the same range constraint,
     let rc1 = range_constraints.get(c1_var);
     let rc2 = range_constraints.get(c2_var);
     if rc1 != rc2 {
         return None;
     }
 
+    // (30720 * mem_ptr_limbs__0_242 - (30720 * rs1_data__0_661 + 7864320 * rs1_data__1_661 + 4300800)) *
+    // (30720 * mem_ptr_limbs__0_242 - (30720 * rs1_data__0_661 + 7864320 * rs1_data__1_661 + 4300801))
+    // and
+    // (30720 * mem_ptr_limbs__0_522 - (30720 * rs1_data__0_661 + 7864320 * rs1_data__1_661 + 4300800)) *
+    // (30720 * mem_ptr_limbs__0_522 - (30720 * rs1_data__0_661 + 7864320 * rs1_data__1_661 + 4300801))
+
     // TODO at this point we should normalize the two candidates WRT the coefficients
     // of the variables. I think it only works with coefficients of 1 and -1, but I need to check.
     // Note that this could influence the offset above.
 
-    // And those variables have the same range constraint.
+    // and the offset (the difference between the two alternatives) determines if we are inside the range constraint or not.
     if !rc1.is_disjoint(&rc1.combine_sum(&RangeConstraint::from_value(c1.offset))) {
         return None;
     }
-    // And the offset (the difference between the two alternatives) determines if we are inside the range constraint or not.
+
+    // TODO we totally ignore the coefficients of c1 and c2 here.
+
+    // We have
+    // (k*c1 - A)*(k*c1 - A + d) = 0
 
     // Now the only remaining check is to see if the affine expressions are the same.
     // This could have been the first step, but it is rather expensive, so we do it last.

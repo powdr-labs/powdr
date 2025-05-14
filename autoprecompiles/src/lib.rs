@@ -325,6 +325,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         let machine = optimize_exec_bus(machine);
         let machine = optimize_precompile(machine);
         let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        println!("After opt:\n{machine}");
         let machine = remove_zero_mult(machine);
         let machine = remove_zero_constraint(machine);
 
