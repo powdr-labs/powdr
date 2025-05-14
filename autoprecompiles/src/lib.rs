@@ -2,7 +2,7 @@ use itertools::Itertools;
 use optimizer::{optimize, ConcreteBusInteractionHandler};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_ast::parsed::visitor::{Children, ExpressionVisitable, VisitOrder};
+use powdr_ast::parsed::visitor::Children;
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::iter::once;
-use std::ops::ControlFlow;
 
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -99,7 +98,7 @@ pub enum BusInteractionKind {
     Receive,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
@@ -162,7 +161,8 @@ pub enum InstructionKind {
 #[derive(Debug, Clone)]
 pub struct Autoprecompiles<T> {
     pub program: Vec<SymbolicInstructionStatement<T>>,
-    pub instructions_by_name: BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
+    pub instruction_kind: BTreeMap<String, InstructionKind>,
+    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -319,7 +319,11 @@ impl<T: FieldElement> Autoprecompiles<T> {
         degree_bound: usize,
         opcode: u32,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        let (machine, subs) = generate_precompile(&self.program, &self.instructions_by_name);
+        let (machine, subs) = generate_precompile(
+            &self.program,
+            &self.instruction_kind,
+            &self.instruction_machines,
+        );
 
         let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
@@ -341,7 +345,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             statements: Vec::new(),
         };
         for (i, instr) in self.program.iter().enumerate() {
-            match self.instructions_by_name.get(&instr.name).unwrap().1 {
+            match self.instruction_kind.get(&instr.name).unwrap() {
                 InstructionKind::Normal => {
                     curr_block.statements.push(instr.clone());
                 }
@@ -765,59 +769,25 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
     machine
 }
 
-struct ApcBuilder<'a, T> {
-    /// The symbolic machine that is being built.
-    apc: SymbolicMachine<T>,
-    /// The column substitutions for each instruction.
-    col_subs: Vec<Vec<u64>>,
-    /// The next free column index.
-    next_column_index: u64,
-    /// The instruction machines and their kinds.
-    instructions_by_name: &'a BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
-}
+pub fn generate_precompile<T: FieldElement>(
+    statements: &[SymbolicInstructionStatement<T>],
+    instruction_kinds: &BTreeMap<String, InstructionKind>,
+    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
+) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
+    let mut col_subs: Vec<Vec<u64>> = Vec::new();
+    let mut global_idx: u64 = 3;
 
-impl<'a, T: FieldElement> ApcBuilder<'a, T> {
-    /// Creates a new APC builder from the given instruction machines and instruction kinds.
-    fn new(
-        instructions_by_name: &'a BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
-    ) -> Self {
-        ApcBuilder {
-            apc: SymbolicMachine::default(),
-            col_subs: Vec::new(),
-            next_column_index: 0,
-            instructions_by_name,
-        }
-    }
-
-    /// Returns the apc and the column substitutions.
-    fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        (self.apc, self.col_subs)
-    }
-
-    fn instruction_index(&self) -> usize {
-        self.col_subs.len()
-    }
-
-    /// Adds an instruction to the APC builder.
-    fn add_instruction(self, instr: &SymbolicInstructionStatement<T>) -> Self {
-        let instruction_index = self.instruction_index();
-
-        let ApcBuilder {
-            mut apc,
-            mut col_subs,
-            mut next_column_index,
-            instructions_by_name,
-        } = self;
-
-        let (machine, kind) = instructions_by_name.get(&instr.name).unwrap();
-
-        match kind {
+    for (i, instr) in statements.iter().enumerate() {
+        match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let (i, subs, mut machine) =
-                    powdr::reassign_ids(machine.clone(), next_column_index, instruction_index);
-                next_column_index = i;
+                let machine = instruction_machines.get(&instr.name).unwrap().clone();
+
+                let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
+                global_idx = next_global_idx;
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
@@ -862,28 +832,40 @@ impl<'a, T: FieldElement> ApcBuilder<'a, T> {
                         }
                     });
 
-                // Process all expressions in the machine
-                machine.visit_expressions_mut(
-                    &mut |expr| {
-                        *expr = {
-                            let mut expr = expr.clone();
-                            powdr::substitute_algebraic(&mut expr, &sub_map);
-                            powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                            simplify_expression(expr)
-                        };
-                        ControlFlow::Continue::<()>(())
-                    },
-                    VisitOrder::Pre,
-                );
+                let local_identities = machine
+                    .constraints
+                    .iter()
+                    .chain(&local_constraints)
+                    .map(|expr| {
+                        let mut expr = expr.expr.clone();
+                        powdr::substitute_algebraic(&mut expr, &sub_map);
+                        powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
+                        expr = simplify_expression(expr);
+                        SymbolicConstraint { expr }
+                    })
+                    .collect::<Vec<_>>();
 
-                apc.constraints.extend(machine.constraints);
-                apc.bus_interactions.extend(machine.bus_interactions);
+                constraints.extend(local_identities);
+
+                for bus_int in &machine.bus_interactions {
+                    let mut link = bus_int.clone();
+                    link.args
+                        .iter_mut()
+                        .chain(std::iter::once(&mut link.mult))
+                        .for_each(|e| {
+                            powdr::substitute_algebraic(e, &sub_map);
+                            powdr::substitute_algebraic(e, &sub_map_loadstore);
+                            *e = simplify_expression(e.clone());
+                        });
+                    bus_interactions.push(link);
+                }
+
                 col_subs.push(subs);
 
                 // after the first round of simplifying,
                 // we need to look for register memory bus interactions
                 // and replace the addr by the first argument of the instruction
-                for bus_int in &mut apc.bus_interactions {
+                for bus_int in &mut bus_interactions {
                     if bus_int.id != MEMORY_BUS_ID {
                         continue;
                     }
@@ -914,26 +896,15 @@ impl<'a, T: FieldElement> ApcBuilder<'a, T> {
             }
             _ => {}
         }
-        ApcBuilder {
-            apc,
-            col_subs,
-            next_column_index,
-            instructions_by_name,
-        }
     }
-}
 
-pub fn generate_precompile<T: FieldElement>(
-    statements: &[SymbolicInstructionStatement<T>],
-    instructions_by_name: &BTreeMap<String, (SymbolicMachine<T>, InstructionKind)>,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-    statements
-        .iter()
-        .fold(
-            ApcBuilder::new(instructions_by_name),
-            ApcBuilder::add_instruction,
-        )
-        .into_parts()
+    (
+        SymbolicMachine {
+            constraints,
+            bus_interactions,
+        },
+        col_subs,
+    )
 }
 
 fn add_opcode_constraints<T: FieldElement>(
