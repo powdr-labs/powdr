@@ -31,6 +31,7 @@ pub struct SolveResult<T: FieldElement, V> {
 }
 
 /// An error occurred while solving the constraint system.
+/// This means that the constraint system is unsatisfiable.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// An error occurred while calling `QuadraticSymbolicExpression::solve`
@@ -104,9 +105,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
-                // Find groups of variables with a small set of possible assignments.
-                // If there is exactly one assignment that does not lead to a contradiction,
-                // apply it.
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
                 progress |= self.exhaustive_search()?;
@@ -171,6 +169,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         !equivalences.is_empty()
     }
 
+    /// Find groups of variables with a small set of possible assignments.
+    /// If there is exactly one assignment that does not lead to a contradiction,
+    /// apply it. This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         let assignments = ExhaustiveSearch::new(self).get_unique_assignments()?;
 
@@ -233,30 +234,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// Given a set of variable assignments, checks if they violate any constraint.
     /// Note that this might return false negatives, because it does not propagate any values.
     fn is_assignment_conflicting(&self, assignments: &BTreeMap<V, T>) -> bool {
-        let constraints = self
-            .constraint_system
-            .constraints_referencing_variables(assignments.keys().cloned());
-
-        constraints.iter().any(|constraint| match *constraint {
-            ConstraintRef::AlgebraicConstraint(identity) => {
-                let mut identity = identity.clone();
-                for (variable, value) in assignments.iter() {
-                    identity.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+        self.constraint_system
+            .constraints_referencing_variables(assignments.keys().cloned())
+            .any(|constraint| match constraint {
+                ConstraintRef::AlgebraicConstraint(identity) => {
+                    let mut identity = identity.clone();
+                    for (variable, value) in assignments.iter() {
+                        identity
+                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                    }
+                    identity.solve(&self.range_constraints).is_err()
                 }
-                identity.solve(&self.range_constraints).is_err()
-            }
-            ConstraintRef::BusInteraction(bus_interaction) => {
-                let mut bus_interaction = bus_interaction.clone();
-                for (variable, value) in assignments.iter() {
-                    bus_interaction.iter_mut().for_each(|expr| {
-                        expr.substitute_by_known(variable, &SymbolicExpression::Concrete(*value))
-                    })
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    let mut bus_interaction = bus_interaction.clone();
+                    for (variable, value) in assignments.iter() {
+                        bus_interaction.iter_mut().for_each(|expr| {
+                            expr.substitute_by_known(
+                                variable,
+                                &SymbolicExpression::Concrete(*value),
+                            )
+                        })
+                    }
+                    bus_interaction
+                        .solve(&*self.bus_interaction_handler, &self.range_constraints)
+                        .is_err()
                 }
-                bus_interaction
-                    .solve(&*self.bus_interaction_handler, &self.range_constraints)
-                    .is_err()
-            }
-        })
+            })
     }
 }
 
