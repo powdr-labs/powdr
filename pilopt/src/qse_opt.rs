@@ -79,7 +79,8 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             // It might have removed some variable that are hard-constrained to some value.
             for (var, value) in assignments {
                 pil_file.append_polynomial_identity(
-                    variable_to_algebraic_expression(var) - AlgebraicExpression::from(value),
+                    variable_to_algebraic_expression(var)
+                        - quadratic_symbolic_expression_to_algebraic(&value),
                     Default::default(),
                 );
             }

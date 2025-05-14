@@ -21,14 +21,14 @@ fn two_machines_conflicting_public() {
     namespace Machine1(4);
         col witness y;
         [ 42, y ] in [ Machine2.x, Machine2.y ];
-        // y will be 43 on all rows
         public pub = y(3);
-        y - pub = 0;
+        let even: col = |i| if i % 2 == 0 { 1 } else { 0 };
+        pub * even = 8;
     namespace Machine2(8);
         col witness x, y;
         y = x + 1;
-        // x will be 42 on all rows
-        x - Machine1::pub = 0;
+        let odd: col = |i| if i % 2 == 0 { 1 } else { 0 };
+        Machine1::pub * odd * x = 9;
     "#;
     run_witgen_pil::<GoldilocksField>(src);
 }

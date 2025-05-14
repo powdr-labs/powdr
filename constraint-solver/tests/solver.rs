@@ -2,6 +2,10 @@ use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use num_traits::identities::{One, Zero};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
+use pretty_assertions::assert_eq;
+use test_log::test;
+
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -9,10 +13,6 @@ use powdr_constraint_solver::{
     solver::{Error, Solver},
     test_utils::{constant, var},
 };
-use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use test_log::test;
-
-use pretty_assertions::assert_eq;
 
 pub type Var = &'static str;
 
@@ -21,13 +21,27 @@ pub fn assert_solve_result(
     expected_assignments: Vec<(Var, GoldilocksField)>,
 ) {
     let final_state = solver.solve().unwrap();
-    let expected_final_state = expected_assignments.into_iter().collect();
+    let expected_final_state = expected_assignments
+        .into_iter()
+        .map(|(v, val)| (v, QuadraticSymbolicExpression::from(val)))
+        .collect::<BTreeMap<_, QuadraticSymbolicExpression<_, _>>>();
     assert_expected_state(final_state.assignments, expected_final_state);
 }
 
-fn assert_expected_state(
-    final_state: BTreeMap<Var, GoldilocksField>,
-    expected_final_state: BTreeMap<Var, GoldilocksField>,
+pub fn solve_to_string(solver: Solver<GoldilocksField, Var>) -> String {
+    solver
+        .solve()
+        .unwrap()
+        .simplified_constraint_system
+        .algebraic_constraints
+        .iter()
+        .format("\n")
+        .to_string()
+}
+
+fn assert_expected_state<T: FieldElement>(
+    final_state: BTreeMap<Var, QuadraticSymbolicExpression<T, &str>>,
+    expected_final_state: BTreeMap<Var, QuadraticSymbolicExpression<T, &str>>,
 ) {
     assert_eq!(
         final_state.keys().collect::<Vec<_>>(),
@@ -288,5 +302,26 @@ fn add_with_carry() {
         final_state,
         "(-A + X + 256) * (-A + X)
 (-A + X + 256) * (-A + X)"
+    );
+}
+
+#[test]
+fn substitute_affine() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            constant(1 << 8) * var("a") + var("b") - constant(0xa00b),
+            var("a") * var("b") - constant(450),
+        ],
+        bus_interactions: vec![],
+    };
+
+    let solver = Solver::new(constraint_system)
+        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+
+    let solved = solve_to_string(solver);
+    assert_eq!(
+        solved,
+        "0
+(a) * (-256 * a + 40971) + -450"
     );
 }
