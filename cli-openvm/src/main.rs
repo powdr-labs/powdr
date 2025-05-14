@@ -157,8 +157,7 @@ fn write_program_to_file<F: PrimeField32>(
     use std::fs::File;
 
     let mut file = File::create(filename)?;
-    serde_cbor::to_writer(&mut file, &program)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    serde_cbor::to_writer(&mut file, &program).map_err(io::Error::other)?;
     Ok(())
 }
 

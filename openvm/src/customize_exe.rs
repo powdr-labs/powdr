@@ -110,12 +110,16 @@ pub fn customize<F: PrimeField32>(
                 .get(&(b.start_idx as u32))
                 .unwrap_or(&0);
 
-            let a_opcode_no_apc = (!a.statements.is_empty())
-                .then(|| opcodes_no_apc.contains(&a.statements[0].opcode.as_usize()))
-                .unwrap_or(true);
-            let b_opcode_no_apc = (!b.statements.is_empty())
-                .then(|| opcodes_no_apc.contains(&b.statements[0].opcode.as_usize()))
-                .unwrap_or(true);
+            let a_opcode_no_apc = if !a.statements.is_empty() {
+                opcodes_no_apc.contains(&a.statements[0].opcode.as_usize())
+            } else {
+                true
+            };
+            let b_opcode_no_apc = if !b.statements.is_empty() {
+                opcodes_no_apc.contains(&b.statements[0].opcode.as_usize())
+            } else {
+                true
+            };
 
             // if a basic block starts with an opcode that is in opcodes_no_apc, put it at the bottom of the list of blocks to order
             // otherwise, order by descending cost = instruction count * execution frequency

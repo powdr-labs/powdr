@@ -59,8 +59,8 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-    - name: Install Rust toolchain 1.81
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.85
+      run: rustup toolchain install 1.85-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
