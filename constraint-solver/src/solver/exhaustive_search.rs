@@ -113,7 +113,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> ExhaustiveSe
     ) -> Result<Option<BTreeMap<V, T>>, Error> {
         match self
             .get_all_possible_assignments(variables)
-            .filter(|assignments| !self.solver.is_assignment_conflicting(&assignments))
+            .filter(|assignments| !self.solver.is_assignment_conflicting(assignments))
             .exactly_one()
         {
             Ok(assignments) => Ok(Some(assignments)),
