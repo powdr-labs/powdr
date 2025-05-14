@@ -1,15 +1,18 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
-    solver::Solver,
+    solver::{Error, Solver},
     test_utils::{constant, var},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use test_log::test;
+
+use pretty_assertions::assert_eq;
 
 pub type Var = &'static str;
 
@@ -227,5 +230,63 @@ fn xor() {
     assert_solve_result(
         solver,
         vec![("a", 0xa0.into()), ("b", 0x0b.into()), ("c", 0xab.into())],
+    );
+}
+
+#[test]
+fn xor_invalid() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            var("a") - constant(0xa0),
+            var("b") - constant(0x0b),
+            var("c") - constant(0xff),
+        ],
+        // Send (a, b, c) to the XOR table.
+        // Note that this violates the bus rules, because 0xa0 ^ 0x0b != 0xff.
+        bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
+    };
+
+    let solver = Solver::new(constraint_system)
+        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+
+    match solver.solve() {
+        Err(e) => assert_eq!(e, Error::BusInteractionError),
+        _ => panic!("Expected error!"),
+    }
+}
+
+#[test]
+fn add_with_carry() {
+    // This tests a case of equivalent constraints that appear in the
+    // way "add with carry" is performed in openvm.
+    // X and Y end up being equivalent because they are both either
+    // A or A - 256, depending on whether the value of A is between
+    // 0 and 255 or not.
+    // A is the result of an addition with carry.
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            (var("X") - var("A") + constant(256)) * (var("X") - var("A")),
+            (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
+        ],
+        // Byte range constraints on X and Y
+        bus_interactions: vec![
+            send(BYTE_BUS_ID, vec![var("X")]),
+            send(BYTE_BUS_ID, vec![var("Y")]),
+        ],
+    };
+
+    let solver = Solver::new(constraint_system)
+        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+    let final_state = solver.solve().unwrap();
+    let final_state = final_state
+        .simplified_constraint_system
+        .algebraic_constraints
+        .iter()
+        .format("\n")
+        .to_string();
+    assert_eq!(
+        final_state,
+        "(-A + X + 256) * (-A + X)
+(-A + X + 256) * (-A + X)"
     );
 }

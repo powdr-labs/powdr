@@ -38,7 +38,7 @@ impl<T: FieldElement, V> ProcessResult<T, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// The range constraints of the parts do not cover the full constant sum.
     ConflictingRangeConstraints,
@@ -332,14 +332,22 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
                 let value = self.constant.field_div(&-coeff);
-                ProcessResult::complete(vec![Effect::Assignment(var.clone(), value)])
+                ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
+                    var.clone(),
+                    value,
+                    range_constraints,
+                )?])
             } else if self.constant.is_known_nonzero() {
                 // If the offset is not zero, then the coefficient must be non-zero,
                 // otherwise the constraint is violated.
                 let value = self.constant.field_div(&-coeff);
                 ProcessResult::complete(vec![
                     Assertion::assert_is_nonzero(coeff.clone()),
-                    Effect::Assignment(var.clone(), value),
+                    assignment_if_satisfies_range_constraints(
+                        var.clone(),
+                        value,
+                        range_constraints,
+                    )?,
                 ])
             } else {
                 // If this case, we could have an equation of the form
@@ -434,10 +442,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     // tight good enough.
                     return Ok(ProcessResult::empty());
                 }
-                concrete_assignments.push(Effect::Assignment(
-                    variable.clone(),
-                    T::from(component >> exponent).into(),
-                ));
+                concrete_assignments.push(
+                    // We're not using assignment_if_satisfies_range_constraints here, because we
+                    // might still exit early. The error case is handled below.
+                    Effect::Assignment(variable.clone(), T::from(component >> exponent).into()),
+                );
                 if is_negative {
                     *offset += T::from(component);
                 } else {
@@ -649,6 +658,18 @@ fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Displ
             .collect(),
         complete,
     }
+}
+
+fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    var: V,
+    value: SymbolicExpression<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Result<Effect<T, V>, Error> {
+    let rc = range_constraints.get(&var);
+    if rc.is_disjoint(&value.range_constraint()) {
+        return Err(Error::ConflictingRangeConstraints);
+    }
+    Ok(Effect::Assignment(var, value))
 }
 
 /// Turns an effect into a range constraint on a variable.
@@ -1358,5 +1379,13 @@ Z: [10, 4294967050] & 0xffffffff;
         assert_eq!(quadratic[0].1.to_string(), "y");
         assert!(linear.is_empty());
         assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
+    }
+
+    #[test]
+    fn bool_plus_one_cant_be_zero() {
+        let expr = var("a") + constant(1);
+        let rc = RangeConstraint::from_mask(0x1u64);
+        let range_constraints = HashMap::from([("a", rc.clone())]);
+        assert!(expr.solve(&range_constraints).is_err());
     }
 }
