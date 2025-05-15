@@ -409,8 +409,8 @@ fn execute_fast<F: FieldElement>(
     );
 
     let duration = start.elapsed();
-    log::info!("Executor done in: {:?}", duration);
-    log::info!("Execution trace length: {}", trace_len);
+    log::info!("Executor done in: {duration:?}");
+    log::info!("Execution trace length: {trace_len}");
     Ok(())
 }
 
@@ -458,7 +458,7 @@ fn execute<F: FieldElement>(
         );
 
         let duration = start.elapsed();
-        log::info!("Executor done in: {:?}", duration);
+        log::info!("Executor done in: {duration:?}");
         log::info!("Execution trace length: {}", execution.trace_len);
 
         let witness_cols: Vec<_> = pil

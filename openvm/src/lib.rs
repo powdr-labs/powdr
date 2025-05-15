@@ -525,7 +525,7 @@ where
             let name = air.name();
 
             if width > max_width {
-                log::warn!("Skipping {} (width: {})", name, width);
+                log::warn!("Skipping {name} (width: {width})");
                 return None;
             }
 
@@ -548,7 +548,7 @@ fn get_columns(air: Arc<dyn AnyRap<SC>>) -> Vec<String> {
         .inspect(|columns| {
             assert_eq!(columns.len(), width);
         })
-        .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{}", i)).collect())
+        .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
 }
 
 fn get_constraints(air: Arc<dyn AnyRap<SC>>) -> SymbolicConstraints<F> {

@@ -143,10 +143,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                     _ => unimplemented!(),
                 };
                 let name = columns.get(*index).unwrap_or_else(|| {
-                    panic!(
-                        "Column index out of bounds: {}\nColumns: {:?}",
-                        index, columns
-                    );
+                    panic!("Column index out of bounds: {index}\nColumns: {columns:?}");
                 });
                 AlgebraicExpression::Reference(AlgebraicReference {
                     name: name.clone(),
