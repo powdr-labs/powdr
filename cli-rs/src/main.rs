@@ -64,7 +64,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Compile rust code to Powdr assembly.
-    /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
+    /// Needs `rustup component add rust-src --toolchain nightly-2025-05-14`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,

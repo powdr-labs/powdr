@@ -62,11 +62,11 @@ jobs:
     - name: Install Rust toolchain 1.85
       run: rustup toolchain install 1.85-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2025-05-14-x86_64-unknown-linux-gnu
     - name: Install std source
-      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2025-05-14-x86_64-unknown-linux-gnu
     - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14-x86_64-unknown-linux-gnu
     - name: Install test dependencies
       run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install EStarkPolygon prover dependencies
