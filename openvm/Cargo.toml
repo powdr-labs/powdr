@@ -1,7 +1,10 @@
 [package]
 name = "powdr-openvm"
-version = "0.1.4"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
