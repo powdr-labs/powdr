@@ -21,6 +21,10 @@ lazy_static = "1.4.0"
 log = "0.4.18"
 serde = "1.0.218"
 
+[dev-dependencies]
+serde_cbor = "0.11.2"
+
+
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
