@@ -105,6 +105,10 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Install Rust deps
+        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+      - name: Install Rust deps
+        run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
         run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2 --no-tests=warn
@@ -129,6 +133,10 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Install Rust deps
+        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+      - name: Install Rust deps
+        run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - name: Run examples that cargo accepts as examples
         run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics
       - name: Run crate example serialized_inputs with the given branch
@@ -203,6 +211,10 @@ jobs:
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Install Rust deps
+        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+      - name: Install Rust deps
+        run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - name: Install nightly-2024-08-01
         run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install std source
@@ -252,6 +264,10 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Install Rust deps
+        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+      - name: Install Rust deps
+        run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - name: Install EStarkPolygon prover dependencies
         run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc uuid-dev build-essential cmake pkg-config git
       - name: Run benchmarks
