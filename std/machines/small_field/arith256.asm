@@ -141,7 +141,7 @@ machine Arith256 with
     *
     *******/
     
-    col eq0_sum = sum(64, |i| eq0(i) * CLK64[i]);
+    let eq0_sum = sum(64, |i| eq0(i) * CLK64[i]);
 
     eq0_sum + carry = carry' * 2**8;
 }
