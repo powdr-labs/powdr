@@ -5,7 +5,7 @@ use std::{
         btree_map::{IntoIter, Iter, IterMut},
         BTreeMap, BTreeSet, HashSet,
     },
-    iter::once,
+    iter::{once, repeat_n},
     ops::ControlFlow,
 };
 
@@ -164,7 +164,7 @@ impl FunctionStatements {
     pub fn iter_batches(&self) -> impl Iterator<Item = BatchRef> {
         match &self.batches {
             Some(batches) => Either::Left(batches.iter()),
-            None => Either::Right(std::iter::repeat_n(
+            None => Either::Right(repeat_n(
                 &BatchMetadata {
                     size: 1,
                     reason: None,
@@ -191,7 +191,7 @@ impl FunctionStatements {
 
         match self.batches {
             Some(batches) => Either::Left(batches.into_iter()),
-            None => Either::Right(std::iter::repeat_n(
+            None => Either::Right(repeat_n(
                 BatchMetadata {
                     size: 1,
                     reason: None,

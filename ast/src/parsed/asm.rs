@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    iter::{empty, once},
+    iter::{empty, once, repeat_n},
     str::FromStr,
 };
 
@@ -305,7 +305,7 @@ impl AbsoluteSymbolPath {
         let common_prefix_len = self.common_prefix(base).parts.len();
         // Start with max(0, base.parts.len() - common_root.parts.len())
         // repetitions of "super".
-        let parts = std::iter::repeat_n(
+        let parts = repeat_n(
             Part::Super,
             base.parts.len().saturating_sub(common_prefix_len),
         )
