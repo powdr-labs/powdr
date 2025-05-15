@@ -629,7 +629,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    fn prove_recursion(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
+    fn _prove_recursion(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
         let result = compile_and_prove(guest, apc, skip, false, true, stdin);
         assert!(result.is_ok());
     }
