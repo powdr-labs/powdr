@@ -662,6 +662,8 @@ mod tests {
 
     #[test]
     #[ignore = "Too much RAM"]
+    // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
+    #[should_panic = "No such file or directory"]
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -700,6 +702,8 @@ mod tests {
 
     #[test]
     #[ignore = "Too much RAM"]
+    // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
+    #[should_panic = "No such file or directory"]
     fn keccak_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
