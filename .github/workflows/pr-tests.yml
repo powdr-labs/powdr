@@ -106,7 +106,7 @@ jobs:
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install Rust deps
-        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+        run: rustup install nightly-2025-05-14 && rustup component add rust-src --toolchain nightly-2025-05-14
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - uses: taiki-e/install-action@nextest
@@ -134,7 +134,7 @@ jobs:
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install Rust deps
-        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+        run: rustup install nightly-2025-05-14 && rustup component add rust-src --toolchain nightly-2025-05-14
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - name: Run examples that cargo accepts as examples
@@ -212,7 +212,7 @@ jobs:
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install Rust deps
-        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+        run: rustup install nightly-2025-05-14 && rustup component add rust-src --toolchain nightly-2025-05-14
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - name: Install nightly-2025-05-14
@@ -265,7 +265,7 @@ jobs:
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install Rust deps
-        run: rustup install nightly-2024-10-30 && rustup component add rust-src --toolchain nightly-2024-10-30
+        run: rustup install nightly-2025-05-14 && rustup component add rust-src --toolchain nightly-2025-05-14
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 && rustup component add rust-src --toolchain nightly-2025-02-14
       - name: Install EStarkPolygon prover dependencies
