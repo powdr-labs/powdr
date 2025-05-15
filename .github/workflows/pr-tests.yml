@@ -143,8 +143,6 @@ jobs:
         run: cd powdr-test/examples/serialized-inputs && cargo run -r
       - name: Run crate example fibonacci with the given branch
         run: cd powdr-test/examples/fibonacci && cargo run -r
-      - name: Run crate example fibonacci with the latest powdr release
-        run: cd examples/fibonacci && cargo run -r
 
   test_estark_polygon:
     needs: build
