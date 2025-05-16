@@ -171,9 +171,11 @@ fn remove_disconnected_columns<T: FieldElement>(
             .bus_interactions
             .into_iter()
             .filter(|bus_interaction| {
-                bus_interaction
-                    .referenced_variables()
-                    .any(|var| variables_to_keep.contains(var))
+                let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+                bus_interaction_handler.is_stateful(bus_id)
+                    || bus_interaction
+                        .referenced_variables()
+                        .any(|var| variables_to_keep.contains(var))
             })
             .collect(),
     }
