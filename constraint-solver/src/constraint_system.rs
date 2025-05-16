@@ -32,6 +32,11 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                 .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut())),
         )
     }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.algebraic_constraints.len() + self.bus_interactions.len()
+    }
 }
 
 /// A bus interaction.

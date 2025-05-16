@@ -119,6 +119,27 @@ fn solver_based_optimization<T: FieldElement>(
 }
 
 fn remove_superfluous_constraints<T: FieldElement>(
+    mut constraint_system: ConstraintSystem<T, Variable>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone + 'static,
+) -> ConstraintSystem<T, Variable> {
+    let mut current_size = constraint_system.len();
+    loop {
+        constraint_system =
+            remove_superfluous_constraints_iter(constraint_system, bus_interaction_handler.clone());
+        let new_size = constraint_system.len();
+        if new_size == current_size {
+            break;
+        }
+        log::debug!(
+            "Removed {} superfluous constraints, new size: {current_size}",
+            current_size - new_size
+        );
+        current_size = new_size;
+    }
+    constraint_system
+}
+
+fn remove_superfluous_constraints_iter<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
     bus_interaction_handler: impl BusInteractionHandler<T> + Clone + 'static,
 ) -> ConstraintSystem<T, Variable> {
