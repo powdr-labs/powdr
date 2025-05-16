@@ -322,10 +322,24 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
-        let machine = optimize_precompile(machine);
-        let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        assert!(check_precompile(&machine));
+
+        // We need to remove memory bus interactions with inlined multiplicity zero before
+        // doing register memory optimizations.
+        let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
+        assert!(check_precompile(&machine));
         let machine = remove_zero_mult(machine);
+
+        let machine = optimize_precompile(machine);
+        assert!(check_precompile(&machine));
+
+        // Fixpoint style re-attempt.
+        // TODO we probably need proper fixpoint here at some point.
+        let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        assert!(check_precompile(&machine));
+
         let machine = remove_zero_constraint(machine);
+        assert!(check_precompile(&machine));
 
         // add guards to constraints that are not satisfied by zeroes
         let machine = add_guards(machine);
@@ -510,11 +524,34 @@ pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBu
     r
 }
 
+// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
+// Assumption: all register memory bus interactions feature a concrete address.
+pub fn check_precompile<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
+    let count_per_addr = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| bus_int.clone().try_into().ok())
+        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .map(|mem_int| {
+            mem_int.try_addr_u32().unwrap_or_else(|| {
+                panic!(
+                    "Register memory access must have constant address but found {}",
+                    mem_int.addr
+                )
+            })
+        })
+        .fold(BTreeMap::new(), |mut map, addr| {
+            *map.entry(addr).or_insert(0) += 1;
+            map
+        });
+
+    count_per_addr.values().all(|&v| v % 2 == 0)
+}
+
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let mut receive = true;
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut prev_tss: Vec<AlgebraicExpression<T>> = Vec::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
     let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
     machine
@@ -560,11 +597,6 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                                 new_constraints.push(eq_expr.into());
                             });
 
-                        // If this receive's ts is a prev_ts, we can remove the constraint that
-                        // decomposes this prev_ts and range checks on the limbs.
-                        let prev_ts = mem_int.bus_interaction.args[6].clone();
-                        assert!(powdr::is_ref(&prev_ts));
-                        prev_tss.push(prev_ts);
                         to_remove.insert(i);
                     }
                     None => {
@@ -624,35 +656,6 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
             keep
         })
         .collect();
-
-    let mut to_remove: BTreeSet<AlgebraicExpression<T>> = Default::default();
-    machine.constraints.retain(|c| {
-        for prev_ts in &prev_tss {
-            if powdr::has_ref(&c.expr, prev_ts) {
-                let (col1, col2) = powdr::find_byte_decomp(&c.expr);
-                to_remove.insert(col1);
-                to_remove.insert(col2);
-                return false;
-            }
-        }
-
-        true
-    });
-
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id != RANGE_CHECK_BUS_ID {
-            return true;
-        }
-
-        assert_eq!(bus_int.args.len(), 2);
-
-        let col = bus_int.args[0].clone();
-        if to_remove.contains(&col) {
-            return false;
-        }
-
-        true
-    });
 
     machine.constraints.extend(new_constraints);
 

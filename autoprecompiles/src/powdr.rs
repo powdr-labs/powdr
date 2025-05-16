@@ -4,9 +4,8 @@ use std::ops::ControlFlow;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicReferenceThin, AlgebraicUnaryOperation, BusInteractionIdentity, PolyID,
-    PolynomialType,
+    AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin,
+    AlgebraicUnaryOperation, BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::visitor::AllChildren;
@@ -57,42 +56,6 @@ pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
         AlgebraicExpression::Number(n) => *n == T::zero(),
         _ => false,
     }
-}
-
-pub fn find_byte_decomp<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {
-    let mut e1 = None;
-    let mut e2 = None;
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
-                op: AlgebraicBinaryOperator::Add,
-                right,
-            }) = expr
-            {
-                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: inner_left,
-                    op: AlgebraicBinaryOperator::Mul,
-                    right: inner_right,
-                }) = &**right
-                {
-                    let is_mul_by_2_17 = matches!(&**inner_right, AlgebraicExpression::Number(n) if *n == 131072u32.into());
-                    if is_ref(&**left) && is_ref(&**inner_left) && is_mul_by_2_17 {
-                        assert!(e1.is_none());
-                        assert!(e2.is_none());
-                        e1 = Some((**left).clone());
-                        e2 = Some((**inner_left).clone());
-                        return ControlFlow::Break(());
-                    }
-                }
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    (e1.unwrap(), e2.unwrap())
 }
 
 pub fn has_ref<T: Clone + std::cmp::PartialEq>(
