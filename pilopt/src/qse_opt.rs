@@ -112,13 +112,10 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 ) -> QuadraticSymbolicExpression<T, Variable> {
     type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
 
-    #[derive(Default)]
-    struct TerminalConverter<T> {
-        _marker: std::marker::PhantomData<T>,
-    }
+    struct TerminalConverter;
 
     impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
-        for TerminalConverter<T>
+        for TerminalConverter
     {
         fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
             Qse::from_unknown_variable(Variable::Reference(reference.clone()))
@@ -131,7 +128,7 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
         }
     }
 
-    algebraic_expression_conversion::convert(expr, &mut TerminalConverter::default())
+    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
 }
 
 /// Turns a quadratic symbolic expression back into an algebraic expression.
