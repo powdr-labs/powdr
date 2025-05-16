@@ -1,7 +1,5 @@
-use itertools::Itertools;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
-use powdr_pilopt::qse_opt::algebraic_to_quadratic_symbolic_expression;
 
 #[test]
 fn load_machine_cbor() {
