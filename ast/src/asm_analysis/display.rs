@@ -138,9 +138,11 @@ impl Display for SubmachineDeclaration {
             "{} {}{}",
             self.ty,
             self.name,
-            (!self.args.is_empty())
-                .then(|| format!("({})", self.args.iter().format(", ")))
-                .unwrap_or_default()
+            if !self.args.is_empty() {
+                format!("({})", self.args.iter().format(", "))
+            } else {
+                Default::default()
+            }
         )
     }
 }

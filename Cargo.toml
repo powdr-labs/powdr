@@ -33,6 +33,8 @@ members = [
     "backend-utils",
     "executor-utils",
     "autoprecompiles",
+    "openvm",
+    "cli-openvm",
 ]
 
 exclude = ["riscv-runtime"]
@@ -72,6 +74,8 @@ powdr-riscv = { path = "./riscv", version = "0.1.4" }
 powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-schemas = { path = "./schemas", version = "0.1.4" }
+powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
+powdr-openvm = { path = "./openvm", version = "0.1.4" }
 
 [profile.pr-tests]
 inherits = "dev"

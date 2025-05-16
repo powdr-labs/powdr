@@ -85,6 +85,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         self
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn generate_code<FixedEval: FixedEvaluator<T>>(
         self,
         can_process: impl CanProcessCall<T>,
@@ -125,6 +126,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
+    #[allow(clippy::result_large_err)]
     fn generate_code_for_branch<FixedEval: FixedEvaluator<T>>(
         &self,
         can_process: impl CanProcessCall<T>,

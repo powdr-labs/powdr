@@ -25,7 +25,7 @@ pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<Column, AlgebraicExpression<T>>,
 ) {
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(r) = expr {
                 if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
@@ -40,7 +40,7 @@ pub fn substitute_algebraic<T: Clone>(
 
 pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     let zero = AlgebraicExpression::Number(T::zero());
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(AlgebraicReference { .. }) = expr {
                 *expr = zero.clone();
@@ -63,7 +63,7 @@ pub fn has_ref<T: Clone + std::cmp::PartialEq>(
     r: &AlgebraicExpression<T>,
 ) -> bool {
     let mut seen = false;
-    expr.visit_expressions(
+    let _ = expr.visit_expressions(
         &mut |expr| {
             if expr == r {
                 seen = true;
@@ -85,7 +85,7 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
 ) {
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             if let Some(sub_expr) = sub.get(expr) {
                 *expr = sub_expr.clone();
@@ -101,7 +101,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     expr: &AlgebraicExpression<T>,
 ) -> BTreeSet<AlgebraicExpression<T>> {
     let mut cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
-    expr.visit_expressions(
+    let _ = expr.visit_expressions(
         &mut |expr| {
             if let AlgebraicExpression::Reference(AlgebraicReference {
                 poly_id:
@@ -190,7 +190,7 @@ pub fn reassign_ids<T: FieldElement>(
         .collect();
 
     // Update the machine with the new global column names
-    machine.visit_expressions_mut(
+    let _ = machine.visit_expressions_mut(
         &mut |e| {
             if let AlgebraicExpression::Reference(r) = e {
                 let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
@@ -221,7 +221,7 @@ pub fn reassign_ids<T: FieldElement>(
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             match expr {
                 Expression::Reference(_, ref mut r) => {

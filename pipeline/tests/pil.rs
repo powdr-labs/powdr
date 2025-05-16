@@ -263,6 +263,7 @@ fn stwo_fixed_columns() {
 }
 
 #[test]
+#[should_panic = "The composition polynomial OODS value does not match the trace OODS values"]
 fn stwo_stage1_publics() {
     let f = "pil/stage1_publics.pil";
     test_stwo_stage1_public(

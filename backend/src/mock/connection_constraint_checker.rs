@@ -159,16 +159,18 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
             .flatten()
             .collect::<Vec<_>>();
 
-        (!errors.is_empty())
-            .then(|| {
+        if !errors.is_empty() {
+            {
                 let error = Errors {
                     connection_count: self.connections.len(),
                     errors,
                 };
                 log::error!("{error}");
                 Err(error)
-            })
-            .unwrap_or(Ok(()))
+            }
+        } else {
+            Ok(())
+        }
     }
 
     /// Checks a single connection.

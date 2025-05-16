@@ -24,16 +24,16 @@ jobs:
     ##### The block below is shared between cache build and PR build workflows #####
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev uuid-dev
-    - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
-      run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
-    - name: Install Rust toolchain 1.81 (stable)
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2025-05-14-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2025-05-14-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2025-05-14-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.85 (stable)
+      run: rustup toolchain install 1.85-x86_64-unknown-linux-gnu
     - name: Set cargo to perform shallow clones
       run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Cargo check with Rust 1.81 (default features)
-      run: cargo +1.81-x86_64-unknown-linux-gnu check --all-targets
+    - name: Cargo check with Rust 1.85 (default features)
+      run: cargo +1.85-x86_64-unknown-linux-gnu check --all-targets
     - name: Lint no default features
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
     - name: Lint all features

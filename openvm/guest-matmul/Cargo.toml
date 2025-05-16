@@ -1,0 +1,12 @@
+[workspace]
+[package]
+name = "powdr-openvm-matmul-test"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "powdr" }
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

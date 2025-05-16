@@ -13,7 +13,7 @@ use tracing::{span, Level};
 
 extern crate alloc;
 use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
-use std::iter::repeat;
+use std::iter::repeat_n;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::{fmt, io};
@@ -571,7 +571,8 @@ where
         let constant_col_log_sizes = iter
             .clone()
             .flat_map(|(pil, machine_log_size)| {
-                repeat(machine_log_size).take(
+                repeat_n(
+                    machine_log_size,
                     pil.constant_count()
                         + get_constant_with_next_list(pil).len()
                         + pil.publics_count(),
@@ -582,14 +583,14 @@ where
         let stage0_witness_col_log_sizes = iter
             .clone()
             .flat_map(|(pil, machine_log_size)| {
-                repeat(machine_log_size).take(pil.stage_commitment_count(0))
+                repeat_n(machine_log_size, pil.stage_commitment_count(0))
             })
             .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
             .clone()
             .flat_map(|(pil, machine_log_size)| {
-                repeat(machine_log_size).take(pil.stage_commitment_count(1))
+                repeat_n(machine_log_size, pil.stage_commitment_count(1))
             })
             .collect_vec();
 

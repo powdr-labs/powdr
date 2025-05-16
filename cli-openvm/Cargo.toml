@@ -1,0 +1,29 @@
+[package]
+name = "cli-openvm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "powdr_openvm"
+path = "src/main.rs"
+bench = false        # See https://github.com/bheisler/criterion.rs/issues/458
+
+[dependencies]
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
+
+powdr-openvm.workspace = true
+
+eyre = "0.6.12"
+tracing = "0.1.40"
+
+clap = { version = "^4.3", features = ["derive"] }
+
+serde_cbor = "0.11.2"
+
+[lints]
+workspace = true
