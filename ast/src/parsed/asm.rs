@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    iter::{empty, once, repeat},
+    iter::{empty, once, repeat_n},
     str::FromStr,
 };
 
@@ -52,6 +52,7 @@ pub struct SymbolDefinition {
     pub value: SymbolValue,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum SymbolValue {
     /// A machine definition
@@ -304,17 +305,19 @@ impl AbsoluteSymbolPath {
         let common_prefix_len = self.common_prefix(base).parts.len();
         // Start with max(0, base.parts.len() - common_root.parts.len())
         // repetitions of "super".
-        let parts = repeat(Part::Super)
-            .take(base.parts.len().saturating_sub(common_prefix_len))
-            // append the parts of self after the common root.
-            .chain(
-                self.parts
-                    .iter()
-                    .skip(common_prefix_len)
-                    .cloned()
-                    .map(Part::Named),
-            )
-            .collect();
+        let parts = repeat_n(
+            Part::Super,
+            base.parts.len().saturating_sub(common_prefix_len),
+        )
+        // append the parts of self after the common root.
+        .chain(
+            self.parts
+                .iter()
+                .skip(common_prefix_len)
+                .cloned()
+                .map(Part::Named),
+        )
+        .collect();
         SymbolPath { parts }
     }
 

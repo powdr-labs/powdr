@@ -169,8 +169,8 @@ pub fn gen_estark_proof_with_backend_variant(
 
     let publics: Vec<GoldilocksField> = pipeline
         .publics()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -270,8 +270,8 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 
     let publics: Vec<Bn254Field> = pipeline
         .publics()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -304,8 +304,8 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
     let publics: Vec<T> = pipeline
         .publics()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -351,8 +351,8 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     let publics: Vec<T> = pipeline
         .publics()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();

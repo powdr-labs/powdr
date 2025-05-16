@@ -1,18 +1,13 @@
 use itertools::Itertools;
 use optimizer::{optimize, ConcreteBusInteractionHandler};
 use powdr::{Column, UniqueColumns};
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperator,
+};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::{
-    analyzed::{
-        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperator,
-    },
-    parsed::visitor::AllChildren,
-};
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
-use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -327,10 +322,24 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
-        let machine = optimize_precompile(machine);
-        let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        assert!(check_precompile(&machine));
+
+        // We need to remove memory bus interactions with inlined multiplicity zero before
+        // doing register memory optimizations.
+        let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
+        assert!(check_precompile(&machine));
         let machine = remove_zero_mult(machine);
+
+        let machine = optimize_precompile(machine);
+        assert!(check_precompile(&machine));
+
+        // Fixpoint style re-attempt.
+        // TODO we probably need proper fixpoint here at some point.
+        let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        assert!(check_precompile(&machine));
+
         let machine = remove_zero_constraint(machine);
+        assert!(check_precompile(&machine));
 
         // add guards to constraints that are not satisfied by zeroes
         let machine = add_guards(machine);
@@ -515,11 +524,34 @@ pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBu
     r
 }
 
+// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
+// Assumption: all register memory bus interactions feature a concrete address.
+pub fn check_precompile<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
+    let count_per_addr = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| bus_int.clone().try_into().ok())
+        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .map(|mem_int| {
+            mem_int.try_addr_u32().unwrap_or_else(|| {
+                panic!(
+                    "Register memory access must have constant address but found {}",
+                    mem_int.addr
+                )
+            })
+        })
+        .fold(BTreeMap::new(), |mut map, addr| {
+            *map.entry(addr).or_insert(0) += 1;
+            map
+        });
+
+    count_per_addr.values().all(|&v| v % 2 == 0)
+}
+
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let mut receive = true;
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut prev_tss: Vec<AlgebraicExpression<T>> = Vec::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
     let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
     machine
@@ -565,11 +597,6 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                                 new_constraints.push(eq_expr.into());
                             });
 
-                        // If this receive's ts is a prev_ts, we can remove the constraint that
-                        // decomposes this prev_ts and range checks on the limbs.
-                        let prev_ts = mem_int.bus_interaction.args[6].clone();
-                        assert!(powdr::is_ref(&prev_ts));
-                        prev_tss.push(prev_ts);
                         to_remove.insert(i);
                     }
                     None => {
@@ -629,35 +656,6 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
             keep
         })
         .collect();
-
-    let mut to_remove: BTreeSet<AlgebraicExpression<T>> = Default::default();
-    machine.constraints.retain(|c| {
-        for prev_ts in &prev_tss {
-            if powdr::has_ref(&c.expr, prev_ts) {
-                let (col1, col2) = powdr::find_byte_decomp(&c.expr);
-                to_remove.insert(col1);
-                to_remove.insert(col2);
-                return false;
-            }
-        }
-
-        true
-    });
-
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id != RANGE_CHECK_BUS_ID {
-            return true;
-        }
-
-        assert_eq!(bus_int.args.len(), 2);
-
-        let col = bus_int.args[0].clone();
-        if to_remove.contains(&col) {
-            return false;
-        }
-
-        true
-    });
 
     machine.constraints.extend(new_constraints);
 
@@ -809,7 +807,9 @@ pub fn generate_precompile<T: FieldElement>(
                     sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
 
-                add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
+                // Constrain the opcode expression to equal the actual opcode.
+                let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
+                local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 instr
@@ -905,146 +905,6 @@ pub fn generate_precompile<T: FieldElement>(
         },
         col_subs,
     )
-}
-
-fn add_opcode_constraints<T: FieldElement>(
-    constraints: &mut Vec<SymbolicConstraint<T>>,
-    opcode: usize,
-    expected_opcode: &AlgebraicExpression<T>,
-) {
-    let opcode_a = AlgebraicExpression::Number((opcode as u64).into());
-    match try_compute_opcode_map(expected_opcode) {
-        Ok(opcode_to_flag) => {
-            let active_flag = opcode_to_flag.get(&(opcode as u64)).unwrap();
-            for flag_ref in opcode_to_flag.values() {
-                let expected_value = if flag_ref == active_flag {
-                    AlgebraicExpression::Number(1u32.into())
-                } else {
-                    AlgebraicExpression::Number(0u32.into())
-                };
-                let flag_expr = AlgebraicExpression::Reference(flag_ref.clone());
-                let constraint = flag_expr - expected_value;
-                constraints.push(constraint.into());
-            }
-        }
-        Err(_) => {
-            if try_set_loadstore_flags(constraints, opcode, expected_opcode).is_err() {
-                // We were not able to extract the flags, so we keep them as witness columns
-                // and add a constraint that the expected opcode needs to equal the compile-time opcode.
-                constraints.push((expected_opcode.clone() - opcode_a).into());
-            }
-        }
-    }
-}
-
-// See: https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/transpiler/src/instructions.rs#L100-L113
-const LOADW_OPCODE: usize = 0x210;
-const STOREW_OPCODE: usize = 0x210 + 3;
-
-fn try_set_loadstore_flags<T: FieldElement>(
-    constraints: &mut Vec<SymbolicConstraint<T>>,
-    opcode: usize,
-    expected_opcode: &AlgebraicExpression<T>,
-) -> Result<(), ()> {
-    if opcode != LOADW_OPCODE && opcode != STOREW_OPCODE {
-        // For other instructions, the flags are not unique :/
-        return Err(());
-    }
-    // Find the 4 flags, sorted by name.
-    let flag_refs = expected_opcode
-        .all_children()
-        .filter_map(|expr| match expr {
-            AlgebraicExpression::Reference(column_reference) => {
-                Some((column_reference.name.clone(), column_reference))
-            }
-            _ => None,
-        })
-        .sorted_by(|(n1, _), (n2, _)| n1.cmp(n2))
-        .unique_by(|(name, _)| name.clone())
-        .map(|(_, column_reference)| column_reference)
-        .collect::<Vec<_>>();
-    assert_eq!(flag_refs.len(), 4);
-
-    let mut set_flag = |column_ref: &AlgebraicReference, value: u64| {
-        let value = AlgebraicExpression::Number(value.into());
-        let flag_expr = AlgebraicExpression::Reference(column_ref.clone());
-        let constraint = flag_expr - value;
-        constraints.push(constraint.into());
-    };
-
-    let mut set_flags = |f1, f2, f3, f4| {
-        set_flag(flag_refs[0], f1);
-        set_flag(flag_refs[1], f2);
-        set_flag(flag_refs[2], f3);
-        set_flag(flag_refs[3], f4);
-    };
-
-    // See: https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/circuit/src/loadstore/core.rs#L311-L330
-    match opcode {
-        LOADW_OPCODE => set_flags(2, 0, 0, 0),
-        STOREW_OPCODE => set_flags(0, 0, 0, 1),
-        _ => panic!(),
-    }
-
-    Ok(())
-}
-
-fn try_compute_opcode_map<T: FieldElement>(
-    expected_opcode: &AlgebraicExpression<T>,
-) -> Result<BTreeMap<u64, AlgebraicReference>, ()> {
-    // Parse the expected opcode as an algebraic expression:
-    // flag1 * c1 + flag2 * c2 + ... + offset
-    let imm = BTreeMap::new();
-    let affine_expression = PartialExpressionEvaluator::new(SymbolicEvaluator, &imm)
-        .evaluate(expected_opcode)
-        .map_err(|_| ())?;
-
-    // The above would not include any entry for `flag * 0` or `0 * flag`.
-    // If it exists, we collect it here.
-    let zero = AlgebraicExpression::Number(0u32.into());
-    let zero_flag = expected_opcode
-        .all_children()
-        .find_map(|expr| match expr {
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                op: AlgebraicBinaryOperator::Mul,
-                left,
-                right,
-            }) => {
-                if **left == zero {
-                    Some((**right).clone())
-                } else if **right == zero {
-                    Some((**left).clone())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        })
-        .and_then(|expr| match expr {
-            AlgebraicExpression::Reference(reference) => Some(reference),
-            _ => None,
-        });
-
-    let offset = affine_expression.offset();
-
-    if !offset.is_zero() && zero_flag.is_none() {
-        // We didn't find any flag with factor zero, and the offset is not zero.
-        // Probably something went wrong.
-        return Err(());
-    }
-
-    Ok(affine_expression
-        .nonzero_coefficients()
-        .map(|(k, factor)| {
-            let opcode = (offset + *factor).to_degree();
-            let flag = match k {
-                AlgebraicVariable::Column(column) => (*column).clone(),
-                AlgebraicVariable::Public(_) => unreachable!(),
-            };
-            (opcode, flag)
-        })
-        .chain(zero_flag.map(|flag| (offset.to_degree(), flag.clone())))
-        .collect())
 }
 
 fn is_loadstore(opcode: usize) -> bool {

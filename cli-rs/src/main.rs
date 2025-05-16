@@ -64,7 +64,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Compile rust code to Powdr assembly.
-    /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
+    /// Needs `rustup component add rust-src --toolchain nightly-2025-05-14`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,
@@ -409,8 +409,8 @@ fn execute_fast<F: FieldElement>(
     );
 
     let duration = start.elapsed();
-    log::info!("Executor done in: {:?}", duration);
-    log::info!("Execution trace length: {}", trace_len);
+    log::info!("Executor done in: {duration:?}");
+    log::info!("Execution trace length: {trace_len}");
     Ok(())
 }
 
@@ -458,7 +458,7 @@ fn execute<F: FieldElement>(
         );
 
         let duration = start.elapsed();
-        log::info!("Executor done in: {:?}", duration);
+        log::info!("Executor done in: {duration:?}");
         log::info!("Execution trace length: {}", execution.trace_len);
 
         let witness_cols: Vec<_> = pil

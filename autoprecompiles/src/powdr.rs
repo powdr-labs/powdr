@@ -4,9 +4,8 @@ use std::ops::ControlFlow;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicReferenceThin, AlgebraicUnaryOperation, BusInteractionIdentity, PolyID,
-    PolynomialType,
+    AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin,
+    AlgebraicUnaryOperation, BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::visitor::AllChildren;
@@ -26,7 +25,7 @@ pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<Column, AlgebraicExpression<T>>,
 ) {
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(r) = expr {
                 if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
@@ -41,7 +40,7 @@ pub fn substitute_algebraic<T: Clone>(
 
 pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     let zero = AlgebraicExpression::Number(T::zero());
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(AlgebraicReference { .. }) = expr {
                 *expr = zero.clone();
@@ -59,48 +58,12 @@ pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     }
 }
 
-pub fn find_byte_decomp<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {
-    let mut e1 = None;
-    let mut e2 = None;
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
-                op: AlgebraicBinaryOperator::Add,
-                right,
-            }) = expr
-            {
-                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: inner_left,
-                    op: AlgebraicBinaryOperator::Mul,
-                    right: inner_right,
-                }) = &**right
-                {
-                    let is_mul_by_2_17 = matches!(&**inner_right, AlgebraicExpression::Number(n) if *n == 131072u32.into());
-                    if is_ref(&**left) && is_ref(&**inner_left) && is_mul_by_2_17 {
-                        assert!(e1.is_none());
-                        assert!(e2.is_none());
-                        e1 = Some((**left).clone());
-                        e2 = Some((**inner_left).clone());
-                        return ControlFlow::Break(());
-                    }
-                }
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    (e1.unwrap(), e2.unwrap())
-}
-
 pub fn has_ref<T: Clone + std::cmp::PartialEq>(
     expr: &AlgebraicExpression<T>,
     r: &AlgebraicExpression<T>,
 ) -> bool {
     let mut seen = false;
-    expr.visit_expressions(
+    let _ = expr.visit_expressions(
         &mut |expr| {
             if expr == r {
                 seen = true;
@@ -122,7 +85,7 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
 ) {
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             if let Some(sub_expr) = sub.get(expr) {
                 *expr = sub_expr.clone();
@@ -138,7 +101,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     expr: &AlgebraicExpression<T>,
 ) -> BTreeSet<AlgebraicExpression<T>> {
     let mut cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
-    expr.visit_expressions(
+    let _ = expr.visit_expressions(
         &mut |expr| {
             if let AlgebraicExpression::Reference(AlgebraicReference {
                 poly_id:
@@ -227,7 +190,7 @@ pub fn reassign_ids<T: FieldElement>(
         .collect();
 
     // Update the machine with the new global column names
-    machine.visit_expressions_mut(
+    let _ = machine.visit_expressions_mut(
         &mut |e| {
             if let AlgebraicExpression::Reference(r) = e {
                 let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
@@ -258,7 +221,7 @@ pub fn reassign_ids<T: FieldElement>(
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
-    expr.visit_expressions_mut(
+    let _ = expr.visit_expressions_mut(
         &mut |expr| {
             match expr {
                 Expression::Reference(_, ref mut r) => {
