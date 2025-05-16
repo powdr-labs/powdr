@@ -3118,7 +3118,7 @@ fn execute_inner<F: FieldElement>(
                                 .set_col(KnownWitnessCol::X_free_value, results.unwrap());
                         }
                         _ => {
-                            // We're assinging a value or the result of an instruction.
+                            // We're assigning a value or the result of an instruction.
                             // Currently, only X used as the assignment register in this case.
                             let x = results.unwrap();
                             e.proc.set_col(KnownWitnessCol::X, x);
