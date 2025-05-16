@@ -58,6 +58,9 @@ fn analyze_for_memory() {
             println!("{constr}");
         }
     }
+    for bus in machine.bus_interactions {
+        println!("{bus}");
+    }
 }
 
 fn try_remove_is_valid<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
