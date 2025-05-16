@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
@@ -42,12 +42,8 @@ pub fn optimize<P: FieldElement>(
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After solver-based optimization", &constraint_system);
 
-    let constraint_system =
-        remove_trivial_bus_interactions(constraint_system, bus_interaction_handler);
-    stats_logger.log(
-        "After removing trivial bus interactions",
-        &constraint_system,
-    );
+    let constraint_system = remove_disconnected_columns(constraint_system, bus_interaction_handler);
+    stats_logger.log("After removing disconnected columns", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
     stats_logger.log("After in-lining witness columns", &constraint_system);
@@ -112,58 +108,70 @@ fn solver_based_optimization<T: FieldElement>(
     result.simplified_constraint_system
 }
 
-fn remove_trivial_bus_interactions<T: FieldElement>(
+fn remove_disconnected_columns<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl ConcreteBusInteractionHandler<T> + 'static,
+    bus_interaction_handler: impl ConcreteBusInteractionHandler<T>,
 ) -> ConstraintSystem<T, Variable> {
-    let ConstraintSystem {
-        algebraic_constraints,
-        bus_interactions,
-    } = constraint_system;
+    // Initialize vars_to_keep with any variables that appear in *stateful* bus interactions,
+    // because that's the only way they can be connected to the rest of the system.
+    let mut variables_to_keep = constraint_system
+        .bus_interactions
+        .iter()
+        .filter(|bus_interaction| {
+            let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+            bus_interaction_handler.is_stateful(bus_id)
+        })
+        .flat_map(|bus_interaction| bus_interaction.referenced_variables())
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    // Any variable that is connected to a variable in vars_to_keep must also be kept.
+    loop {
+        let size_before = variables_to_keep.len();
+        for constraint in &constraint_system.algebraic_constraints {
+            if constraint
+                .referenced_variables()
+                .any(|var| variables_to_keep.contains(var))
+            {
+                variables_to_keep.extend(constraint.referenced_variables().cloned());
+            }
+        }
+
+        for constraint in &constraint_system.bus_interactions {
+            if constraint
+                .referenced_variables()
+                .any(|var| variables_to_keep.contains(var))
+            {
+                variables_to_keep.extend(constraint.referenced_variables().cloned());
+            }
+        }
+        if variables_to_keep.len() == size_before {
+            break;
+        }
+    }
 
     ConstraintSystem {
-        algebraic_constraints,
-        bus_interactions: bus_interactions
+        algebraic_constraints: constraint_system
+            .algebraic_constraints
             .into_iter()
-            .filter_map(|bus_interaction| {
-                if let Some(concrete_bus_interaction) =
-                    try_to_concrete_bus_interaction(&bus_interaction)
-                {
-                    // If all values are concrete, we might be able to remove the bus interaction
-                    match bus_interaction_handler
-                        .handle_concrete_bus_interaction(concrete_bus_interaction)
-                    {
-                        ConcreteBusInteractionResult::AlwaysSatisfied => None,
-                        ConcreteBusInteractionResult::HasSideEffects => Some(bus_interaction), // Here we still keep the original bus interaction
-                        ConcreteBusInteractionResult::ViolatesBusRules => {
-                            panic!("Bus interaction {bus_interaction:?} violates bus rules");
-                        }
-                    }
-                } else {
-                    // If any value is symbolic, we keep the bus interaction
-                    Some(bus_interaction)
-                }
+            .filter(|constraint| {
+                constraint
+                    .referenced_variables()
+                    .any(|var| variables_to_keep.contains(var))
+            })
+            .collect(),
+        bus_interactions: constraint_system
+            .bus_interactions
+            .into_iter()
+            .filter(|bus_interaction| {
+                let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+                bus_interaction_handler.is_stateful(bus_id)
+                    || bus_interaction
+                        .referenced_variables()
+                        .any(|var| variables_to_keep.contains(var))
             })
             .collect(),
     }
-}
-
-fn try_to_concrete_bus_interaction<T: FieldElement>(
-    bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, Variable>>,
-) -> Option<BusInteraction<T>> {
-    let BusInteraction {
-        bus_id,
-        multiplicity,
-        payload,
-    } = bus_interaction;
-    Some(BusInteraction {
-        bus_id: bus_id.try_to_number()?,
-        multiplicity: multiplicity.try_to_number()?,
-        payload: payload
-            .iter()
-            .map(|v| v.try_to_number())
-            .collect::<Option<Vec<_>>>()?,
-    })
 }
 
 fn remove_trivial_constraints<P: FieldElement>(
@@ -291,8 +299,5 @@ pub enum ConcreteBusInteractionResult {
 }
 
 pub trait ConcreteBusInteractionHandler<T: FieldElement> {
-    fn handle_concrete_bus_interaction(
-        &self,
-        bus_interaction: BusInteraction<T>,
-    ) -> ConcreteBusInteractionResult;
+    fn is_stateful(&self, bus_id: T) -> bool;
 }
