@@ -168,6 +168,27 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         self.linear.get(var)
     }
 
+    /// Returns the range constraint of the full expression.
+    pub fn range_constraint(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> RangeConstraint<T> {
+        self.quadratic
+            .iter()
+            .map(|(l, r)| {
+                l.range_constraint(range_constraints)
+                    .combine_product(&r.range_constraint(range_constraints))
+            })
+            .chain(self.linear.iter().map(|(var, coeff)| {
+                range_constraints
+                    .get(var)
+                    .combine_product(&coeff.range_constraint())
+            }))
+            .chain(std::iter::once(self.constant.range_constraint()))
+            .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+            .unwrap_or_else(|| RangeConstraint::from_value(0.into()))
+    }
+
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
