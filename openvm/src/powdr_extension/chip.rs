@@ -39,8 +39,7 @@ use openvm_stark_backend::{
     p3_field::FieldAlgebra,
     p3_matrix::dense::RowMajorMatrix,
     p3_maybe_rayon::prelude::{
-        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-        ParallelSliceMut,
+        IndexedParallelIterator, IntoParallelIterator, ParallelIterator, ParallelSliceMut,
     },
     rap::ColumnsAir,
 };
@@ -388,7 +387,7 @@ where
             .executor
             .inventory
             .executors
-            .into_par_iter()
+            .into_iter()
             .map(|executor| {
                 (
                     executor.air_name(),
@@ -428,7 +427,7 @@ where
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
             .executor
             .instructions
-            .par_iter()
+            .iter()
             .map(|instruction| {
                 // look up how many dummy‐cells this AIR produces:
                 let air_width = dummy_trace_by_air_name
