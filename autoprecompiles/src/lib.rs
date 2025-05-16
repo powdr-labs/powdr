@@ -524,10 +524,10 @@ pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBu
     r
 }
 
-// Check that the number of register memory bus interactions in the precompile is even.
-// The check is performed on the total number and per address.
+// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
+// Assumption: all register memory bus interactions feature a concrete address.
 pub fn check_precompile<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
-    let (total_count, count_per_addr) = machine
+    let count_per_addr = machine
         .bus_interactions
         .iter()
         .filter_map(|bus_int| bus_int.clone().try_into().ok())
@@ -540,12 +540,12 @@ pub fn check_precompile<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
                 )
             })
         })
-        .fold((0, BTreeMap::new()), |(count, mut map), addr| {
+        .fold(BTreeMap::new(), |mut map, addr| {
             *map.entry(addr).or_insert(0) += 1;
-            (count + 1, map)
+            map
         });
 
-    total_count % 2 == 0 && count_per_addr.values().all(|&v| v % 2 == 0)
+    count_per_addr.values().all(|&v| v % 2 == 0)
 }
 
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
