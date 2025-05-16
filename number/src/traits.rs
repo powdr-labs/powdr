@@ -32,7 +32,6 @@ pub trait LargeInt:
     + Sub<Output = Self>
     + fmt::Display
     + fmt::Debug
-    + Copy
     + Not<Output = Self>
     + Shl<usize, Output = Self>
     + Shr<usize, Output = Self>
@@ -40,6 +39,8 @@ pub trait LargeInt:
     + Zero
     + ConstZero
     + fmt::LowerHex
+    + Serialize
+    + DeserializeOwned
 {
     /// The largest value of this type, i.e. 2**NUM_BITS - 1
     const MAX: Self;
