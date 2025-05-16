@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::Hash;
 use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, Challenge};
+use powdr_ast::analyzed::{
+    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
+};
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -25,38 +28,42 @@ fn analyze_for_memory() {
     let file = std::fs::File::open("tests/keccak_apc_post_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
-
-    for constr in machine.constraints {
-        let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-        let constr = try_remove_is_valid(&constr).unwrap_or(&constr);
-        if let Some(candidate) = QuadraticEqualityCandidate::try_from_qse(constr) {
-            if let Some(limb_0) = constr
+    let mut zero_check_transformer = ZeroCheckTransformer::default();
+    let constraints = machine
+        .constraints
+        .iter()
+        .map(|constr| {
+            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
+            let constr = try_remove_is_valid(&constr).unwrap_or(&constr);
+            zero_check_transformer.transform(constr.clone())
+        })
+        .collect_vec();
+    for constr in &constraints {
+        if let Some(limb_0) = constr
+            .referenced_variables()
+            .find(|v| v.to_string().contains("mem_ptr_limbs__0"))
+        {
+            if let Some(limb_1) = constr
                 .referenced_variables()
-                .find(|v| v.to_string().contains("mem_ptr_limbs__0"))
+                .find(|v| v.to_string().contains("mem_ptr_limbs__1"))
             {
-                let candidate = candidate.normalized_for_var(limb_0);
-                if let Some(limb_1) = constr
-                    .referenced_variables()
-                    .find(|v| v.to_string().contains("mem_ptr_limbs__1"))
-                {
-                    // TODO here we need to solve for a QSE not for a variable
-                    println!("{candidate}");
-                } else {
-                    // TODO solve_for is only correct if it is already normalized for that var,
-                    // otherwise the offset is wrong
-                    if let Some(sol) = candidate.expr().try_solve_for(limb_0) {
-                        println!("{limb_0} = {sol} +? {}", candidate.offset());
-                    } else {
-                        println!("{}", candidate.normalized_for_var(limb_0));
-                    }
-                }
+                // TODO here we need to solve for a QSE not for a variable
+                println!("{constr}");
             } else {
-                println!("{candidate}");
+                if let Some(expr) = constr.try_solve_for(limb_0) {
+                    println!("{limb_0} = {expr}");
+                } else {
+                    println!("{constr}");
+                }
             }
         } else {
             println!("{constr}");
         }
     }
+    for (v, expr) in zero_check_transformer.zero_check_variables() {
+        println!("{v} = iszero({expr})");
+    }
+
     for bus in machine.bus_interactions {
         println!("{bus}");
     }
@@ -155,7 +162,7 @@ pub enum Variable {
     PublicReference(String),
     Challenge(Challenge),
     /// A range check variable
-    RangeCheck {
+    ZeroCheck {
         id: usize,
     },
 }
@@ -166,7 +173,7 @@ impl Display for Variable {
             Variable::Reference(r) => write!(f, "{r}"),
             Variable::PublicReference(r) => write!(f, "{r}"),
             Variable::Challenge(c) => write!(f, "{c}"),
-            Variable::RangeCheck { id } => write!(f, "range_check_{id}"),
+            Variable::ZeroCheck { id } => write!(f, "zero_check_{id}"),
         }
     }
 }
@@ -199,44 +206,57 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 }
 
 #[derive(Default)]
-struct RangeCheckTransformer<T: FieldElement> {
-    /// Range check variables.
-    range_checks: Vec<QuadraticSymbolicExpression<T, Variable>>,
+struct ZeroCheckTransformer<T: FieldElement> {
+    /// Boolean variables that are zero if the quadratic symbolic expression
+    /// is zero, and one otherwise.
+    /// Identified by their index in the vector.
+    zero_checks: Vec<QuadraticSymbolicExpression<T, Variable>>,
 }
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq> RangeCheckTransformer<T, V> {
+impl<T: FieldElement> ZeroCheckTransformer<T> {
     pub fn transform(
         &mut self,
-        constr: QuadraticSymbolicExpression<T, V>,
-    ) -> QuadraticSymbolicExpression<T, V> {
+        constr: QuadraticSymbolicExpression<T, Variable>,
+    ) -> QuadraticSymbolicExpression<T, Variable> {
         self.try_transform(&constr).unwrap_or(constr)
     }
 
     fn try_transform(
         &mut self,
-        constr: &QuadraticSymbolicExpression<T, V>,
-    ) -> Option<QuadraticSymbolicExpression<T, V>> {
+        constr: &QuadraticSymbolicExpression<T, Variable>,
+    ) -> Option<QuadraticSymbolicExpression<T, Variable>> {
         let (left, right) = constr.try_as_single_product()?;
         // `constr = 0` is equivalent to `left * right = 0`
         let offset = left - right;
+        // We only do the transformation if `offset` is known, because
+        // otherwise the constraint stays quadratic.
+        if !offset.try_to_known().is_some() {
+            return None;
+        }
         // `offset + right = left`
         // `constr = 0` is equivalent to `right * (right + offset) = 0`
 
-        // If `RC(right)` and `RC(right + offset)` is disjoint, the choice is
-        // exclusive. We introduce a boolean variable which is 1 if and only if
-        // `right` is
-        let variables = right
-            .referenced_unknown_variables()
-            .cloned()
-            .collect::<HashSet<_>>();
-        Some(Self {
-            expr: right.clone(),
-            offset: offset.into(),
-            variables,
-        })
+        self.zero_checks.push(right + &offset);
+        let z = Variable::ZeroCheck {
+            id: self.zero_checks.len() - 1,
+        };
+        // z == if (right + offset) == 0 { 1 } else { 0 }
+
+        // We return `right + z * offset == 0`, which is equivalent to the original constraint.
+
+        Some(right + &(QuadraticSymbolicExpression::from_unknown_variable(z) * offset))
     }
 
-    pub fn range_check_variables(self) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
-        self.range_checks
+    pub fn zero_check_variables(
+        self,
+    ) -> BTreeMap<Variable, QuadraticSymbolicExpression<T, Variable>> {
+        self.zero_checks
+            .into_iter()
+            .enumerate()
+            .map(|(id, expr)| {
+                let z = Variable::ZeroCheck { id };
+                (z.clone(), expr)
+            })
+            .collect()
     }
 }
 
@@ -269,3 +289,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> RangeCheckTransformer<T, V> {
 // and transform to
 // limb - data + 65336 - X * 65536 = 0
 //
+
+// limb = 0..ffff
+// data = 0..ffff
+// expr = limbd - data + 65336
+// expr * (expr - 65536) = 0
+// RC(expr) =
