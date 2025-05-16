@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::hash::Hash;
 use std::{collections::HashSet, fmt::Display};
@@ -39,28 +39,31 @@ fn analyze_for_memory() {
             zero_check_transformer.transform(constr.clone())
         })
         .collect_vec();
-    for constr in &constraints {
-        if let Some(limb_0) = constr
-            .referenced_variables()
-            .find(|v| v.to_string().contains("mem_ptr_limbs__0"))
-        {
-            if let Some(limb_1) = constr
+
+    let memory_addresses = constraints
+        .iter()
+        .filter_map(|constr| {
+            let limb_0 = constr
                 .referenced_variables()
-                .find(|v| v.to_string().contains("mem_ptr_limbs__1"))
-            {
-                // TODO here we need to solve for a QSE not for a variable
-                println!("{constr}");
-            } else {
-                if let Some(expr) = constr.try_solve_for(limb_0) {
-                    println!("{limb_0} = {expr}");
-                } else {
-                    println!("{constr}");
-                }
-            }
-        } else {
-            println!("{constr}");
-        }
-    }
+                .find(|v| v.to_string().contains("mem_ptr_limbs__0"))?;
+            let limb_1 = constr
+                .referenced_variables()
+                .find(|v| v.to_string().contains("mem_ptr_limbs__1"))?;
+            let mem_addr = QuadraticSymbolicExpression::from_unknown_variable(limb_0.clone())
+                + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
+                    * SymbolicExpression::from(BabyBearField::from(65536));
+            let expr = constr.try_solve_for_expr(&mem_addr)?;
+            Some(((limb_0, limb_1), expr))
+        })
+        .collect::<BTreeMap<_, _>>();
+    memory_addresses
+        .iter()
+        .tuple_combinations()
+        .map(|((v1, a1), (v2, a2))| {
+            let difference = a1 - a2;
+            println!("difference = {difference}");
+        })
+        .collect_vec();
     for (v, expr) in zero_check_transformer.zero_check_variables() {
         println!("{v} = iszero({expr})");
     }
