@@ -366,7 +366,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     /// to `expr = result` and returns `result`.
     ///
     /// Returns `None` if it cannot solve (this happens for example if self is quadratic).
-    /// Panics
+    /// Panics if `expr` is quadratic.
     pub fn try_solve_for_expr(
         &self,
         expr: &QuadraticSymbolicExpression<T, V>,
@@ -375,7 +375,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         if self.is_quadratic() {
             return None;
         }
-        let mut result = self.clone();
+
         // Take some variable to normalize.
         let var = expr.referenced_unknown_variables().next()?;
         let coefficient = expr.coefficient_of_variable(var).unwrap();
@@ -385,7 +385,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             return None;
         }
 
-        let result = expr - &(self.clone() * coefficient.field_div(&self_coefficient));
+        let result = expr - &(self.clone() * coefficient.field_div(self_coefficient));
 
         // Check that the operations removed all variables in `expr` from `self`.
         if !expr
@@ -1472,6 +1472,21 @@ Z: [10, 4294967050] & 0xffffffff;
         let rc = RangeConstraint::from_mask(0x1u64);
         let range_constraints = HashMap::from([("a", rc.clone())]);
         assert!(expr.solve(&range_constraints).is_err());
+    }
+
+    #[test]
+    fn solve_for() {
+        let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
+        assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
+        assert_eq!(
+            expr.try_solve_for(&"x").unwrap().to_string(),
+            "-w + -3 * y + -5"
+        );
+        assert_eq!(
+            expr.try_solve_for(&"y").unwrap().to_string(),
+            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+        );
+        assert!(expr.try_solve_for(&"t").is_none());
     }
 
     #[test]
