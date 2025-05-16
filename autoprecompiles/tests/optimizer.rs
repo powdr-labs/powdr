@@ -152,6 +152,10 @@ pub enum Variable {
     Reference(AlgebraicReference),
     PublicReference(String),
     Challenge(Challenge),
+    /// A range check variable
+    RangeCheck {
+        id: usize,
+    },
 }
 
 impl Display for Variable {
@@ -160,6 +164,7 @@ impl Display for Variable {
             Variable::Reference(r) => write!(f, "{r}"),
             Variable::PublicReference(r) => write!(f, "{r}"),
             Variable::Challenge(c) => write!(f, "{c}"),
+            Variable::RangeCheck { id } => write!(f, "range_check_{id}"),
         }
     }
 }
