@@ -10,7 +10,6 @@ use powdr_constraint_solver::{
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::{BabyBearField, FieldElement};
-use powdr_pilopt::qse_opt::algebraic_to_quadratic_symbolic_expression;
 
 #[test]
 fn load_machine_cbor() {
@@ -172,6 +171,75 @@ impl Display for Variable {
     }
 }
 
+/// Turns an algebraic expression into a quadratic symbolic expression,
+/// assuming all [`AlgebraicReference`]s, public references and challenges
+/// are unknown variables.
+pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+) -> QuadraticSymbolicExpression<T, Variable> {
+    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
+
+    struct TerminalConverter;
+
+    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
+        for TerminalConverter
+    {
+        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
+            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
+        }
+        fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
+            Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
+        }
+        fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
+            Qse::from_unknown_variable(Variable::Challenge(*challenge))
+        }
+    }
+
+    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
+}
+
+#[derive(Default)]
+struct RangeCheckTransformer<T: FieldElement> {
+    /// Range check variables.
+    range_checks: Vec<QuadraticSymbolicExpression<T, Variable>>,
+}
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq> RangeCheckTransformer<T, V> {
+    pub fn transform(
+        &mut self,
+        constr: QuadraticSymbolicExpression<T, V>,
+    ) -> QuadraticSymbolicExpression<T, V> {
+        self.try_transform(&constr).unwrap_or(constr)
+    }
+
+    fn try_transform(
+        &mut self,
+        constr: &QuadraticSymbolicExpression<T, V>,
+    ) -> Option<QuadraticSymbolicExpression<T, V>> {
+        let (left, right) = constr.try_as_single_product()?;
+        // `constr = 0` is equivalent to `left * right = 0`
+        let offset = left - right;
+        // `offset + right = left`
+        // `constr = 0` is equivalent to `right * (right + offset) = 0`
+
+        // If `RC(right)` and `RC(right + offset)` is disjoint, the choice is
+        // exclusive. We introduce a boolean variable which is 1 if and only if
+        // `right` is
+        let variables = right
+            .referenced_unknown_variables()
+            .cloned()
+            .collect::<HashSet<_>>();
+        Some(Self {
+            expr: right.clone(),
+            offset: offset.into(),
+            variables,
+        })
+    }
+
+    pub fn range_check_variables(self) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
+        self.range_checks
+    }
+}
+
 // ok, and this horrible big constraint (is_valid) * ((-943718400 * mem_ptr_limbs__0_1 + -7864320 * rs1_data__3_1 + 30720 * mem_ptr_limbs__1_1 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -503316529) * (-943718400 * mem_ptr_limbs__0_1 + -7864320 * rs1_data__3_1 + 30720 * mem_ptr_limbs__1_1 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -503316530)) essentially says mem_ptr_limbs__0_1 + mem_ptr_limbs__1_1 * 65536 = some rs1_data thing modulo 2**32
 // ok, I think I'm slowly catching up again
 // and what we want to know in this analysis in the end is the differences in these mem pointers
@@ -192,3 +260,12 @@ impl Display for Variable {
 // mem_ptr_limbs__0_109 + -16777216 * rs1_data__3_109 + 65536 * mem_ptr_limbs__1_109 + -rs1_data__0_661 + -256 * rs1_data__1_661 + -65536 * rs1_data__2_661 + 268435354 +? -268435454
 
 // TODO introduce new variable type "range check(expr)".
+
+// mem_ptr_limbs__0_181 = rs1_data__0_661 + 256 * rs1_data__1_661 + -65336 +? -65536
+// limb = data - 65336 +? 65536
+// <=>
+// (limb - data + 65336) * (limb - data + 65336 - 65536) = 0
+// We introduce boolean X which is 1 if and only if `limb - data + 65336 = 0` TODO no range?
+// and transform to
+// limb - data + 65336 - X * 65536 = 0
+//
