@@ -4,7 +4,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystem},
+    constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
@@ -54,13 +54,8 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     /// Returns all expressions that appear in the constraint system, i.e. all algebraic
     /// constraints and all expressions in bus interactions.
     pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
-        self.constraint_system.iter()
+        self.constraint_system.expressions()
     }
-}
-
-pub enum ConstraintRef<'a, T: FieldElement, V> {
-    AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
-    BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
@@ -150,7 +145,7 @@ fn variable_occurrences<T: FieldElement, V: Hash + Eq + Clone + Ord>(
         .enumerate()
         .flat_map(|(i, bus_interaction)| {
             bus_interaction
-                .iter()
+                .fields()
                 .flat_map(|c| c.referenced_unknown_variables())
                 .unique()
                 .map(move |v| (v.clone(), ConstraintSystemItem::BusInteraction(i)))
@@ -172,7 +167,7 @@ fn substitute_by_known_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         }
         ConstraintSystemItem::BusInteraction(i) => {
             constraint_system.bus_interactions[i]
-                .iter_mut()
+                .fields_mut()
                 .for_each(|expr| expr.substitute_by_known(variable, substitution));
         }
     }
@@ -191,7 +186,7 @@ fn substitute_by_unknown_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         }
         ConstraintSystemItem::BusInteraction(i) => {
             constraint_system.bus_interactions[i]
-                .iter_mut()
+                .fields_mut()
                 .for_each(|expr| expr.substitute_by_unknown(variable, substitution));
         }
     }
