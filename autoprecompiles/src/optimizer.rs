@@ -42,13 +42,6 @@ pub fn optimize<P: FieldElement>(
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After solver-based optimization", &constraint_system);
 
-    let constraint_system =
-        remove_trivial_bus_interactions(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log(
-        "After removing trivial bus interactions",
-        &constraint_system,
-    );
-
     let constraint_system = remove_disconnected_columns(constraint_system, bus_interaction_handler);
     stats_logger.log("After removing disconnected columns", &constraint_system);
 
@@ -181,60 +174,6 @@ fn remove_disconnected_columns<T: FieldElement>(
     }
 }
 
-fn remove_trivial_bus_interactions<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl ConcreteBusInteractionHandler<T> + 'static,
-) -> ConstraintSystem<T, Variable> {
-    let ConstraintSystem {
-        algebraic_constraints,
-        bus_interactions,
-    } = constraint_system;
-
-    ConstraintSystem {
-        algebraic_constraints,
-        bus_interactions: bus_interactions
-            .into_iter()
-            .filter_map(|bus_interaction| {
-                if let Some(concrete_bus_interaction) =
-                    try_to_concrete_bus_interaction(&bus_interaction)
-                {
-                    // If all values are concrete, we might be able to remove the bus interaction
-                    match bus_interaction_handler
-                        .handle_concrete_bus_interaction(concrete_bus_interaction)
-                    {
-                        ConcreteBusInteractionResult::AlwaysSatisfied => None,
-                        ConcreteBusInteractionResult::HasSideEffects => Some(bus_interaction), // Here we still keep the original bus interaction
-                        ConcreteBusInteractionResult::ViolatesBusRules => {
-                            panic!("Bus interaction {bus_interaction:?} violates bus rules");
-                        }
-                    }
-                } else {
-                    // If any value is symbolic, we keep the bus interaction
-                    Some(bus_interaction)
-                }
-            })
-            .collect(),
-    }
-}
-
-fn try_to_concrete_bus_interaction<T: FieldElement>(
-    bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, Variable>>,
-) -> Option<BusInteraction<T>> {
-    let BusInteraction {
-        bus_id,
-        multiplicity,
-        payload,
-    } = bus_interaction;
-    Some(BusInteraction {
-        bus_id: bus_id.try_to_number()?,
-        multiplicity: multiplicity.try_to_number()?,
-        payload: payload
-            .iter()
-            .map(|v| v.try_to_number())
-            .collect::<Option<Vec<_>>>()?,
-    })
-}
-
 fn remove_trivial_constraints<P: FieldElement>(
     mut symbolic_machine: ConstraintSystem<P, Variable>,
 ) -> ConstraintSystem<P, Variable> {
@@ -360,10 +299,5 @@ pub enum ConcreteBusInteractionResult {
 }
 
 pub trait ConcreteBusInteractionHandler<T: FieldElement> {
-    fn handle_concrete_bus_interaction(
-        &self,
-        bus_interaction: BusInteraction<T>,
-    ) -> ConcreteBusInteractionResult;
-
     fn is_stateful(&self, bus_id: T) -> bool;
 }

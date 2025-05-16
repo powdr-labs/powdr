@@ -1,9 +1,7 @@
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
 use powdr::{FieldElement, LargeInt};
-use powdr_autoprecompiles::optimizer::{
-    ConcreteBusInteractionHandler, ConcreteBusInteractionResult,
-};
+use powdr_autoprecompiles::optimizer::ConcreteBusInteractionHandler;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,
@@ -100,49 +98,6 @@ impl<T: FieldElement> ConcreteBusInteractionHandler<T> for OpenVmBusInteractionH
             BusType::VariableRangeChecker => false,
             BusType::BitwiseLookup => false,
             BusType::TupleRangeChecker => false,
-        }
-    }
-
-    fn handle_concrete_bus_interaction(
-        &self,
-        bus_interaction: BusInteraction<T>,
-    ) -> ConcreteBusInteractionResult {
-        // If multiplicity is zero, can remove without inspecting
-        if bus_interaction.multiplicity.is_zero() {
-            return ConcreteBusInteractionResult::AlwaysSatisfied;
-        }
-
-        match bus_type(bus_interaction.bus_id.to_integer().try_into_u64().unwrap()) {
-            BusType::ExecutionBridge => {
-                // Execution bridge could have any value.
-                ConcreteBusInteractionResult::HasSideEffects
-            }
-            BusType::PcLookup => {
-                // For auto-precompiles, the PC will be unknown, which could have any value.
-                unreachable!("PC can't be known at compile time, so shouldn't become a bus interaction with concrete values!")
-            }
-            BusType::Memory => {
-                // Memory read/write will always have side effects
-                // so we can't remove the bus interaction without changing the statement being proven.
-                ConcreteBusInteractionResult::HasSideEffects
-            }
-            BusType::BitwiseLookup | BusType::VariableRangeChecker | BusType::TupleRangeChecker => {
-                // Fixed lookups can always be satisfied unless the bus rules are violated.
-                // This can be checked via BusInteractionHandler::handle_bus_interaction_checked.
-                let range_constraints = BusInteraction::from_iter(
-                    bus_interaction
-                        .iter()
-                        .map(|v| RangeConstraint::from_value(*v)),
-                );
-                if self
-                    .handle_bus_interaction_checked(range_constraints)
-                    .is_err()
-                {
-                    ConcreteBusInteractionResult::ViolatesBusRules
-                } else {
-                    ConcreteBusInteractionResult::AlwaysSatisfied
-                }
-            }
         }
     }
 }
