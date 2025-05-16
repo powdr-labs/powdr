@@ -23,7 +23,7 @@ fn load_machine_cbor() {
 
 #[test]
 fn analyze_for_memory() {
-    let file = std::fs::File::open("tests/machine_post_opt.cbor").unwrap();
+    let file = std::fs::File::open("tests/keccak_apc_post_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
