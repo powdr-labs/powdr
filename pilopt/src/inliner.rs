@@ -120,10 +120,13 @@ fn qse_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Hash +
         .max()
         .unwrap_or(0);
 
-    let linear_deg = linear
-        .map(|(v, _)| if v == var { replacement_deg } else { 1 })
-        .max()
-        .unwrap_or(0);
+    let linear_deg = if linear.contains_key(var) {
+        replacement_deg
+    } else if linear.is_empty() {
+        0
+    } else {
+        1
+    };
 
     quad_deg.max(linear_deg)
 }
@@ -140,11 +143,7 @@ fn qse_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         .max()
         .unwrap_or(0);
 
-    let linear_deg = if linear.peekable().peek().is_some() {
-        1
-    } else {
-        0
-    };
+    let linear_deg = if linear.is_empty() { 0 } else { 1 };
 
     quad_deg.max(linear_deg)
 }
