@@ -30,7 +30,7 @@ fn analyze_for_memory() {
     for constr in machine.constraints {
         let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
         let constr = try_remove_is_valid(&constr).unwrap_or(&constr);
-        if let Some(candidate) = QuadraticEqualityCandidate::try_from_qse(&constr) {
+        if let Some(candidate) = QuadraticEqualityCandidate::try_from_qse(constr) {
             if let Some(limb_0) = constr
                 .referenced_variables()
                 .find(|v| v.to_string().contains("mem_ptr_limbs__0"))
