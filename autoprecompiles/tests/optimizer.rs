@@ -1,7 +1,9 @@
+use std::fmt;
 use std::hash::Hash;
 use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
+use powdr_ast::analyzed::{AlgebraicReference, Challenge};
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -145,6 +147,23 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, 
     }
 }
 
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
+pub enum Variable {
+    Reference(AlgebraicReference),
+    PublicReference(String),
+    Challenge(Challenge),
+}
+
+impl Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable::Reference(r) => write!(f, "{r}"),
+            Variable::PublicReference(r) => write!(f, "{r}"),
+            Variable::Challenge(c) => write!(f, "{c}"),
+        }
+    }
+}
+
 // ok, and this horrible big constraint (is_valid) * ((-943718400 * mem_ptr_limbs__0_1 + -7864320 * rs1_data__3_1 + 30720 * mem_ptr_limbs__1_1 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -503316529) * (-943718400 * mem_ptr_limbs__0_1 + -7864320 * rs1_data__3_1 + 30720 * mem_ptr_limbs__1_1 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -503316530)) essentially says mem_ptr_limbs__0_1 + mem_ptr_limbs__1_1 * 65536 = some rs1_data thing modulo 2**32
 // ok, I think I'm slowly catching up again
 // and what we want to know in this analysis in the end is the differences in these mem pointers
@@ -163,3 +182,5 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, 
 // TODO problem that rs1_data__3_109 is always different.
 
 // mem_ptr_limbs__0_109 + -16777216 * rs1_data__3_109 + 65536 * mem_ptr_limbs__1_109 + -rs1_data__0_661 + -256 * rs1_data__1_661 + -65536 * rs1_data__2_661 + 268435354 +? -268435454
+
+// TODO introduce new variable type "range check(expr)".
