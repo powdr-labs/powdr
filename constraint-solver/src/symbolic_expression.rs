@@ -206,7 +206,7 @@ impl<T: FieldElement, V> From<T> for SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Add for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -220,6 +220,12 @@ impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
             (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) => {
                 SymbolicExpression::Concrete(*a + *b)
             }
+            (SymbolicExpression::UnaryOperation(UnaryOperator::Neg, negated, _), other)
+            | (other, SymbolicExpression::UnaryOperation(UnaryOperator::Neg, negated, _))
+                if negated.as_ref() == other =>
+            {
+                T::from(0).into()
+            }
             _ => SymbolicExpression::BinaryOperation(
                 Arc::new(self.clone()),
                 BinaryOperator::Add,
@@ -230,20 +236,20 @@ impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone> Add for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Add for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn add(self, rhs: Self) -> Self::Output {
         &self + &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone> AddAssign for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> AddAssign for SymbolicExpression<T, V> {
     fn add_assign(&mut self, rhs: Self) {
         *self = self.clone() + rhs;
     }
 }
 
-impl<T: FieldElement, V: Clone> Sub for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Sub for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -257,6 +263,7 @@ impl<T: FieldElement, V: Clone> Sub for &SymbolicExpression<T, V> {
             (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) => {
                 SymbolicExpression::Concrete(*a - *b)
             }
+            (a, b) if a == b => T::from(0).into(),
             _ => SymbolicExpression::BinaryOperation(
                 Arc::new(self.clone()),
                 BinaryOperator::Sub,
@@ -268,14 +275,14 @@ impl<T: FieldElement, V: Clone> Sub for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone> Sub for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Sub for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn sub(self, rhs: Self) -> Self::Output {
         &self - &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Neg for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn neg(self) -> Self::Output {
@@ -324,14 +331,14 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone> Neg for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Neg for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn neg(self) -> Self::Output {
         -&self
     }
 }
 
-impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Mul for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -359,20 +366,20 @@ impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone> Mul for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> Mul for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn mul(self, rhs: Self) -> Self {
         &self * &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone> MulAssign for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> MulAssign for SymbolicExpression<T, V> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs;
     }
 }
 
-impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + PartialEq> SymbolicExpression<T, V> {
     /// Field element division.
     /// If you use this, you must ensure that the divisor is not zero.
     pub fn field_div(&self, rhs: &Self) -> Self {
