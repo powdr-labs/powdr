@@ -4,6 +4,7 @@ use std::{cmp, ops};
 use num_traits::Zero;
 
 use powdr_number::{log2_exact, FieldElement, LargeInt};
+use serde::{Deserialize, Serialize};
 
 /// Constraint on the values of a variable X.
 /// It does not have to be an interval.
@@ -12,7 +13,8 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// and bit masks. The actual constraint is the conjunction of the two.
 ///
 /// Note that the same constraint can have multiple representations.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
+#[serde(bound(deserialize = ""))]
 pub struct RangeConstraint<T: FieldElement> {
     /// Bit-mask.
     mask: T::Integer,
