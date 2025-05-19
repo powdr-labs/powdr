@@ -168,6 +168,7 @@ impl<T> LookupCell<'_, T> {
 /// All known implementations of [Machine].
 /// We cannot use Box<dyn Machine<..>> because the trait is not object-safe,
 /// since it has generic methods.
+#[allow(clippy::large_enum_variant)]
 pub enum KnownMachine<'a, T: FieldElement> {
     SecondStageMachine(SecondStageMachine<'a, T>),
     SortedWitnesses(SortedWitnesses<'a, T>),

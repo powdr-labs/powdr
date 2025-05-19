@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
@@ -168,6 +168,27 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         self.linear.get(var)
     }
 
+    /// Returns the range constraint of the full expression.
+    pub fn range_constraint(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> RangeConstraint<T> {
+        self.quadratic
+            .iter()
+            .map(|(l, r)| {
+                l.range_constraint(range_constraints)
+                    .combine_product(&r.range_constraint(range_constraints))
+            })
+            .chain(self.linear.iter().map(|(var, coeff)| {
+                range_constraints
+                    .get(var)
+                    .combine_product(&coeff.range_constraint())
+            }))
+            .chain(std::iter::once(self.constant.range_constraint()))
+            .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+            .unwrap_or_else(|| RangeConstraint::from_value(0.into()))
+    }
+
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
@@ -323,6 +344,67 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         } else {
             self.solve_affine(range_constraints)?
         })
+    }
+
+    /// Solves the constraint for `variable`. This is only possible if
+    /// `self` is affine and `variable` has a coefficient which is known to be not zero.
+    ///
+    /// Returns the resulting solved quadratic symbolic expression.
+    pub fn try_solve_for(&self, variable: &V) -> Option<QuadraticSymbolicExpression<T, V>> {
+        if self.is_quadratic() {
+            return None;
+        }
+        let mut result = self.clone();
+        let coefficient = result.linear.remove(variable)?;
+        if !coefficient.is_known_nonzero() {
+            return None;
+        }
+        Some(result * (SymbolicExpression::from(-T::from(1)).field_div(&coefficient)))
+    }
+
+    /// Algebraically transforms the constraint such that `self = 0` is equivalent
+    /// to `expr = result` and returns `result`.
+    ///
+    /// Returns `None` if it cannot solve (this happens for example if self is quadratic).
+    /// Panics if `expr` is quadratic.
+    pub fn try_solve_for_expr(
+        &self,
+        expr: &QuadraticSymbolicExpression<T, V>,
+    ) -> Option<QuadraticSymbolicExpression<T, V>> {
+        assert!(expr.is_affine());
+        if self.is_quadratic() {
+            return None;
+        }
+
+        // Find a normalization factor by iterating over the variables.
+        let normalization_factor = expr
+            .referenced_unknown_variables()
+            .find_map(|var| {
+                let coeff = self.coefficient_of_variable(var)?;
+                // We can only divide if we know the coefficient is non-zero.
+                if coeff.is_known_nonzero() {
+                    Some(expr.coefficient_of_variable(var).unwrap().field_div(coeff))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(T::from(1).into());
+        let result = expr - &(self.clone() * normalization_factor);
+
+        // Check that the operations removed all variables in `expr` from `self`.
+        if !expr
+            .referenced_unknown_variables()
+            .collect::<HashSet<_>>()
+            .is_disjoint(
+                &result
+                    .referenced_unknown_variables()
+                    .collect::<HashSet<_>>(),
+            )
+        {
+            // The variables did not fully cancel out
+            return None;
+        }
+        Some(result)
     }
 
     fn solve_affine(
@@ -1394,5 +1476,76 @@ Z: [10, 4294967050] & 0xffffffff;
         let rc = RangeConstraint::from_mask(0x1u64);
         let range_constraints = HashMap::from([("a", rc.clone())]);
         assert!(expr.solve(&range_constraints).is_err());
+    }
+
+    #[test]
+    fn solve_for() {
+        let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
+        assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
+        assert_eq!(
+            expr.try_solve_for(&"x").unwrap().to_string(),
+            "-w + -3 * y + -5"
+        );
+        assert_eq!(
+            expr.try_solve_for(&"y").unwrap().to_string(),
+            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+        );
+        assert!(expr.try_solve_for(&"t").is_none());
+    }
+
+    #[test]
+    fn solve_for_expr() {
+        let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
+        assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
+        assert_eq!(
+            expr.try_solve_for_expr(&var("x")).unwrap().to_string(),
+            "-w + -3 * y + -5"
+        );
+        assert_eq!(
+            expr.try_solve_for_expr(&var("y")).unwrap().to_string(),
+            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+        );
+        assert_eq!(
+            expr.try_solve_for_expr(&-(constant(3) * var("y")))
+                .unwrap()
+                .to_string(),
+            "w + x + 5"
+        );
+        assert_eq!(
+            expr.try_solve_for_expr(&-(constant(3) * var("y") + constant(2)))
+                .unwrap()
+                .to_string(),
+            "w + x + 3"
+        );
+        assert_eq!(
+            expr.try_solve_for_expr(&(var("x") + constant(3) * var("y") + constant(2)))
+                .unwrap()
+                .to_string(),
+            "-w + -3"
+        );
+        // We cannot solve these because the constraint does not contain a linear multiple
+        // of the expression.
+        assert!(expr
+            .try_solve_for_expr(&(var("x") + constant(2) * var("y")))
+            .is_none());
+        assert!(expr.try_solve_for_expr(&(var("x") + var("y"))).is_none());
+        assert!(expr
+            .try_solve_for_expr(&(constant(2) * var("x") + var("y")))
+            .is_none());
+    }
+
+    #[test]
+    fn solve_for_expr_normalization() {
+        // Test normalization
+        let t = SymbolicExpression::from_symbol("t", Default::default());
+        let r = SymbolicExpression::from_symbol("r", Default::default());
+        let expr = var("x") * r.clone() + var("y") * t;
+        assert_eq!(expr.to_string(), "r * x + t * y");
+        assert_eq!(
+            expr.try_solve_for_expr(&(var("x") * r))
+                .unwrap()
+                .to_string(),
+            "-t * y"
+        );
     }
 }

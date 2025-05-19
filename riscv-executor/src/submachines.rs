@@ -264,7 +264,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
     fn push_row(&mut self) {
         self.selectors.values_mut().for_each(|v| v.push(0.into()));
         self.values
-            .extend(std::iter::repeat(F::from(0)).take(self.cols.len()));
+            .extend(std::iter::repeat_n(F::from(0), self.cols.len()));
     }
 
     /// Push a dummy block to the trace.

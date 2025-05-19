@@ -49,10 +49,11 @@ fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {
             .strip_suffix(&format!(".{kind}"))
         {
             println!("cargo:rerun-if-changed={full_dir}/{relative_name}");
-            let ignore = SLOW_LIST
-                .contains(&test_name)
-                .then_some("#[ignore = \"Too slow\"]")
-                .unwrap_or_default();
+            let ignore = if SLOW_LIST.contains(&test_name) {
+                "#[ignore = \"Too slow\"]"
+            } else {
+                Default::default()
+            };
             write!(
                 test_file,
                 r#"

@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(
-    start,
     alloc_error_handler,
     maybe_uninit_write_slice,
     round_char_boundary,
