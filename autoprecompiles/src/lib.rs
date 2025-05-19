@@ -307,10 +307,7 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
-        bus_interaction_handler: impl BusInteractionHandler<T>
-            + IsBusStateful<T>
-            + 'static
-            + Clone,
+        bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
         degree_bound: usize,
         opcode: u32,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
