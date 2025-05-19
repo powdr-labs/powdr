@@ -533,8 +533,7 @@ where
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = <Val<SC>>::ONE;
 
-                let evaluator =
-                    RowEvaluator::new(row_slice, Some(&self.air.column_index_by_poly_id));
+                let evaluator = RowEvaluator::new(row_slice, None);
 
                 // replay the side effects of this row on the main periphery
                 for bus_interaction in self.air.machine.bus_interactions.iter() {
@@ -663,10 +662,8 @@ pub struct SymbolicMachine<F> {
 
 impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicMachine<F>> for SymbolicMachine<F> {
     fn from(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
-        let columns = machine.unique_columns().collect::<Vec<_>>();
-
-        let id_to_index = columns
-            .iter()
+        let id_to_index = machine
+            .unique_columns()
             .map(|c| c.id.id)
             .enumerate()
             .map(|(index, id)| (id, index))
