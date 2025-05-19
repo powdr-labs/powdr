@@ -254,7 +254,7 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteractio
                 let ty = bus_interaction.args[0].clone().into();
                 let op = bus_interaction.kind.clone().into();
                 let addr = bus_interaction.args[1].clone();
-                let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
+                let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
                 MemoryBusInteraction {
                     ty,
                     op,
