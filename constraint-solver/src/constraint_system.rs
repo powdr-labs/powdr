@@ -17,19 +17,36 @@ pub struct ConstraintSystem<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
-    pub fn iter(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()
-                .chain(self.bus_interactions.iter().flat_map(|b| b.iter())),
+                .map(ConstraintRef::AlgebraicConstraint)
+                .chain(
+                    self.bus_interactions
+                        .iter()
+                        .map(ConstraintRef::BusInteraction),
+                ),
         )
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> {
+    pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         Box::new(
             self.algebraic_constraints
-                .iter_mut()
-                .chain(self.bus_interactions.iter_mut().flat_map(|b| b.iter_mut())),
+                .iter()
+                .chain(self.bus_interactions.iter().flat_map(|b| b.fields())),
+        )
+    }
+
+    pub fn expressions_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> {
+        Box::new(
+            self.algebraic_constraints.iter_mut().chain(
+                self.bus_interactions
+                    .iter_mut()
+                    .flat_map(|b| b.fields_mut()),
+            ),
         )
     }
 }
@@ -47,7 +64,7 @@ pub struct BusInteraction<V> {
 }
 
 impl<V> BusInteraction<V> {
-    pub fn iter(&self) -> impl Iterator<Item = &V> {
+    pub fn fields(&self) -> impl Iterator<Item = &V> {
         Box::new(
             [&self.bus_id, &self.multiplicity]
                 .into_iter()
@@ -55,7 +72,7 @@ impl<V> BusInteraction<V> {
         )
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+    pub fn fields_mut(&mut self) -> impl Iterator<Item = &mut V> {
         Box::new(
             [&mut self.bus_id, &mut self.multiplicity]
                 .into_iter()
@@ -89,7 +106,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
     ) -> Option<BusInteraction<RangeConstraint<T>>> {
         // TODO: Handle bus interactions with complex expressions.
         Some(BusInteraction::from_iter(
-            self.iter()
+            self.fields()
                 .map(|expr| expr_to_range_constraint(expr, range_constraints))
                 .collect::<Option<Vec<_>>>()?,
         ))
@@ -110,8 +127,8 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
         Ok(self
-            .iter()
-            .zip_eq(range_constraints.iter())
+            .fields()
+            .zip_eq(range_constraints.fields())
             .filter_map(|(expr, rc)| {
                 if let Some(var) = expr.try_to_simple_unknown() {
                     return Some(Effect::RangeConstraint(var, rc.clone()));
@@ -123,7 +140,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
 
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        Box::new(self.iter().flat_map(|expr| expr.referenced_variables()))
+        Box::new(self.fields().flat_map(|expr| expr.referenced_variables()))
     }
 }
 
@@ -159,7 +176,10 @@ pub trait BusInteractionHandler<T: FieldElement> {
 
         // Intersect the old and new range constraints. If they don't overlap,
         // there is a contradiction.
-        for (previous_rc, new_rc) in previous_constraints.iter().zip_eq(new_constraints.iter()) {
+        for (previous_rc, new_rc) in previous_constraints
+            .fields()
+            .zip_eq(new_constraints.fields())
+        {
             if previous_rc.is_disjoint(new_rc) {
                 return Err(ViolatesBusRules {});
             }
@@ -194,5 +214,21 @@ fn expr_to_range_constraint<T: FieldElement, V: Clone + Hash + Ord + Eq>(
         Some(range_constraints.get(&v))
     } else {
         return None;
+    }
+}
+
+pub enum ConstraintRef<'a, T: FieldElement, V> {
+    AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
+    BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
+}
+
+impl<'a, T: FieldElement, V: Ord + Clone + Hash> ConstraintRef<'a, T, V> {
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        match self {
+            ConstraintRef::AlgebraicConstraint(expr) => Box::new(expr.referenced_variables()),
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                Box::new(bus_interaction.referenced_variables())
+            }
+        }
     }
 }
