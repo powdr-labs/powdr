@@ -23,7 +23,7 @@ pub fn replace_constrained_witness_columns<
     let mut deleted_constraints: HashSet<usize> = HashSet::new();
 
     let (mut inlinable_cache, var_to_constraints) = {
-        let constraint_indices: Vec<_> = constraint_system.iter().enumerate().collect();
+        let constraint_indices: Vec<_> = constraint_system.expressions().enumerate().collect();
 
         let results: Vec<_> = constraint_indices
             .into_par_iter()
@@ -36,7 +36,7 @@ pub fn replace_constrained_witness_columns<
                     })
                     .collect::<Vec<_>>();
 
-                let vars: HashSet<V> = constraint.referenced_unknown_variables().cloned().collect();
+                let vars: HashSet<V> = constraint.referenced_variables().cloned().collect();
 
                 (idx, inlinables, vars)
             })
@@ -196,7 +196,7 @@ fn try_apply_disjoint_substitutions<
     let inlinable_cache_mutex = Mutex::new(&mut *inlinable_cache);
 
     constraint_system
-        .iter()
+        .expressions()
         .enumerate()
         .filter(|(i, _)| affected_constraints.contains(i) && !deleted_constraints.contains(i))
         .collect::<Vec<_>>()
@@ -254,7 +254,7 @@ fn try_apply_substitution<
     }
 
     let (idx, var, expr) = selected.unwrap();
-    for constraint in constraint_system.iter_mut() {
+    for constraint in constraint_system.expressions_mut() {
         constraint.substitute_by_unknown(&var, &expr);
     }
     deleted_constraints.insert(idx);
@@ -265,7 +265,7 @@ fn try_apply_substitution<
         .expect("Variable selected for substitution not found in var_to_constraints map");
 
     constraint_system
-        .iter()
+        .expressions()
         .enumerate()
         .filter(|(i, _)| affected_constraints.contains(i) && !deleted_constraints.contains(i))
         .collect::<Vec<_>>()
@@ -552,9 +552,6 @@ mod test {
         };
 
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
-        for constraint in constraint_system.iter() {
-            println!("- {}", constraint);
-        }
         // 1) y = x + 3
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
         // 3) result = z + 1 ⇒ result = (x + 5) + 1 = x + 6
@@ -595,10 +592,6 @@ mod test {
             }],
         };
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
-
-        for (i, constraint) in constraint_system.algebraic_constraints.iter().enumerate() {
-            println!("Constraint {}: {}", i, constraint);
-        }
 
         let [identity1] = &constraint_system.algebraic_constraints[..] else {
             panic!();
@@ -656,9 +649,6 @@ mod test {
         };
 
         let optimal_system = replace_constrained_witness_columns(optimal_system, 5);
-        for constraint in &optimal_system.algebraic_constraints {
-            println!("{}", constraint);
-        }
         assert_eq!(optimal_system.algebraic_constraints.len(), 3);
     }
 }
