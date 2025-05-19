@@ -132,16 +132,7 @@ fn remove_disconnected_columns<T: FieldElement>(
     // Any variable that is connected to a variable in variables_to_keep must also be kept.
     loop {
         let size_before = variables_to_keep.len();
-        for constraint in &constraint_system.algebraic_constraints {
-            if constraint
-                .referenced_variables()
-                .any(|var| variables_to_keep.contains(var))
-            {
-                variables_to_keep.extend(constraint.referenced_variables().cloned());
-            }
-        }
-
-        for constraint in &constraint_system.bus_interactions {
+        for constraint in constraint_system.iter() {
             if constraint
                 .referenced_variables()
                 .any(|var| variables_to_keep.contains(var))

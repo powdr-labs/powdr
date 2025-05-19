@@ -221,3 +221,14 @@ pub enum ConstraintRef<'a, T: FieldElement, V> {
     AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
     BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
 }
+
+impl<'a, T: FieldElement, V: Ord + Clone + Hash> ConstraintRef<'a, T, V> {
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        match self {
+            ConstraintRef::AlgebraicConstraint(expr) => Box::new(expr.referenced_variables()),
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                Box::new(bus_interaction.referenced_variables())
+            }
+        }
+    }
+}
