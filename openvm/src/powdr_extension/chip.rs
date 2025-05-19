@@ -657,28 +657,33 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct SymbolicMachine<F> {
-    columns: Vec<Column>,
     constraints: Vec<SymbolicConstraint<F>>,
     bus_interactions: Vec<SymbolicBusInteraction<F>>,
 }
 
 impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicMachine<F>> for SymbolicMachine<F> {
     fn from(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
-        let columns = machine.unique_columns().collect();
+        let columns = machine.unique_columns().collect::<Vec<_>>();
+
+        let id_to_index = columns
+            .iter()
+            .map(|c| c.id.id)
+            .enumerate()
+            .map(|(index, id)| (id, index))
+            .collect::<BTreeMap<_, _>>();
 
         let powdr_autoprecompiles::SymbolicMachine {
             constraints,
             bus_interactions,
         } = machine;
         Self {
-            columns,
             constraints: constraints
                 .into_iter()
-                .map(SymbolicConstraint::from)
+                .map(|c| SymbolicConstraint::from_powdr(c, &id_to_index))
                 .collect(),
             bus_interactions: bus_interactions
                 .into_iter()
-                .map(SymbolicBusInteraction::from)
+                .map(|b| SymbolicBusInteraction::from_powdr(b, &id_to_index))
                 .collect(),
         }
     }
@@ -690,11 +695,14 @@ struct SymbolicConstraint<F> {
     expr: SymbolicExpression<F>,
 }
 
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicConstraint<F>> for SymbolicConstraint<F> {
-    fn from(constraint: powdr_autoprecompiles::SymbolicConstraint<F>) -> Self {
+impl<F: PrimeField32> SymbolicConstraint<F> {
+    fn from_powdr(
+        constraint: powdr_autoprecompiles::SymbolicConstraint<F>,
+        id_to_index: &BTreeMap<u64, usize>,
+    ) -> Self {
         let powdr_autoprecompiles::SymbolicConstraint { expr } = constraint;
         Self {
-            expr: algebraic_to_symbolic(&expr),
+            expr: algebraic_to_symbolic(&expr, id_to_index),
         }
     }
 }
@@ -708,13 +716,17 @@ struct SymbolicBusInteraction<F> {
     count_weight: u32,
 }
 
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicBusInteraction<F>>
-    for SymbolicBusInteraction<F>
-{
-    fn from(bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Self {
+impl<F: PrimeField32> SymbolicBusInteraction<F> {
+    fn from_powdr(
+        bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<F>,
+        id_to_index: &BTreeMap<u64, usize>,
+    ) -> Self {
         let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = bus_interaction;
-        let mult = algebraic_to_symbolic(&mult);
-        let args = args.iter().map(algebraic_to_symbolic).collect();
+        let mult = algebraic_to_symbolic(&mult, id_to_index);
+        let args = args
+            .iter()
+            .map(|a| algebraic_to_symbolic(a, id_to_index))
+            .collect();
         Self {
             id: id as BusIndex,
             mult,
@@ -759,15 +771,7 @@ where
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let witnesses = main.row_slice(0);
-        // TODO: cache?
-        let witness_values: BTreeMap<u64, AB::Var> = self
-            .columns
-            .iter()
-            .map(|c| c.id.id)
-            .zip_eq(witnesses.iter().cloned())
-            .collect();
-
-        let witness_evaluator = WitnessEvaluator::<AB>::new(&witness_values);
+        let witness_evaluator = WitnessEvaluator::<AB>::new(witnesses.to_vec());
 
         for constraint in &self.machine.constraints {
             let e = witness_evaluator.eval_expr(&constraint.expr);
@@ -793,17 +797,17 @@ where
     }
 }
 
-pub struct WitnessEvaluator<'a, AB: InteractionBuilder> {
-    pub witness: &'a BTreeMap<u64, AB::Var>,
+pub struct WitnessEvaluator<AB: InteractionBuilder> {
+    pub witness: Vec<AB::Var>,
 }
 
-impl<'a, AB: InteractionBuilder> WitnessEvaluator<'a, AB> {
-    pub fn new(witness: &'a BTreeMap<u64, AB::Var>) -> Self {
+impl<AB: InteractionBuilder> WitnessEvaluator<AB> {
+    pub fn new(witness: Vec<AB::Var>) -> Self {
         Self { witness }
     }
 }
 
-impl<AB: InteractionBuilder> SymbolicEvaluator<AB::F, AB::Expr> for WitnessEvaluator<'_, AB> {
+impl<AB: InteractionBuilder> SymbolicEvaluator<AB::F, AB::Expr> for WitnessEvaluator<AB> {
     fn eval_const(&self, c: AB::F) -> AB::Expr {
         c.into()
     }
@@ -813,7 +817,7 @@ impl<AB: InteractionBuilder> SymbolicEvaluator<AB::F, AB::Expr> for WitnessEvalu
             Entry::Main { part_index, offset } => {
                 assert_eq!(part_index, 0);
                 assert_eq!(offset, 0);
-                (*self.witness.get(&(symbolic_var.index as u64)).unwrap()).into()
+                self.witness[symbolic_var.index].into()
             }
             Entry::Public => unreachable!("Public variables are not supported"),
             Entry::Challenge => unreachable!("Challenges are not supported"),
