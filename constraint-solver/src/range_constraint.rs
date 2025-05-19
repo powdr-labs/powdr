@@ -256,6 +256,15 @@ impl<T: FieldElement> RangeConstraint<T> {
             interval_intersection((self.min, self.max), (other.min, other.max)).is_none();
         masks_disjoint || intervals_disjoint
     }
+
+    /// Returns the allowed values of this range constraint.
+    /// Panics if the range width is larger than 2^32 (in which case you
+    /// probably don't want to call this function).
+    pub fn allowed_values(&self) -> impl Iterator<Item = T> + '_ {
+        (0..=self.range_width().try_into_u32().unwrap())
+            .map(move |offset| self.min + T::from(offset))
+            .filter(|value| self.allows_value(*value))
+    }
 }
 
 impl<T: FieldElement> Default for RangeConstraint<T> {

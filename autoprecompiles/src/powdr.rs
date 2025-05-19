@@ -1,18 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::from_fn;
-use std::ops::ControlFlow;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicReferenceThin, AlgebraicUnaryOperation, BusInteractionIdentity, PolyID,
-    PolynomialType,
+    AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin,
+    AlgebraicUnaryOperation, BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::{
-    visitor::{ExpressionVisitable, VisitOrder},
-    NamespacedPolynomialReference, UnaryOperator,
+    visitor::ExpressionVisitable, NamespacedPolynomialReference, UnaryOperator,
 };
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
@@ -26,30 +23,22 @@ pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<Column, AlgebraicExpression<T>>,
 ) {
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
-                    *expr = sub_expr.clone();
-                }
+    expr.pre_visit_expressions_mut(&mut |expr| {
+        if let AlgebraicExpression::Reference(r) = expr {
+            if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
+                *expr = sub_expr.clone();
             }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
+        }
+    });
 }
 
 pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     let zero = AlgebraicExpression::Number(T::zero());
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { .. }) = expr {
-                *expr = zero.clone();
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
+    expr.pre_visit_expressions_mut(&mut |expr| {
+        if let AlgebraicExpression::Reference(AlgebraicReference { .. }) = expr {
+            *expr = zero.clone();
+        }
+    });
 }
 
 pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
@@ -59,59 +48,11 @@ pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     }
 }
 
-pub fn find_byte_decomp<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {
-    let mut e1 = None;
-    let mut e2 = None;
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
-                op: AlgebraicBinaryOperator::Add,
-                right,
-            }) = expr
-            {
-                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: inner_left,
-                    op: AlgebraicBinaryOperator::Mul,
-                    right: inner_right,
-                }) = &**right
-                {
-                    let is_mul_by_2_17 = matches!(&**inner_right, AlgebraicExpression::Number(n) if *n == 131072u32.into());
-                    if is_ref(&**left) && is_ref(&**inner_left) && is_mul_by_2_17 {
-                        assert!(e1.is_none());
-                        assert!(e2.is_none());
-                        e1 = Some((**left).clone());
-                        e2 = Some((**inner_left).clone());
-                        return ControlFlow::Break(());
-                    }
-                }
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    (e1.unwrap(), e2.unwrap())
-}
-
 pub fn has_ref<T: Clone + std::cmp::PartialEq>(
     expr: &AlgebraicExpression<T>,
     r: &AlgebraicExpression<T>,
 ) -> bool {
-    let mut seen = false;
-    expr.visit_expressions(
-        &mut |expr| {
-            if expr == r {
-                seen = true;
-                ControlFlow::Break::<()>(())
-            } else {
-                ControlFlow::Continue::<()>(())
-            }
-        },
-        VisitOrder::Pre,
-    );
-    seen
+    expr.all_children().any(|expr| expr == r)
 }
 
 pub fn is_ref<T: Clone>(expr: &AlgebraicExpression<T>) -> bool {
@@ -122,24 +63,19 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
 ) {
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let Some(sub_expr) = sub.get(expr) {
-                *expr = sub_expr.clone();
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
+    expr.pre_visit_expressions_mut(&mut |expr| {
+        if let Some(sub_expr) = sub.get(expr) {
+            *expr = sub_expr.clone();
+        }
+    });
 }
 
 // After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
 pub fn collect_cols_algebraic<T: Clone + Ord>(
     expr: &AlgebraicExpression<T>,
 ) -> BTreeSet<AlgebraicExpression<T>> {
-    let mut cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
+    expr.all_children()
+        .filter_map(|expr| {
             if let AlgebraicExpression::Reference(AlgebraicReference {
                 poly_id:
                     PolyID {
@@ -149,13 +85,12 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
                 ..
             }) = expr
             {
-                cols.insert(expr.clone());
+                Some(expr.clone())
+            } else {
+                None
             }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+        })
+        .collect()
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
@@ -227,17 +162,13 @@ pub fn reassign_ids<T: FieldElement>(
         .collect();
 
     // Update the machine with the new global column names
-    machine.visit_expressions_mut(
-        &mut |e| {
-            if let AlgebraicExpression::Reference(r) = e {
-                let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
-                r.poly_id.id = new_col.id.id;
-                r.name = new_col.name.clone();
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
+    machine.pre_visit_expressions_mut(&mut |e| {
+        if let AlgebraicExpression::Reference(r) = e {
+            let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
+            r.poly_id.id = new_col.id.id;
+            r.name = new_col.name.clone();
+        }
+    });
 
     let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id.id, v.id.id)).collect();
 
@@ -258,36 +189,27 @@ pub fn reassign_ids<T: FieldElement>(
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            match expr {
-                Expression::Reference(_, ref mut r) => {
-                    if let Some(sub_expr) = sub.get(&r.path.to_string()) {
-                        *expr = sub_expr.clone();
-                    }
-                }
-                Expression::UnaryOperation(_, ref mut un_op) => {
-                    if matches!(un_op.op, UnaryOperator::Next) {
-                        if let Expression::Reference(_, ref r) = &*un_op.expr {
-                            let name = r.path.try_last_part().unwrap();
-                            if name == "pc" {
-                                let pc_next_symbol =
-                                    SymbolPath::from_identifier("pc_next".to_string());
-                                let pc_next_ref: NamespacedPolynomialReference =
-                                    pc_next_symbol.into();
-                                let pc_next_ref =
-                                    Expression::Reference(Default::default(), pc_next_ref);
-                                *expr = pc_next_ref.clone();
-                            }
-                        }
-                    }
-                }
-                _ => (),
+    expr.pre_visit_expressions_mut(&mut |expr| match expr {
+        Expression::Reference(_, ref mut r) => {
+            if let Some(sub_expr) = sub.get(&r.path.to_string()) {
+                *expr = sub_expr.clone();
             }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
+        }
+        Expression::UnaryOperation(_, ref mut un_op) => {
+            if matches!(un_op.op, UnaryOperator::Next) {
+                if let Expression::Reference(_, ref r) = &*un_op.expr {
+                    let name = r.path.try_last_part().unwrap();
+                    if name == "pc" {
+                        let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());
+                        let pc_next_ref: NamespacedPolynomialReference = pc_next_symbol.into();
+                        let pc_next_ref = Expression::Reference(Default::default(), pc_next_ref);
+                        *expr = pc_next_ref.clone();
+                    }
+                }
+            }
+        }
+        _ => (),
+    });
 }
 
 pub fn powdr_interaction_to_symbolic<T: FieldElement>(

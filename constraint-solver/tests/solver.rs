@@ -7,7 +7,7 @@ use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::{Error, Solver},
-    test_utils::{constant, var},
+    test_utils::{constant, var, Qse},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use test_log::test;
@@ -265,7 +265,8 @@ fn add_with_carry() {
     // A is the result of an addition with carry.
     let constraint_system = ConstraintSystem {
         algebraic_constraints: vec![
-            (var("X") - var("A") + constant(256)) * (var("X") - var("A")),
+            (var("X") * constant(7) - var("A") * constant(7) + constant(256) * constant(7))
+                * (var("X") * constant(7) - var("A") * constant(7)),
             (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
         ],
         // Byte range constraints on X and Y
@@ -286,7 +287,81 @@ fn add_with_carry() {
         .to_string();
     assert_eq!(
         final_state,
-        "(-A + X + 256) * (-A + X)
+        "(-7 * A + 7 * X + 1792) * (-7 * A + 7 * X)
 (-A + X + 256) * (-A + X)"
+    );
+}
+
+#[test]
+fn one_hot_flags() {
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // Boolean flags
+            var("flag0") * (var("flag0") - constant(1)),
+            var("flag1") * (var("flag1") - constant(1)),
+            var("flag2") * (var("flag2") - constant(1)),
+            var("flag3") * (var("flag3") - constant(1)),
+            // Exactly one flag is active
+            var("flag0") + var("flag1") + var("flag2") + var("flag3") - constant(1),
+            // Flag 2 is active
+            var("flag0") * constant(0)
+                + var("flag1") * constant(1)
+                + var("flag2") * constant(2)
+                + var("flag3") * constant(3)
+                - constant(2),
+        ],
+        bus_interactions: vec![],
+    };
+
+    // This can be solved via backtracking: There are 16 possible assignments
+    // for the 4 flags, but only 1 of them satisfies all the constraints.
+    assert_solve_result(
+        Solver::new(constraint_system),
+        vec![
+            ("flag0", 0.into()),
+            ("flag1", 0.into()),
+            ("flag2", 1.into()),
+            ("flag3", 0.into()),
+        ],
+    );
+}
+
+#[test]
+fn binary_flags() {
+    let bit_to_expression = |bit, var| match bit {
+        true => var,
+        false => constant(1) - var,
+    };
+    let index_to_expression = |i: usize| -> Qse {
+        (0..3)
+            .map(move |j| bit_to_expression(i & (1 << j) != 0, var(format!("flag{j}").leak())))
+            .fold(constant(1), |acc, x| acc * x)
+    };
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // Boolean flags
+            var("flag0") * (var("flag0") - constant(1)),
+            var("flag1") * (var("flag1") - constant(1)),
+            var("flag2") * (var("flag2") - constant(1)),
+            index_to_expression(0b000) * constant(101)
+                + index_to_expression(0b001) * constant(102)
+                + index_to_expression(0b010) * constant(103)
+                + index_to_expression(0b011) * constant(104)
+                + index_to_expression(0b100) * constant(105)
+                + index_to_expression(0b101) * constant(106)
+                + index_to_expression(0b110) * constant(107)
+                + index_to_expression(0b111) * constant(108)
+                - constant(104),
+        ],
+        bus_interactions: vec![],
+    };
+
+    assert_solve_result(
+        Solver::new(constraint_system),
+        vec![
+            ("flag0", 1.into()),
+            ("flag1", 1.into()),
+            ("flag2", 0.into()),
+        ],
     );
 }

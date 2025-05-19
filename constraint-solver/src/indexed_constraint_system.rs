@@ -50,9 +50,39 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     pub fn bus_interactions(&self) -> &[BusInteraction<QuadraticSymbolicExpression<T, V>>] {
         &self.constraint_system.bus_interactions
     }
+
+    /// Returns all expressions that appear in the constraint system, i.e. all algebraic
+    /// constraints and all expressions in bus interactions.
+    pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+        self.constraint_system.iter()
+    }
+}
+
+pub enum ConstraintRef<'a, T: FieldElement, V> {
+    AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
+    BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
+    /// Returns a list of all constraints that contain at least one of the given variables.
+    pub fn constraints_referencing_variables<'a>(
+        &'a self,
+        variables: impl Iterator<Item = V> + 'a,
+    ) -> impl Iterator<Item = ConstraintRef<'a, T, V>> + 'a {
+        variables
+            .filter_map(|v| self.variable_occurrences.get(&v))
+            .flatten()
+            .unique()
+            .map(|&item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
+                    &self.constraint_system.algebraic_constraints[i],
+                ),
+                ConstraintSystemItem::BusInteraction(i) => {
+                    ConstraintRef::BusInteraction(&self.constraint_system.bus_interactions[i])
+                }
+            })
+    }
+
     /// Substitutes a variable with a symbolic expression in the whole system
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
         // Since we substitute by a known value, we do not need to update variable_occurrences.

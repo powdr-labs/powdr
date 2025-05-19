@@ -254,8 +254,8 @@ impl Session {
         let pubs: Vec<u32> = self
             .pipeline
             .publics()
-            .iter()
-            .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
+            .values()
+            .map(|v| v.unwrap().to_integer().try_into_u32().unwrap())
             .collect();
         pubs.try_into().expect("There should be exactly 8 publics")
     }

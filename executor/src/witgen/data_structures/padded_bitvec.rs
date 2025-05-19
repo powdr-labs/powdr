@@ -14,7 +14,7 @@ pub struct PaddedBitVec {
 
 impl PaddedBitVec {
     pub fn new(bits_per_row: usize) -> Self {
-        let words_per_row = (bits_per_row + 31) / 32;
+        let words_per_row = bits_per_row.div_ceil(32);
         Self {
             data: Vec::new(),
             bits_per_row,
