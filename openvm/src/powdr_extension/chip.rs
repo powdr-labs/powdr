@@ -495,7 +495,7 @@ where
                     .zip_eq(dummy_values)
                     .enumerate()
                 {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
+                    let evaluator = RowEvaluator::new(dummy_row);
 
                     // first remove the side effects of this row on the main periphery
                     for range_checker_send in self
@@ -533,7 +533,7 @@ where
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = <Val<SC>>::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, None);
+                let evaluator = RowEvaluator::new(row_slice);
 
                 // replay the side effects of this row on the main periphery
                 for bus_interaction in self.air.machine.bus_interactions.iter() {
@@ -607,15 +607,11 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
 
 pub struct RowEvaluator<'a, F: PrimeField32> {
     pub row: &'a [F],
-    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
 }
 
 impl<'a, F: PrimeField32> RowEvaluator<'a, F> {
-    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
-        Self {
-            row,
-            witness_id_to_index,
-        }
+    pub fn new(row: &'a [F]) -> Self {
+        Self { row }
     }
 }
 
@@ -629,14 +625,7 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
             Entry::Main {
                 part_index: 0,
                 offset: 0,
-            } => {
-                let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
-                    witness_id_to_index[&(symbolic_var.index as u64)]
-                } else {
-                    symbolic_var.index
-                };
-                self.row[index]
-            }
+            } => self.row[symbolic_var.index],
             // currently only the current rotation of the main is supported
             // next rotation is not supported because this is a single row evaluator
             _ => unreachable!(),
