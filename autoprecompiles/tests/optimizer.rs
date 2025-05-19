@@ -29,6 +29,9 @@ fn analyze_for_memory() {
     let file = std::fs::File::open("tests/keccak_apc_post_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+
+    // Step 1: Transform the constraints such that some quadratic constraints get affine
+    // when we introduce a new boolean variable ("zero check variable").
     let mut zero_check_transformer = ZeroCheckTransformer::default();
     let constraints = machine
         .constraints
