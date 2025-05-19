@@ -106,16 +106,18 @@ fn solver_based_optimization<T: FieldElement>(
 }
 
 /// Removes any columns that are not connected to *stateful* but interactions (e.g. memory),
-/// because those are the only way to interact with the rest of the system.
-/// We assume that all input constraints are satisfiable. Because they are not connected to
-/// the state of the system, the prover can always satisfy them, so removing them is safe.
-/// Note that if there was an unsatisfiable constraints, it might also be removed, which would
+/// because those are the only way to interact with the rest of the zkVM (e.g. other
+/// instructions).
+/// We assume that the input constraint system is satisfiable. Because the removed constraints
+/// are not connected to rest of the system, the prover can always satisfy them, so removing
+/// them is safe.
+/// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
     bus_interaction_handler: impl IsBusStateful<T>,
 ) -> ConstraintSystem<T, Variable> {
-    // Initialize vars_to_keep with any variables that appear in stateful bus interactions.
+    // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
     let mut variables_to_keep = constraint_system
         .bus_interactions
         .iter()
@@ -127,7 +129,7 @@ fn remove_disconnected_columns<T: FieldElement>(
         .cloned()
         .collect::<HashSet<_>>();
 
-    // Any variable that is connected to a variable in vars_to_keep must also be kept.
+    // Any variable that is connected to a variable in variables_to_keep must also be kept.
     loop {
         let size_before = variables_to_keep.len();
         for constraint in &constraint_system.algebraic_constraints {
@@ -170,8 +172,8 @@ fn remove_disconnected_columns<T: FieldElement>(
                 let has_vars_to_keep = bus_interaction
                     .referenced_variables()
                     .any(|var| variables_to_keep.contains(var));
-                // has_vars_to_keep would also be true for bus interactions containing only
-                // constants, so we also check again that it is not stateful.
+                // has_vars_to_keep would also be false for bus interactions containing only
+                // constants, so we also check again whether it is stateful.
                 bus_interaction_handler.is_stateful(bus_id) || has_vars_to_keep
             })
             .collect(),

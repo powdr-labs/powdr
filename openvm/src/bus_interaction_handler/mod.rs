@@ -92,7 +92,7 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
     fn is_stateful(&self, bus_id: T) -> bool {
         let bus_id = bus_id.to_integer().try_into_u64().unwrap();
         match bus_type(bus_id) {
-            BusType::ExecutionBridge => false,
+            BusType::ExecutionBridge => true,
             BusType::Memory => true,
             BusType::PcLookup => false,
             BusType::VariableRangeChecker => false,
