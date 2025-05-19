@@ -1,3 +1,4 @@
+pub mod algebraic_expression_conversion;
 mod contains_next_ref;
 mod display;
 pub mod visitor;
