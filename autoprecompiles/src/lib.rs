@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use optimizer::{optimize, ConcreteBusInteractionHandler};
+use optimizer::{optimize, IsBusStateful};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -308,7 +308,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
         bus_interaction_handler: impl BusInteractionHandler<T>
-            + ConcreteBusInteractionHandler<T>
+            + IsBusStateful<T>
             + 'static
             + Clone,
         degree_bound: usize,

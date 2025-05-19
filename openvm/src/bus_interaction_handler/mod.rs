@@ -1,7 +1,7 @@
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
 use powdr::{FieldElement, LargeInt};
-use powdr_autoprecompiles::optimizer::ConcreteBusInteractionHandler;
+use powdr_autoprecompiles::optimizer::IsBusStateful;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,
@@ -88,7 +88,7 @@ fn byte_constraint<T: FieldElement>() -> RangeConstraint<T> {
     RangeConstraint::from_mask(0xffu64)
 }
 
-impl<T: FieldElement> ConcreteBusInteractionHandler<T> for OpenVmBusInteractionHandler<T> {
+impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
     fn is_stateful(&self, bus_id: T) -> bool {
         let bus_id = bus_id.to_integer().try_into_u64().unwrap();
         match bus_type(bus_id) {

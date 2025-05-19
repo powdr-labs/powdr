@@ -29,10 +29,7 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, Symb
 /// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-    bus_interaction_handler: impl BusInteractionHandler<P>
-        + ConcreteBusInteractionHandler<P>
-        + 'static
-        + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + 'static + Clone,
     degree_bound: usize,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
@@ -108,12 +105,17 @@ fn solver_based_optimization<T: FieldElement>(
     result.simplified_constraint_system
 }
 
+/// Removes any columns that are not connected to *stateful* but interactions (e.g. memory),
+/// because those are the only way to interact with the rest of the system.
+/// We assume that all input constraints are satisfiable. Because they are not connected to
+/// the state of the system, the prover can always satisfy them, so removing them is safe.
+/// Note that if there was an unsatisfiable constraints, it might also be removed, which would
+/// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl ConcreteBusInteractionHandler<T>,
+    bus_interaction_handler: impl IsBusStateful<T>,
 ) -> ConstraintSystem<T, Variable> {
-    // Initialize vars_to_keep with any variables that appear in *stateful* bus interactions,
-    // because that's the only way they can be connected to the rest of the system.
+    // Initialize vars_to_keep with any variables that appear in stateful bus interactions.
     let mut variables_to_keep = constraint_system
         .bus_interactions
         .iter()
@@ -165,10 +167,12 @@ fn remove_disconnected_columns<T: FieldElement>(
             .into_iter()
             .filter(|bus_interaction| {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
-                bus_interaction_handler.is_stateful(bus_id)
-                    || bus_interaction
-                        .referenced_variables()
-                        .any(|var| variables_to_keep.contains(var))
+                let has_vars_to_keep = bus_interaction
+                    .referenced_variables()
+                    .any(|var| variables_to_keep.contains(var));
+                // has_vars_to_keep would also be true for bus interactions containing only
+                // constants, so we also check again that it is not stateful.
+                bus_interaction_handler.is_stateful(bus_id) || has_vars_to_keep
             })
             .collect(),
     }
@@ -288,16 +292,9 @@ fn log_constraint_system_stats<P: FieldElement>(
     log::info!("{step} - Constraints: {num_constraints}, Bus Interactions: {num_bus_interactions}, Witness Columns: {num_witness_columns}");
 }
 
-pub enum ConcreteBusInteractionResult {
-    /// This bus interaction can always be matched
-    AlwaysSatisfied,
-    /// This bus interaction can never be matched
-    ViolatesBusRules,
-    /// This bus interaction might be satisfied at run-time,
-    /// but has side-effects and cannot be removed
-    HasSideEffects,
-}
-
-pub trait ConcreteBusInteractionHandler<T: FieldElement> {
+pub trait IsBusStateful<T: FieldElement> {
+    /// Returns true if the bus with the given ID is stateful, i.e., whether there is any
+    /// interaction with the rest of the zkVM. Examples of stateful buses are memory and
+    /// execution bridge. Examples of non-stateful buses are fixed lookups.
     fn is_stateful(&self, bus_id: T) -> bool;
 }
