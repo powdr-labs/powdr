@@ -7,20 +7,19 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::time::Instant;
+use std::sync::Mutex;
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
 pub fn replace_constrained_witness_columns<
     T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display + Send + Sync + Debug,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
 >(
     mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
+    // Keep track of deleted constraints to maintain consistent constraint enumeration.
     let mut deleted_constraints: HashSet<usize> = HashSet::new();
-
-    let loop_init = Instant::now();
 
     let (mut inlinable_cache, var_to_constraints) = {
         let constraint_indices: Vec<_> = constraint_system.iter().enumerate().collect();
@@ -59,12 +58,9 @@ pub fn replace_constrained_witness_columns<
 
         (inlinable_cache, var_to_constraints)
     };
-    println!("Init {:?}", loop_init.elapsed(),);
-
-    let loop_start = Instant::now();
 
     loop {
-        let did_something = try_apply_disjoint_substitutions(
+        let did_something = try_apply_substitution(
             &mut constraint_system,
             max_degree,
             &mut deleted_constraints,
@@ -76,8 +72,6 @@ pub fn replace_constrained_witness_columns<
             break;
         }
     }
-
-    println!("[sustitución] Finalizado en {:?}", loop_start.elapsed());
 
     constraint_system.algebraic_constraints = constraint_system
         .algebraic_constraints
@@ -94,9 +88,9 @@ pub fn replace_constrained_witness_columns<
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
 /// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_disjoint_substitutions<
+fn try_apply_substitution<
     T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display + Send + Sync + Display + Debug,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync + Display,
 >(
     constraint_system: &mut ConstraintSystem<T, V>,
     max_degree: usize,
@@ -105,58 +99,89 @@ fn try_apply_disjoint_substitutions<
     var_to_constraints: &HashMap<V, HashSet<usize>>,
 ) -> bool {
     let candidates: Vec<(usize, V, QuadraticSymbolicExpression<T, V>, f64)> = inlinable_cache
-        .iter()
-        .filter(|(idx, _)| !deleted_constraints.contains(idx))
-        .flat_map(|(&idx, entries)| {
-            entries
-                .iter()
-                .map(move |(v, e, s)| (idx, v.clone(), e.clone(), *s))
-        })
-        .collect();
+        .keys()
+        .filter(|idx| !deleted_constraints.contains(idx))
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .fold(
+            || Vec::new(),
+            |mut acc, &idx| {
+                let entries = &inlinable_cache[&idx];
+                for i in 0..entries.len() {
+                    let (v, e, s) = &entries[i];
+                    acc.push((idx, v.clone(), e.clone(), *s));
+                }
+                acc
+            },
+        )
+        .reduce(
+            || Vec::new(),
+            |mut a, mut b| {
+                a.append(&mut b);
+                a
+            },
+        );
 
     if candidates.is_empty() {
         return false;
     }
 
     let mut affected_constraints: HashSet<usize> = HashSet::new();
-    let selected: Vec<(usize, V, QuadraticSymbolicExpression<T, V>)> = {
-        if let Some((idx, var, expr, _)) = candidates.into_iter().max_by(|a, b| a.3.total_cmp(&b.3))
-        {
-            for vars in expr.referenced_unknown_variables().chain([&var]) {
-                if let Some(touched) = var_to_constraints.get(&vars) {
-                    affected_constraints.extend(touched);
-                }
+    let selected: Option<(usize, V, QuadraticSymbolicExpression<T, V>)> = {
+        if let Some((idx, var, expr, _)) = candidates.into_iter().max_by(|a, b| {
+            // If scores are equal, prefer smaller constraint index and
+            // then smaller var to make the output deterministic
+            let score_cmp = a.3.total_cmp(&b.3);
+            if score_cmp != std::cmp::Ordering::Equal {
+                return score_cmp;
             }
 
-            vec![(idx, var.clone(), expr.clone())]
+            let idx_cmp = b.0.cmp(&a.0);
+            if idx_cmp != std::cmp::Ordering::Equal {
+                return idx_cmp;
+            }
+
+            b.1.cmp(&a.1)
+        }) {
+            if let Some(touched) = var_to_constraints.get(&var) {
+                // Vars in inlinable_cache that need to be updated
+                affected_constraints.extend(touched);
+            }
+
+            Some((idx, var.clone(), expr.clone()))
         } else {
-            vec![]
+            None
         }
     };
 
-    if selected.is_empty() {
-        return false;
-    }
-
-    for (idx, var, expr) in &selected {
+    if let Some((idx, var, expr)) = selected {
         for (_, constraint) in constraint_system.iter_mut().enumerate() {
             constraint.substitute_by_unknown(&var, &expr);
         }
-        deleted_constraints.insert(*idx);
+        deleted_constraints.insert(idx);
+    } else {
+        return false;
     }
+
+    let inlinable_cache_mutex = Mutex::new(&mut *inlinable_cache);
 
     constraint_system
         .iter()
         .enumerate()
-        .filter(|(i, _)| affected_constraints.contains(i))
-        .for_each(|(i, constraint)| {
+        .filter(|(i, _)| affected_constraints.contains(i) && !deleted_constraints.contains(i))
+        .collect::<Vec<_>>()
+        .par_iter()
+        .for_each(|&(i, constraint)| {
             let entries = find_inlinable_variables(constraint)
                 .into_iter()
                 .filter_map(|(v, e)| {
                     score_substitution(&v, &e, constraint_system, max_degree).map(|s| (v, e, s))
                 })
                 .collect();
-            inlinable_cache.insert(i, entries);
+
+            // Lock the mutex to update the cache
+            let mut cache = inlinable_cache_mutex.lock().unwrap();
+            cache.insert(i, entries);
         });
 
     true
@@ -338,9 +363,6 @@ mod test {
         };
 
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
-        for (idx, algebraic_constraint) in constraint_system.iter().enumerate() {
-            println!("Constraint {idx}: {algebraic_constraint}");
-        }
         // 1) a + b + c = 0        => a = -b - c
         // 2) b + d - 1 = 0        => d = -b + 1
         // 3) c + b + a + d = result
@@ -349,7 +371,7 @@ mod test {
         //         = 0 + 0 + d
         //    => result = d = -b + 1
         //    => b = -result + 1
-        //assert_eq!(constraint_system.algebraic_constraints.len(), 0);
+        assert_eq!(constraint_system.algebraic_constraints.len(), 0);
         let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
             panic!();
         };
@@ -399,18 +421,18 @@ mod test {
         //    =(2)=> c - c*d + d*result = 0
         // ⇒ (c + -result) * (-d) + c = 0
 
-        assert_eq!(constraint_system.algebraic_constraints.len(), 2);
-        for constraint in constraint_system.iter() {
-            println!("- {}", constraint);
-        }
+        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
+        let [identity] = &constraint_system.algebraic_constraints[..] else {
+            panic!();
+        };
         let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
             panic!();
         };
         let [result] = payload.as_slice() else {
             panic!();
         };
-
-        assert_eq!(result.to_string(), "(a) * (b) + a");
+        assert_eq!(identity.to_string(), "(c + -result) * (-d) + c");
+        assert_eq!(result.to_string(), "result");
     }
 
     #[test]
@@ -443,8 +465,8 @@ mod test {
         let [result, x] = payload.as_slice() else {
             panic!();
         };
-        assert_eq!(result.to_string(), "z + 1");
-        assert_eq!(x.to_string(), "y + -3");
+        assert_eq!(result.to_string(), "x + 6");
+        assert_eq!(x.to_string(), "x");
     }
 
     #[test]
@@ -479,7 +501,7 @@ mod test {
             println!("Constraint {}: {}", i, constraint);
         }
 
-        let [identity1, identity2] = &constraint_system.algebraic_constraints[..] else {
+        let [identity1] = &constraint_system.algebraic_constraints[..] else {
             panic!();
         };
         let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
@@ -489,22 +511,22 @@ mod test {
             panic!();
         };
         // From first identity: a = b + 1
-        assert_eq!(a.to_string(), "a");
+        assert_eq!(a.to_string(), "b + 1");
         // b kept as a symbol
         assert_eq!(b.to_string(), "b");
         // From second identity: c = a * a
-        assert_eq!(c.to_string(), "c");
+        assert_eq!(c.to_string(), "(b + 1) * (b + 1)");
         // From third identity: d = c * a
         // In-lining d would violate the degree bound, so it is kept as a symbol
         // with constraints to enforce the equality.
-        assert_eq!(d.to_string(), "(c) * (a)");
-        assert_eq!(identity1.to_string(), "a + -b + -1");
+        assert_eq!(d.to_string(), "d");
+        assert_eq!(identity1.to_string(), "((-b + -1) * (b + 1)) * (b + 1) + d");
         // From fourth identity: e = d * a
-        assert_eq!(e.to_string(), "((c) * (a)) * (a)");
+        assert_eq!(e.to_string(), "(d) * (b + 1)");
         // From fifth identity: f = e + 5
-        assert_eq!(f.to_string(), "((c) * (a)) * (a) + 5");
+        assert_eq!(f.to_string(), "(d) * (b + 1) + 5");
         // From sixth identity: result = f * 2
-        assert_eq!(result.to_string(), "((2 * c) * (a)) * (a) + 10");
+        assert_eq!(result.to_string(), "(2 * d) * (b + 1) + 10");
     }
 
     #[test]
