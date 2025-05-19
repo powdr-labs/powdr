@@ -112,7 +112,7 @@ fn try_apply_substitution<
                 return idx_cmp;
             }
 
-            b.1.cmp(&a.1)
+            b.1.cmp(a.1)
         })
         .map(|(idx, v, e, _)| (idx, v.clone(), e.clone()));
 
