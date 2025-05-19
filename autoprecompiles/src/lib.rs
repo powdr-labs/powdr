@@ -410,14 +410,7 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     });
 
     for c in &mut machine.constraints {
-        let mut zeroed_expr = c.expr.clone();
-        powdr::make_refs_zero(&mut zeroed_expr);
-        let zeroed_expr = simplify_expression(zeroed_expr);
-        if !powdr::is_zero(&zeroed_expr) {
-            c.expr = is_valid.clone() * c.expr.clone();
-            // TODO this would not have to be cloned if we had *=
-            //c.expr *= guard.clone();
-        }
+        c.expr = is_valid.clone() * c.expr.clone();
     }
 
     let [execution_bus_receive, execution_bus_send] = machine
@@ -447,7 +440,6 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         .unwrap();
     program_bus_send.mult = is_valid.clone();
 
-    let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
         match b.id {
             EXECUTION_BUS_ID => {
@@ -457,26 +449,10 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
                 // already handled
             }
             _ => {
-                // We check the value of the multiplicity when all variables are set to zero
-                let mut zeroed_expr = b.mult.clone();
-                powdr::make_refs_zero(&mut zeroed_expr);
-                let zeroed_expr = simplify_expression(zeroed_expr);
-                if !powdr::is_zero(&zeroed_expr) {
-                    // if it's not zero, then we guard the multiplicity by `is_valid`
-                    b.mult = is_valid.clone() * b.mult.clone();
-                    // TODO this would not have to be cloned if we had *=
-                    //c.expr *= guard.clone();
-                } else {
-                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-                    let one = AlgebraicExpression::Number(1u64.into());
-                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                    is_valid_mults.push(e);
-                }
+                b.mult = is_valid.clone() * b.mult.clone();
             }
         }
     }
-
-    machine.constraints.extend(is_valid_mults);
 
     machine
 }
