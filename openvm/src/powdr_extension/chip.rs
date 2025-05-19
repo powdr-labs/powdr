@@ -286,7 +286,7 @@ impl<F: PrimeField32> PowdrChip<F> {
         let original_airs = precompile
             .original_airs
             .into_iter()
-            .map(|(k, v)| (k, v.into()))
+            .map(|(k, v)| (k, SymbolicMachine::from_powdr(v, true)))
             .collect();
         let executor = PowdrExecutor::new(
             precompile.original_instructions,
@@ -660,13 +660,13 @@ pub struct SymbolicMachine<F> {
     bus_interactions: Vec<SymbolicBusInteraction<F>>,
 }
 
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicMachine<F>> for SymbolicMachine<F> {
-    fn from(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
+impl<F: PrimeField32> SymbolicMachine<F> {
+    fn from_powdr(machine: powdr_autoprecompiles::SymbolicMachine<F>, store_poly_id: bool) -> Self {
         let id_to_index = machine
             .unique_columns()
             .map(|c| c.id.id)
             .enumerate()
-            .map(|(index, id)| (id, index))
+            .map(|(index, id)| (id, if store_poly_id { id as usize } else { index }))
             .collect::<BTreeMap<_, _>>();
 
         let powdr_autoprecompiles::SymbolicMachine {
@@ -745,7 +745,7 @@ impl<F: PrimeField32> PowdrAir<F> {
         Self {
             columns,
             column_index_by_poly_id,
-            machine: machine.into(),
+            machine: SymbolicMachine::from_powdr(machine, false),
         }
     }
 }
