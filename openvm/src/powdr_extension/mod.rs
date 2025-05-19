@@ -6,4 +6,4 @@ pub mod opcode;
 mod vm;
 
 pub use opcode::PowdrOpcode;
-pub use vm::{OriginalInstruction, PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrPrecompile};
+pub use vm::{OriginalInstruction, PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrPrecompile, PowdrStackedPrecompile};

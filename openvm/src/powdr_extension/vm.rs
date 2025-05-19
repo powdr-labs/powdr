@@ -31,7 +31,7 @@ pub type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeri
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
 pub struct PowdrExtension<F: PrimeField32> {
-    pub precompiles: Vec<PowdrPrecompile<F>>,
+    pub precompiles: Vec<PowdrStackedPrecompile<F>>,
     pub base_config: SdkVmConfig,
 }
 
@@ -89,8 +89,17 @@ impl<F> PowdrPrecompile<F> {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "F: Field")]
+pub struct PowdrStackedPrecompile<F> {
+    /// stacked precompiles by opcode
+    pub precompiles: BTreeMap<PowdrOpcode, PowdrPrecompile<F>>,
+    /// constraints
+    pub machine: SymbolicMachine<F>,
+}
+
 impl<F: PrimeField32> PowdrExtension<F> {
-    pub fn new(precompiles: Vec<PowdrPrecompile<F>>, base_config: SdkVmConfig) -> Self {
+    pub fn new(precompiles: Vec<PowdrStackedPrecompile<F>>, base_config: SdkVmConfig) -> Self {
         Self {
             precompiles,
             base_config,
@@ -148,7 +157,13 @@ impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
                 ),
             );
 
-            inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;
+            inventory.add_executor(
+                powdr_chip,
+                precompile
+                    .precompiles
+                    .keys()
+                    .map(|opcode| opcode.global_opcode()),
+            )?;
         }
 
         Ok(inventory)

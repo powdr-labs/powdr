@@ -10,7 +10,7 @@ use crate::utils::algebraic_to_symbolic;
 use super::{
     opcode::PowdrOpcode,
     vm::{OriginalInstruction, SdkVmInventory},
-    PowdrPrecompile,
+    PowdrStackedPrecompile,
 };
 use itertools::Itertools;
 use openvm_circuit::{arch::VmConfig, system::memory::MemoryController};
@@ -58,9 +58,8 @@ use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<F: PrimeField32> {
     pub name: String,
-    pub opcode: PowdrOpcode,
-    /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<F>,
+    /// An "executor" for each precompile stacked in this chip, by opcode.
+    pub executors: BTreeMap<usize, PowdrExecutor<F>>,
     pub air: Arc<PowdrAir<F>>,
     pub periphery: SharedChips,
 }
@@ -277,41 +276,55 @@ impl SharedChips {
 
 impl<F: PrimeField32> PowdrChip<F> {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
+        precompile: PowdrStackedPrecompile<F>,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
         let air: PowdrAir<F> = PowdrAir::new(precompile.machine);
-        let original_airs = precompile
-            .original_airs
-            .into_iter()
-            .map(|(k, v)| (k, v.into()))
-            .collect();
-        let executor = PowdrExecutor::new(
-            precompile.original_instructions,
-            original_airs,
-            precompile.is_valid_column,
-            memory,
-            &periphery.range_checker,
-            base_config,
+        let name = format!(
+            "StackedPrecompile_{}",
+            precompile
+                .precompiles
+                .keys()
+                .map(|o| o.global_opcode())
+                .join("_")
         );
-        let name = precompile.name;
-        let opcode = precompile.opcode;
+
+        let executors = precompile
+            .precompiles
+            .into_iter()
+            .map(|(opcode, pcp)| {
+                let original_airs = pcp
+                    .original_airs
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect();
+                let executor = PowdrExecutor::new(
+                    pcp.original_instructions,
+                    original_airs,
+                    pcp.is_valid_column,
+                    memory.clone(),
+                    &periphery.range_checker,
+                    base_config.clone(),
+                );
+                (opcode.global_opcode().as_usize(), executor)
+            })
+            .collect();
 
         Self {
+            // TODO: proper name
             name,
-            opcode,
             air: Arc::new(air),
-            executor,
+            executors,
             periphery,
         }
     }
 
-    /// Returns the index of the is_valid of this air.
-    fn get_is_valid_index(&self) -> usize {
-        self.air.column_index_by_poly_id[&self.executor.is_valid_poly_id]
-    }
+    // /// Returns the index of the is_valid of this air.
+    // fn get_is_valid_index(&self) -> usize {
+    //     self.air.column_index_by_poly_id[&self.executor.is_valid_poly_id]
+    // }
 }
 
 impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
@@ -322,9 +335,12 @@ impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
-        assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state)?;
+        let execution_state = self
+            .executors
+            .get_mut(&opcode.as_usize())
+            .expect("invalid opcode for stacked chip")
+            .execute(memory, from_state)?;
 
         Ok(execution_state)
     }
@@ -336,10 +352,14 @@ impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
 
 impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
     fn air_name(&self) -> String {
-        format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
+        format!("powdr_air_for_opcodes_{}", self.executors.keys().join("_"))
     }
+
     fn current_trace_height(&self) -> usize {
-        self.executor.current_trace_height
+        self.executors
+            .values()
+            .map(|e| e.current_trace_height)
+            .sum()
     }
 
     fn trace_width(&self) -> usize {
@@ -358,198 +378,216 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let is_valid_index = self.get_is_valid_index();
         let num_records = self.current_trace_height();
         let height = next_power_of_two_or_zero(num_records);
         let width = self.air.width();
         let mut values = Val::<SC>::zero_vec(height * width);
-
-        // for each original opcode, the name of the dummy air it corresponds to
-        let air_name_by_opcode = self
-            .executor
-            .instructions
-            .iter()
-            .map(|instruction| instruction.opcode())
-            .unique()
-            .map(|opcode| {
-                (
-                    opcode,
-                    self.executor
-                        .inventory
-                        .get_executor(opcode)
-                        .unwrap()
-                        .air_name(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-
-        let dummy_trace_by_air_name: HashMap<_, _> = self
-            .executor
-            .inventory
+        // we'll fill values from each APC in turn, this keeps track where we are in the full trace
+        let mut values_curr_record = 0;
+        // this is just for sanity checking later
+        let all_is_valid_ids = self
             .executors
-            .into_iter()
-            .map(|executor| {
-                (
-                    executor.air_name(),
-                    Chip::<SC>::generate_air_proof_input(executor)
-                        .raw
-                        .common_main
-                        .unwrap(),
+            .values()
+            .map(|executor| executor.is_valid_poly_id)
+            .collect::<Vec<_>>();
+
+        for (_opcode, executor) in self.executors {
+            let is_valid_index = self.air.column_index_by_poly_id[&executor.is_valid_poly_id];
+
+            // for each original opcode, the name of the dummy air it corresponds to
+            let air_name_by_opcode = executor
+                .instructions
+                .iter()
+                .map(|instruction| instruction.opcode())
+                .unique()
+                .map(|opcode| {
+                    (
+                        opcode,
+                        executor
+                            .inventory
+                            .get_executor(opcode)
+                            .unwrap()
+                            .air_name(),
+                    )
+                })
+                .collect::<HashMap<_, _>>();
+
+            let dummy_trace_by_air_name: HashMap<_, _> = executor
+                .inventory
+                .executors
+                .into_iter()
+                .map(|executor| {
+                    (
+                        executor.air_name(),
+                        Chip::<SC>::generate_air_proof_input(executor)
+                            .raw
+                            .common_main
+                            .unwrap(),
+                    )
+                })
+                .collect();
+
+            let instruction_index_to_table_offset = executor
+                .instructions
+                .iter()
+                .enumerate()
+                .scan(
+                    HashMap::default(),
+                    |counts: &mut HashMap<&str, usize>, (index, instruction)| {
+                        let air_name = air_name_by_opcode.get(&instruction.opcode()).unwrap();
+                        let count = counts.entry(air_name).or_default();
+                        let current_count = *count;
+                        *count += 1;
+                        Some((index, (air_name, current_count)))
+                    },
                 )
-            })
-            .collect();
+                .collect::<HashMap<_, _>>();
 
-        let instruction_index_to_table_offset = self
-            .executor
-            .instructions
-            .iter()
-            .enumerate()
-            .scan(
-                HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, (index, instruction)| {
-                    let air_name = air_name_by_opcode.get(&instruction.opcode()).unwrap();
-                    let count = counts.entry(air_name).or_default();
-                    let current_count = *count;
-                    *count += 1;
-                    Some((index, (air_name, current_count)))
-                },
-            )
-            .collect::<HashMap<_, _>>();
+            let occurrences_by_table_name: HashMap<&String, usize> = executor
+                .instructions
+                .iter()
+                .map(|instruction| air_name_by_opcode.get(&instruction.opcode()).unwrap())
+                .counts();
 
-        let occurrences_by_table_name: HashMap<&String, usize> = self
-            .executor
-            .instructions
-            .iter()
-            .map(|instruction| air_name_by_opcode.get(&instruction.opcode()).unwrap())
-            .counts();
+            // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
+            let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = executor
+                .instructions
+                .iter()
+                .map(|instruction| {
+                    // look up how many dummy‐cells this AIR produces:
+                    let air_width = dummy_trace_by_air_name
+                        .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
+                        .unwrap()
+                        .width();
 
-        // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
-        let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .executor
-            .instructions
-            .iter()
-            .map(|instruction| {
-                // look up how many dummy‐cells this AIR produces:
-                let air_width = dummy_trace_by_air_name
-                    .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
-                    .unwrap()
-                    .width();
-
-                // build a map only of the (dummy_index -> apc_index) pairs
-                let mut map = HashMap::with_capacity(air_width);
-                for dummy_trace_index in 0..air_width {
-                    if let Ok(apc_index) = global_index(
-                        dummy_trace_index,
-                        instruction,
-                        &self.air.column_index_by_poly_id,
-                    ) {
-                        if map.insert(dummy_trace_index, apc_index).is_some() {
-                            panic!(
-                                "duplicate dummy_trace_index {} for instruction opcode {:?}",
-                                dummy_trace_index,
-                                instruction.opcode()
-                            );
+                    // build a map only of the (dummy_index -> apc_index) pairs
+                    let mut map = HashMap::with_capacity(air_width);
+                    for dummy_trace_index in 0..air_width {
+                        if let Ok(apc_index) = global_index(
+                            dummy_trace_index,
+                            instruction,
+                            &self.air.column_index_by_poly_id,
+                        ) {
+                            if map.insert(dummy_trace_index, apc_index).is_some() {
+                                panic!(
+                                    "duplicate dummy_trace_index {} for instruction opcode {:?}",
+                                    dummy_trace_index,
+                                    instruction.opcode()
+                                );
+                            }
                         }
                     }
-                }
-                map
-            })
-            .collect();
-
-        assert_eq!(
-            self.executor.instructions.len(),
-            dummy_trace_index_to_apc_index_by_instruction.len()
-        );
-
-        let dummy_values = (0..num_records).into_par_iter().map(|record_index| {
-            (0..self.executor.instructions.len())
-                .map(|index| {
-                    // get the air name and offset for this instruction (by index)
-                    let (air_name, offset) = instruction_index_to_table_offset.get(&index).unwrap();
-                    // get the table
-                    let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                    // get how many times this table is used per record
-                    let occurrences_per_record = occurrences_by_table_name.get(air_name).unwrap();
-                    // get the width of each occurrence
-                    let width = table.width();
-                    // start after the previous record ended, and offset by the correct offset
-                    let start = (record_index * occurrences_per_record + offset) * width;
-                    // end at the start + width
-                    let end = start + width;
-                    &table.values[start..end]
+                    map
                 })
-                .collect_vec()
-        });
+                .collect();
 
-        // go through the final table and fill in the values
-        values
+            assert_eq!(
+                executor.instructions.len(),
+                dummy_trace_index_to_apc_index_by_instruction.len()
+            );
+
+            let dummy_num_records = executor.current_trace_height;
+
+            let dummy_values = (0..dummy_num_records).into_par_iter().map(|record_index| {
+                (0..executor.instructions.len())
+                    .map(|index| {
+                        // get the air name and offset for this instruction (by index)
+                        let (air_name, offset) = instruction_index_to_table_offset.get(&index).unwrap();
+                        // get the table
+                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
+                        // get how many times this table is used per record
+                        let occurrences_per_record = occurrences_by_table_name.get(air_name).unwrap();
+                        // get the width of each occurrence
+                        let width = table.width();
+                        // start after the previous record ended, and offset by the correct offset
+                        let start = (record_index * occurrences_per_record + offset) * width;
+                        // end at the start + width
+                        let end = start + width;
+                        &table.values[start..end]
+                    })
+                    .collect_vec()
+            });
+
+            // go through the final table and fill in the values
+            values
             // a record is `width` values
-            .par_chunks_mut(width)
-            .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
-                for (instruction_id, (instruction, dummy_row)) in self
-                    .executor
-                    .instructions
-                    .iter()
-                    .zip_eq(dummy_values)
-                    .enumerate()
-                {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
-
-                    // first remove the side effects of this row on the main periphery
-                    for range_checker_send in self
-                        .executor
-                        .air_by_opcode_id
-                        .get(&instruction.as_ref().opcode.as_usize())
-                        .unwrap()
-                        .bus_interactions
+                .par_chunks_mut(width)
+                .skip(values_curr_record)
+                .zip(dummy_values)
+                .for_each(|(row_slice, dummy_values)| {
+                    // map the dummy rows to the autoprecompile row
+                    for (instruction_id, (instruction, dummy_row)) in executor
+                        .instructions
                         .iter()
-                        .filter(|i| i.id == 3)
+                        .zip_eq(dummy_values)
+                        .enumerate()
                     {
+                        let evaluator = RowEvaluator::new(dummy_row, None);
+
+                        // first remove the side effects of this row on the main periphery
+                        for range_checker_send in executor
+                            .air_by_opcode_id
+                            .get(&instruction.as_ref().opcode.as_usize())
+                            .unwrap()
+                            .bus_interactions
+                            .iter()
+                            .filter(|i| i.id == 3)
+                        {
+                            let mult = evaluator
+                                .eval_expr(&range_checker_send.mult)
+                                .as_canonical_u32();
+                            let args = range_checker_send
+                                .args
+                                .iter()
+                                .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
+                                .collect_vec();
+                            let [value, max_bits] = args.try_into().unwrap();
+                            for _ in 0..mult {
+                                self.periphery
+                                    .range_checker
+                                    .remove_count(value, max_bits as usize);
+                            }
+                        }
+
+                        write_dummy_to_autoprecompile_row(
+                            row_slice,
+                            dummy_row,
+                            &dummy_trace_index_to_apc_index_by_instruction[instruction_id],
+                        );
+                    }
+
+                    // double-check is_valid of every precompile is ZERO
+                    for id in all_is_valid_ids.iter() {
+                        assert_eq!(
+                            row_slice[self.air.column_index_by_poly_id[id]],
+                            <Val<SC>>::ZERO
+                        );
+                    }
+
+                    // Set the is_valid of the active chip to 1
+                    row_slice[is_valid_index] = <Val<SC>>::ONE;
+
+                    let evaluator =
+                        RowEvaluator::new(row_slice, Some(&self.air.column_index_by_poly_id));
+
+                    // replay the side effects of this row on the main periphery
+                    for bus_interaction in self.air.machine.bus_interactions.iter() {
                         let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
+                            .eval_expr(&bus_interaction.mult)
                             .as_canonical_u32();
-                        let args = range_checker_send
+                        let args = bus_interaction
                             .args
                             .iter()
                             .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
                             .collect_vec();
-                        let [value, max_bits] = args.try_into().unwrap();
-                        for _ in 0..mult {
-                            self.periphery
-                                .range_checker
-                                .remove_count(value, max_bits as usize);
-                        }
+
+                        self.periphery.apply(bus_interaction.id, mult, &args);
                     }
+                });
 
-                    write_dummy_to_autoprecompile_row(
-                        row_slice,
-                        dummy_row,
-                        &dummy_trace_index_to_apc_index_by_instruction[instruction_id],
-                    );
-                }
-
-                // Set the is_valid column to 1
-                row_slice[is_valid_index] = <Val<SC>>::ONE;
-
-                let evaluator =
-                    RowEvaluator::new(row_slice, Some(&self.air.column_index_by_poly_id));
-
-                // replay the side effects of this row on the main periphery
-                for bus_interaction in self.air.machine.bus_interactions.iter() {
-                    let mult = evaluator
-                        .eval_expr(&bus_interaction.mult)
-                        .as_canonical_u32();
-                    let args = bus_interaction
-                        .args
-                        .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
-                        .collect_vec();
-
-                    self.periphery.apply(bus_interaction.id, mult, &args);
-                }
-            });
+            // next executor will fill in the next part of the trace
+            values_curr_record += dummy_num_records;
+        }
 
         let trace = RowMajorMatrix::new(values, width);
 
