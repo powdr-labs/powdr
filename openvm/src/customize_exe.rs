@@ -352,97 +352,111 @@ fn air_stacking<F: PrimeField32>(
 
     extensions.iter_mut().for_each(compact_ids);
 
-    // take the max id in all pcps and add 1.
-    let is_valid_start = 1 + extensions.iter()
-        .flat_map(|pcp| pcp.original_instructions.iter().flat_map(|instr| instr.subs.iter()))
-        .max()
-        .unwrap();
-
-    let mut stacked_constraints = vec![];
-    let mut interactions_by_machine = vec![];
-
-    println!("stacking {} precompiles", extensions.len());
-
-    let mut is_valid_sum: Option<AlgebraicExpression<F>> = None;
-
-    for (idx, pcp) in extensions.iter_mut().enumerate() {
-        // is_valid columns cannot be shared between precompiles. Here we do
-        // their remapping into exclusive columns.
-        let is_valid_new_id = is_valid_start + idx as u64;
-
-        println!("\tpcp width: {}", pcp.machine.unique_columns().count());
-
-        // remap is_valid column in constraints and interactions
-        let mut remapped = pcp.machine.clone();
-        remapped.pre_visit_expressions_mut(&mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                assert!(r.poly_id.id <= is_valid_start);
-                if r.poly_id == pcp.is_valid_column.id {
-                    // we assume each pcp to have a specific column named "is_valid"
-                    assert!(r.name == "is_valid");
-                    r.poly_id.id = is_valid_new_id;
-                    r.name = format!("is_valid_{}", pcp.opcode.global_opcode().as_usize());
-                } else {
-                    // we need to rename columns here because `unique_columns` relies on both `Column::name` and `Column::id`
-                    r.name = format!("col_{}", r.poly_id.id);
-                }
-            }
-        });
-
-        // set the is valid column in the original precompile
-        pcp.is_valid_column.id.id = is_valid_new_id;
-
-        let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-            name: format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()),
-            poly_id: PolyID {
-                id: is_valid_new_id,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
-        });
-
-        // guard interaction payloads so they can be merged later
-        remapped.bus_interactions.iter_mut().for_each(|interaction| {
-            interaction.args.iter_mut().for_each(|arg| {
-                *arg = arg.clone() * is_valid.clone();
-            });
-        });
-
-
-        is_valid_sum = is_valid_sum
-            .map(|sum| sum + is_valid.clone())
-            .or_else(|| Some(is_valid.clone()));
-
-        stacked_constraints.extend(remapped.constraints);
-        interactions_by_machine.push(remapped.bus_interactions);
+    // create apc groups by number of columns
+    let mut groups: HashMap<usize, Vec<PowdrPrecompile<F>>> = Default::default();
+    for pcp in extensions {
+        let n_cols = pcp.machine.unique_columns().count().next_power_of_two();
+        groups.entry(n_cols).or_default().push(pcp);
     }
 
-    // enforce only one is_valid is active
-    let one = AlgebraicExpression::Number(F::ONE);
-    let one_hot_is_valid = (one - is_valid_sum.clone().unwrap()) * is_valid_sum.unwrap();
+    let mut result = vec![];
 
-    stacked_constraints.push(one_hot_is_valid.into());
+    for mut extensions in groups.into_values() {
+        let mut stacked_constraints = vec![];
+        let mut interactions_by_machine = vec![];
 
-    println!("interaction count before: {}", interactions_by_machine.iter().flatten().count());
-    // let stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
-    let stacked_interactions = merge_bus_interactions(interactions_by_machine);
+        println!("stacking {} precompiles", extensions.len());
 
-    let machine = SymbolicMachine {
-        constraints: stacked_constraints,
-        bus_interactions: stacked_interactions,
-    };
+        // take the max id in all pcps and add 1.
+        let is_valid_start = 1 + extensions.iter()
+            .flat_map(|pcp| pcp.original_instructions.iter().flat_map(|instr| instr.subs.iter()))
+            .max()
+            .unwrap();
 
-    println!("interaction count: {}", machine.bus_interactions.len());
 
-    println!("stacked width: {}", machine.unique_columns().count());
+        let mut is_valid_sum: Option<AlgebraicExpression<F>> = None;
 
-    vec![PowdrStackedPrecompile {
-        precompiles: extensions
-            .into_iter()
-            .map(|p| (p.opcode.clone(), p))
-            .collect(),
-        machine,
-    }]
+        for (idx, pcp) in extensions.iter_mut().enumerate() {
+            // is_valid columns cannot be shared between precompiles. Here we do
+            // their remapping into exclusive columns.
+            let is_valid_new_id = is_valid_start + idx as u64;
+
+            println!("\tpcp width: {}", pcp.machine.unique_columns().count());
+
+            // remap is_valid column in constraints and interactions
+            let mut remapped = pcp.machine.clone();
+            remapped.pre_visit_expressions_mut(&mut |expr| {
+                if let AlgebraicExpression::Reference(r) = expr {
+                    assert!(r.poly_id.id <= is_valid_start);
+                    if r.poly_id == pcp.is_valid_column.id {
+                        // we assume each pcp to have a specific column named "is_valid"
+                        assert!(r.name == "is_valid");
+                        r.poly_id.id = is_valid_new_id;
+                        r.name = format!("is_valid_{}", pcp.opcode.global_opcode().as_usize());
+                    } else {
+                        // we need to rename columns here because `unique_columns` relies on both `Column::name` and `Column::id`
+                        r.name = format!("col_{}", r.poly_id.id);
+                    }
+                }
+            });
+
+            // set the is valid column in the original precompile
+            pcp.is_valid_column.id.id = is_valid_new_id;
+
+            let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
+                name: format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()),
+                poly_id: PolyID {
+                    id: is_valid_new_id,
+                    ptype: PolynomialType::Committed,
+                },
+                next: false,
+            });
+
+            // guard interaction payloads so they can be merged later
+            remapped.bus_interactions.iter_mut().for_each(|interaction| {
+                interaction.args.iter_mut().for_each(|arg| {
+                    *arg = arg.clone() * is_valid.clone();
+                });
+            });
+
+
+            is_valid_sum = is_valid_sum
+                .map(|sum| sum + is_valid.clone())
+                .or_else(|| Some(is_valid.clone()));
+
+            stacked_constraints.extend(remapped.constraints);
+            interactions_by_machine.push(remapped.bus_interactions);
+        }
+
+        // enforce only one is_valid is active
+        let one = AlgebraicExpression::Number(F::ONE);
+        let one_hot_is_valid = (one - is_valid_sum.clone().unwrap()) * is_valid_sum.unwrap();
+
+        stacked_constraints.push(one_hot_is_valid.into());
+
+        println!("interaction count before: {}", interactions_by_machine.iter().flatten().count());
+        // let stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
+        let stacked_interactions = merge_bus_interactions(interactions_by_machine);
+
+        let machine = SymbolicMachine {
+            constraints: stacked_constraints,
+            bus_interactions: stacked_interactions,
+        };
+
+        println!("interaction count: {}", machine.bus_interactions.len());
+
+        println!("stacked width: {}", machine.unique_columns().count());
+
+        result.push(PowdrStackedPrecompile {
+            precompiles: extensions
+                .into_iter()
+                .map(|p| (p.opcode.clone(), p))
+                .collect(),
+            machine,
+        });
+    }
+
+    result
 }
 
 
