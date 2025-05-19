@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use itertools::Itertools;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
-use openvm_instructions::LocalOpcode;
+use openvm_instructions::{LocalOpcode, SystemOpcode};
 use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program, VmOpcode};
 use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
@@ -89,6 +89,8 @@ pub fn customize<F: PrimeField32>(
         Fp2Opcode::MUL.global_opcode().as_usize(),
         Fp2Opcode::DIV.global_opcode().as_usize(),
         Fp2Opcode::SETUP_MULDIV.global_opcode().as_usize(),
+        SystemOpcode::PHANTOM.global_opcode().as_usize(),
+        SystemOpcode::TERMINATE.global_opcode().as_usize(),
         0x510, // not sure yet what this is
         0x513, // not sure yet what this is
         0x51c, // not sure yet what this is
