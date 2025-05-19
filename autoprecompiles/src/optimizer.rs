@@ -105,7 +105,7 @@ fn solver_based_optimization<T: FieldElement>(
     result.simplified_constraint_system
 }
 
-/// Removes any columns that are not connected to *stateful* but interactions (e.g. memory),
+/// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
 /// because those are the only way to interact with the rest of the zkVM (e.g. other
 /// instructions).
 /// We assume that the input constraint system is satisfiable. Because the removed constraints
