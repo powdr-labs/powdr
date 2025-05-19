@@ -3,6 +3,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 use rayon::prelude::*;
+use std::collections::BTreeSet;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -36,7 +37,7 @@ pub fn replace_constrained_witness_columns<
                     })
                     .collect::<Vec<_>>();
 
-                let vars: HashSet<V> = constraint.referenced_variables().cloned().collect();
+                let vars: BTreeSet<V> = constraint.referenced_variables().cloned().collect();
 
                 (idx, inlinables, vars)
             })
@@ -80,140 +81,6 @@ pub fn replace_constrained_witness_columns<
         .collect();
 
     constraint_system
-}
-
-/// Attempts to apply multiple disjoint variable substitutions across the constraint system.
-///
-/// Selects the best candidates that don't share variables, to allow parallel substitution.
-/// Returns true if at least one substitution was applied.
-fn try_apply_disjoint_substitutions<
-    T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display + Send + Sync + Display,
->(
-    constraint_system: &mut ConstraintSystem<T, V>,
-    max_degree: usize,
-    deleted_constraints: &mut HashSet<usize>,
-    inlinable_cache: &mut InlineCache<V, T>,
-    var_to_constraints: &HashMap<V, HashSet<usize>>,
-) -> bool {
-    let mut candidates: Vec<(usize, V, QuadraticSymbolicExpression<T, V>, f64)> = inlinable_cache
-        .par_iter()
-        .filter(|(&idx, _)| !deleted_constraints.contains(&idx))
-        .fold(
-            || Vec::new(),
-            |mut acc, (&idx, entries)| {
-                for (v, e, s) in entries {
-                    acc.push((idx, v.clone(), e.clone(), *s));
-                }
-                acc
-            },
-        )
-        .reduce(
-            || Vec::new(),
-            |mut a, mut b| {
-                a.append(&mut b);
-                a
-            },
-        );
-
-    if candidates.is_empty() {
-        return false;
-    }
-
-    candidates.par_sort_by(|a, b| {
-        let score_cmp = b.3.total_cmp(&a.3);
-        if score_cmp != std::cmp::Ordering::Equal {
-            return score_cmp;
-        }
-
-        let idx_cmp = a.0.cmp(&b.0);
-        if idx_cmp != std::cmp::Ordering::Equal {
-            return idx_cmp;
-        }
-
-        a.1.cmp(&b.1)
-    });
-
-    let mut selected: Vec<(usize, V, QuadraticSymbolicExpression<T, V>)> = Vec::new();
-    let mut affected_vars: HashSet<V> = HashSet::new();
-    let mut affected_constraints: HashSet<usize> = HashSet::new();
-
-    for (idx, var, expr, _) in candidates {
-        let var_deps: HashSet<V> = expr.referenced_unknown_variables().cloned().collect();
-
-        if affected_vars.contains(&var) || var_deps.iter().any(|v| affected_vars.contains(v)) {
-            continue;
-        }
-
-        if affected_constraints.contains(&idx) {
-            continue;
-        }
-
-        selected.push((idx, var.clone(), expr));
-
-        affected_vars.insert(var.clone());
-        affected_vars.extend(var_deps);
-
-        affected_constraints.insert(idx);
-
-        if let Some(constraints) = var_to_constraints.get(&var) {
-            affected_constraints.extend(constraints);
-        }
-
-        if selected.len() >= 5 {
-            break;
-        }
-    }
-
-    if selected.is_empty() {
-        return false;
-    }
-
-    constraint_system
-        .algebraic_constraints
-        .par_iter_mut()
-        .for_each(|constraint| {
-            for (_, var, expr) in &selected {
-                constraint.substitute_by_unknown(var, expr);
-            }
-        });
-
-    constraint_system
-        .bus_interactions
-        .par_iter_mut()
-        .for_each(|interaction| {
-            for payload in &mut interaction.payload {
-                for (_, var, expr) in &selected {
-                    payload.substitute_by_unknown(var, expr);
-                }
-            }
-        });
-
-    for (idx, _, _) in &selected {
-        deleted_constraints.insert(*idx);
-    }
-
-    let inlinable_cache_mutex = Mutex::new(&mut *inlinable_cache);
-
-    constraint_system
-        .expressions()
-        .enumerate()
-        .filter(|(i, _)| affected_constraints.contains(i) && !deleted_constraints.contains(i))
-        .collect::<Vec<_>>()
-        .par_iter()
-        .for_each(|&(i, constraint)| {
-            let entries = find_inlinable_variables(constraint)
-                .into_iter()
-                .filter_map(|(v, e)| {
-                    score_substitution(&v, &e, constraint_system, max_degree).map(|s| (v, e, s))
-                })
-                .collect();
-
-            let mut cache = inlinable_cache_mutex.lock().unwrap();
-            cache.insert(i, entries);
-        });
-
-    true
 }
 
 /// Attempts to apply one valid variable substitution across the constraint system.
@@ -443,7 +310,6 @@ mod test {
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         assert_eq!(constraint_system.algebraic_constraints.len(), 2);
     }
-
     #[test]
     fn test_replace_witness_columns() {
         let bus_interactions = vec![BusInteraction {
