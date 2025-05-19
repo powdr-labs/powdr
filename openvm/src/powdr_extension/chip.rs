@@ -8,7 +8,6 @@ use std::{
 use crate::utils::algebraic_to_symbolic;
 
 use super::{
-    opcode::PowdrOpcode,
     vm::{OriginalInstruction, SdkVmInventory},
     PowdrStackedPrecompile,
 };

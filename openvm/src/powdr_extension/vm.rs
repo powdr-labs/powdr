@@ -1,7 +1,6 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
 use std::collections::BTreeMap;
-use std::iter::once;
 
 use derive_more::From;
 

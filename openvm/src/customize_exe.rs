@@ -370,12 +370,7 @@ fn air_stacking<F: PrimeField32>(
         // their remapping into exclusive columns.
         let is_valid_new_id = is_valid_start + idx as u64;
 
-        println!("pcp width: {}", pcp.machine.unique_columns().count());
-
-        println!(
-            "\tIS_VALID_IDX: {} ===> {}",
-            pcp.is_valid_column.id.id, is_valid_new_id
-        );
+        println!("\tpcp width: {}", pcp.machine.unique_columns().count());
 
         // remap is_valid column in constraints and interactions
         let mut remapped = pcp.machine.clone();
@@ -576,9 +571,9 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
                 args: [
                     instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
                 ]
-                .iter()
-                .map(|f| to_powdr_field::<F, P>(*f))
-                .collect(),
+                    .iter()
+                    .map(|f| to_powdr_field::<F, P>(*f))
+                    .collect(),
             };
 
             if is_jump(&instr.opcode) {
@@ -601,7 +596,8 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
 
     let (precompile, subs) = autoprecompiles.build(
         OpenVmBusInteractionHandler::default(),
-        OPENVM_DEGREE_BOUND,
+        // chip stacking needs to add guards to bus arguments also, so we restrict the optimizer by 1 degree here.
+        OPENVM_DEGREE_BOUND - 1,
         apc_opcode as u32,
     );
 
