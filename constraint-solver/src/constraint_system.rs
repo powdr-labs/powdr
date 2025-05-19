@@ -103,13 +103,11 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
     fn to_range_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> Option<BusInteraction<RangeConstraint<T>>> {
-        // TODO: Handle bus interactions with complex expressions.
-        Some(BusInteraction::from_iter(
+    ) -> BusInteraction<RangeConstraint<T>> {
+        BusInteraction::from_iter(
             self.fields()
-                .map(|expr| expr_to_range_constraint(expr, range_constraints))
-                .collect::<Option<Vec<_>>>()?,
-        ))
+                .map(|expr| expr.range_constraint(range_constraints)),
+        )
     }
 
     /// Refines range constraints of the bus interaction's fields
@@ -121,15 +119,14 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
         bus_interaction_handler: &dyn BusInteractionHandler<T>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
-        let Some(range_constraints) = self.to_range_constraints(range_constraints) else {
-            return Ok(vec![]);
-        };
+        let range_constraints = self.to_range_constraints(range_constraints);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
         Ok(self
             .fields()
             .zip_eq(range_constraints.fields())
             .filter_map(|(expr, rc)| {
+                // TODO: Handle range constraint updates for complex expressions.
                 if let Some(var) = expr.try_to_simple_unknown() {
                     return Some(Effect::RangeConstraint(var, rc.clone()));
                 }
@@ -201,19 +198,6 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
         bus_interaction: BusInteraction<RangeConstraint<T>>,
     ) -> BusInteraction<RangeConstraint<T>> {
         bus_interaction
-    }
-}
-
-fn expr_to_range_constraint<T: FieldElement, V: Clone + Hash + Ord + Eq>(
-    expr: &QuadraticSymbolicExpression<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
-) -> Option<RangeConstraint<T>> {
-    if let Some(expr) = expr.try_to_known() {
-        Some(expr.range_constraint())
-    } else if let Some(v) = expr.try_to_simple_unknown() {
-        Some(range_constraints.get(&v))
-    } else {
-        return None;
     }
 }
 
