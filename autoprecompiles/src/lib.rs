@@ -320,13 +320,15 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_machines,
         );
 
+        // We still need to add guards later, so the optimizer should target a maximum of degree_bound - 1.
+        let target_degree = degree_bound - 1;
         let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
         assert!(check_precompile(&machine));
 
         // We need to remove memory bus interactions with inlined multiplicity zero before
         // doing register memory optimizations.
-        let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
+        let machine = optimize(machine, bus_interaction_handler.clone(), target_degree);
         assert!(check_precompile(&machine));
         let machine = remove_zero_mult(machine);
 
@@ -335,7 +337,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         // Fixpoint style re-attempt.
         // TODO we probably need proper fixpoint here at some point.
-        let machine = optimize(machine, bus_interaction_handler, degree_bound);
+        let machine = optimize(machine, bus_interaction_handler, target_degree);
         assert!(check_precompile(&machine));
 
         let machine = remove_zero_constraint(machine);
