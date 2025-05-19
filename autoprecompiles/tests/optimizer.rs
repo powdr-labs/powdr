@@ -56,6 +56,7 @@ fn analyze_for_memory() {
                 + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
                     * SymbolicExpression::from(BabyBearField::from(65536));
             let expr = constr.try_solve_for_expr(&mem_addr)?;
+            println!("{limb_0} + {limb_1} * 65536 = {expr}");
             Some(((limb_0, limb_1), expr))
         })
         .collect::<BTreeMap<_, _>>();
@@ -199,7 +200,7 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
         for TerminalConverter
     {
         fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Reference(hack_force_data3(reference.clone())))
+            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
         }
         fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
             Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
@@ -210,23 +211,6 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     }
 
     algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
-}
-
-/// We force all `rs1_data__3_*` to equal `rs1_data__3_661` as a hack
-/// until we figure out why they are not equal.
-fn hack_force_data3(reference: AlgebraicReference) -> AlgebraicReference {
-    if reference.to_string().starts_with("rs1_data__3_") {
-        AlgebraicReference {
-            name: "rs1_data__3_661".to_string(),
-            poly_id: PolyID {
-                id: 26921,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
-        }
-    } else {
-        reference
-    }
 }
 
 #[derive(Default)]
