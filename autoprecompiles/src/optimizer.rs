@@ -1,10 +1,12 @@
 use std::{collections::HashSet, time::Instant};
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    indexed_constraint_system::{variable_occurrences, ConstraintSystemItem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    range_constraint::RangeConstraint,
     solver::Solver,
     symbolic_expression::SymbolicExpression,
 };
@@ -39,8 +41,13 @@ pub fn optimize<P: FieldElement>(
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After solver-based optimization", &constraint_system);
 
-    let constraint_system = remove_disconnected_columns(constraint_system, bus_interaction_handler);
+    let constraint_system =
+        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After removing disconnected columns", &constraint_system);
+
+    let constraint_system =
+        remove_superfluous_constraints(constraint_system, bus_interaction_handler);
+    stats_logger.log("After removing superfluous constraints", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
     stats_logger.log("After in-lining witness columns", &constraint_system);
@@ -103,6 +110,140 @@ fn solver_based_optimization<T: FieldElement>(
         log::trace!("  {var} = {value}");
     }
     result.simplified_constraint_system
+}
+
+fn remove_superfluous_constraints<T: FieldElement>(
+    mut constraint_system: ConstraintSystem<T, Variable>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone + 'static,
+) -> ConstraintSystem<T, Variable> {
+    let mut current_size = constraint_system.len();
+    loop {
+        constraint_system =
+            remove_superfluous_constraints_iter(constraint_system, bus_interaction_handler.clone());
+        let new_size = constraint_system.len();
+        if new_size == current_size {
+            break;
+        }
+        log::debug!(
+            "Removed {} superfluous constraints, new size: {current_size}",
+            current_size - new_size
+        );
+        current_size = new_size;
+    }
+    constraint_system
+}
+
+fn remove_superfluous_constraints_iter<T: FieldElement>(
+    constraint_system: ConstraintSystem<T, Variable>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone + 'static,
+) -> ConstraintSystem<T, Variable> {
+    let (removed_algebraic_constraint_indices, removed_bus_interaction_indices): (
+        HashSet<_>,
+        HashSet<_>,
+    ) = variable_occurrences(&constraint_system)
+        .into_iter()
+        .filter_map(|(v, constraints)| constraints.into_iter().exactly_one().ok().map(|c| (v, c)))
+        .filter_map(|(free_variable, constraint_system_item)| {
+            can_always_solve(
+                &constraint_system,
+                &constraint_system_item,
+                &free_variable,
+                bus_interaction_handler.clone(),
+            )
+            .then_some(constraint_system_item)
+        })
+        .partition_map(|constraint_item| match constraint_item {
+            ConstraintSystemItem::AlgebraicConstraint(i) => Either::Left(i),
+            ConstraintSystemItem::BusInteraction(i) => Either::Right(i),
+        });
+    ConstraintSystem {
+        algebraic_constraints: constraint_system
+            .algebraic_constraints
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !removed_algebraic_constraint_indices.contains(i))
+            .map(|(_, constraint)| constraint)
+            .collect(),
+        bus_interactions: constraint_system
+            .bus_interactions
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !removed_bus_interaction_indices.contains(i))
+            .map(|(_, constraint)| constraint)
+            .collect(),
+    }
+}
+
+fn can_always_solve<T: FieldElement>(
+    constraint_system: &ConstraintSystem<T, Variable>,
+    constraint_system_item: &ConstraintSystemItem,
+    free_variable: &Variable,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone + 'static,
+) -> bool {
+    match constraint_system_item {
+        ConstraintSystemItem::AlgebraicConstraint(i) => {
+            // If an algebraic constraint is linear in an otherwise unconstrained variable,
+            // the prover could always satisfy it by solving for the free variable.
+            is_linear_in_variable(&constraint_system.algebraic_constraints[*i], free_variable)
+        }
+        ConstraintSystemItem::BusInteraction(i) => {
+            let bus_interaction = &constraint_system.bus_interactions[*i];
+
+            let Ok(arg) = bus_interaction
+                .payload
+                .iter()
+                .filter(|payload| payload.try_to_number().is_none())
+                .exactly_one()
+            else {
+                // If there is more non-concrete arguments, there could be an inter-dependence
+                // between them, which would be complicated, so let's skip that for now.
+                // If there are zero non-concrete arguments, the interaction will be removed
+                // by the `remove_trivial_bus_interactions` step.
+                return false;
+            };
+
+            // If the non-concrete argument is linear in the free variable, we know that
+            // we could solve for any valid argument of the bus interaction.
+            if !is_linear_in_variable(arg, free_variable) {
+                // It could still be always solvable, but too complicated...
+                return false;
+            }
+
+            let range_constraints = BusInteraction::from_iter(bus_interaction.iter().map(|expr| {
+                if let Some(value) = expr.try_to_number() {
+                    RangeConstraint::from_value(value)
+                } else {
+                    RangeConstraint::default()
+                }
+            }));
+
+            // If this returns an error, then this bus interaction is actually unsatisfiable.
+            bus_interaction_handler
+                .handle_bus_interaction_checked(range_constraints)
+                .is_ok()
+        }
+    }
+}
+
+fn is_linear_in_variable<T: FieldElement>(
+    constraint: &QuadraticSymbolicExpression<T, Variable>,
+    free_variable: &Variable,
+) -> bool {
+    let (quadratic, linear, _constant) = constraint.components();
+
+    let quadratic_variables = quadratic
+        .iter()
+        .flat_map(|(left, right)| {
+            left.referenced_variables()
+                .chain(right.referenced_variables())
+        })
+        .collect::<HashSet<_>>();
+    if quadratic_variables.contains(free_variable) {
+        // TODO: It could still be linear in the free variable!
+        // This could lead to false negatives.
+        return false;
+    }
+    linear.contains_key(free_variable)
 }
 
 /// Removes any columns that are not connected to *stateful* but interactions (e.g. memory),

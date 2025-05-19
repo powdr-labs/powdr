@@ -155,10 +155,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         &self,
     ) -> (
         &[(Self, Self)],
-        impl Iterator<Item = (&V, &SymbolicExpression<T, V>)>,
+        &BTreeMap<V, SymbolicExpression<T, V>>,
         &SymbolicExpression<T, V>,
     ) {
-        (&self.quadratic, self.linear.iter(), &self.constant)
+        (&self.quadratic, &self.linear, &self.constant)
     }
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
@@ -1343,7 +1343,7 @@ Z: [10, 4294967050] & 0xffffffff;
         expr.substitute_by_unknown(&"x", &subst);
 
         let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
+        let linear: Vec<_> = linear_iter.iter().collect();
 
         assert_eq!(
             expr.to_string(),
@@ -1377,7 +1377,7 @@ Z: [10, 4294967050] & 0xffffffff;
         expr.substitute_by_unknown(&"a", &subst);
 
         let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
+        let linear: Vec<_> = linear_iter.iter().collect();
 
         assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
 

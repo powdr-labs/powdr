@@ -19,7 +19,7 @@ pub struct IndexedConstraintSystem<T: FieldElement, V> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-enum ConstraintSystemItem {
+pub enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     BusInteraction(usize),
 }
@@ -131,7 +131,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
 
 /// Returns a hash map mapping all unknown variables in the constraint system
 /// to the items they occur in.
-fn variable_occurrences<T: FieldElement, V: Hash + Eq + Clone + Ord>(
+pub fn variable_occurrences<T: FieldElement, V: Hash + Eq + Clone + Ord>(
     constraint_system: &ConstraintSystem<T, V>,
 ) -> HashMap<V, Vec<ConstraintSystemItem>> {
     let occurrences_in_algebraic_constraints = constraint_system
