@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use optimizer::{optimize, ConcreteBusInteractionHandler};
+use optimizer::{optimize, IsBusStateful};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -307,10 +307,7 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
-        bus_interaction_handler: impl BusInteractionHandler<T>
-            + ConcreteBusInteractionHandler<T>
-            + 'static
-            + Clone,
+        bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
         degree_bound: usize,
         opcode: u32,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {

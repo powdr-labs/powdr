@@ -722,9 +722,9 @@ mod tests {
         .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 7786);
+        assert_eq!(m.width, 3701);
         assert_eq!(m.constraints, 506);
-        assert_eq!(m.bus_interactions, 6485);
+        assert_eq!(m.bus_interactions, 2922);
     }
 
     #[test]
@@ -735,9 +735,9 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         // TODO we need to find a new block because this one is not executed anymore.
-        assert_eq!(m.width, 157);
+        assert_eq!(m.width, 125);
         assert_eq!(m.constraints, 36);
-        assert_eq!(m.bus_interactions, 120);
+        assert_eq!(m.bus_interactions, 88);
     }
 
     #[test]
@@ -755,9 +755,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 68);
+        assert_eq!(m.width, 56);
         assert_eq!(m.constraints, 21);
-        assert_eq!(m.bus_interactions, 51);
+        assert_eq!(m.bus_interactions, 39);
     }
 
     #[test]
