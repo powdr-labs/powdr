@@ -4,10 +4,11 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::sync::Mutex;
+
+type InlineCache<V, T> = HashMap<usize, Vec<(V, QuadraticSymbolicExpression<T, V>, f64)>>;
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
@@ -41,18 +42,14 @@ pub fn replace_constrained_witness_columns<
             })
             .collect();
 
-        let mut inlinable_cache: HashMap<usize, Vec<(V, QuadraticSymbolicExpression<T, V>, f64)>> =
-            HashMap::new();
+        let mut inlinable_cache: InlineCache<V, T> = HashMap::new();
         let mut var_to_constraints: HashMap<V, HashSet<usize>> = HashMap::new();
 
         for (idx, inlinables, vars) in results {
             inlinable_cache.insert(idx, inlinables);
 
             for var in vars {
-                var_to_constraints
-                    .entry(var)
-                    .or_insert_with(HashSet::new)
-                    .insert(idx);
+                var_to_constraints.entry(var).or_default().insert(idx);
             }
         }
 
@@ -95,42 +92,14 @@ fn try_apply_substitution<
     constraint_system: &mut ConstraintSystem<T, V>,
     max_degree: usize,
     deleted_constraints: &mut HashSet<usize>,
-    inlinable_cache: &mut HashMap<usize, Vec<(V, QuadraticSymbolicExpression<T, V>, f64)>>,
+    inlinable_cache: &mut InlineCache<V, T>,
     var_to_constraints: &HashMap<V, HashSet<usize>>,
 ) -> bool {
-    let candidates: Vec<(usize, V, QuadraticSymbolicExpression<T, V>, f64)> = inlinable_cache
-        .keys()
-        .filter(|idx| !deleted_constraints.contains(idx))
-        .collect::<Vec<_>>()
-        .into_par_iter()
-        .fold(
-            || Vec::new(),
-            |mut acc, &idx| {
-                let entries = &inlinable_cache[&idx];
-                for i in 0..entries.len() {
-                    let (v, e, s) = &entries[i];
-                    acc.push((idx, v.clone(), e.clone(), *s));
-                }
-                acc
-            },
-        )
-        .reduce(
-            || Vec::new(),
-            |mut a, mut b| {
-                a.append(&mut b);
-                a
-            },
-        );
-
-    if candidates.is_empty() {
-        return false;
-    }
-
-    let mut affected_constraints: HashSet<usize> = HashSet::new();
-    let selected: Option<(usize, V, QuadraticSymbolicExpression<T, V>)> = {
-        if let Some((idx, var, expr, _)) = candidates.into_iter().max_by(|a, b| {
-            // If scores are equal, prefer smaller constraint index and
-            // then smaller var to make the output deterministic
+    let selected = inlinable_cache
+        .iter()
+        .filter(|(&idx, _)| !deleted_constraints.contains(&idx))
+        .flat_map(|(&idx, entries)| entries.iter().map(move |(v, e, s)| (idx, v, e, *s)))
+        .max_by(|a, b| {
             let score_cmp = a.3.total_cmp(&b.3);
             if score_cmp != std::cmp::Ordering::Equal {
                 return score_cmp;
@@ -142,28 +111,23 @@ fn try_apply_substitution<
             }
 
             b.1.cmp(&a.1)
-        }) {
-            if let Some(touched) = var_to_constraints.get(&var) {
-                // Vars in inlinable_cache that need to be updated
-                affected_constraints.extend(touched);
-            }
+        })
+        .map(|(idx, v, e, _)| (idx, v.clone(), e.clone()));
 
-            Some((idx, var.clone(), expr.clone()))
-        } else {
-            None
-        }
-    };
-
-    if let Some((idx, var, expr)) = selected {
-        for (_, constraint) in constraint_system.iter_mut().enumerate() {
-            constraint.substitute_by_unknown(&var, &expr);
-        }
-        deleted_constraints.insert(idx);
-    } else {
+    if selected.is_none() {
         return false;
     }
 
+    let (idx, var, expr) = selected.unwrap();
+    for constraint in constraint_system.iter_mut() {
+        constraint.substitute_by_unknown(&var, &expr);
+    }
+    deleted_constraints.insert(idx);
+
     let inlinable_cache_mutex = Mutex::new(&mut *inlinable_cache);
+    let affected_constraints = var_to_constraints
+        .get(&var)
+        .expect("Variable selected for substitution not found in var_to_constraints map");
 
     constraint_system
         .iter()
