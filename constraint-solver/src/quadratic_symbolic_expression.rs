@@ -356,21 +356,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         }
 
         // Find a normalization factor by iterating over the variables.
-        let mut vars = expr.referenced_unknown_variables();
-        let normalization_factor = loop {
-            let Some(var) = vars.next() else {
-                // If we run out of variables, just use one as a factor and see if it works.
-                break T::from(1).into();
-            };
-            let coefficient = self.coefficient_of_variable(var)?;
-            // We can only divide if we know the coefficient is non-zero.
-            if coefficient.is_known_nonzero() {
-                break expr
-                    .coefficient_of_variable(var)
-                    .unwrap()
-                    .field_div(coefficient);
-            }
-        };
+        let normalization_factor = expr
+            .referenced_unknown_variables()
+            .find_map(|var| {
+                let coeff = self.coefficient_of_variable(var)?;
+                // We can only divide if we know the coefficient is non-zero.
+                if coeff.is_known_nonzero() {
+                    Some(expr.coefficient_of_variable(var).unwrap().field_div(coeff))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(T::from(1).into());
         let result = expr - &(self.clone() * normalization_factor);
 
         // Check that the operations removed all variables in `expr` from `self`.
