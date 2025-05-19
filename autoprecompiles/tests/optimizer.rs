@@ -43,6 +43,10 @@ fn analyze_for_memory() {
         })
         .collect_vec();
 
+    // Step 2: Store constraints about memory addresses.
+    // To make this more general, we should go through the bus interactions, take the
+    // expression for the address and try to solve all constraints for that expression.
+    // We can speed this up by using variable occurrence lists, but this hack is even faster...
     let memory_addresses = constraints
         .iter()
         .filter_map(|constr| {
@@ -56,21 +60,20 @@ fn analyze_for_memory() {
                 + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
                     * SymbolicExpression::from(BabyBearField::from(65536));
             let expr = constr.try_solve_for_expr(&mem_addr)?;
-            println!("{limb_0} + {limb_1} * 65536 = {expr}");
             Some(((limb_0, limb_1), expr))
         })
         .collect::<BTreeMap<_, _>>();
-    memory_addresses
-        .iter()
-        .tuple_combinations()
-        .map(|((v1, a1), (v2, a2))| {
-            let difference = a1 - a2;
-            println!("difference = {difference}");
-        })
-        .collect_vec();
-    for (v, expr) in zero_check_transformer.zero_check_variables() {
-        println!("{v} = iszero({expr})");
-    }
+    // memory_addresses
+    //     .iter()
+    //     .tuple_combinations()
+    //     .map(|((v1, a1), (v2, a2))| {
+    //         let difference = a1 - a2;
+    //         println!("difference = {difference}");
+    //     })
+    //     .collect_vec();
+    // for (v, expr) in zero_check_transformer.zero_check_variables() {
+    //     println!("{v} = iszero({expr})");
+    // }
 
     for bus in machine.bus_interactions {
         println!("{bus}");
