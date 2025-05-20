@@ -4,7 +4,6 @@ resolver = "2"
 
 members = [
     "powdr",
-    "powdr-test",
     "number",
     "parser",
     "cargo-powdr",
