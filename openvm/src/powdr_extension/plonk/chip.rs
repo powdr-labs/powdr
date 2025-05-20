@@ -13,9 +13,19 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 
-#[derive(Default)]
+use super::air::PlonkAir;
+
 pub struct PlonkChip<F: PrimeField32> {
-    _marker: std::marker::PhantomData<F>,
+    air: Arc<PlonkAir<F>>,
+}
+
+impl<F: PrimeField32> PlonkChip<F> {
+    pub fn new() -> Self {
+        let air = Arc::new(PlonkAir {
+            _marker: std::marker::PhantomData,
+        });
+        Self { air }
+    }
 }
 
 impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
@@ -51,7 +61,7 @@ where
     Val<SC>: PrimeField32,
 {
     fn air(&self) -> Arc<dyn AnyRap<SC>> {
-        todo!()
+        self.air.clone()
     }
 
     fn generate_air_proof_input(self) -> AirProofInput<SC> {

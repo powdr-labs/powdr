@@ -24,7 +24,7 @@ use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
 use super::chip::SharedChips;
-use super::plonk_chip::PlonkChip;
+use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
 pub type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
