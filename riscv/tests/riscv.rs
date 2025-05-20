@@ -198,14 +198,6 @@ fn keccak_powdr() {
     verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 
-#[cfg(feature = "estark-polygon")]
-#[test]
-#[ignore = "Too slow"]
-fn vec_median_estark_polygon() {
-    let case = "vec_median";
-    verify_riscv_crate(case, &[5u64, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2], true);
-}
-
 #[test]
 #[ignore = "Too slow"]
 fn vec_median() {
