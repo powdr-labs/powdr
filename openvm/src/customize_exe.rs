@@ -355,8 +355,8 @@ fn air_stacking<F: PrimeField32>(
     // create apc groups by number of columns
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<F>>> = Default::default();
     for pcp in extensions {
-        let n_cols = pcp.machine.unique_columns().count().next_power_of_two();
-        groups.entry(n_cols).or_default().push(pcp);
+        let idx = f64::log(pcp.machine.unique_columns().count() as f64, 2.0).floor() as usize;
+        groups.entry(idx).or_default().push(pcp);
     }
 
     let mut result = vec![];
