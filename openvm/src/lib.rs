@@ -721,6 +721,10 @@ mod tests {
         .unwrap()
         .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
+        println!(
+            "width: {}, constraints: {}, bus_interactions: {}",
+            machines[0].width, machines[0].constraints, machines[0].bus_interactions
+        );
         let m = &machines[0];
         assert_eq!(m.width, 7786);
         assert_eq!(m.constraints, 506);

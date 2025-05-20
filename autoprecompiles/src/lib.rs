@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use memory_optimizer::optimize_memory;
 use optimizer::{optimize, ConcreteBusInteractionHandler};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
@@ -333,6 +334,8 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         let machine = optimize_precompile(machine);
         assert!(check_precompile(&machine));
+
+        let machine = optimize_memory(machine);
 
         // Fixpoint style re-attempt.
         // TODO we probably need proper fixpoint here at some point.
