@@ -8,6 +8,7 @@ use powdr_ast::analyzed::{
     algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge, PolyID,
     PolynomialType,
 };
+use powdr_autoprecompiles::memory_optimizer::optimize_memory;
 use powdr_autoprecompiles::{MemoryBusInteraction, MemoryType, SymbolicMachine};
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
@@ -32,105 +33,14 @@ fn analyze_for_memory() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    // Step 1: Transform the constraints such that some quadratic constraints get affine
-    // when we introduce a new boolean variable ("zero check variable").
-    let mut zero_check_transformer = ZeroCheckTransformer::default();
-    let constraints = machine
-        .constraints
-        .iter()
-        .map(|constr| {
-            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-            let constr = try_remove_is_valid(&constr).unwrap_or(&constr);
-            zero_check_transformer.transform(constr.clone())
-        })
-        .collect_vec();
+    let machine = optimize_memory(machine);
 
-    // Step 2: Store constraints about memory addresses.
-    // To make this more general, we should go through the bus interactions, take the
-    // expression for the address and try to solve all constraints for that expression.
-    // We can speed this up by using variable occurrence lists, but this hack is even faster...
-    let memory_addresses = constraints
-        .iter()
-        .filter_map(|constr| {
-            let limb_0 = constr
-                .referenced_variables()
-                .find(|v| v.to_string().contains("mem_ptr_limbs__0"))?;
-            let limb_1 = constr
-                .referenced_variables()
-                .find(|v| v.to_string().contains("mem_ptr_limbs__1"))?;
-            let mem_addr = QuadraticSymbolicExpression::from_unknown_variable(limb_0.clone())
-                + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
-                    * SymbolicExpression::from(BabyBearField::from(65536));
-            let expr = constr.try_solve_for_expr(&mem_addr)?;
-            Some((mem_addr, expr))
-        })
-        .collect::<BTreeMap<_, _>>();
-    // memory_addresses
-    //     .iter()
-    //     .tuple_combinations()
-    //     .map(|((v1, a1), (v2, a2))| {
-    //         let difference = a1 - a2;
-    //         println!("difference = {difference}");
-    //     })
-    //     .collect_vec();
-    // for (v, expr) in zero_check_transformer.zero_check_variables() {
-    //     println!("{v} = iszero({expr})");
-    // }
-
-    let mut memory_contents: BTreeMap<_, Vec<_>> = BTreeMap::new();
-    // let mut to_remove: BTreeSet<usize> = Default::default();
-    // let mut last_store: BTreeMap<_, usize> = BTreeMap::new();
-    let mut read = false;
-
-    for (i, bus) in machine.bus_interactions.iter().enumerate() {
-        let Ok(mem_int) = MemoryBusInteraction::try_from(bus.clone()) else {
-            continue;
-        };
-        if !matches!(mem_int.ty, MemoryType::Memory) {
-            continue;
-        }
-
-        let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
-
-        let addr = memory_addresses
-            .get(&addr)
-            .unwrap_or_else(|| panic!("No address found for {mem_int:?}"));
-        // println!("addr = {addr}");
-        // println!("value = {}", mem_int.data.iter().join(", "));
-
-        if read {
-            if let Some(existing_values) = memory_contents.get(addr) {
-                // TODO In order to add these equality constraints, we need to be sure that
-                // the address is uniquely determined by the constraint,
-                // i.e. that `addr` and the address stored in `memory_contents` is always
-                // equal, and not just "can be equal".
-                let eqs_to_add = existing_values
-                    .iter()
-                    .zip(mem_int.data.iter())
-                    .filter(|(existing, new)| existing != new)
-                    .collect_vec();
-                if !eqs_to_add.is_empty() {
-                    eqs_to_add.iter().for_each(|(existing, new)| {
-                        println!("{existing} = {new}");
-                    });
-                }
-                //to_remove.insert(i);
-            } else {
-                //TODO maybe we nede to prove uniqueness of the address here as well.
-                memory_contents.insert(addr.clone(), mem_int.data.clone());
-            }
-        } else {
-            // last_store
-            //     .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
-            memory_contents
-                .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
-            //last_store.insert(addr.clone(), i);
-            memory_contents.insert(addr.clone(), mem_int.data.clone());
-        }
-
-        read = !read;
-    }
-
+    println!(
+        "columns: {}, constraints: {}, bus interactions: {}",
+        machine.constraint_columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
     //println!("memory_contents = {memory_contents:?}");
 }
 

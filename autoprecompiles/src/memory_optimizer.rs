@@ -111,6 +111,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         read = !read;
     }
     machine.constraints.extend(new_constraints);
+    println!("Removing {} bus interactions", to_remove.len());
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
