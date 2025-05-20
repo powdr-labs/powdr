@@ -21,28 +21,29 @@ use powdr::{
 
 pub fn algebraic_to_symbolic<T: PrimeField32>(
     expr: &AlgebraicExpression<T>,
+    id_to_index: &BTreeMap<u64, usize>,
 ) -> SymbolicExpression<T> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
+                x: Arc::new(algebraic_to_symbolic(&binary.left, id_to_index)),
+                y: Arc::new(algebraic_to_symbolic(&binary.right, id_to_index)),
                 degree_multiple: 0,
             },
             AlgebraicBinaryOperator::Sub => SymbolicExpression::Sub {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
+                x: Arc::new(algebraic_to_symbolic(&binary.left, id_to_index)),
+                y: Arc::new(algebraic_to_symbolic(&binary.right, id_to_index)),
                 degree_multiple: 0,
             },
             AlgebraicBinaryOperator::Mul => SymbolicExpression::Mul {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
+                x: Arc::new(algebraic_to_symbolic(&binary.left, id_to_index)),
+                y: Arc::new(algebraic_to_symbolic(&binary.right, id_to_index)),
                 degree_multiple: 0,
             },
             AlgebraicBinaryOperator::Pow => {
                 // Assuming the right operand is a constant number
-                let base = algebraic_to_symbolic(&binary.left);
+                let base = algebraic_to_symbolic(&binary.left, id_to_index);
                 let exp = match *binary.right {
                     AlgebraicExpression::Number(n) => n,
                     _ => unimplemented!(),
@@ -68,7 +69,7 @@ pub fn algebraic_to_symbolic<T: PrimeField32>(
         },
         AlgebraicExpression::UnaryOperation(unary) => match unary.op {
             AlgebraicUnaryOperator::Minus => SymbolicExpression::Neg {
-                x: Arc::new(algebraic_to_symbolic(&unary.expr)),
+                x: Arc::new(algebraic_to_symbolic(&unary.expr, id_to_index)),
                 degree_multiple: 0,
             },
         },
@@ -81,12 +82,9 @@ pub fn algebraic_to_symbolic<T: PrimeField32>(
                         part_index: 0,
                         offset: next,
                     },
-                    poly_id.id as usize,
+                    id_to_index[&poly_id.id],
                 )),
-                PolynomialType::Constant => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Preprocessed { offset: next },
-                    poly_id.id as usize,
-                )),
+                PolynomialType::Constant => unimplemented!(),
                 PolynomialType::Intermediate => todo!(),
             }
         }
