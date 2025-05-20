@@ -5,6 +5,7 @@ pub mod opcode;
 /// The integration of our extension with the VM
 mod vm;
 
+mod executor;
 mod plonk;
 
 pub use opcode::PowdrOpcode;
