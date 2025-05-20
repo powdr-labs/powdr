@@ -24,6 +24,7 @@ use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
 use super::chip::SharedChips;
+use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
 pub type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
@@ -99,8 +100,10 @@ impl<F: PrimeField32> PowdrExtension<F> {
 }
 
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+#[allow(clippy::large_enum_variant)]
 pub enum PowdrExecutor<F: PrimeField32> {
     Powdr(PowdrChip<F>),
+    Plonk(PlonkChip<F>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
