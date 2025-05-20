@@ -444,45 +444,6 @@ fn pil_at_module_level() {
     regular_test_all_fields(f, Default::default());
 }
 
-#[cfg(feature = "estark-starky")]
-#[test]
-fn read_poly_files() {
-    use powdr_backend::BackendType;
-    use powdr_executor::constant_evaluator::get_uniquely_sized;
-    use powdr_linker::{DegreeMode, LinkerParams};
-    use powdr_number::Bn254Field;
-    use powdr_pipeline::util::{FixedPolySet, PolySet, WitnessPolySet};
-
-    let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
-    for f in asm_files {
-        let tmp_dir = mktemp::Temp::new_dir().unwrap();
-
-        // generate poly files
-        let mut pipeline = Pipeline::<Bn254Field>::default()
-            .from_file(resolve_test_file(f))
-            .with_output(tmp_dir.to_path_buf(), true)
-            .with_linker_params(LinkerParams {
-                degree_mode: DegreeMode::Monolithic,
-                ..Default::default()
-            })
-            .with_backend(BackendType::EStarkDump, None);
-        pipeline.compute_witness().unwrap();
-        let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
-        pipeline.compute_proof().unwrap();
-
-        // check fixed cols (may have no fixed cols)
-        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
-        let fixed = get_uniquely_sized(&fixed).unwrap();
-        if !fixed.is_empty() {
-            assert_eq!(pil.degree(), fixed[0].1.len() as u64);
-        }
-
-        // check witness cols (examples assumed to have at least one witness col)
-        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
-        assert_eq!(pil.degree(), witness[0].1.len() as u64);
-    }
-}
-
 #[test]
 fn enum_in_asm() {
     let f = "asm/enum_in_asm.asm";

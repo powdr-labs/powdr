@@ -38,9 +38,9 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
 
         for (var, expr) in find_inlinable_variables(constraint) {
             if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
-                log::debug!("Substituting {var} = {expr}");
-                log::debug!("  (from identity {constraint})");
-                constraint_system.iter_mut().for_each(|identity| {
+                log::trace!("Substituting {var} = {expr}");
+                log::trace!("  (from identity {constraint})");
+                constraint_system.expressions_mut().for_each(|identity| {
                     identity.substitute_by_unknown(&var, &expr);
                 });
 
@@ -97,7 +97,7 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     let replacement_deg = qse_degree(expr);
 
     !constraint_system
-        .iter()
+        .expressions()
         .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
         .any(|deg| deg > max_degree)
 }

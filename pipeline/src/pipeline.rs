@@ -238,7 +238,7 @@ where
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
 ///   .with_output(PathBuf::from("."), true)
-///   .with_backend(BackendType::EStarkDump, Some("stark_gl".to_string()));
+///   .with_backend(BackendType::Mock, None);
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();

@@ -105,7 +105,7 @@ fn solver_based_optimization<T: FieldElement>(
     result.simplified_constraint_system
 }
 
-/// Removes any columns that are not connected to *stateful* but interactions (e.g. memory),
+/// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
 /// because those are the only way to interact with the rest of the zkVM (e.g. other
 /// instructions).
 /// We assume that the input constraint system is satisfiable. Because the removed constraints
@@ -132,16 +132,7 @@ fn remove_disconnected_columns<T: FieldElement>(
     // Any variable that is connected to a variable in variables_to_keep must also be kept.
     loop {
         let size_before = variables_to_keep.len();
-        for constraint in &constraint_system.algebraic_constraints {
-            if constraint
-                .referenced_variables()
-                .any(|var| variables_to_keep.contains(var))
-            {
-                variables_to_keep.extend(constraint.referenced_variables().cloned());
-            }
-        }
-
-        for constraint in &constraint_system.bus_interactions {
+        for constraint in constraint_system.iter() {
             if constraint
                 .referenced_variables()
                 .any(|var| variables_to_keep.contains(var))

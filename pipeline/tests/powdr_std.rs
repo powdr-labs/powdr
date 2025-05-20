@@ -7,10 +7,10 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
-        gen_halo2_proof, make_prepared_pipeline, make_simple_prepared_pipeline, regular_test_bb,
-        regular_test_gl, regular_test_small_field, std_analyzed, test_halo2_with_backend_variant,
-        test_mock_backend, test_plonky3_pipeline, BackendVariant,
+        evaluate_function, evaluate_integer_function, gen_halo2_proof, make_prepared_pipeline,
+        make_simple_prepared_pipeline, regular_test_bb, regular_test_gl, regular_test_small_field,
+        std_analyzed, test_halo2_with_backend_variant, test_mock_backend, test_plonky3_pipeline,
+        BackendVariant,
     },
     Pipeline,
 };
@@ -173,10 +173,6 @@ fn arith256_memory_large_test() {
 fn memory_large_test() {
     let f = "std/memory_large_test.asm";
     regular_test_gl(f, &[]);
-
-    // This one test was selected to also run estark.
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Native);
-    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
