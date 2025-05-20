@@ -327,7 +327,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
         // doing register memory optimizations.
         let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
         assert!(check_precompile(&machine));
-        let machine = remove_zero_mult(machine);
 
         let machine = optimize_precompile(machine);
         assert!(check_precompile(&machine));
@@ -335,9 +334,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
         // Fixpoint style re-attempt.
         // TODO we probably need proper fixpoint here at some point.
         let machine = optimize(machine, bus_interaction_handler, degree_bound);
-        assert!(check_precompile(&machine));
-
-        let machine = remove_zero_constraint(machine);
         assert!(check_precompile(&machine));
 
         // add guards to constraints that are not satisfied by zeroes
@@ -376,15 +372,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         blocks
     }
-}
-
-// TODO: This should probably be done by pilopt
-pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    machine
-        .bus_interactions
-        .retain(|bus_int| !powdr::is_zero(&bus_int.mult));
-
-    machine
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
@@ -480,14 +467,6 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
 
     machine.constraints.extend(is_valid_mults);
 
-    machine
-}
-
-// TODO: This should probably be done by pilopt
-pub fn remove_zero_constraint<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-) -> SymbolicMachine<T> {
-    machine.constraints.retain(|c| !powdr::is_zero(&c.expr));
     machine
 }
 
