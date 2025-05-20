@@ -3,8 +3,9 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::effect::Condition;
 use crate::indexed_constraint_system::{ConstraintRef, IndexedConstraintSystem};
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
@@ -56,7 +57,7 @@ pub struct Solver<T: FieldElement, V> {
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
-            known_variables(constraint_system.iter()).is_empty(),
+            known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
 
@@ -237,7 +238,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 ConstraintRef::BusInteraction(bus_interaction) => {
                     let mut bus_interaction = bus_interaction.clone();
                     for (variable, value) in assignments.iter() {
-                        bus_interaction.iter_mut().for_each(|expr| {
+                        bus_interaction.fields_mut().for_each(|expr| {
                             expr.substitute_by_known(
                                 variable,
                                 &SymbolicExpression::Concrete(*value),
