@@ -5,8 +5,8 @@ use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge, PolyID,
-    PolynomialType,
+    algebraic_expression_conversion, AlgebraicBinaryOperator, AlgebraicExpression,
+    AlgebraicReference, Challenge, PolyID, PolynomialType,
 };
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
@@ -14,9 +14,9 @@ use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 
-use crate::{MemoryBusInteraction, MemoryType, SymbolicMachine};
+use crate::{MemoryBusInteraction, MemoryType, SymbolicConstraint, SymbolicMachine};
 
 pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
@@ -49,7 +49,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
                 .find(|v| v.to_string().contains("mem_ptr_limbs__1"))?;
             let mem_addr = QuadraticSymbolicExpression::from_unknown_variable(limb_0.clone())
                 + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
-                    * SymbolicExpression::from(BabyBearField::from(65536));
+                    * SymbolicExpression::from(T::from(65536));
             let expr = constr.try_solve_for_expr(&mem_addr)?;
             Some((mem_addr, expr))
         })
@@ -66,7 +66,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     //     println!("{v} = iszero({expr})");
     // }
 
-    let mut memory_contents: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    let mut memory_contents: BTreeMap<_, Vec<AlgebraicExpression<_>>> = BTreeMap::new();
     // let mut to_remove: BTreeSet<usize> = Default::default();
     // let mut last_store: BTreeMap<_, usize> = BTreeMap::new();
     let mut read = false;
@@ -93,16 +93,17 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
                 // the address is uniquely determined by the constraint,
                 // i.e. that `addr` and the address stored in `memory_contents` is always
                 // equal, and not just "can be equal".
-                let eqs_to_add = existing_values
-                    .iter()
-                    .zip(mem_int.data.iter())
-                    .filter(|(existing, new)| existing != new)
-                    .collect_vec();
-                if !eqs_to_add.is_empty() {
-                    eqs_to_add.iter().for_each(|(existing, new)| {
+                for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
+                    if existing != new {
                         println!("{existing} = {new}");
-                        new_constraints.push(existing.clone() - new.clone());
-                    });
+                        let eq_expr = AlgebraicExpression::new_binary(
+                            existing.clone(),
+                            AlgebraicBinaryOperator::Sub,
+                            new.clone(),
+                        );
+
+                        new_constraints.push(eq_expr.into());
+                    }
                 }
                 //to_remove.insert(i);
             } else {
