@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::hash::Hash;
 use std::{collections::HashSet, fmt::Display};
@@ -6,7 +6,7 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     algebraic_expression_conversion, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicReference, Challenge, PolyID, PolynomialType,
+    AlgebraicReference, Challenge,
 };
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
@@ -58,8 +58,9 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     let mut memory_contents: BTreeMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
         BTreeMap::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
-    let mut read = false;
+    let mut is_receive = true;
 
+    let mut memory_interaction_count = 0usize;
     for (i, bus) in machine.bus_interactions.iter().enumerate() {
         let Ok(mem_int) = MemoryBusInteraction::try_from(bus.clone()) else {
             continue;
@@ -67,6 +68,8 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         if !matches!(mem_int.ty, MemoryType::Memory) {
             continue;
         }
+
+        memory_interaction_count += 1;
 
         let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
 
@@ -76,7 +79,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         // println!("addr = {addr}");
         // println!("value = {}", mem_int.data.iter().join(", "));
 
-        if read {
+        if is_receive {
             if let Some((previous_store, existing_values)) = memory_contents.get(addr) {
                 // TODO In order to add these equality constraints, we need to be sure that
                 // the address is uniquely determined by the constraint,
@@ -108,10 +111,23 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
             memory_contents.insert(addr.clone(), (Some(i), mem_int.data.clone()));
         }
 
-        read = !read;
+        is_receive = !is_receive;
     }
     machine.constraints.extend(new_constraints);
-    println!("Removing {} bus interactions", to_remove.len());
+
+    // Do not remove the last send to an address.
+    for (last_store, _) in memory_contents.values() {
+        if let Some(last_store) = last_store {
+            // TODO also the correspending read?
+            to_remove.remove(last_store);
+        }
+    }
+
+    println!(
+        "Removing {} bus interactions out of {} total memory bus interactions",
+        to_remove.len(),
+        memory_interaction_count
+    );
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
@@ -135,7 +151,7 @@ fn is_known_to_be_different_by_word<T: FieldElement>(
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
     if !variables
         .iter()
-        .map(|v| range_constraints.get(&v))
+        .map(|v| range_constraints.get(v))
         .map(|rc| rc.range_width().try_into_u64())
         .try_fold(1u64, |acc, x| acc.checked_mul(x?))
         .map(|total_width| total_width < 20)
@@ -338,7 +354,7 @@ impl<T: FieldElement> ZeroCheckTransformer<T> {
         let offset = left - right;
         // We only do the transformation if `offset` is known, because
         // otherwise the constraint stays quadratic.
-        if !offset.try_to_known().is_some() {
+        if offset.try_to_known().is_none() {
             return None;
         }
         // `offset + right = left`
