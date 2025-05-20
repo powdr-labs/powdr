@@ -19,7 +19,11 @@ openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", 
 openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
 openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
 openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
-openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049", default-features = false, features = [
+  "parallel",
+  "jemalloc",
+  "nightly-features",
+] }
 openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
 openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
 openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049" }
@@ -29,8 +33,15 @@ openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", 
 openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049", default-features = false }
 openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "2868049", default-features = false }
 
-openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
-openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false, features = [
+  "parallel",
+  "jemalloc",
+  "nightly-features",
+] }
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false, features = [
+  "parallel",
+  "jemalloc",
+] }
 
 powdr.workspace = true
 powdr-autoprecompiles.workspace = true
