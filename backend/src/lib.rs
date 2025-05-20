@@ -5,17 +5,9 @@ mod plonky3;
 #[cfg(feature = "stwo")]
 mod stwo;
 
-#[cfg(any(
-    feature = "halo2",
-    feature = "plonky3",
-    feature = "stwo"
-))]
+#[cfg(any(feature = "halo2", feature = "plonky3", feature = "stwo"))]
 mod composite;
-#[cfg(any(
-    feature = "halo2",
-    feature = "plonky3",
-    feature = "stwo"
-))]
+#[cfg(any(feature = "halo2", feature = "plonky3", feature = "stwo"))]
 mod field_filter;
 mod mock;
 
