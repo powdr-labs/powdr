@@ -78,10 +78,12 @@ fn analyze_for_memory() {
     // }
 
     let mut memory_contents: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    // let mut to_remove: BTreeSet<usize> = Default::default();
+    // let mut last_store: BTreeMap<_, usize> = BTreeMap::new();
     let mut read = false;
 
-    for bus in machine.bus_interactions {
-        let Ok(mem_int) = MemoryBusInteraction::try_from(bus) else {
+    for (i, bus) in machine.bus_interactions.iter().enumerate() {
+        let Ok(mem_int) = MemoryBusInteraction::try_from(bus.clone()) else {
             continue;
         };
         if !matches!(mem_int.ty, MemoryType::Memory) {
@@ -93,33 +95,43 @@ fn analyze_for_memory() {
         let addr = memory_addresses
             .get(&addr)
             .unwrap_or_else(|| panic!("No address found for {mem_int:?}"));
-        println!("addr = {addr}");
-        println!("value = {}", mem_int.data.iter().join(", "));
+        // println!("addr = {addr}");
+        // println!("value = {}", mem_int.data.iter().join(", "));
 
         if read {
             if let Some(existing_values) = memory_contents.get(addr) {
-                println!("\n\n=====>\n");
                 // TODO In order to add these equality constraints, we need to be sure that
                 // the address is uniquely determined by the constraint,
                 // i.e. that `addr` and the address stored in `memory_contents` is always
                 // equal, and not just "can be equal".
-                existing_values
+                let eqs_to_add = existing_values
                     .iter()
                     .zip(mem_int.data.iter())
-                    .for_each(|(existing, new)| {
+                    .filter(|(existing, new)| existing != new)
+                    .collect_vec();
+                if !eqs_to_add.is_empty() {
+                    eqs_to_add.iter().for_each(|(existing, new)| {
                         println!("{existing} = {new}");
                     });
+                }
+                //to_remove.insert(i);
             } else {
+                //TODO maybe we nede to prove uniqueness of the address here as well.
                 memory_contents.insert(addr.clone(), mem_int.data.clone());
             }
         } else {
+            // last_store
+            //     .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
             memory_contents
                 .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
+            //last_store.insert(addr.clone(), i);
             memory_contents.insert(addr.clone(), mem_int.data.clone());
         }
 
         read = !read;
     }
+
+    //println!("memory_contents = {memory_contents:?}");
 }
 
 /// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
@@ -129,9 +141,8 @@ fn is_known_to_be_different_by_word<T: FieldElement>(
     range_constraints: impl RangeConstraintProvider<T, Variable>,
 ) -> bool {
     let diff = a - b;
-    println!("diff = {diff}");
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
-    if variables
+    if !variables
         .iter()
         .map(|v| range_constraints.get(&v))
         .map(|rc| rc.range_width().try_into_u64())
@@ -151,7 +162,6 @@ fn is_known_to_be_different_by_word<T: FieldElement>(
         diff.range_constraint(&range_constraints)
             .is_disjoint(&disallowed_range)
     });
-    log::debug!("is_known_to_be_different_by_word: {diff}");
     r
 }
 
