@@ -5,8 +5,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
-use crate::effect::Condition;
-use crate::indexed_constraint_system::{ConstraintRef, IndexedConstraintSystem};
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::known_variables;
