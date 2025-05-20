@@ -16,6 +16,7 @@ use std::iter::once;
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 
