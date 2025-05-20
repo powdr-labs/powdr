@@ -57,7 +57,7 @@ pub enum Error {
 /// It also provides ways to quickly update the expression when the value of
 /// an unknown variable gets known and provides functions to solve
 /// (some kinds of) equations.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that

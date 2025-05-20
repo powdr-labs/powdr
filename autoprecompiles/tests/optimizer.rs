@@ -8,12 +8,14 @@ use powdr_ast::analyzed::{
     algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge, PolyID,
     PolynomialType,
 };
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{MemoryBusInteraction, MemoryType, SymbolicMachine};
+use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
 #[test]
 fn load_machine_cbor() {
@@ -60,7 +62,7 @@ fn analyze_for_memory() {
                 + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
                     * SymbolicExpression::from(BabyBearField::from(65536));
             let expr = constr.try_solve_for_expr(&mem_addr)?;
-            Some(((limb_0, limb_1), expr))
+            Some((mem_addr, expr))
         })
         .collect::<BTreeMap<_, _>>();
     // memory_addresses
@@ -75,9 +77,104 @@ fn analyze_for_memory() {
     //     println!("{v} = iszero({expr})");
     // }
 
+    let mut memory_contents: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    let mut read = false;
+
     for bus in machine.bus_interactions {
-        println!("{bus}");
+        let Ok(mem_int) = MemoryBusInteraction::try_from(bus) else {
+            continue;
+        };
+        if !matches!(mem_int.ty, MemoryType::Memory) {
+            continue;
+        }
+
+        let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
+
+        let addr = memory_addresses
+            .get(&addr)
+            .unwrap_or_else(|| panic!("No address found for {mem_int:?}"));
+        println!("addr = {addr}");
+        println!("value = {}", mem_int.data.iter().join(", "));
+
+        if read {
+            if let Some(existing_values) = memory_contents.get(addr) {
+                println!("\n\n=====>\n");
+                // TODO In order to add these equality constraints, we need to be sure that
+                // the address is uniquely determined by the constraint,
+                // i.e. that `addr` and the address stored in `memory_contents` is always
+                // equal, and not just "can be equal".
+                existing_values
+                    .iter()
+                    .zip(mem_int.data.iter())
+                    .for_each(|(existing, new)| {
+                        println!("{existing} = {new}");
+                    });
+            } else {
+                memory_contents.insert(addr.clone(), mem_int.data.clone());
+            }
+        } else {
+            memory_contents
+                .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
+            memory_contents.insert(addr.clone(), mem_int.data.clone());
+        }
+
+        read = !read;
     }
+}
+
+/// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
+fn is_known_to_be_different_by_word<T: FieldElement>(
+    a: &QuadraticSymbolicExpression<T, Variable>,
+    b: &QuadraticSymbolicExpression<T, Variable>,
+    range_constraints: impl RangeConstraintProvider<T, Variable>,
+) -> bool {
+    let diff = a - b;
+    println!("diff = {diff}");
+    let variables = diff.referenced_unknown_variables().cloned().collect_vec();
+    if variables
+        .iter()
+        .map(|v| range_constraints.get(&v))
+        .map(|rc| rc.range_width().try_into_u64())
+        .try_fold(1u64, |acc, x| acc.checked_mul(x?))
+        .map(|total_width| total_width < 20)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    // TODO check that possible assignments is small
+    let disallowed_range = RangeConstraint::from_range(T::from(0), T::from(3));
+    let r = get_all_possible_assignments(variables, &range_constraints).all(|assignment| {
+        let mut diff = diff.clone();
+        for (variable, value) in assignment.iter() {
+            diff.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+        }
+        diff.range_constraint(&range_constraints)
+            .is_disjoint(&disallowed_range)
+    });
+    log::debug!("is_known_to_be_different_by_word: {diff}");
+    r
+}
+
+// TODO copied from exhaustive search
+fn get_all_possible_assignments<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    variables: impl IntoIterator<Item = V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> impl Iterator<Item = BTreeMap<V, T>> {
+    let variables = variables.into_iter().collect_vec();
+    variables
+        .iter()
+        .map(|v| range_constraints.get(v))
+        .map(|rc| rc.allowed_values().collect::<Vec<_>>())
+        .multi_cartesian_product()
+        .map(|assignment| {
+            variables
+                .iter()
+                .cloned()
+                .zip(assignment)
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 fn try_remove_is_valid<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
@@ -268,6 +365,18 @@ impl<T: FieldElement> ZeroCheckTransformer<T> {
                 (z.clone(), expr)
             })
             .collect()
+    }
+}
+
+impl<T: FieldElement> RangeConstraintProvider<T, Variable> for &ZeroCheckTransformer<T> {
+    fn get(&self, var: &Variable) -> RangeConstraint<T> {
+        match var {
+            Variable::ZeroCheck { id } => {
+                assert!(*id < self.zero_checks.len());
+                RangeConstraint::from_mask(1u64)
+            }
+            _ => RangeConstraint::default(),
+        }
     }
 }
 
