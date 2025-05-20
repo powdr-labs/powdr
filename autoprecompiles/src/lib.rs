@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use memory_optimizer::optimize_memory;
-use optimizer::{optimize, ConcreteBusInteractionHandler};
+use optimizer::{optimize, IsBusStateful};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -253,6 +253,8 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteractio
     fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
         (bus_interaction.id == MEMORY_BUS_ID)
             .then(|| {
+                // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
+                // are in the right order.
                 let ty = bus_interaction.args[0].clone().into();
                 let op = bus_interaction.kind.clone().into();
                 let addr = bus_interaction.args[1].clone();
@@ -309,10 +311,7 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
         &self,
-        bus_interaction_handler: impl BusInteractionHandler<T>
-            + ConcreteBusInteractionHandler<T>
-            + 'static
-            + Clone,
+        bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
         degree_bound: usize,
         opcode: u32,
     ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
@@ -591,7 +590,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                         mem_int
                             .data
                             .iter()
-                            .zip(data.iter())
+                            .zip_eq(data.iter())
                             .for_each(|(new_data, old_data)| {
                                 let eq_expr = AlgebraicExpression::new_binary(
                                     new_data.clone(),

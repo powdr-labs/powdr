@@ -376,16 +376,20 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             return None;
         }
 
-        // Take some variable to normalize.
-        let var = expr.referenced_unknown_variables().next()?;
-        let coefficient = expr.coefficient_of_variable(var).unwrap();
-
-        let self_coefficient = self.coefficient_of_variable(var)?;
-        if !self_coefficient.is_known_nonzero() {
-            return None;
-        }
-
-        let result = expr - &(self.clone() * coefficient.field_div(self_coefficient));
+        // Find a normalization factor by iterating over the variables.
+        let normalization_factor = expr
+            .referenced_unknown_variables()
+            .find_map(|var| {
+                let coeff = self.coefficient_of_variable(var)?;
+                // We can only divide if we know the coefficient is non-zero.
+                if coeff.is_known_nonzero() {
+                    Some(expr.coefficient_of_variable(var).unwrap().field_div(coeff))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(T::from(1).into());
+        let result = expr - &(self.clone() * normalization_factor);
 
         // Check that the operations removed all variables in `expr` from `self`.
         if !expr
@@ -1528,5 +1532,20 @@ Z: [10, 4294967050] & 0xffffffff;
         assert!(expr
             .try_solve_for_expr(&(constant(2) * var("x") + var("y")))
             .is_none());
+    }
+
+    #[test]
+    fn solve_for_expr_normalization() {
+        // Test normalization
+        let t = SymbolicExpression::from_symbol("t", Default::default());
+        let r = SymbolicExpression::from_symbol("r", Default::default());
+        let expr = var("x") * r.clone() + var("y") * t;
+        assert_eq!(expr.to_string(), "r * x + t * y");
+        assert_eq!(
+            expr.try_solve_for_expr(&(var("x") * r))
+                .unwrap()
+                .to_string(),
+            "-t * y"
+        );
     }
 }
