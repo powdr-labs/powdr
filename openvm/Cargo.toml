@@ -43,7 +43,9 @@ openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git"
   "jemalloc",
 ] }
 
-powdr.workspace = true
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-riscv.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true
 
