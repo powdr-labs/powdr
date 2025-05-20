@@ -48,7 +48,6 @@
 - [Backends](./backends/README.md)
     - [plonky3](./backends/plonky3.md)
     - [Halo2](./backends/halo2.md)
-    - [eSTARK](./backends/estark.md)
 - [Architecture](./architecture/README.md)
     - [Compiler](./architecture/compiler.md)
     - [Linker](./architecture/linker.md)

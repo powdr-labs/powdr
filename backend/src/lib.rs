@@ -1,5 +1,3 @@
-#[cfg(any(feature = "estark-polygon", feature = "estark-starky"))]
-mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
 #[cfg(feature = "plonky3")]
@@ -9,16 +7,12 @@ mod stwo;
 
 #[cfg(any(
     feature = "halo2",
-    feature = "estark-polygon",
-    feature = "estark-starky",
     feature = "plonky3",
     feature = "stwo"
 ))]
 mod composite;
 #[cfg(any(
     feature = "halo2",
-    feature = "estark-polygon",
-    feature = "estark-starky",
     feature = "plonky3",
     feature = "stwo"
 ))]
@@ -48,24 +42,6 @@ pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock-composite")]
     Halo2MockComposite,
-    #[cfg(feature = "estark-polygon")]
-    #[strum(serialize = "estark-polygon")]
-    EStarkPolygon,
-    #[cfg(feature = "estark-polygon")]
-    #[strum(serialize = "estark-polygon-composite")]
-    EStarkPolygonComposite,
-    #[cfg(feature = "estark-starky")]
-    #[strum(serialize = "estark-starky")]
-    EStarkStarky,
-    #[cfg(feature = "estark-starky")]
-    #[strum(serialize = "estark-starky-composite")]
-    EStarkStarkyComposite,
-    #[cfg(feature = "estark-starky")]
-    #[strum(serialize = "estark-dump")]
-    EStarkDump,
-    #[cfg(feature = "estark-starky")]
-    #[strum(serialize = "estark-dump-composite")]
-    EStarkDumpComposite,
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
@@ -83,7 +59,6 @@ pub enum BackendType {
 pub type BackendOptions = String;
 pub const DEFAULT_HALO2_OPTIONS: &str = "poseidon";
 pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
-pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
@@ -101,25 +76,6 @@ impl BackendType {
             BackendType::Halo2MockComposite => Box::new(composite::CompositeBackendFactory::new(
                 halo2::Halo2MockFactory,
             )),
-            #[cfg(feature = "estark-polygon")]
-            BackendType::EStarkPolygon => Box::new(estark::polygon_wrapper::Factory),
-            #[cfg(feature = "estark-polygon")]
-            BackendType::EStarkPolygonComposite => Box::new(
-                composite::CompositeBackendFactory::new(estark::polygon_wrapper::Factory),
-            ),
-            #[cfg(feature = "estark-starky")]
-            BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
-            #[cfg(feature = "estark-starky")]
-            BackendType::EStarkStarkyComposite => Box::new(
-                composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
-            ),
-            // We need starky here because the dump backend uses some types that come from starky.
-            #[cfg(feature = "estark-starky")]
-            BackendType::EStarkDump => Box::new(estark::DumpFactory),
-            #[cfg(feature = "estark-starky")]
-            BackendType::EStarkDumpComposite => {
-                Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
-            }
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3 => Box::new(plonky3::Factory),
             #[cfg(feature = "plonky3")]

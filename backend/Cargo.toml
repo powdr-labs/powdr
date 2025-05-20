@@ -15,8 +15,6 @@ halo2 = [
   "dep:snark-verifier",
   "dep:halo2_solidity_verifier",
 ]
-estark-starky = ["dep:starky"]
-estark-polygon = ["dep:pil-stark-prover", "dep:starky"]
 plonky3 = [
   "dep:powdr-plonky3",
   "dep:p3-commit",
@@ -27,7 +25,6 @@ stwo = ["dep:stwo-prover"]
 
 # Enable AVX or Neon accordingly in backends that support them.
 plonky3-simd = ["powdr-plonky3?/nightly-features"]
-estark-starky-simd = ["starky?/avx512"]
 
 [dependencies]
 powdr-ast.workspace = true
@@ -40,9 +37,6 @@ powdr-parser-util.workspace = true
 powdr-backend-utils.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
-
-starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5", optional = true }
-pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "769b1153f3ae2d7cbab4c8acf33865ed13f8a823", optional = true }
 
 # TODO change this once Halo2 releases 0.3.1
 #halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
