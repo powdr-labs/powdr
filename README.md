@@ -31,10 +31,6 @@ then to powdr-asm and finally to powdr-PIL.
 *powdr*-PIL can be used to generate proofs using multiple backends, such as:
 
 - [Plonky3](https://github.com/Plonky3/Plonky3)
-- Halo2, using PSE's
-    - [Halo2](https://github.com/privacy-scaling-explorations/halo2)
-    - [snark-verifier](https://github.com/privacy-scaling-explorations/snark-verifier/)
-    - [halo2-solidity-verifier](https://github.com/privacy-scaling-explorations/halo2-solidity-verifier)
 - [Stwo](https://github.com/starkware-libs/stwo/) (under development)
 
 All stages are fully automatic, which means you do not need to write any

@@ -7,10 +7,9 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_halo2_proof, make_prepared_pipeline,
+        evaluate_function, evaluate_integer_function, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_bb, regular_test_gl, regular_test_small_field,
-        std_analyzed, test_halo2_with_backend_variant, test_mock_backend, test_plonky3_pipeline,
-        BackendVariant,
+        std_analyzed, test_mock_backend, test_plonky3_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -21,20 +20,6 @@ fn fingerprint_test() {
     let f = "std/fingerprint_test.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_plonky3_pipeline(pipeline);
-}
-
-#[test]
-#[ignore = "Too slow"]
-fn poseidon_bn254_test() {
-    let f = "std/poseidon_bn254_test.asm";
-    // Native linker mode, because bus constraints are exponential in Halo2
-    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
-
-    // `test_halo2` only does a mock proof in the PR tests.
-    // This makes sure we test the whole proof generation for one example
-    // file even in the PR tests.
-    gen_halo2_proof(pipeline.clone(), BackendVariant::Composite);
 }
 
 #[test]
@@ -97,14 +82,6 @@ fn poseidon2_gl_test() {
 fn split_gl_vec_test() {
     let f = "std/split_gl_vec_test.asm";
     regular_test_gl(f, &[]);
-}
-
-#[test]
-fn split_bn254_test() {
-    let f = "std/split_bn254_test.asm";
-    // Native linker mode, because bus constraints are exponential in Halo2
-    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
