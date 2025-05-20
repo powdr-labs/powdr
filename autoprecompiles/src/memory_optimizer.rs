@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::hash::Hash;
 use std::{collections::HashSet, fmt::Display};
@@ -54,21 +54,10 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
             Some((mem_addr, expr))
         })
         .collect::<BTreeMap<_, _>>();
-    // memory_addresses
-    //     .iter()
-    //     .tuple_combinations()
-    //     .map(|((v1, a1), (v2, a2))| {
-    //         let difference = a1 - a2;
-    //         println!("difference = {difference}");
-    //     })
-    //     .collect_vec();
-    // for (v, expr) in zero_check_transformer.zero_check_variables() {
-    //     println!("{v} = iszero({expr})");
-    // }
 
-    let mut memory_contents: BTreeMap<_, Vec<AlgebraicExpression<_>>> = BTreeMap::new();
-    // let mut to_remove: BTreeSet<usize> = Default::default();
-    // let mut last_store: BTreeMap<_, usize> = BTreeMap::new();
+    let mut memory_contents: BTreeMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
+        BTreeMap::new();
+    let mut to_remove: BTreeSet<usize> = Default::default();
     let mut read = false;
 
     for (i, bus) in machine.bus_interactions.iter().enumerate() {
@@ -88,7 +77,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         // println!("value = {}", mem_int.data.iter().join(", "));
 
         if read {
-            if let Some(existing_values) = memory_contents.get(addr) {
+            if let Some((previous_store, existing_values)) = memory_contents.get(addr) {
                 // TODO In order to add these equality constraints, we need to be sure that
                 // the address is uniquely determined by the constraint,
                 // i.e. that `addr` and the address stored in `memory_contents` is always
@@ -105,23 +94,31 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
                         new_constraints.push(eq_expr.into());
                     }
                 }
-                //to_remove.insert(i);
+
+                if let Some(previous_store) = previous_store {
+                    to_remove.extend([i, *previous_store]);
+                }
             } else {
                 //TODO maybe we nede to prove uniqueness of the address here as well.
-                memory_contents.insert(addr.clone(), mem_int.data.clone());
+                memory_contents.insert(addr.clone(), (None, mem_int.data.clone()));
             }
         } else {
-            // last_store
-            //     .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
             memory_contents
                 .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
-            //last_store.insert(addr.clone(), i);
-            memory_contents.insert(addr.clone(), mem_int.data.clone());
+            memory_contents.insert(addr.clone(), (Some(i), mem_int.data.clone()));
         }
 
         read = !read;
     }
     machine.constraints.extend(new_constraints);
+    machine.bus_interactions = machine
+        .bus_interactions
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !to_remove.contains(i))
+        .map(|(_, bus)| bus)
+        .collect();
+
     machine
 
     //println!("memory_contents = {memory_contents:?}");
