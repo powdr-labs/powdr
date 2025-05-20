@@ -19,8 +19,8 @@ pub struct PlonkChip<F: PrimeField32> {
     air: Arc<PlonkAir<F>>,
 }
 
-impl<F: PrimeField32> PlonkChip<F> {
-    pub fn new() -> Self {
+impl<F: PrimeField32> Default for PlonkChip<F> {
+    fn default() -> Self {
         let air = Arc::new(PlonkAir {
             _marker: std::marker::PhantomData,
         });

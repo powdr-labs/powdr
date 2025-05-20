@@ -60,13 +60,7 @@ where
             c,
         } = (*local).borrow();
 
-        builder.assert_zero(
-            q_l.clone() * a.clone()
-                + q_r.clone() * b.clone()
-                + q_o.clone() * c.clone()
-                + q_mul.clone() * (a.clone() * b.clone())
-                + q_const.clone(),
-        );
+        builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
     }
 }
 
