@@ -350,7 +350,7 @@ mod tests {
         Commitment<F>: Send,
     {
         let mut pipeline = Pipeline::<F>::default()
-            .with_backend(BackendType::Plonky3, None)
+            .with_backend(BackendType::Plonky3)
             .from_pil_string(pil.to_string());
 
         let proof = pipeline.compute_proof().unwrap().clone();

@@ -776,7 +776,7 @@ fn exported_csv_as_external_witness() {
     let file_name = format!("{case}.asm");
     let mut pipeline = Pipeline::<GoldilocksField>::default()
         .with_output(temp_dir.to_path_buf(), false)
-        .with_backend(powdr_backend::BackendType::Plonky3, None)
+        .with_backend(powdr_backend::BackendType::Plonky3)
         .with_witness_csv_settings(true, false, CsvRenderMode::Hex)
         .from_asm_string(asm, Some(PathBuf::from(file_name)));
     pipeline.compute_witness().unwrap();

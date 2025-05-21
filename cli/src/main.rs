@@ -758,7 +758,6 @@ mod test {
             pilo: false,
             prove_with: Some(BackendType::Mock),
             params: None,
-            backend_options: None,
             linker_mode: None,
             degree_mode: None,
             export_witness_csv: false,
