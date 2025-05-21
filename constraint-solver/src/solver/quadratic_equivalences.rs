@@ -30,7 +30,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
     let constraints = constraints
         .iter()
         .cloned()
-        .map(|c| c.transform_var_type(|v| VariableOrBoolean::from(v.clone())))
+        .map(|c| c.transform_var_type(&mut |v| VariableOrBoolean::from(v.clone())))
         .map(|c| extract_boolean(&c, || boolean_dispenser.next()).unwrap_or(c))
         .collect::<Vec<_>>();
     // TODO create index?
