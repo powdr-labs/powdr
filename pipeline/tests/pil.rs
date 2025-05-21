@@ -5,7 +5,7 @@ use powdr_pipeline::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_mock,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl, test_mock_backend,
-        test_stwo, test_stwo_stage1_public, BackendVariant,
+        test_stwo, test_stwo_stage1_public,
     },
     Pipeline,
 };

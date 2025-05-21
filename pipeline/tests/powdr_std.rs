@@ -9,7 +9,7 @@ use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_bb, regular_test_gl, regular_test_small_field,
-        std_analyzed, test_mock_backend, test_plonky3_pipeline, BackendVariant,
+        std_analyzed, test_mock_backend, test_plonky3_pipeline,
     },
     Pipeline,
 };
