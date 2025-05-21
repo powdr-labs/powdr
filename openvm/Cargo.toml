@@ -24,7 +24,6 @@ openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "200f450"
   "jemalloc",
   "nightly-features",
   "bench-metrics",
-  "evm-verify"
 ] }
 openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "200f450" }
 openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "200f450" }

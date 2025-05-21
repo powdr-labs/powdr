@@ -7,7 +7,6 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe, Streams, SystemConfig, VirtualMachine, VmChipComplex, VmConfig,
     VmInventoryError,
 };
-use openvm_native_recursion::halo2::utils::CacheHalo2ParamsReader;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
@@ -25,8 +24,10 @@ use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_sdk::{
-    config::{AggConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
-    DefaultStaticVerifierPvHandler, Sdk, StdIn,
+    config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
+    keygen::AggStarkProvingKey,
+    prover::AggStarkProver,
+    Sdk, StdIn,
 };
 use openvm_stark_backend::{config::StarkGenericConfig, Chip};
 use openvm_stark_sdk::config::{
@@ -400,51 +401,42 @@ pub fn prove(
             vm.engine.debug(&airs, &pks, &air_proof_inputs);
         }
     } else {
-        if !recursion {
-            // Generate a proof
-            tracing::info!("Generating proof...");
-            let proof =
-                sdk.generate_app_proof(app_pk.clone(), app_committed_exe.clone(), inputs.clone())?;
-            tracing::info!("Proof generation done.");
+        // Generate a proof
+        tracing::info!("Generating app proof...");
+        let start = std::time::Instant::now();
+        let app_proof =
+            sdk.generate_app_proof(app_pk.clone(), app_committed_exe.clone(), inputs.clone())?;
+        tracing::info!("App proof took {:?}", start.elapsed());
 
-            tracing::info!(
-                "Public values: {:?}",
-                proof.user_public_values.public_values
-            );
+        tracing::info!(
+            "Public values: {:?}",
+            app_proof.user_public_values.public_values
+        );
 
-            // Verify
-            let app_vk = app_pk.get_app_vk();
-            sdk.verify_app_proof(&app_vk, &proof)?;
-            tracing::info!("Proof verification done.");
-        } else {
+        // Verify
+        let app_vk = app_pk.get_app_vk();
+        sdk.verify_app_proof(&app_vk, &app_proof)?;
+        tracing::info!("App proof verification done.");
+
+        if recursion {
             // Generate the aggregation proving key
-            const DEFAULT_PARAMS_DIR: &str = concat!(env!("HOME"), "/.openvm/params/");
-            let halo2_params_reader = CacheHalo2ParamsReader::new(DEFAULT_PARAMS_DIR);
-            let agg_config = AggConfig::default();
             tracing::info!("Generating aggregation proving key...");
-            let agg_pk = sdk.agg_keygen(
-                agg_config,
-                &halo2_params_reader,
-                &DefaultStaticVerifierPvHandler,
-            )?;
+            let (agg_stark_pk, _) =
+                AggStarkProvingKey::dummy_proof_and_keygen(AggStarkConfig::default());
 
-            tracing::info!("Generating SNARK verifier...");
-            // Generate the SNARK verifier smart contract
-            let verifier = sdk.generate_halo2_verifier_solidity(&halo2_params_reader, &agg_pk)?;
+            tracing::info!("Generating aggregation proof...");
 
-            tracing::info!("Generating EVM proof...");
-            // Generate an EVM proof
-            let proof = sdk.generate_evm_proof(
-                &halo2_params_reader,
-                app_pk,
-                app_committed_exe,
-                agg_pk,
-                inputs,
-            )?;
-
-            tracing::info!("Verifying EVM proof...");
-            // Verify the EVM proof
-            sdk.verify_evm_halo2_proof(&verifier, proof)?;
+            let agg_prover = AggStarkProver::<BabyBearPoseidon2Engine>::new(
+                agg_stark_pk,
+                app_pk.leaf_committed_exe.clone(),
+                *sdk.agg_tree_config(),
+            );
+            // Note that this proof is not verified. We assume that any valid app proof
+            // (verified above) also leads to a valid aggregation proof.
+            // If this was not the case, it would be a completeness bug in OpenVM.
+            let start = std::time::Instant::now();
+            let _proof_with_publics = agg_prover.generate_root_verifier_input(app_proof);
+            tracing::info!("Agg proof (inner recursion) took {:?}", start.elapsed());
         }
 
         tracing::info!("All done.");
