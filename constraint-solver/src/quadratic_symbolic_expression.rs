@@ -1294,6 +1294,18 @@ Z: [10, 4294967050] & 0xffffffff;
             "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
 "
         );
+
+        // Do the same, but setting b to a concrete value (2).
+        // The result should be an unconditional assignment to b + 10 = 12.
+        let mut constr = constr;
+        constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
+            panic!("Expected 1 assignment");
+        };
+        assert_eq!(var, &"a");
+        assert_eq!(expr.to_string(), "12");
     }
 
     fn unpack_range_constraint(
