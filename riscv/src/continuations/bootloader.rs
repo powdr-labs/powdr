@@ -19,8 +19,8 @@ pub const PAGE_SIZE_BYTES_LOG: usize = 11;
 /// 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
 
-use crate::code_gen::{REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 use crate::large_field;
+use powdr_riscv_types::{REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 
 // Derived constants
 pub const WORDS_PER_PAGE: usize = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;

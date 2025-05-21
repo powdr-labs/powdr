@@ -123,7 +123,7 @@ pub fn compile_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie
         .status()
         .unwrap();
 
-    powdr_riscv::elf::translate(&executable, options)
+    powdr_riscv::translate(&executable, options)
 }
 
 pub fn verify_riscv_asm_file(
