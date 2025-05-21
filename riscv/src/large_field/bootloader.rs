@@ -1,11 +1,9 @@
-use crate::code_gen::Register;
-
-use crate::code_gen::{REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 use crate::continuations::bootloader::{
     BOOTLOADER_INPUTS_PER_PAGE, BYTES_PER_WORD, DEFAULT_PC, MEMORY_HASH_START_INDEX,
     MERKLE_TREE_DEPTH, NUM_PAGES_INDEX, N_LEAVES_LOG, PAGE_INPUTS_OFFSET, PAGE_NUMBER_MASK,
     PAGE_SIZE_BYTES, PC_INDEX, SHUTDOWN_START, WORDS_PER_HASH, WORDS_PER_PAGE,
 };
+use powdr_riscv_types::{Register, REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 
 pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
     ["load_bootloader_input", "jump_to_bootloader_input"];

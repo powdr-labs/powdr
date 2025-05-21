@@ -215,7 +215,7 @@ pub fn compile_exe(
     let target_path = path.to_str().unwrap();
 
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-    let elf_powdr = powdr_riscv::elf::load_elf(&elf_binary);
+    let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
     let airs =
         instructions_to_airs::<_, powdr_number::BabyBearField>(exe.clone(), sdk_vm_config.clone());
