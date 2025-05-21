@@ -2,6 +2,8 @@ use powdr_autoprecompiles::memory_optimizer::optimize_memory;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
 
+use test_log::test;
+
 #[test]
 fn load_machine_cbor() {
     let file = std::fs::File::open("tests/keccak_apc_post_opt.cbor").unwrap();

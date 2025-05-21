@@ -83,12 +83,9 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
 
     for (i, mem_int) in memory_bus_interactions.iter().enumerate() {
         let addr = &memory_addresses[&algebraic_to_quadratic_symbolic_expression(&mem_int.addr)];
-        println!("Memory bus interaction {i}: {addr}");
 
         if is_receive {
-            println!("Trying to read at {addr}, operation {i}");
             if let Some((previous_send, existing_values)) = memory_contents.get(addr) {
-                println!("Found existing memory contents for {addr}: {existing_values:?}");
                 // TODO In order to add these equality constraints, we need to be sure that
                 // the address is uniquely determined by the constraint,
                 // i.e. that `addr` and the address stored in `memory_contents` is always
@@ -118,7 +115,6 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
             memory_contents
                 .retain(|k, _| is_known_to_be_different_by_word(k, addr, &zero_check_transformer));
             memory_contents.insert(addr.clone(), (Some(i), mem_int.data.clone()));
-            println!("Stored data {addr}, operation {i}");
         }
 
         is_receive = !is_receive;
@@ -133,7 +129,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         }
     }
 
-    println!(
+    log::debug!(
         "Removing {} memory interactions out of {} total memory bus interactions",
         to_remove.len(),
         memory_bus_interactions.len()
