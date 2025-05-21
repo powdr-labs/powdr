@@ -1,6 +1,6 @@
 [package]
-name = "powdr-test"
-description = "Tests and examples for the powdr crate"
+name = "powdr-riscv-elf"
+description = "powdr RISCV ELF utils"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,16 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-powdr.workspace = true
+powdr-isa-utils.workspace = true
+powdr-riscv-types.workspace = true
+powdr-syscalls.workspace = true
 
-[dev-dependencies]
-env_logger = "0.10.2"
+gimli = "0.31"
+goblin = "0.8"
+itertools = "0.13"
+log = "0.4.27"
+raki = "0.1.4"
+thiserror = "1.0"
 
 [lints]
 workspace = true

@@ -18,16 +18,16 @@ installed with the "Desktop Development With C++" Workloads option.
 
 ## Building *powdr*
 
-Using a single Cargo command, enabling the Halo2 and Plonky3 backends:
+Using a single Cargo command, enabling the Plonky3 backend:
 
 ```sh
-cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3 powdr-cli
+cargo install --git https://github.com/powdr-labs/powdr --features plonky3 powdr-cli
 ```
 
 With SIMD support for the provers that support it:
 
 ```sh
-RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3,plonky3-simd powdr-cli
+RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features plonky3,plonky3-simd powdr-cli
 ```
 
 Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
@@ -37,9 +37,9 @@ Or, by manually building from a local copy of the [powdr repository](https://git
 git clone https://github.com/powdr-labs/powdr.git
 cd powdr
 # install powdr-cli
-cargo install --features halo2,plonky3 --path ./cli
+cargo install --features plonky3 --path ./cli
 # install powdr-cli with SIMD support (only for the crates that support it)
-RUSTFLAGS='-C target-cpu=native' cargo install --features halo2,plonky3,plonky3-simd --path ./cli
+RUSTFLAGS='-C target-cpu=native' cargo install --features plonky3,plonky3-simd --path ./cli
 ```
 
 ## Building *powdr-rs*

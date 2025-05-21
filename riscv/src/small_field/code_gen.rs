@@ -1,19 +1,15 @@
 use std::vec;
 
 use itertools::Itertools;
-use powdr_isa_utils::SingleDataValue;
-use powdr_isa_utils::{escape_label, quote};
-
+use powdr_isa_utils::{escape_label, quote, SingleDataValue};
 use powdr_number::KnownField;
-
-use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
-
-use crate::code_gen::{
+use powdr_riscv_types::{
     InstructionArgs, MemEntry, Register, RiscVProgram, SourceFileInfo, Statement,
 };
-use crate::CompilerOptions;
 
+use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::small_field::runtime::Runtime;
+use crate::CompilerOptions;
 
 /// Translates a RISC-V program to POWDR ASM with constraints that work for a field >24 bits.
 ///

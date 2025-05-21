@@ -24,6 +24,8 @@ powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-parser-util.workspace = true
 powdr-pipeline.workspace = true
+powdr-riscv-elf.workspace = true
+powdr-riscv-types.workspace = true
 powdr-riscv-executor.workspace = true
 powdr-syscalls.workspace = true
 

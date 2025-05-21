@@ -9,12 +9,6 @@ repository = { workspace = true }
 
 [features]
 default = []
-halo2 = [
-  "dep:halo2_proofs",
-  "dep:halo2_curves",
-  "dep:snark-verifier",
-  "dep:halo2_solidity_verifier",
-]
 plonky3 = [
   "dep:powdr-plonky3",
   "dep:p3-commit",
@@ -38,18 +32,6 @@ powdr-backend-utils.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
 
-# TODO change this once Halo2 releases 0.3.1
-#halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
-halo2_proofs = { git = "https://github.com/powdr-labs/halo2.git", rev = "fb8087565115ff38da4074b9d1777e9a97222caa", features = [
-  "circuit-params",
-], optional = true }
-halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true }
-# TODO change this once Halo2 releases 0.3.1 and snark-verifier uses it
-#snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
-snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier.git", rev = "55012261fd4b0b8d21b581a9782d05258afe4104", optional = true }
-halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier.git", rev = "ecae7fd2f62178c18b5fe18011630aa71da3371f", features = [
-  "evm",
-], optional = true }
 rayon = "1.7.0"
 
 p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [

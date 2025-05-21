@@ -1,13 +1,10 @@
-#[cfg(feature = "halo2")]
-mod halo2;
 #[cfg(feature = "plonky3")]
 mod plonky3;
 #[cfg(feature = "stwo")]
 mod stwo;
 
-#[cfg(any(feature = "halo2", feature = "plonky3", feature = "stwo"))]
+#[cfg(any(feature = "plonky3", feature = "stwo"))]
 mod composite;
-#[cfg(any(feature = "halo2", feature = "plonky3", feature = "stwo"))]
 mod field_filter;
 mod mock;
 
@@ -22,18 +19,6 @@ pub enum BackendType {
     #[strum(serialize = "mock")]
     #[default]
     Mock,
-    #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2")]
-    Halo2,
-    #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-composite")]
-    Halo2Composite,
-    #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-mock")]
-    Halo2Mock,
-    #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-mock-composite")]
-    Halo2MockComposite,
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
@@ -49,25 +34,11 @@ pub enum BackendType {
 }
 
 pub type BackendOptions = String;
-pub const DEFAULT_HALO2_OPTIONS: &str = "poseidon";
-pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
 
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
             BackendType::Mock => Box::new(mock::MockBackendFactory),
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2Composite => Box::new(composite::CompositeBackendFactory::new(
-                halo2::Halo2ProverFactory,
-            )),
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2Mock => Box::new(halo2::Halo2MockFactory),
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2MockComposite => Box::new(composite::CompositeBackendFactory::new(
-                halo2::Halo2MockFactory,
-            )),
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3 => Box::new(plonky3::Factory),
             #[cfg(feature = "plonky3")]
