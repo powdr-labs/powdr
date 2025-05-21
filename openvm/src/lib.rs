@@ -403,9 +403,10 @@ pub fn prove(
     } else {
         // Generate a proof
         tracing::info!("Generating app proof...");
+        let start = std::time::Instant::now();
         let app_proof =
             sdk.generate_app_proof(app_pk.clone(), app_committed_exe.clone(), inputs.clone())?;
-        tracing::info!("App proof generation done.");
+        tracing::info!("App proof took {:?}", start.elapsed());
 
         tracing::info!(
             "Public values: {:?}",
@@ -433,7 +434,9 @@ pub fn prove(
             // Note that this proof is not verified. We assume that any valid app proof
             // (verified above) also leads to a valid aggregation proof.
             // If this was not the case, it would be a completeness bug in OpenVM.
+            let start = std::time::Instant::now();
             let _proof_with_publics = agg_prover.generate_root_verifier_input(app_proof);
+            tracing::info!("Agg proof (inner recursion) took {:?}", start.elapsed());
         }
 
         tracing::info!("All done.");
