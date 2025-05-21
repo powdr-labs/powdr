@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::fmt::Display;
 use std::hash::Hash;
-use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -74,6 +74,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         .collect::<BTreeMap<_, _>>();
 
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+
     // Go through the memory interactions and try to optimize them.
     let mut memory_contents: BTreeMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
         BTreeMap::new();
@@ -81,34 +82,33 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     let mut is_receive = true;
 
     for (i, mem_int) in memory_bus_interactions.iter().enumerate() {
-        let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
-
-        let addr = &memory_addresses[&addr];
+        let addr = &memory_addresses[&algebraic_to_quadratic_symbolic_expression(&mem_int.addr)];
 
         if is_receive {
-            if let Some((previous_store, existing_values)) = memory_contents.get(addr) {
+            if let Some((previous_send, existing_values)) = memory_contents.get(addr) {
                 // TODO In order to add these equality constraints, we need to be sure that
                 // the address is uniquely determined by the constraint,
                 // i.e. that `addr` and the address stored in `memory_contents` is always
                 // equal, and not just "can be equal".
                 for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
                     if existing != new {
-                        println!("{existing} = {new}");
-                        let eq_expr = AlgebraicExpression::new_binary(
-                            existing.clone(),
-                            AlgebraicBinaryOperator::Sub,
-                            new.clone(),
+                        new_constraints.push(
+                            AlgebraicExpression::new_binary(
+                                existing.clone(),
+                                AlgebraicBinaryOperator::Sub,
+                                new.clone(),
+                            )
+                            .into(),
                         );
-
-                        new_constraints.push(eq_expr.into());
                     }
                 }
 
-                if let Some(previous_store) = previous_store {
+                // If we got this information from a previous send, we can remove both.
+                if let Some(previous_store) = previous_send {
                     to_remove.extend([i, *previous_store]);
                 }
             } else {
-                //TODO maybe we nede to prove uniqueness of the address here as well.
+                //TODO maybe we need to prove uniqueness of the address here as well.
                 memory_contents.insert(addr.clone(), (None, mem_int.data.clone()));
             }
         } else {
@@ -129,8 +129,8 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         }
     }
 
-    println!(
-        "Removing {} bus interactions out of {} total memory bus interactions",
+    log::debug!(
+        "Removing {} memory interactions out of {} total memory bus interactions",
         to_remove.len(),
         memory_bus_interactions.len()
     );
@@ -220,73 +220,6 @@ fn try_remove_is_valid<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     }
 }
 
-struct QuadraticEqualityCandidate<T: FieldElement, V: Ord + Clone + Hash + Eq> {
-    expr: QuadraticSymbolicExpression<T, V>,
-    offset: SymbolicExpression<T, V>,
-    /// All unknown variables in `expr`.
-    variables: HashSet<V>,
-}
-
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> Display
-    for QuadraticEqualityCandidate<T, V>
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} +? {}", self.expr, self.offset)
-    }
-}
-
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
-    fn try_from_qse(constr: &QuadraticSymbolicExpression<T, V>) -> Option<Self> {
-        let (left, right) = constr.try_as_single_product()?;
-        if !left.is_affine() || !right.is_affine() {
-            return None;
-        }
-        // `constr = 0` is equivalent to `left * right = 0`
-        let offset = (left - right).try_to_known()?.try_to_number()?;
-        // `offset + right = left`
-        // `constr = 0` is equivalent to `right * (right + offset) = 0`
-        let variables = right
-            .referenced_unknown_variables()
-            .cloned()
-            .collect::<HashSet<_>>();
-        Some(Self {
-            expr: right.clone(),
-            offset: offset.into(),
-            variables,
-        })
-    }
-
-    /// Returns an equivalent candidate that is normalized
-    /// such that `var` has a coefficient of `1`.
-    fn normalized_for_var(&self, var: &V) -> Self {
-        let inverse_coefficient = self
-            .expr
-            .coefficient_of_variable(var)
-            .unwrap()
-            .field_inverse();
-
-        // self represents
-        // `(coeff * var + X) * (coeff * var + X + offset) = 0`
-        // Dividing by `coeff` twice results in
-        // `(var + X / coeff) * (var + X / coeff + offset / coeff) = 0`
-        let offset = &self.offset * &inverse_coefficient;
-        let expr = self.expr.clone() * inverse_coefficient;
-        Self {
-            expr,
-            offset,
-            variables: self.variables.clone(),
-        }
-    }
-
-    fn expr(&self) -> &QuadraticSymbolicExpression<T, V> {
-        &self.expr
-    }
-
-    fn offset(&self) -> &SymbolicExpression<T, V> {
-        &self.offset
-    }
-}
-
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
 pub enum Variable {
     Reference(AlgebraicReference),
@@ -373,19 +306,6 @@ impl<T: FieldElement> ZeroCheckTransformer<T> {
         // We return `right + z * offset == 0`, which is equivalent to the original constraint.
 
         Some(right + &(QuadraticSymbolicExpression::from_unknown_variable(z) * offset))
-    }
-
-    pub fn zero_check_variables(
-        self,
-    ) -> BTreeMap<Variable, QuadraticSymbolicExpression<T, Variable>> {
-        self.zero_checks
-            .into_iter()
-            .enumerate()
-            .map(|(id, expr)| {
-                let z = Variable::ZeroCheck { id };
-                (z.clone(), expr)
-            })
-            .collect()
     }
 }
 

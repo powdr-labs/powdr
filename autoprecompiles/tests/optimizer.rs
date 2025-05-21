@@ -1,22 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
-use std::fmt;
-use std::hash::Hash;
-use std::{collections::HashSet, fmt::Display};
-
-use itertools::Itertools;
-use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge, PolyID,
-    PolynomialType,
-};
 use powdr_autoprecompiles::memory_optimizer::optimize_memory;
-use powdr_autoprecompiles::{MemoryBusInteraction, MemoryType, SymbolicMachine};
-use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
-use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    symbolic_expression::SymbolicExpression,
-};
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_autoprecompiles::SymbolicMachine;
+use powdr_number::BabyBearField;
 
 #[test]
 fn load_machine_cbor() {
