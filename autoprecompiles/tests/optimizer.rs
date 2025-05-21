@@ -33,6 +33,8 @@ fn analyze_for_memory() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
+    let bus_interactions_before = machine.bus_interactions.len();
+
     let machine = optimize_memory(machine);
 
     println!(
@@ -41,7 +43,10 @@ fn analyze_for_memory() {
         machine.constraints.len(),
         machine.bus_interactions.len()
     );
-    //println!("memory_contents = {memory_contents:?}");
+    assert_eq!(
+        bus_interactions_before - machine.bus_interactions.len(),
+        450
+    );
 }
 
 /// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
