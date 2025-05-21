@@ -417,7 +417,7 @@ pub fn prove(
         sdk.verify_app_proof(&app_vk, &app_proof)?;
         tracing::info!("App proof verification done.");
 
-        if !recursion {
+        if recursion {
             // Generate the aggregation proving key
             tracing::info!("Generating aggregation proving key...");
             let (agg_stark_pk, _) =
