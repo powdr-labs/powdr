@@ -79,7 +79,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     let mut memory_contents: BTreeMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
         BTreeMap::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
-    let mut is_receive = true;
+    let mut is_receive = false;
 
     for (i, mem_int) in memory_bus_interactions.iter().enumerate() {
         let addr = &memory_addresses[&algebraic_to_quadratic_symbolic_expression(&mem_int.addr)];

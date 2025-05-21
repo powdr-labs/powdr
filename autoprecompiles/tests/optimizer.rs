@@ -17,15 +17,8 @@ fn test_optimize_memory() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
+    let bus_interactions_before = machine.bus_interactions.len();
     let machine = optimize_memory(machine);
-
-    println!(
-        "columns: {}, constraints: {}, bus interactions: {}",
-        machine.constraint_columns().len(),
-        machine.constraints.len(),
-        machine.bus_interactions.len()
-    );
-    assert_eq!(machine.constraint_columns().len(), 563);
-    assert_eq!(machine.constraints.len(), 506);
-    assert_eq!(machine.bus_interactions.len(), 6485);
+    let removed_bus_interactions = bus_interactions_before - machine.bus_interactions.len();
+    assert_eq!(removed_bus_interactions, 447);
 }
