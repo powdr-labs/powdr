@@ -129,7 +129,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         }
     }
 
-    log::debug!(
+    println!(
         "Removing {} memory interactions out of {} total memory bus interactions",
         to_remove.len(),
         memory_bus_interactions.len()
@@ -143,8 +143,6 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         .collect();
 
     machine
-
-    //println!("memory_contents = {memory_contents:?}");
 }
 
 /// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
