@@ -2,14 +2,11 @@
 
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    boolean_extractor::{extract_boolean, unextract_boolean},
+    boolean_extractor::extract_boolean,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
-    range_constraint::RangeConstraint,
-    symbolic_expression::SymbolicExpression,
 };
 
 // New way:
@@ -46,15 +43,13 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
             let coeff2 = c2.coefficient_of_variable(var).unwrap();
             let difference = if coeff1 == coeff2 {
                 c1 - c2
+            } else if coeff1.is_known_nonzero() {
+                &(c1.clone() * (coeff2.field_div(coeff1))) - c2
+            } else if coeff2.is_known_nonzero() {
+                c1 - &(c2.clone() * (coeff1.field_div(coeff2)))
             } else {
-                if coeff1.is_known_nonzero() {
-                    &(c1.clone() * (coeff2.field_div(coeff1))) - c2
-                } else if coeff2.is_known_nonzero() {
-                    c1 - &(c2.clone() * (coeff1.field_div(coeff2)))
-                } else {
-                    // TODO we could try other shared variables
-                    continue;
-                }
+                // TODO we could try other shared variables
+                continue;
             };
 
             // We know that `difference` has to be zero.

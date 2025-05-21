@@ -312,7 +312,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
     pub fn transform_var_type<V2: Ord + Clone>(
         &self,
-        mut var_transform: &mut impl FnMut(&V1) -> V2,
+        var_transform: &mut impl FnMut(&V1) -> V2,
     ) -> QuadraticSymbolicExpression<T, V2> {
         QuadraticSymbolicExpression {
             quadratic: self
