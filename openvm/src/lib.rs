@@ -433,7 +433,7 @@ pub fn prove(
             // Note that this proof is not verified. We assume that any valid app proof
             // (verified above) also leads to a valid aggregation proof.
             // If this was not the case, it would be a completeness bug in OpenVM.
-            let _proof = agg_prover.generate_agg_proof(app_proof);
+            let _proof_with_publics = agg_prover.generate_root_verifier_input(app_proof);
         }
 
         tracing::info!("All done.");
