@@ -1,5 +1,5 @@
-use powdr::FieldElement;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_number::FieldElement;
 
 /// Maximum value of the first element,
 /// see https://github.com/openvm-org/openvm/blob/main/extensions/rv32im/circuit/src/extension.rs#L124
@@ -33,8 +33,8 @@ mod tests {
     };
 
     use super::*;
-    use powdr::number::BabyBearField;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
+    use powdr_number::BabyBearField;
 
     fn run(
         x: RangeConstraint<BabyBearField>,

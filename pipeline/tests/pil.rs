@@ -45,22 +45,6 @@ fn lookup_with_selector() {
 }
 
 #[test]
-#[cfg(feature = "estark-starky")]
-#[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
-fn lookup_with_selector_starky() {
-    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
-    // witness[0] and witness[2] have to be in {2, 4}
-
-    let f = "pil/lookup_with_selector.pil";
-
-    // Invalid witness: 0 is not in the set {2, 4}
-    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
-    // Unfortunately, eStark panics in this case. That's why the test is marked
-    // as should_panic, with the error message that would be coming from eStark...
-    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
-}
-
-#[test]
 fn permutation_with_selector() {
     // witness[0] and witness[2] have to be in {2, 4}
 
@@ -82,22 +66,6 @@ fn permutation_with_selector() {
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-}
-
-#[test]
-#[cfg(feature = "estark-starky")]
-#[should_panic = "assertion failed: check_val._eq(&F::one())"]
-fn permutation_with_selector_starky() {
-    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
-    // witness[0] and witness[2] have to be in {2, 4}
-
-    let f = "pil/permutation_with_selector.pil";
-
-    // Invalid witness: 0 is not in the set {2, 4}
-    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
-    // Unfortunately, eStark panics in this case. That's why the test is marked
-    // as should_panic, with the error message that would be coming from eStark...
-    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
 #[test]

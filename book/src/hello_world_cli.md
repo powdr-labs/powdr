@@ -81,8 +81,6 @@ The proof can be verified by anyone via:
 powdr verify test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --vkey "vkey.bin" --params "params.bin" --proof "hello_world_proof.bin"
 ```
 
-> Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.
-
 Another aspect that was omitted in this example is the fact that this proof
 uses a Poseidon transcript and cannot be verified in a cheap way on Ethereum,
 even though we can verify it efficiently via powdr.

@@ -12,8 +12,8 @@ use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
 use openvm_stark_sdk::{config::fri_params::SecurityParameters, engine::StarkFriEngine};
-use powdr::FieldElement;
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_number::FieldElement;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -214,10 +214,10 @@ pub fn compile_exe(
     let target_path = path.to_str().unwrap();
 
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-    let elf_powdr = powdr::riscv::elf::load_elf(&elf_binary);
+    let elf_powdr = powdr_riscv::elf::load_elf(&elf_binary);
 
     let airs =
-        instructions_to_airs::<_, powdr::number::BabyBearField>(exe.clone(), sdk_vm_config.clone());
+        instructions_to_airs::<_, powdr_number::BabyBearField>(exe.clone(), sdk_vm_config.clone());
 
     let (exe, extension) = customize_exe::customize(
         exe,

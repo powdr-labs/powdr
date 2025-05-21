@@ -102,9 +102,9 @@ Now that we have the witnesses for all chunks we can use `powdr` (instead of
 `powdr-rs`) to compute proofs for each chunk:
 
 ```console
-powdr prove many_chunks.asm -d chunk_0 --backend estark-dump
-powdr prove many_chunks.asm -d chunk_1 --backend estark-dump
-powdr prove many_chunks.asm -d chunk_2 --backend estark-dump
+powdr prove many_chunks.asm -d chunk_0 --backend mock
+powdr prove many_chunks.asm -d chunk_1 --backend mock
+powdr prove many_chunks.asm -d chunk_2 --backend mock
 ```
 
 These proofs are mock proofs for the sake of the example, but any backend

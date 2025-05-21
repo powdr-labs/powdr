@@ -152,7 +152,6 @@ enum Commands {
         params: Option<String>,
 
         /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -202,7 +201,6 @@ enum Commands {
         backend: BackendType,
 
         /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -244,7 +242,6 @@ enum Commands {
         backend: BackendType,
 
         /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -287,7 +284,6 @@ enum Commands {
         backend: BackendType,
 
         /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -323,7 +319,6 @@ enum Commands {
         backend: BackendType,
 
         /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -819,9 +814,9 @@ mod test {
             inputs: "3,2,1,2".into(),
             force: false,
             pilo: false,
-            prove_with: Some(BackendType::EStarkDump),
+            prove_with: Some(BackendType::Mock),
             params: None,
-            backend_options: Some("stark_gl".to_string()),
+            backend_options: None,
             linker_mode: None,
             degree_mode: None,
             export_witness_csv: false,

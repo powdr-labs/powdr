@@ -38,8 +38,8 @@ fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
 
         for (var, expr) in find_inlinable_variables(constraint) {
             if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
-                log::debug!("Substituting {var} = {expr}");
-                log::debug!("  (from identity {constraint})");
+                log::trace!("Substituting {var} = {expr}");
+                log::trace!("  (from identity {constraint})");
                 constraint_system.expressions_mut().for_each(|identity| {
                     identity.substitute_by_unknown(&var, &expr);
                 });

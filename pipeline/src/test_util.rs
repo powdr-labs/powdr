@@ -112,7 +112,7 @@ pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
         .clone()
 }
 
-#[cfg(any(feature = "estark-starky", feature = "halo2", feature = "plonky3"))]
+#[cfg(any(feature = "halo2", feature = "plonky3"))]
 fn should_generate_proofs() -> bool {
     match std::env::var("POWDR_GENERATE_PROOFS") {
         Ok(value) => match value.as_str() {
@@ -122,58 +122,6 @@ fn should_generate_proofs() -> bool {
         },
         Err(_) => false,
     }
-}
-
-#[cfg(not(feature = "estark-starky"))]
-pub fn gen_estark_proof_with_backend_variant(
-    _pipeline: Pipeline<GoldilocksField>,
-    _backend_variant: BackendVariant,
-) {
-}
-
-#[cfg(feature = "estark-starky")]
-pub fn gen_estark_proof_with_backend_variant(
-    pipeline: Pipeline<GoldilocksField>,
-    backend_variant: BackendVariant,
-) {
-    use powdr_backend::BackendType;
-    use powdr_number::buffered_write_file;
-
-    if !should_generate_proofs() {
-        return;
-    }
-
-    let backend = match backend_variant {
-        BackendVariant::Monolithic => BackendType::EStarkStarky,
-        BackendVariant::Composite => BackendType::EStarkStarkyComposite,
-    };
-    let mut pipeline = pipeline.with_backend(backend, None);
-
-    pipeline.clone().compute_proof().unwrap();
-
-    // Repeat the proof generation, but with an externally generated verification key
-
-    // Verification Key
-    let output_dir = pipeline.output_dir().as_ref().unwrap();
-    let vkey_file_path = output_dir.join("verification_key.bin");
-    buffered_write_file(&vkey_file_path, |writer| {
-        pipeline.export_verification_key(writer).unwrap()
-    })
-    .unwrap();
-
-    // Create the proof before adding the vkey to the pipeline,
-    // so that it's generated during the proof
-    let proof: Vec<u8> = pipeline.compute_proof().unwrap().clone();
-
-    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
-
-    let publics: Vec<GoldilocksField> = pipeline
-        .publics()
-        .values()
-        .map(|v| v.expect("all publics should be known since we created a proof"))
-        .collect();
-
-    pipeline.verify(&proof, &[publics]).unwrap();
 }
 
 /// Whether to compute a monolithic or composite proof.
@@ -442,27 +390,6 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
         .is_err());
 }
 
-#[cfg(not(feature = "estark-starky"))]
-pub fn assert_proofs_fail_for_invalid_witnesses_estark(
-    _file_name: &str,
-    _witness: &[(String, Vec<u64>)],
-) {
-}
-
-#[cfg(feature = "estark-starky")]
-pub fn assert_proofs_fail_for_invalid_witnesses_estark(
-    file_name: &str,
-    witness: &[(String, Vec<u64>)],
-) {
-    let pipeline = Pipeline::<GoldilocksField>::default().from_file(resolve_test_file(file_name));
-
-    assert!(pipeline
-        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
-        .set_witness(convert_witness(witness))
-        .compute_proof()
-        .is_err());
-}
-
 #[cfg(feature = "halo2")]
 pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
     file_name: &str,
@@ -494,7 +421,6 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
     assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
     #[cfg(feature = "stwo")]

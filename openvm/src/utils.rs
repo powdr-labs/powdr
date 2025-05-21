@@ -10,14 +10,11 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr::number::FieldElement;
-use powdr::{
-    ast::analyzed::{
-        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
-    },
-    number::BabyBearField,
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
+use powdr_number::{BabyBearField, FieldElement};
 
 pub fn algebraic_to_symbolic<T: PrimeField32>(
     expr: &AlgebraicExpression<T>,

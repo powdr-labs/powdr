@@ -36,9 +36,6 @@ then to powdr-asm and finally to powdr-PIL.
     - [snark-verifier](https://github.com/privacy-scaling-explorations/snark-verifier/)
     - [halo2-solidity-verifier](https://github.com/privacy-scaling-explorations/halo2-solidity-verifier)
 - [Stwo](https://github.com/starkware-libs/stwo/) (under development)
-- eSTARK, using
-    - [Eigen's starky](https://github.com/0xEigenLabs/eigen-zkvm/)
-    - [our fork of Polygon's zkevm-prover](https://github.com/powdr-labs/zkevm-prover)
 
 All stages are fully automatic, which means you do not need to write any
 additional code for witness generation besides your Rust code. All witnesses

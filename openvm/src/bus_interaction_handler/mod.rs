@@ -1,11 +1,11 @@
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
-use powdr::{FieldElement, LargeInt};
 use powdr_autoprecompiles::optimizer::IsBusStateful;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,
 };
+use powdr_number::{FieldElement, LargeInt};
 use tuple_range_checker::handle_tuple_range_checker;
 use variable_range_checker::handle_variable_range_checker;
 
@@ -106,7 +106,7 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
 mod test_utils {
 
     use super::*;
-    use powdr::number::BabyBearField;
+    use powdr_number::BabyBearField;
 
     pub fn value(value: u64) -> RangeConstraint<BabyBearField> {
         RangeConstraint::from_value(BabyBearField::from(value))

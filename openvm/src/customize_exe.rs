@@ -10,13 +10,13 @@ use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
 use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeField32};
-use powdr::ast::analyzed::AlgebraicExpression;
-use powdr::{FieldElement, LargeInt};
+use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
     Autoprecompiles, BusInteractionKind, InstructionKind, SymbolicBusInteraction,
     SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine,
 };
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -33,7 +33,7 @@ pub fn customize<F: PrimeField32>(
     mut exe: VmExe<F>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<powdr::number::BabyBearField>>,
+    airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
     autoprecompiles: usize,
     skip: usize,
     pc_idx_count: Option<HashMap<u32, u32>>,
@@ -217,7 +217,7 @@ pub fn customize<F: PrimeField32>(
         assert_eq!(program.len(), len_before);
 
         let (autoprecompile, subs) =
-            generate_autoprecompile::<F, powdr::number::BabyBearField>(acc_block, airs, apc_opcode);
+            generate_autoprecompile::<F, powdr_number::BabyBearField>(acc_block, airs, apc_opcode);
 
         let is_valid_column = autoprecompile
             .unique_columns()
@@ -465,14 +465,14 @@ fn transpose_algebraic_expression<F: PrimeField32, P: FieldElement>(
         AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
             let left = transpose_algebraic_expression(*algebraic_binary_operation.left);
             let right = transpose_algebraic_expression(*algebraic_binary_operation.right);
-            AlgebraicExpression::BinaryOperation(powdr::ast::analyzed::AlgebraicBinaryOperation {
+            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
                 left: Box::new(left),
                 right: Box::new(right),
                 op: algebraic_binary_operation.op,
             })
         }
         AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
-            AlgebraicExpression::UnaryOperation(powdr::ast::analyzed::AlgebraicUnaryOperation {
+            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
                 op: algebraic_unary_operation.op,
                 expr: Box::new(transpose_algebraic_expression(
                     *algebraic_unary_operation.expr,

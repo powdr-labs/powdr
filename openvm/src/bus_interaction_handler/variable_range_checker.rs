@@ -1,5 +1,5 @@
-use powdr::{FieldElement, LargeInt};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_number::{FieldElement, LargeInt};
 
 /// The maximum number of bits that can be checked by the variable range checker.
 // TODO: This should be configurable
@@ -36,8 +36,8 @@ mod tests {
     };
 
     use super::*;
-    use powdr::number::BabyBearField;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
+    use powdr_number::BabyBearField;
 
     fn run(
         x: RangeConstraint<BabyBearField>,
