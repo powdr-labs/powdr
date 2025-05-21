@@ -125,23 +125,26 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     machine.constraints.extend(new_constraints);
 
     // Do not remove the last send to an address.
+
+    // TODO this is wrong because we delete too many entries from memory_contents.
     for (last_store, _) in memory_contents.values() {
         if let Some(last_store) = last_store {
             // TODO also the correspending read?
+            println!("Removing last store {last_store}");
             to_remove.remove(last_store);
         }
     }
 
+    let mut data = vec![];
     for (i, bus) in memory_bus_interactions.iter().enumerate() {
-        println!(
+        data.push(format!(
             "Bus interaction {i}: {}  <=>   {}",
+            bus.data.iter().join(", "),
             &memory_addresses[&algebraic_to_quadratic_symbolic_expression(&bus.addr)],
-            bus.data.iter().join(", ")
-        );
-        if to_remove.contains(&i) {
-            println!("              -x");
-        }
+        ));
     }
+    data.sort_by(|a, b| a.chars().rev().cmp(b.chars().rev()));
+    println!("Memory bus interactions:\n{}", data.join("\n"));
 
     log::debug!(
         "Removing {} memory interactions out of {} total memory bus interactions",
@@ -284,8 +287,7 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 struct ZeroCheckTransformer<T: FieldElement> {
     /// Boolean variables that are zero if the quadratic symbolic expression
     /// is zero, and one otherwise.
-    /// Identified by their index in the vector.
-    zero_checks: Vec<QuadraticSymbolicExpression<T, Variable>>,
+    zero_checks: BTreeMap<QuadraticSymbolicExpression<T, Variable>, usize>,
 }
 impl<T: FieldElement> ZeroCheckTransformer<T> {
     pub fn transform(
@@ -308,10 +310,10 @@ impl<T: FieldElement> ZeroCheckTransformer<T> {
         // `offset + right = left`
         // `constr = 0` is equivalent to `right * (right + offset) = 0`
 
-        self.zero_checks.push(right + &offset);
-        let z = Variable::ZeroCheck {
-            id: self.zero_checks.len() - 1,
-        };
+        let next_id = self.zero_checks.len();
+        let id = *self.zero_checks.entry(right.clone()).or_insert(next_id);
+        println!("Adding zero check {id} for {} = 0", right + &offset);
+        let z = Variable::ZeroCheck { id };
         // z == if (right + offset) == 0 { 1 } else { 0 }
 
         // We return `right + z * offset == 0`, which is equivalent to the original constraint.
@@ -331,3 +333,14 @@ impl<T: FieldElement> RangeConstraintProvider<T, Variable> for &ZeroCheckTransfo
         }
     }
 }
+
+// Can we reason that `mem_ptr_limbs__0_379 = mem_ptr_limbs__0_175` using range constrainst?
+// should the quadratic equivalence optimizer have done that?
+
+// Adding zero check 321 for -943718400 * mem_ptr_limbs__0_379 + 30720 * mem_ptr_limbs__1_379 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893 = 0
+// Adding zero check 195 for -943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893 = 0
+
+// Bus interaction 288: prev_data__0_387, prev_data__1_387, prev_data__2_387, prev_data__3_387  <=>   rs1_data__0_661 + 256 * rs1_data__1_661 + 65536 * rs1_data__2_661 + 16777216 * rs1_data__3_661 + 268435454 * zero_check_321 + -268435310
+// Bus interaction 289: prev_data__0_387, prev_data__1_387, prev_data__2_387, prev_data__3_387  <=>   rs1_data__0_661 + 256 * rs1_data__1_661 + 65536 * rs1_data__2_661 + 16777216 * rs1_data__3_661 + 268435454 * zero_check_321 + -268435310
+// Bus interaction 162: writes_aux__prev_data__0_176, writes_aux__prev_data__1_176, writes_aux__prev_data__2_176, writes_aux__prev_data__3_176  <=>   rs1_data__0_661 + 256 * rs1_data__1_661 + 65536 * rs1_data__2_661 + 16777216 * rs1_data__3_661 + 268435454 * zero_check_195 + -268435310
+// Bus interaction 163: writes_aux__prev_data__0_176, writes_aux__prev_data__1_176, writes_aux__prev_data__2_176, writes_aux__prev_data__3_176  <=>   rs1_data__0_661 + 256 * rs1_data__1_661 + 65536 * rs1_data__2_661 + 16777216 * rs1_data__3_661 + 268435454 * zero_check_195 + -268435310
