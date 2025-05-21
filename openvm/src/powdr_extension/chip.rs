@@ -185,7 +185,7 @@ impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
         format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
     fn current_trace_height(&self) -> usize {
-        self.executor.current_trace_height
+        self.executor.number_of_calls()
     }
 
     fn trace_width(&self) -> usize {
@@ -204,11 +204,12 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let trace = self.executor.generate_air_proof_input::<SC>(
+        let trace = self.executor.generate_witness::<SC>(
             &self.air.column_index_by_poly_id,
-            self.air.width(),
             &self.air.machine.bus_interactions,
         );
+
+        assert_eq!(trace.width(), self.air.width());
 
         AirProofInput::simple(trace, vec![])
     }

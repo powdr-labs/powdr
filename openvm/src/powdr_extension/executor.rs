@@ -7,18 +7,20 @@ use crate::powdr_extension::chip::RowEvaluator;
 
 use super::{
     chip::{SharedChips, SymbolicBusInteraction, SymbolicMachine},
-    vm::{OriginalInstruction, SdkVmInventory},
+    vm::OriginalInstruction,
 };
 use itertools::Itertools;
-use openvm_circuit::{
-    arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
-};
 use openvm_circuit::{
     arch::{
         ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
         VmInventoryError,
     },
     system::memory::OfflineMemory,
+};
+use openvm_circuit::{
+    arch::{VmConfig, VmInventory},
+    system::memory::MemoryController,
+    utils::next_power_of_two_or_zero,
 };
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
@@ -39,14 +41,16 @@ use openvm_stark_backend::{
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::powdr::Column;
 
+type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
+
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
-    pub instructions: Vec<OriginalInstruction<F>>,
-    pub air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
-    pub is_valid_poly_id: u64,
-    pub inventory: SdkVmInventory<F>,
-    pub current_trace_height: usize,
-    pub periphery: SharedChips,
+    instructions: Vec<OriginalInstruction<F>>,
+    air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
+    is_valid_poly_id: u64,
+    inventory: SdkVmInventory<F>,
+    number_of_calls: usize,
+    periphery: SharedChips,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
@@ -69,9 +73,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             )
             .unwrap()
             .inventory,
-            current_trace_height: 0,
+            number_of_calls: 0,
             periphery,
         }
+    }
+
+    pub fn number_of_calls(&self) -> usize {
+        self.number_of_calls
     }
 
     pub fn execute(
@@ -91,15 +99,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 executor.execute(memory, instruction.as_ref(), execution_state)
             });
 
-        self.current_trace_height += 1;
+        self.number_of_calls += 1;
 
         res
     }
 
-    pub fn generate_air_proof_input<SC>(
+    /// Generates the witness for the autoprecompile. The result will be a matrix of
+    /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
+    /// nodes in the APC circuit.
+    pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        width: usize,
         bus_interactions: &[SymbolicBusInteraction<F>],
     ) -> RowMajorMatrix<F>
     where
@@ -107,7 +117,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
-        let height = next_power_of_two_or_zero(self.current_trace_height);
+        let width = column_index_by_poly_id.len();
+        let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = F::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
@@ -196,7 +207,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             dummy_trace_index_to_apc_index_by_instruction.len()
         );
 
-        let dummy_values = (0..self.current_trace_height)
+        let dummy_values = (0..self.number_of_calls)
             .into_par_iter()
             .map(|record_index| {
                 (0..self.instructions.len())
@@ -257,11 +268,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         }
                     }
 
-                    write_dummy_to_autoprecompile_row(
-                        row_slice,
-                        dummy_row,
-                        &dummy_trace_index_to_apc_index_by_instruction[instruction_id],
-                    );
+                    for (dummy_trace_index, apc_index) in
+                        &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
+                    {
+                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+                    }
                 }
 
                 // Set the is_valid column to 1
@@ -285,16 +296,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             });
 
         RowMajorMatrix::new(values, width)
-    }
-}
-
-fn write_dummy_to_autoprecompile_row<F: PrimeField32>(
-    row_slice: &mut [F],
-    dummy_row: &[F],
-    dummy_trace_index_to_apc_index: &HashMap<usize, usize>,
-) {
-    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
     }
 }
 
