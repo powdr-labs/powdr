@@ -436,6 +436,62 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         Some(result)
     }
 
+    /// Tries to split this constraint into a list of equivalent constraints.
+    /// This is the case for example if the variables in this expression can
+    /// be split into different bit areas.
+    pub fn try_split(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<Vec<QuadraticSymbolicExpression<T, V>>> {
+        if self.is_quadratic() {
+            return None;
+        }
+        let Some(constant) = self.constant.try_to_number() else {
+            return None;
+        };
+        // Just go through the bit areas, the resulting constraints
+        // can have multiple variables!
+        let mut bit_ranges: Vec<(u64, _)> = vec![];
+        for (var, coeff) in self.linear.iter() {
+            let Some(coeff) = coeff.try_to_number() else {
+                return None;
+            };
+            let rc = range_constraints.get(var);
+            let is_negative = !coeff.is_in_lower_half();
+            // TODO we use the absolute coefficient, but if it is negative,
+            // we subtract - is that correct? What about overflow?
+            // What if we add several numbers, we need appropriate gaps.
+            // Maybe it's enough to compute the combined range constraint
+            // of each component in the end and check that they are disjoint?
+            let coeff_abs = if is_negative { -coeff } else { coeff };
+            // TODO do we need to negate if it is negative?
+            let value = Self::from_unknown_variable(var.clone()) * SymbolicExpression::from(coeff);
+            let rc = rc.multiple(coeff_abs);
+            let mask = rc.mask().try_into_u64().unwrap();
+            println!("{coeff} * {var}   -> {coeff_abs} * {var}  => RC: {rc}");
+
+            // TODO has to be done on bit-basis
+            // TODO what if the mask is zero?
+            let mut nondisjoint_candidates = bit_ranges
+                .iter_mut()
+                .filter(|(m, _)| m & mask != 0)
+                .collect_vec();
+            match &mut nondisjoint_candidates[..] {
+                [(m, v)] => {
+                    *m |= mask;
+                    *v += value;
+                }
+                [] => bit_ranges.push((mask, value)),
+                _ => return None,
+            }
+        }
+        // TODO don't forget constant.
+        if constant != 0.into() {
+            todo!();
+        }
+        Some(bit_ranges.into_iter().map(|(_, v)| v).collect_vec())
+    }
+
     fn solve_affine(
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
@@ -1588,5 +1644,26 @@ Z: [10, 4294967050] & 0xffffffff;
                 .to_string(),
             "-t * y"
         );
+    }
+
+    #[test]
+    fn split_simple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(257);
+        let items = expr
+            .try_split(
+                &[
+                    ("x", four_bit_rc.clone()),
+                    ("y", four_bit_rc.clone()),
+                    ("a", four_bit_rc.clone()),
+                    ("b", four_bit_rc.clone()),
+                ]
+                .into_iter()
+                .collect::<HashMap<_, _>>(),
+            )
+            .unwrap();
+        for item in items {
+            println!("{item}");
+        }
     }
 }
