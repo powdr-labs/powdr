@@ -238,7 +238,7 @@ where
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
 ///   .with_output(PathBuf::from("."), true)
-///   .with_backend(BackendType::Mock, None);
+///   .with_backend(BackendType::Mock);
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
@@ -371,9 +371,8 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
+    pub fn with_backend(mut self, backend: BackendType) -> Self {
         self.arguments.backend = backend;
-        self.arguments.backend_options = options.unwrap_or_default();
         self.artifact.backend = None;
         self
     }
