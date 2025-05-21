@@ -16,19 +16,6 @@ The easiest way to install both is with [`rustup.rs`](https://rustup.rs/).
 On Windows, you will also need a recent version of [Visual Studio](https://visualstudio.microsoft.com/downloads/),
 installed with the "Desktop Development With C++" Workloads option.
 
-If you want to enable the `estark-polygon` feature, you also need the following
-runtime dependencies:
-
-- `gcc`
-- `nlohmann-json3-dev`
-
-You will also need the following build time dependencies:
-
-- `make`
-- `pkg-config`
-- `libpqxx-dev` (Ubuntu) | `libpqxx` (Arch Linux)
-- `nasm`
-
 ## Building *powdr*
 
 Using a single Cargo command, enabling the Halo2 and Plonky3 backends:
