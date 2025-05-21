@@ -309,6 +309,35 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     }
 }
 
+impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
+    pub fn transform_var_type<V2: Ord + Clone>(
+        &self,
+        mut var_transform: impl FnMut(&V1) -> V2,
+    ) -> QuadraticSymbolicExpression<T, V2> {
+        QuadraticSymbolicExpression {
+            quadratic: self
+                .quadratic
+                .iter()
+                .map(|(l, r)| {
+                    (
+                        l.transform_var_type(&mut var_transform),
+                        r.transform_var_type(&mut var_transform),
+                    )
+                })
+                .collect(),
+            linear: self
+                .linear
+                .iter()
+                .map(|(var, coeff)| {
+                    let new_var = var_transform(var);
+                    (new_var, coeff.transform_var_type(&mut var_transform))
+                })
+                .collect(),
+            constant: self.constant.transform_var_type(&mut var_transform),
+        }
+    }
+}
+
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
