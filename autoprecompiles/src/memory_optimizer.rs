@@ -226,7 +226,7 @@ pub enum Variable {
     Reference(AlgebraicReference),
     PublicReference(String),
     Challenge(Challenge),
-    /// A range check variable
+    /// A zero check variable
     ZeroCheck {
         id: usize,
     },
