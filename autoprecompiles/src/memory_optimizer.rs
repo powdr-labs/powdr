@@ -19,10 +19,21 @@ use powdr_number::{FieldElement, LargeInt};
 use crate::{MemoryBusInteraction, MemoryType, SymbolicConstraint, SymbolicMachine};
 
 pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+    let memory_bus_interactions = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus| {
+            let mem_int = MemoryBusInteraction::try_from(bus.clone()).ok()?;
+            if matches!(mem_int.ty, MemoryType::Memory) {
+                Some(mem_int)
+            } else {
+                None
+            }
+        })
+        .collect_vec();
 
-    // Step 1: Transform the constraints such that some quadratic constraints get affine
-    // when we introduce a new boolean variable ("zero check variable").
+    // Transform the constraints such that some quadratic constraints are turned into
+    // affine when we introduce a new boolean variable ("zero check variable").
     let mut zero_check_transformer = ZeroCheckTransformer::default();
     let constraints = machine
         .constraints
@@ -34,50 +45,45 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         })
         .collect_vec();
 
-    // Step 2: Store constraints about memory addresses.
-    // To make this more general, we should go through the bus interactions, take the
-    // expression for the address and try to solve all constraints for that expression.
-    // We can speed this up by using variable occurrence lists, but this hack is even faster...
-    let memory_addresses = constraints
+    let constraints_by_variable = constraints
         .iter()
-        .filter_map(|constr| {
-            let limb_0 = constr
-                .referenced_variables()
-                .find(|v| v.to_string().contains("mem_ptr_limbs__0"))?;
-            let limb_1 = constr
-                .referenced_variables()
-                .find(|v| v.to_string().contains("mem_ptr_limbs__1"))?;
-            let mem_addr = QuadraticSymbolicExpression::from_unknown_variable(limb_0.clone())
-                + QuadraticSymbolicExpression::from_unknown_variable(limb_1.clone())
-                    * SymbolicExpression::from(T::from(65536));
-            let expr = constr.try_solve_for_expr(&mem_addr)?;
-            Some((mem_addr, expr))
+        .flat_map(|constr| {
+            constr
+                .referenced_unknown_variables()
+                .map(move |var| (var.clone(), constr))
+        })
+        .into_group_map();
+
+    // Collect the expressions that are used as addresses and try to solve
+    // a constraint about them in the constraint system.
+    let memory_addresses = memory_bus_interactions
+        .iter()
+        .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr))
+        .flat_map(|addr| {
+            // Go through the constraints related to this address
+            // and try to solve for the address.
+            let expr = addr
+                .referenced_unknown_variables()
+                .flat_map(|v| constraints_by_variable.get(v).map(|constrs| constrs.iter()))
+                .flatten()
+                .unique_by(|constr| constr as *const _)
+                .find_map(|constr| constr.try_solve_for_expr(&addr));
+            // If we can solve for the address, we just take the address unmodified.
+            Some((addr.clone(), expr.unwrap_or(addr)))
         })
         .collect::<BTreeMap<_, _>>();
 
+    let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+    // Go through the memory interactions and try to optimize them.
     let mut memory_contents: BTreeMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
         BTreeMap::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
     let mut is_receive = true;
 
-    let mut memory_interaction_count = 0usize;
-    for (i, bus) in machine.bus_interactions.iter().enumerate() {
-        let Ok(mem_int) = MemoryBusInteraction::try_from(bus.clone()) else {
-            continue;
-        };
-        if !matches!(mem_int.ty, MemoryType::Memory) {
-            continue;
-        }
-
-        memory_interaction_count += 1;
-
+    for (i, mem_int) in memory_bus_interactions.iter().enumerate() {
         let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
 
-        let addr = memory_addresses
-            .get(&addr)
-            .unwrap_or_else(|| panic!("No address found for {mem_int:?}"));
-        // println!("addr = {addr}");
-        // println!("value = {}", mem_int.data.iter().join(", "));
+        let addr = &memory_addresses[&addr];
 
         if is_receive {
             if let Some((previous_store, existing_values)) = memory_contents.get(addr) {
@@ -126,7 +132,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     println!(
         "Removing {} bus interactions out of {} total memory bus interactions",
         to_remove.len(),
-        memory_interaction_count
+        memory_bus_interactions.len()
     );
     machine.bus_interactions = machine
         .bus_interactions
@@ -354,9 +360,7 @@ impl<T: FieldElement> ZeroCheckTransformer<T> {
         let offset = left - right;
         // We only do the transformation if `offset` is known, because
         // otherwise the constraint stays quadratic.
-        if offset.try_to_known().is_none() {
-            return None;
-        }
+        offset.try_to_known()?;
         // `offset + right = left`
         // `constr = 0` is equivalent to `right * (right + offset) = 0`
 

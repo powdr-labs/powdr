@@ -28,7 +28,7 @@ fn load_machine_cbor() {
 }
 
 #[test]
-fn optimize_memory() {
+fn test_optimize_memory() {
     let file = std::fs::File::open("tests/keccak_apc_post_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
@@ -41,5 +41,7 @@ fn optimize_memory() {
         machine.constraints.len(),
         machine.bus_interactions.len()
     );
-    //println!("memory_contents = {memory_contents:?}");
+    assert_eq!(machine.constraint_columns().len(), 563);
+    assert_eq!(machine.constraints.len(), 506);
+    assert_eq!(machine.bus_interactions.len(), 6485);
 }
