@@ -9,50 +9,17 @@
 
 > WARNING: This codebase is experimental and has not been audited. DO NOT USE FOR PRODUCTION!
 
-For detailed documentation please visit [the powdr book](https://docs.powdr.org/).
-
 If you have any questions or want to contribute, feel free to write us in our [Matrix Chat](https://matrix.to/#/#powdr:matrix.org).
 
-*powdr* is a toolkit that helps build zkVMs and similar proof frameworks.
+*powdr* provides state-of-the-art performance and security to zkVMs, enhancing them with compiler-based techniques including static analysis and formal verification.
 
-It has two main components:
+The main components are:
 
-- powdr-asm: an extensible assembly IR language to perform dynamic executions.
-- powdr-PIL: a low level constraint language that allows you to define arithmetic constraints, lookups, etc.
-  It includes a functional meta-constraint language to describe how constraints are generated.
-  
-Both frontend and backend are highly flexible.
+- [Autoprecompiles](https://www.powdr.org/blog/auto-acc-circuits): automated synthesis of guest-specific precompiles.
+- Constraint Solver: compile-time solver used to detect potential optimizations and security issues.
+- powdr-OpenVM: powdr extensions for [OpenVM](https://github.com/openvm-org/openvm/).
 
-The [powdrVM](https://docs.powdr.org/quick_start_vm.html) is a zkVM
-implementation that builds on *powdr*.
-Users can write code in std Rust which is compiled to RISCV,
-then to powdr-asm and finally to powdr-PIL.
-
-*powdr*-PIL can be used to generate proofs using multiple backends, such as:
-
-- [Plonky3](https://github.com/Plonky3/Plonky3)
-- [Stwo](https://github.com/starkware-libs/stwo/) (under development)
-
-All stages are fully automatic, which means you do not need to write any
-additional code for witness generation besides your Rust code. All witnesses
-are automatically inferred from the constraints. Since the witnesses are
-inferred, *powdr* can ensure that the system is not underconstrained, i.e.,
-there are no additional unwanted witnesses.
-
-All artifacts from the compilation pipeline are human-readable.
-You can inspect the powdr-asm IR, the compiled powdr-PIL file,
-and its final optimized version.
-
-The assembly language is designed to be extensible and does not have a single
-native instruction. Instead, all instructions are user-defined and because of that,
-it is easy to adapt *powdr* assembly to any VM.
-
-### Notes on Efficiency
-
-The current focus of the project is VM support and developer experience.  The
-compiler generates many unnecessary columns. We will soon start writing
-optimizer steps that should bring performance closer to existing production
-systems.
+For detailed documentation on powdr-asm, powdr-pil and podwrVM please visit [the powdr book](https://docs.powdr.org/).
 
 ### Project structure
 
