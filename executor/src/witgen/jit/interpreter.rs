@@ -724,7 +724,7 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                 }
                 SymbolicExpression::UnaryOperation(op, expr, _) => {
                     inner(expr, elems, var_mapper);
-                    elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
+                    elems.push(RPNExpressionElem::UnaryOperation(*op));
                 }
             }
         }
