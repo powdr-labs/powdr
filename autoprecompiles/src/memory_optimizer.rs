@@ -85,6 +85,9 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         let addr = &memory_addresses[&algebraic_to_quadratic_symbolic_expression(&mem_int.addr)];
 
         if is_receive {
+            // TODO I think there is more we can remove because we can reason that
+            // some zero check flags are the same.
+
             if let Some((previous_send, existing_values)) = memory_contents.get(addr) {
                 // TODO In order to add these equality constraints, we need to be sure that
                 // the address is uniquely determined by the constraint,
@@ -126,6 +129,17 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         if let Some(last_store) = last_store {
             // TODO also the correspending read?
             to_remove.remove(last_store);
+        }
+    }
+
+    for (i, bus) in memory_bus_interactions.iter().enumerate() {
+        println!(
+            "Bus interaction {i}: {}  <=>   {}",
+            &memory_addresses[&algebraic_to_quadratic_symbolic_expression(&bus.addr)],
+            bus.data.iter().join(", ")
+        );
+        if to_remove.contains(&i) {
+            println!("              -x");
         }
     }
 
