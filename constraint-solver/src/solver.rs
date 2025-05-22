@@ -89,7 +89,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
+    pub fn solve(self) -> Result<SolveResult<T, V>, Error> {
         assert!(self.assignments.is_empty());
         let original_system = self.original_system.clone();
 
@@ -107,7 +107,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 let value = value.transform_var_type(&mut |v| {
                     match v {
                         Variable::Regular(v) => v.clone(),
-                        Variable::Boolean(index) => {
+                        Variable::Boolean(_) => {
                             failed = true;
                             // Just return some variable
                             var.clone()
