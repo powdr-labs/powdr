@@ -32,33 +32,20 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, R: RangeConstraintPr
     }
 }
 
-// New way:
-// - Introduce boolean variables
-// - compare all pairs of affine constraints that share at least one variable
-// - compute difference, scale with coefficient of that variable
-// - use bit decomp to find equivalent variables (for each factor, find variables and determine x - y = c)
-
-/// Given a list of constraints in the form of quadratic symbolic expressions, tries to determine
-/// pairs of equivalent variables.
+// TODO rename, this is more about pairs of affine constraints now.
 pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraints: &[QuadraticSymbolicExpression<T, V>],
     range_constraints: impl RangeConstraintProvider<T, V>,
 ) -> Vec<(V, V)> {
     let mut equalities = vec![];
-    let mut boolean_dispenser = BooleanDispenser::default();
-    // Introduce new boolean variables and turn some quadratic constraints
-    // into affine constraints.
     let constraints = constraints
         .iter()
         .cloned()
-        .map(|c| c.transform_var_type(&mut |v| VariableOrBoolean::from(v.clone())))
-        .map(|c| extract_boolean(&c, || boolean_dispenser.next()).unwrap_or(c))
         .filter(|c| c.is_affine())
         .collect::<Vec<_>>();
 
-    let range_constraints = RangeConstraintProviderForVariableOrBoolean {
-        provider: RangeConstraintHack(range_constraints),
-    };
+    // TODO do we still need the hack?
+    let range_constraints = RangeConstraintHack(range_constraints);
 
     // TODO create index?
     for (i, c1) in constraints.iter().enumerate() {
@@ -134,15 +121,13 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
                 .collect::<BTreeSet<_>>();
             // Conflicting system
             assert!(!results.is_empty());
-            let Some(solve_for) = solve_for.try_into_variable() else {
-                continue;
-            };
             if let Some(result) = results.into_iter().exactly_one().ok() {
-                if let Some(var) = result
-                    .try_to_simple_unknown()
-                    .and_then(|v| v.try_into_variable())
-                {
-                    equalities.push((var, solve_for));
+                if let Some(var) = result.try_to_simple_unknown() {
+                    if var < solve_for {
+                        equalities.push((var, solve_for));
+                    } else {
+                        equalities.push((solve_for, var));
+                    }
                 }
             }
         }
@@ -170,65 +155,6 @@ fn get_all_possible_assignments<T: FieldElement, V: Ord + Clone + Hash + Eq + Di
         })
         .collect::<Vec<_>>()
         .into_iter()
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
-enum VariableOrBoolean<V> {
-    Regular(V),
-    Boolean(usize),
-}
-
-impl<V> From<V> for VariableOrBoolean<V> {
-    fn from(v: V) -> Self {
-        VariableOrBoolean::Regular(v)
-    }
-}
-
-impl<V> VariableOrBoolean<V> {
-    fn try_into_variable(self) -> Option<V> {
-        match self {
-            VariableOrBoolean::Regular(v) => Some(v),
-            VariableOrBoolean::Boolean(_) => None,
-        }
-    }
-}
-
-impl<V: Display> Display for VariableOrBoolean<V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VariableOrBoolean::Regular(v) => write!(f, "{v}"),
-            VariableOrBoolean::Boolean(n) => write!(f, "boolean_{n}"),
-        }
-    }
-}
-
-struct RangeConstraintProviderForVariableOrBoolean<R> {
-    provider: R,
-}
-
-impl<V, T: FieldElement, R: RangeConstraintProvider<T, V>>
-    RangeConstraintProvider<T, VariableOrBoolean<V>>
-    for RangeConstraintProviderForVariableOrBoolean<R>
-{
-    fn get(&self, var: &VariableOrBoolean<V>) -> RangeConstraint<T> {
-        match var {
-            VariableOrBoolean::Regular(v) => self.provider.get(v),
-            VariableOrBoolean::Boolean(_) => RangeConstraint::from_mask(1u64),
-        }
-    }
-}
-
-#[derive(Default)]
-struct BooleanDispenser {
-    next: usize,
-}
-
-impl BooleanDispenser {
-    fn next<V>(&mut self) -> VariableOrBoolean<V> {
-        let n = self.next;
-        self.next += 1;
-        VariableOrBoolean::Boolean(n)
-    }
 }
 
 #[cfg(test)]
