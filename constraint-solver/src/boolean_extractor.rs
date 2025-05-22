@@ -16,7 +16,7 @@ use powdr_number::FieldElement;
 /// @param var_dispenser A function that returns a new variable that is assumed to be boolean-constrained.
 /// It will only be called if the transformation is performed.
 pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    constraint: QuadraticSymbolicExpression<T, V>,
+    constraint: &QuadraticSymbolicExpression<T, V>,
     mut var_dispenser: impl FnMut() -> V,
 ) -> Option<QuadraticSymbolicExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;

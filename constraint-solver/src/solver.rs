@@ -2,6 +2,7 @@ use exhaustive_search::ExhaustiveSearch;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
+use crate::boolean_extractor::{self, extract_boolean};
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
@@ -53,9 +54,6 @@ pub struct Solver<T: FieldElement, V> {
     range_constraints: RangeConstraints<T, Variable<V>>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
-    assignments: BTreeMap<V, QuadraticSymbolicExpression<T, Variable<V>>>,
-    /// The concrete variable assignments or replacements that were derived for variables
-    /// that do not occur in the constraints any more.
     assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
 }
 
@@ -66,8 +64,38 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             "Expected all variables to be unknown."
         );
 
+        let mut counter = 0;
+        let mut var_dispenser = || {
+            let v = Variable::Boolean(counter);
+            counter += 1;
+            v
+        };
+
+        let algebraic_constraints = constraint_system
+            .algebraic_constraints
+            .into_iter()
+            .map(|constr| {
+                let constr = constr.transform_var_type(&mut |v| Variable::Regular(v.clone()));
+                extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+            })
+            .collect::<Vec<_>>();
+        let bus_interactions = constraint_system
+            .bus_interactions
+            .into_iter()
+            .map(|bi| {
+                bi.fields()
+                    .map(|c| c.transform_var_type(&mut |v| Variable::Regular(v.clone())))
+                    .collect()
+            })
+            .collect::<Vec<_>>();
+        let constraint_system = ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions,
+        }
+        .into();
+
         Solver {
-            constraint_system: IndexedConstraintSystem::from(constraint_system),
+            constraint_system,
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
             assignments: BTreeMap::new(),
@@ -261,7 +289,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 /// This enum avoids clashes with the original variables.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 enum Variable<V> {
+    /// A regular variable that also exists in the caller's system.
     Regular(V),
+    /// A new boolean-constrained variable that was introduced by the solver.
     Boolean(usize),
 }
 
