@@ -167,8 +167,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
-            // TODO can we make this work with Effects?
-            self.constraint_system.substitute_by_unknown(
+            self.apply_assignment(
                 y,
                 &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
             );
@@ -184,7 +183,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let mut progress = false;
         for (variable, value) in &assignments {
-            progress |= self.apply_assignment(variable, &(*value).into());
+            progress |=
+                self.apply_range_constraint_update(variable, RangeConstraint::from_value(*value));
         }
 
         Ok(progress)
@@ -192,7 +192,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr),
+            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr.into()),
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
@@ -204,11 +204,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
-    fn apply_assignment(&mut self, variable: &V, expr: &SymbolicExpression<T, V>) -> bool {
-        assert!(expr.try_to_number().is_some());
-        self.apply_range_constraint_update(variable, expr.range_constraint())
-    }
-
     fn apply_range_constraint_update(
         &mut self,
         variable: &V,
@@ -217,10 +212,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                log::debug!("({variable} := {value})");
-                self.constraint_system
-                    .substitute_by_known(variable, &value.into());
-                self.assignments.push((variable.clone(), value.into()));
+                self.apply_assignment(variable, &value.into());
             } else {
                 // The range constraint was updated.
                 log::trace!("({variable}: {range_constraint})");
@@ -229,6 +221,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         } else {
             false
         }
+    }
+
+    fn apply_assignment(&mut self, variable: &V, expr: &QuadraticSymbolicExpression<T, V>) -> bool {
+        log::debug!("({variable} := {expr})");
+        self.constraint_system.substitute_by_unknown(variable, expr);
+        self.assignments.push((variable.clone(), expr.clone()));
+        // TODO we could check if the variable already has an assignment,
+        // but usually it should not be in the system once it has been assigned.
+        true
     }
 
     /// Given a set of variable assignments, checks if they violate any constraint.
