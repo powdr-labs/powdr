@@ -5,10 +5,7 @@ use std::{
 
 use crate::powdr_extension::chip::RowEvaluator;
 
-use super::{
-    chip::{SharedChips, SymbolicBusInteraction, SymbolicMachine},
-    vm::OriginalInstruction,
-};
+use super::{chip::SharedChips, vm::OriginalInstruction};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::{
@@ -39,7 +36,7 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::IntoParallelIterator,
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::powdr::Column;
+use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
 
 type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
@@ -231,6 +228,32 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .collect_vec()
             });
 
+        // precompute the symbolic bus interactions to the range checker for each original instruction
+        let range_checker_sends_per_original_instruction: Vec<
+            Vec<crate::powdr_extension::chip::SymbolicBusInteraction<F>>,
+        > = self
+            .instructions
+            .iter()
+            .map(|instruction| {
+                let opcode_id = instruction.opcode().as_usize();
+                self.air_by_opcode_id
+                    .get(&opcode_id)
+                    .unwrap()
+                    .bus_interactions
+                    .iter()
+                    .filter(|i| i.id == 3)
+                    .map(|send| send.clone().into())
+                    .collect_vec()
+            })
+            .collect_vec();
+
+        // precompute the symbolic bus interactions for the autoprecompile
+        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<F>> =
+            bus_interactions
+                .iter()
+                .map(|interaction| interaction.clone().into())
+                .collect_vec();
+
         // go through the final table and fill in the values
         values
             // a record is `width` values
@@ -238,20 +261,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-                for (instruction_id, (instruction, dummy_row)) in
-                    self.instructions.iter().zip_eq(dummy_values).enumerate()
+                for (instruction_id, (dummy_row, range_checker_sends)) in dummy_values
+                    .iter()
+                    .zip_eq(&range_checker_sends_per_original_instruction)
+                    .enumerate()
                 {
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
                     // first remove the side effects of this row on the main periphery
-                    for range_checker_send in self
-                        .air_by_opcode_id
-                        .get(&instruction.as_ref().opcode.as_usize())
-                        .unwrap()
-                        .bus_interactions
-                        .iter()
-                        .filter(|i| i.id == 3)
-                    {
+                    for range_checker_send in range_checker_sends {
                         let mult = evaluator
                             .eval_expr(&range_checker_send.mult)
                             .as_canonical_u32();

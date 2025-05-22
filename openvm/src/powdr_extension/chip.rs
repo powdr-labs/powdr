@@ -39,6 +39,7 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
+use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::{Column, UniqueColumns};
 use serde::{Deserialize, Serialize};
 
@@ -135,14 +136,9 @@ impl<F: PrimeField32> PowdrChip<F> {
         periphery: SharedChips,
     ) -> Self {
         let air: PowdrAir<F> = PowdrAir::new(precompile.machine);
-        let original_airs = precompile
-            .original_airs
-            .into_iter()
-            .map(|(k, v)| (k, v.into()))
-            .collect();
         let executor = PowdrExecutor::new(
             precompile.original_instructions,
-            original_airs,
+            precompile.original_airs,
             precompile.is_valid_column,
             memory,
             base_config,
@@ -221,7 +217,7 @@ pub struct PowdrAir<F> {
     /// The mapping from poly_id id to the index in the list of columns.
     /// The values are always unique and contiguous
     column_index_by_poly_id: BTreeMap<u64, usize>,
-    machine: SymbolicMachine<F>,
+    machine: powdr_autoprecompiles::SymbolicMachine<F>,
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
@@ -360,7 +356,7 @@ impl<F: PrimeField32> PowdrAir<F> {
         Self {
             columns,
             column_index_by_poly_id,
-            machine: machine.into(),
+            machine,
         }
     }
 }
@@ -393,26 +389,25 @@ where
 
         let witness_evaluator = WitnessEvaluator::<AB>::new(&witness_values);
 
+        let eval_expr = |expr: &AlgebraicExpression<_>| {
+            let symbolic_expr = algebraic_to_symbolic(expr);
+            witness_evaluator.eval_expr(&symbolic_expr)
+        };
+
         for constraint in &self.machine.constraints {
-            let e = witness_evaluator.eval_expr(&constraint.expr);
+            let e = eval_expr(&constraint.expr);
             builder.assert_zero(e);
         }
 
         for interaction in &self.machine.bus_interactions {
-            let SymbolicBusInteraction {
-                id,
-                mult,
-                args,
-                count_weight,
-            } = interaction;
+            let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = interaction;
 
-            let mult = witness_evaluator.eval_expr(mult);
-            let args = args
-                .iter()
-                .map(|arg| witness_evaluator.eval_expr(arg))
-                .collect_vec();
+            let mult = eval_expr(mult);
+            let args = args.iter().map(&eval_expr).collect_vec();
+            // TODO: is this correct?
+            let count_weight = 1;
 
-            builder.push_interaction(*id, args, mult, *count_weight);
+            builder.push_interaction(*id as u16, args, mult, count_weight);
         }
     }
 }
