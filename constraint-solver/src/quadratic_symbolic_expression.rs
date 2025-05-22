@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -309,6 +310,35 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     }
 }
 
+impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
+    pub fn transform_var_type<V2: Ord + Clone>(
+        &self,
+        var_transform: &mut impl FnMut(&V1) -> V2,
+    ) -> QuadraticSymbolicExpression<T, V2> {
+        QuadraticSymbolicExpression {
+            quadratic: self
+                .quadratic
+                .iter()
+                .map(|(l, r)| {
+                    (
+                        l.transform_var_type(var_transform),
+                        r.transform_var_type(var_transform),
+                    )
+                })
+                .collect(),
+            linear: self
+                .linear
+                .iter()
+                .map(|(var, coeff)| {
+                    let new_var = var_transform(var);
+                    (new_var, coeff.transform_var_type(var_transform))
+                })
+                .collect(),
+            constant: self.constant.transform_var_type(var_transform),
+        }
+    }
+}
+
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
@@ -405,6 +435,66 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             return None;
         }
         Some(result)
+    }
+
+    /// Tries to split this constraint into a list of equivalent constraints.
+    /// This is the case for example if the variables in this expression can
+    /// be split into different bit areas.
+    pub fn try_split(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<Vec<QuadraticSymbolicExpression<T, V>>> {
+        if self.is_quadratic() {
+            return None;
+        }
+        let Some(constant) = self.constant.try_to_number() else {
+            return None;
+        };
+        if constant != 0.into() {
+            // TODO implement this
+            return None;
+        }
+        let mut components = self
+            .linear
+            .iter()
+            .map(|(var, coeff)| Some((coeff.try_to_number()?, var)))
+            .collect::<Option<Vec<_>>>()?
+            .into_iter()
+            .map(|(coeff, var)| {
+                let is_negative = !coeff.is_in_lower_half();
+                if is_negative {
+                    (-coeff, -Self::from_unknown_variable(var.clone()))
+                } else {
+                    (coeff, Self::from_unknown_variable(var.clone()))
+                }
+            })
+            .into_group_map();
+        if components.len() != 2 || !components.keys().contains(&T::from(1)) {
+            // TODO try to find common coefficient.
+            return None;
+        }
+
+        let units: Self = components.remove(&T::from(1)).unwrap().into_iter().sum();
+        let (coeff, others) = components.into_iter().next().unwrap();
+        let others: Self = others.into_iter().sum();
+        // We have `units + coeff * others = 0`.
+        let units_rc = units.range_constraint(range_constraints);
+
+        println!("units: {units}, coeff: {coeff}, others: {others}");
+        println!("units_rc: {units_rc}");
+        println!("others_rc: {}", others.range_constraint(range_constraints));
+
+        if units_rc.is_disjoint(&units_rc.combine_sum(&RangeConstraint::from_value(coeff)))
+        // TODO is this the right condition?
+            && others
+                .range_constraint(range_constraints)
+                .multiple(coeff)
+                != RangeConstraint::default()
+        {
+            Some(vec![units, others])
+        } else {
+            None
+        }
     }
 
     fn solve_affine(
@@ -802,6 +892,18 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExp
         }
         self.constant += rhs.constant.clone();
         self.linear.retain(|_, f| !f.is_known_zero());
+    }
+}
+
+// TODO find a more efficient impl?
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sum for QuadraticSymbolicExpression<T, V> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut result = QuadraticSymbolicExpression::from(T::zero());
+        for item in iter {
+            result += item;
+        }
+        result
     }
 }
 
@@ -1294,6 +1396,18 @@ Z: [10, 4294967050] & 0xffffffff;
             "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
 "
         );
+
+        // Do the same, but setting b to a concrete value (2).
+        // The result should be an unconditional assignment to b + 10 = 12.
+        let mut constr = constr;
+        constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
+            panic!("Expected 1 assignment");
+        };
+        assert_eq!(var, &"a");
+        assert_eq!(expr.to_string(), "12");
     }
 
     fn unpack_range_constraint(
@@ -1547,5 +1661,25 @@ Z: [10, 4294967050] & 0xffffffff;
                 .to_string(),
             "-t * y"
         );
+    }
+
+    #[test]
+    fn split_simple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
+        println!("rc a: {}", (var("a")).range_constraint(&rcs));
+        println!("rc -a: {}", (-var("a")).range_constraint(&rcs));
+        let items = expr.try_split(&rcs).unwrap();
+        for item in items {
+            println!("{item}");
+        }
     }
 }

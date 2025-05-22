@@ -21,24 +21,16 @@ use raki::{
     Isa,
 };
 
-use crate::{
-    code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
-    elf::debug_info::SymbolTable,
-    CompilerOptions,
+use powdr_riscv_types::{
+    self, InstructionArgs, MemEntry, Register, RiscVProgram, SourceFileInfo, Statement,
 };
 
-use self::debug_info::DebugInfo;
+pub mod debug_info;
 
-mod debug_info;
+use self::debug_info::{DebugInfo, SymbolTable};
 
 /// The program header type (p_type) for Powdr prover data segments.
 pub const PT_POWDR_PROVER_DATA: u32 = 0x600000da;
-
-/// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
-pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
-    let elf_program = load_elf(file_name);
-    code_gen::translate_program(elf_program, options)
-}
 
 pub struct ElfProgram {
     dbg: DebugInfo,
@@ -280,12 +272,12 @@ fn static_relocate_data_sections(
 }
 
 impl RiscVProgram for ElfProgram {
-    fn take_source_files_info(&mut self) -> impl Iterator<Item = crate::code_gen::SourceFileInfo> {
+    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo> {
         self.dbg
             .file_list
             .iter()
             .enumerate()
-            .map(|(id, (dir, file))| crate::code_gen::SourceFileInfo {
+            .map(|(id, (dir, file))| SourceFileInfo {
                 // +1 because files are indexed from 1
                 id: id as u32 + 1,
                 file,
@@ -293,7 +285,7 @@ impl RiscVProgram for ElfProgram {
             })
     }
 
-    fn take_initial_mem(&mut self) -> impl Iterator<Item = crate::code_gen::MemEntry> {
+    fn take_initial_mem(&mut self) -> impl Iterator<Item = MemEntry> {
         self.data_map.iter().map(|(addr, data)| {
             let value = match data {
                 Data::TextLabel(label) => {
@@ -320,7 +312,7 @@ impl RiscVProgram for ElfProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = code_gen::Statement<impl AsRef<str>, impl InstructionArgs>> {
+    ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>> {
         // In the output, the precedence is labels, locations, and then instructions.
         // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
 
@@ -586,7 +578,7 @@ impl InstructionArgs for WrappedArgs<'_> {
 /// Indexes the program sections by their virtual address.
 ///
 /// Allows for querying if an address is in a data or text section.
-struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
+pub struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {

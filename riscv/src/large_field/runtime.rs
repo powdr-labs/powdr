@@ -4,7 +4,7 @@ use powdr_syscalls::Syscall;
 
 use itertools::Itertools;
 
-use crate::code_gen::Register;
+use powdr_riscv_types::Register;
 
 use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl};
 use crate::RuntimeLibs;

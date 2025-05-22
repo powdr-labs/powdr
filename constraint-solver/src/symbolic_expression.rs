@@ -28,7 +28,7 @@ pub enum SymbolicExpression<T: FieldElement, S> {
     UnaryOperation(UnaryOperator, Arc<Self>, RangeConstraint<T>),
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -37,7 +37,7 @@ pub enum BinaryOperator {
     Div,
 }
 
-#[derive(Debug, Clone, Hash, Ord, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnaryOperator {
     Neg,
 }
@@ -146,6 +146,35 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
     pub fn substitute(&mut self, variable: &S, substitution: &Self) {
         if let Some(updated) = self.compute_substitution(variable, substitution) {
             *self = updated;
+        }
+    }
+}
+
+impl<T: FieldElement, S1: Ord + Clone> SymbolicExpression<T, S1> {
+    pub fn transform_var_type<S2: Ord + Clone>(
+        &self,
+        var_transform: &mut impl FnMut(&S1) -> S2,
+    ) -> SymbolicExpression<T, S2> {
+        match self {
+            SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(*n),
+            SymbolicExpression::Symbol(v, rc) => {
+                SymbolicExpression::from_symbol(var_transform(v), rc.clone())
+            }
+            SymbolicExpression::BinaryOperation(lhs, op, rhs, rc) => {
+                SymbolicExpression::BinaryOperation(
+                    Arc::new(lhs.transform_var_type(var_transform)),
+                    *op,
+                    Arc::new(rhs.transform_var_type(var_transform)),
+                    rc.clone(),
+                )
+            }
+            SymbolicExpression::UnaryOperation(op, inner, rc) => {
+                SymbolicExpression::UnaryOperation(
+                    *op,
+                    Arc::new(inner.transform_var_type(var_transform)),
+                    rc.clone(),
+                )
+            }
         }
     }
 }

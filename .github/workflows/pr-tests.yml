@@ -125,12 +125,6 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Run examples that cargo accepts as examples
-        run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics
-      - name: Run crate example serialized_inputs with the given branch
-        run: cd powdr-test/examples/serialized-inputs && cargo run -r
-      - name: Run crate example fibonacci with the given branch
-        run: cd powdr-test/examples/fibonacci && cargo run -r
 
   test_slow:
     strategy:

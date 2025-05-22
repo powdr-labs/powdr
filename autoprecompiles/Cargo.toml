@@ -9,8 +9,6 @@ repository.workspace = true
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
-powdr-parser.workspace = true
-powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-pilopt.workspace = true
 powdr-constraint-solver.workspace = true

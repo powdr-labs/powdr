@@ -10,7 +10,6 @@ default-run = "powdr"
 
 [features]
 default = ["plonky3"]
-halo2 = ["powdr/halo2"]
 plonky3 = ["powdr/plonky3"]
 stwo = ["powdr/stwo"]
 

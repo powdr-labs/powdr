@@ -12,7 +12,6 @@ use std::fs;
 
 mod code_gen;
 pub mod continuations;
-pub mod elf;
 pub mod large_field;
 pub mod runtime;
 pub mod small_field;
@@ -212,8 +211,13 @@ pub fn compile_riscv_elf(
         options,
         output_dir,
         force_overwrite,
-        elf::translate,
+        translate,
     )
+}
+/// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
+pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
+    let elf_program = powdr_riscv_elf::load_elf(file_name);
+    code_gen::translate_program(elf_program, options)
 }
 
 /// Creates an array of references to a given type by calling as_ref on each

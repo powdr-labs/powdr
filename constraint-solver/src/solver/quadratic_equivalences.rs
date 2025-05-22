@@ -6,10 +6,16 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
+    boolean_extractor::extract_boolean,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    symbolic_expression::SymbolicExpression,
 };
+
+// New way:
+// - Introduce boolean variables
+// - compare all pairs of affine constraints that share at least one variable
+// - compute difference, scale with coefficient of that variable
+// - use bit decomp to find equivalent variables (for each factor, find variables and determine x - y = c)
 
 /// Given a list of constraints in the form of quadratic symbolic expressions, tries to determine
 /// pairs of equivalent variables.
@@ -17,135 +23,203 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
     constraints: &[QuadraticSymbolicExpression<T, V>],
     range_constraints: impl RangeConstraintProvider<T, V>,
 ) -> Vec<(V, V)> {
-    let candidates = constraints
+    let mut boolean_dispenser = BooleanDispenser::default();
+    // Introduce new boolean variables and turn some quadratic constraints
+    // into affine constraints.
+    let constraints = constraints
         .iter()
-        .filter_map(QuadraticEqualityCandidate::try_from_qse)
-        .filter(|c| c.variables.len() >= 2)
+        .cloned()
+        .map(|c| c.transform_var_type(&mut |v| VariableOrBoolean::from(v.clone())))
+        .map(|c| extract_boolean(&c, || boolean_dispenser.next()).unwrap_or(c))
         .collect::<Vec<_>>();
-    candidates
-        .iter()
-        .tuple_combinations()
-        .flat_map(|(c1, c2)| process_quadratic_equality_candidate_pair(c1, c2, &range_constraints))
-        .collect()
-}
 
-/// If we have two constraints of the form
-/// `(X + expr) * (X + expr + offset) = 0` and
-/// `(Y + expr) * (Y + expr + offset) = 0`
-/// with the same range constraints on `X` and `Y` and
-/// offset is a known value such that `X` and `Y` can be
-/// determined by a (the same) conditional assignment from
-/// `expr` or `expr + offset` (see [`QuadraticSymbolicExpression::solve_quadratic`]),
-/// then `X` and `Y` must be equal and are returned.
-fn process_quadratic_equality_candidate_pair<
-    T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display,
->(
-    c1: &QuadraticEqualityCandidate<T, V>,
-    c2: &QuadraticEqualityCandidate<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
-) -> Option<(V, V)> {
-    if c1.variables.len() != c2.variables.len() || c1.variables.len() < 2 {
-        return None;
-    }
-    let c1_var = c1.variables.difference(&c2.variables).exactly_one().ok()?;
-    let c2_var = c2.variables.difference(&c1.variables).exactly_one().ok()?;
-    // The expressions differ in exactly one variable.
-    let rc1 = range_constraints.get(c1_var);
-    let rc2 = range_constraints.get(c2_var);
+    let range_constraints = RangeConstraintProviderForVariableOrBoolean {
+        provider: range_constraints,
+    };
 
-    // And those variables have the same range constraint.
-    if rc1 != rc2 {
-        return None;
-    }
+    // TODO create index?
+    for (i, c1) in constraints.iter().enumerate() {
+        let vars1 = c1.referenced_unknown_variables().collect::<HashSet<_>>();
+        for c2 in &constraints[i + 1..] {
+            let vars2 = c2.referenced_unknown_variables().collect::<HashSet<_>>();
+            // Check if the two constraints share at least one variable.
+            let Some(var) = vars1.intersection(&vars2).next() else {
+                continue;
+            };
+            let coeff1 = c1.coefficient_of_variable(var).unwrap();
+            let coeff2 = c2.coefficient_of_variable(var).unwrap();
+            let difference = if coeff1 == coeff2 {
+                c1 - c2
+            } else if coeff1.is_known_nonzero() {
+                &(c1.clone() * (coeff2.field_div(coeff1))) - c2
+            } else if coeff2.is_known_nonzero() {
+                c1 - &(c2.clone() * (coeff1.field_div(coeff2)))
+            } else {
+                // TODO we could try other shared variables
+                continue;
+            };
 
-    let c1 = c1.normalized_for_var(c1_var);
-    let c2 = c2.normalized_for_var(c2_var);
-
-    let c1_offset = c1.offset.try_to_number()?;
-    let c2_offset = c2.offset.try_to_number()?;
-
-    if c1_offset != c2_offset {
-        return None;
-    }
-
-    // And the offset (the difference between the two alternatives) determines if
-    // we are inside the range constraint or not.
-    if !rc1.is_disjoint(&rc1.combine_sum(&RangeConstraint::from_value(c1_offset))) {
-        return None;
-    }
-
-    // Now the only remaining check is to see if the affine expressions are the same.
-    // This could have been the first step, but it is rather expensive, so we do it last.
-    if c1.expr - QuadraticSymbolicExpression::from_unknown_variable(c1_var.clone())
-        != c2.expr - QuadraticSymbolicExpression::from_unknown_variable(c2_var.clone())
-    {
-        return None;
-    }
-
-    // Now we have `(X + A) * (X + A + offset) = 0` and `(Y + A) * (Y + A + offset) = 0`
-    // Furthermore, the range constraints of `X` and `Y` are such that for both identities,
-    // the two alternatives can never be satisfied at the same time. Since both variables
-    // have the same range constraint, depending on the value of `A`, we either have
-    // - X = -A and Y = -A, or
-    // - X = -A - offset and Y = -A - offset
-    // Since `A` has to have some value, we can conclude `X = Y`.
-
-    Some((c1_var.clone(), c2_var.clone()))
-}
-
-/// This represents an identity `expr * (expr + offset) = 0`,
-/// where `expr` is an affine expression and `offset` is a symbolic expression
-/// without unknown variables.
-///
-/// All unknown variables appearing in `expr` are stored in `variables`.
-struct QuadraticEqualityCandidate<T: FieldElement, V: Ord + Clone + Hash + Eq> {
-    expr: QuadraticSymbolicExpression<T, V>,
-    offset: SymbolicExpression<T, V>,
-    /// All unknown variables in `expr`.
-    variables: HashSet<V>,
-}
-
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
-    fn try_from_qse(constr: &QuadraticSymbolicExpression<T, V>) -> Option<Self> {
-        let (left, right) = constr.try_as_single_product()?;
-        if !left.is_affine() || !right.is_affine() {
-            return None;
+            // Try out different factors
+            for var in difference.referenced_unknown_variables().cloned() {
+                let coeff = difference.coefficient_of_variable(&var).unwrap();
+                if !coeff.is_known_nonzero() {
+                    continue;
+                }
+                let diff = difference.clone() * coeff.field_inverse();
+                let Some(items) = diff.try_split(&range_constraints) else {
+                    continue;
+                };
+                if items.len() == 1 {
+                    continue;
+                }
+                // TODO we could also just add these as new constraints,
+                // if we don't care if the system grows.
+                let equivalences = items
+                    .into_iter()
+                    .filter(|item| item.referenced_unknown_variables().count() == 2)
+                    .filter_map(|item| {
+                        let var = item.referenced_unknown_variables().next().unwrap();
+                        let solution = item.try_solve_for(&var).unwrap();
+                        let (_, lin, off) = solution.components();
+                        if !off.is_known_zero() {
+                            return None;
+                        }
+                        let lin = lin.collect_vec();
+                        let [(other_var, coeff)] = lin.try_into().ok()?;
+                        if !coeff.is_known_minus_one() {
+                            return None;
+                        }
+                        Some((
+                            var.clone().try_into_variable()?,
+                            other_var.clone().try_into_variable()?,
+                        ))
+                    })
+                    .collect_vec();
+                if !equivalences.is_empty() {
+                    return equivalences;
+                }
+            }
         }
-        // `constr = 0` is equivalent to `left * right = 0`
-        let offset = (left - right).try_to_known()?.try_to_number()?;
-        // `offset + right = left`
-        // `constr = 0` is equivalent to `right * (right + offset) = 0`
-        let variables = right
-            .referenced_unknown_variables()
-            .cloned()
-            .collect::<HashSet<_>>();
-        Some(Self {
-            expr: right.clone(),
-            offset: offset.into(),
-            variables,
-        })
     }
+    vec![]
+}
 
-    /// Returns an equivalent candidate that is normalized
-    /// such that `var` has a coefficient of `1`.
-    fn normalized_for_var(&self, var: &V) -> Self {
-        let inverse_coefficient = self
-            .expr
-            .coefficient_of_variable(var)
-            .unwrap()
-            .field_inverse();
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+enum VariableOrBoolean<V> {
+    Regular(V),
+    Boolean(usize),
+}
 
-        // self represents
-        // `(coeff * var + X) * (coeff * var + X + offset) = 0`
-        // Dividing by `coeff` twice results in
-        // `(var + X / coeff) * (var + X / coeff + offset / coeff) = 0`
-        let offset = &self.offset * &inverse_coefficient;
-        let expr = self.expr.clone() * inverse_coefficient;
-        Self {
-            expr,
-            offset,
-            variables: self.variables.clone(),
+impl<V> From<V> for VariableOrBoolean<V> {
+    fn from(v: V) -> Self {
+        VariableOrBoolean::Regular(v)
+    }
+}
+
+impl<V> VariableOrBoolean<V> {
+    fn try_into_variable(self) -> Option<V> {
+        match self {
+            VariableOrBoolean::Regular(v) => Some(v),
+            VariableOrBoolean::Boolean(_) => None,
         }
+    }
+}
+
+impl<V: Display> Display for VariableOrBoolean<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableOrBoolean::Regular(v) => write!(f, "{v}"),
+            VariableOrBoolean::Boolean(n) => write!(f, "boolean_{n}"),
+        }
+    }
+}
+
+struct RangeConstraintProviderForVariableOrBoolean<R> {
+    provider: R,
+}
+
+impl<V, T: FieldElement, R: RangeConstraintProvider<T, V>>
+    RangeConstraintProvider<T, VariableOrBoolean<V>>
+    for RangeConstraintProviderForVariableOrBoolean<R>
+{
+    fn get(&self, var: &VariableOrBoolean<V>) -> crate::range_constraint::RangeConstraint<T> {
+        match var {
+            VariableOrBoolean::Regular(v) => self.provider.get(v),
+            VariableOrBoolean::Boolean(_) => RangeConstraint::from_mask(1u64),
+        }
+    }
+}
+
+#[derive(Default)]
+struct BooleanDispenser {
+    next: usize,
+}
+
+impl BooleanDispenser {
+    fn next<V>(&mut self) -> VariableOrBoolean<V> {
+        let n = self.next;
+        self.next += 1;
+        VariableOrBoolean::Boolean(n)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use crate::test_utils::{constant, var};
+
+    use super::*;
+
+    // impl<T: FieldElement> RangeConstraintProvider<T, &'static str>
+    //     for HashMap<&'static str, RangeConstraint<T>>
+    // {
+    //     fn get(&self, var: &&'static str) -> RangeConstraint<T> {
+    //         self.get(var).cloned().unwrap_or_default()
+    //     }
+    // }
+
+    #[test]
+    fn test_find_quadratic_equalities() {
+        // (-943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893) * (-943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632892)
+
+        // (-943718400 * mem_ptr_limbs__0_279 + 30720 * mem_ptr_limbs__1_279 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 251658182) * (-943718400 * mem_ptr_limbs__0_279 + 30720 * mem_ptr_limbs__1_279 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 251658181)
+
+        let constraints = vec![
+            // (30720 * mem_ptr_limbs__0_175 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -4423680) * (30720 * mem_ptr_limbs__0_175 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -4423681)
+            (var("mem_ptr_limbs__0_175") * constant(30720)
+                - var("rs1_data__0_661") * constant(30720)
+                - var("rs1_data__1_661") * constant(7864320)
+                - constant(4423680))
+                * (var("mem_ptr_limbs__0_175") * constant(30720)
+                    - var("rs1_data__0_661") * constant(30720)
+                    - var("rs1_data__1_661") * constant(7864320)
+                    - constant(4423681)),
+            // (30720 * mem_ptr_limbs__0_279 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -3809280) * (30720 * mem_ptr_limbs__0_279 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -3809281)
+            (var("mem_ptr_limbs__0_279") * constant(30720)
+                - var("rs1_data__0_661") * constant(30720)
+                - var("rs1_data__1_661") * constant(7864320)
+                - constant(4423680))
+                * (var("mem_ptr_limbs__0_279") * constant(30720)
+                    - var("rs1_data__0_661") * constant(30720)
+                    - var("rs1_data__1_661") * constant(7864320)
+                    - constant(4423681)),
+        ];
+        let range_constraints = [
+            (
+                "mem_ptr_limbs__0_175",
+                RangeConstraint::from_mask(0xffffu32),
+            ),
+            (
+                "mem_ptr_limbs__0_279",
+                RangeConstraint::from_mask(0xffffu32),
+            ),
+            ("rs1_data__0_661", RangeConstraint::from_mask(0xffffu32)),
+            ("rs1_data__1_661", RangeConstraint::from_mask(0xffffu32)),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let result = find_quadratic_equalities(&constraints, range_constraints);
+        assert_eq!(result.len(), 0);
     }
 }

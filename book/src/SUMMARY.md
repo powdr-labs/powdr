@@ -12,13 +12,7 @@
 
 # Getting Started with powdr SDK
 - [Installation](./installation_sdk.md)
-- [Hello World](./hello_world.md)
-    - [in the CLI](./hello_world_cli.md)
-    - [as a library](./powdr_crate.md)
-    - [verified on Ethereum](./hello_world_ethereum.md)
-    - [verified on Ethereum with proof aggregation](./hello_world_ethereum_aggregation.md)
 - [Examples](./examples.md)
-- [Using publics](./publics.md)
 
 # powdr SDK Reference Guide
 <!-- markdown-link-check-disable-next-line -->
@@ -47,7 +41,6 @@
     - [EVM](./frontends/evm.md)
 - [Backends](./backends/README.md)
     - [plonky3](./backends/plonky3.md)
-    - [Halo2](./backends/halo2.md)
 - [Architecture](./architecture/README.md)
     - [Compiler](./architecture/compiler.md)
     - [Linker](./architecture/linker.md)

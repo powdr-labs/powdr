@@ -1,7 +1,7 @@
 use ::powdr_pipeline::Pipeline;
 use powdr_number::GoldilocksField;
 
-use powdr_riscv::{compile_rust_crate_to_riscv, elf, CompilerOptions};
+use powdr_riscv::{compile_rust_crate_to_riscv, translate, CompilerOptions};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use mktemp::Temp;
@@ -17,7 +17,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let executable =
         compile_rust_crate_to_riscv("./tests/riscv_data/keccak/Cargo.toml", &tmp_dir, None);
     let options = CompilerOptions::new_gl();
-    let contents = elf::translate(&executable, options);
+    let contents = translate(&executable, options);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_backend_tuned_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();

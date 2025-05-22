@@ -12,11 +12,11 @@ use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{
     get_main_machine, hash_map_to_memory_state, MemoryState, ProfilerOptions,
 };
+use powdr_riscv_types::{Register, REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 
 pub mod bootloader;
 mod memory_merkle_tree;
 
-use crate::code_gen::{REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 use bootloader::split_fe;
 use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX};
 use memory_merkle_tree::MerkleTree;
@@ -26,8 +26,6 @@ use crate::continuations::bootloader::{
     bootloader_size, default_register_values, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
     MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
-
-use crate::code_gen::Register;
 
 fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
     // Main memory values must fit into u32

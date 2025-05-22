@@ -4,9 +4,8 @@ use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_mock,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
-        test_halo2_with_backend_variant, test_mock_backend, test_stwo, test_stwo_stage1_public,
-        BackendVariant,
+        make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl, test_mock_backend,
+        test_stwo, test_stwo_stage1_public,
     },
     Pipeline,
 };
@@ -35,7 +34,7 @@ fn lookup_with_selector() {
             "main::w".to_string(),
             witness.iter().cloned().map(GoldilocksField::from).collect(),
         )])
-        .with_backend(powdr_backend::BackendType::Mock, None)
+        .with_backend(powdr_backend::BackendType::Mock)
         .compute_proof()
         .unwrap();
 
@@ -59,7 +58,7 @@ fn permutation_with_selector() {
             "main::w".to_string(),
             witness.iter().cloned().map(GoldilocksField::from).collect(),
         )])
-        .with_backend(powdr_backend::BackendType::Mock, None)
+        .with_backend(powdr_backend::BackendType::Mock)
         .compute_proof()
         .unwrap();
 
@@ -312,16 +311,6 @@ fn conditional_fixed_constraints() {
 fn referencing_arrays() {
     let f = "pil/referencing_array.pil";
     regular_test_all_fields(f, Default::default());
-}
-
-#[test]
-fn naive_byte_decomposition_bn254() {
-    // This should pass, because BN254 is a field that can fit all 64-Bit integers.
-    let f = "pil/naive_byte_decomposition.pil";
-
-    // Native linker mode, because bus constraints are exponential in Halo2
-    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
