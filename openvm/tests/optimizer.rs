@@ -1,6 +1,6 @@
 use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 
 use test_log::test;
@@ -18,7 +18,7 @@ fn load_machine_cbor() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [563, 6485, 506]
+        [562, 3207, 506]
     );
 }
 
@@ -42,6 +42,6 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [563, 6485, 506]
+        [562, 3207, 506]
     );
 }
