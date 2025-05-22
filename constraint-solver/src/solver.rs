@@ -92,7 +92,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let mut constraint_system = IndexedConstraintSystem::from(self.original_system);
         for (variable, value) in &self.assignments {
-            constraint_system.substitute_by_unknown(variable, &value);
+            constraint_system.substitute_by_unknown(variable, value);
         }
 
         Ok(SolveResult {
