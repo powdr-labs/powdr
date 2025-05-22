@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -449,47 +450,51 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         let Some(constant) = self.constant.try_to_number() else {
             return None;
         };
-        // Just go through the bit areas, the resulting constraints
-        // can have multiple variables!
-        let mut bit_ranges: Vec<(u64, _)> = vec![];
-        for (var, coeff) in self.linear.iter() {
-            let Some(coeff) = coeff.try_to_number() else {
-                return None;
-            };
-            let rc = range_constraints.get(var);
-            let is_negative = !coeff.is_in_lower_half();
-            // TODO we use the absolute coefficient, but if it is negative,
-            // we subtract - is that correct? What about overflow?
-            // What if we add several numbers, we need appropriate gaps.
-            // Maybe it's enough to compute the combined range constraint
-            // of each component in the end and check that they are disjoint?
-            let coeff_abs = if is_negative { -coeff } else { coeff };
-            // TODO do we need to negate if it is negative?
-            let value = Self::from_unknown_variable(var.clone()) * SymbolicExpression::from(coeff);
-            let rc = rc.multiple(coeff_abs);
-            let mask = rc.mask().try_into_u64().unwrap();
-            println!("{coeff} * {var}   -> {coeff_abs} * {var}  => RC: {rc}");
-
-            // TODO has to be done on bit-basis
-            // TODO what if the mask is zero?
-            let mut nondisjoint_candidates = bit_ranges
-                .iter_mut()
-                .filter(|(m, _)| m & mask != 0)
-                .collect_vec();
-            match &mut nondisjoint_candidates[..] {
-                [(m, v)] => {
-                    *m |= mask;
-                    *v += value;
-                }
-                [] => bit_ranges.push((mask, value)),
-                _ => return None,
-            }
-        }
-        // TODO don't forget constant.
         if constant != 0.into() {
-            todo!();
+            // TODO implement this
+            return None;
         }
-        Some(bit_ranges.into_iter().map(|(_, v)| v).collect_vec())
+        let mut components = self
+            .linear
+            .iter()
+            .map(|(var, coeff)| Some((coeff.try_to_number()?, var)))
+            .collect::<Option<Vec<_>>>()?
+            .into_iter()
+            .map(|(coeff, var)| {
+                let is_negative = !coeff.is_in_lower_half();
+                if is_negative {
+                    (-coeff, -Self::from_unknown_variable(var.clone()))
+                } else {
+                    (coeff, Self::from_unknown_variable(var.clone()))
+                }
+            })
+            .into_group_map();
+        if components.len() != 2 || !components.keys().contains(&T::from(1)) {
+            // TODO try to find common coefficient.
+            return None;
+        }
+
+        let units: Self = components.remove(&T::from(1)).unwrap().into_iter().sum();
+        let (coeff, others) = components.into_iter().next().unwrap();
+        let others: Self = others.into_iter().sum();
+        // We have `units + coeff * others = 0`.
+        let units_rc = units.range_constraint(range_constraints);
+
+        println!("units: {units}, coeff: {coeff}, others: {others}");
+        println!("units_rc: {units_rc}");
+        println!("others_rc: {}", others.range_constraint(range_constraints));
+
+        if units_rc.is_disjoint(&units_rc.combine_sum(&RangeConstraint::from_value(coeff)))
+        // TODO is this the right condition?
+            && others
+                .range_constraint(range_constraints)
+                .multiple(coeff)
+                != RangeConstraint::default()
+        {
+            Some(vec![units, others])
+        } else {
+            None
+        }
     }
 
     fn solve_affine(
@@ -887,6 +892,18 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExp
         }
         self.constant += rhs.constant.clone();
         self.linear.retain(|_, f| !f.is_known_zero());
+    }
+}
+
+// TODO find a more efficient impl?
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sum for QuadraticSymbolicExpression<T, V> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut result = QuadraticSymbolicExpression::from(T::zero());
+        for item in iter {
+            result += item;
+        }
+        result
     }
 }
 
@@ -1649,19 +1666,18 @@ Z: [10, 4294967050] & 0xffffffff;
     #[test]
     fn split_simple() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
-        let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(257);
-        let items = expr
-            .try_split(
-                &[
-                    ("x", four_bit_rc.clone()),
-                    ("y", four_bit_rc.clone()),
-                    ("a", four_bit_rc.clone()),
-                    ("b", four_bit_rc.clone()),
-                ]
-                .into_iter()
-                .collect::<HashMap<_, _>>(),
-            )
-            .unwrap();
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
+        println!("rc a: {}", (var("a")).range_constraint(&rcs));
+        println!("rc -a: {}", (-var("a")).range_constraint(&rcs));
+        let items = expr.try_split(&rcs).unwrap();
         for item in items {
             println!("{item}");
         }

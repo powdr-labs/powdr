@@ -2,11 +2,13 @@
 
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
     boolean_extractor::extract_boolean,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    range_constraint::RangeConstraint,
 };
 
 // New way:
@@ -30,6 +32,11 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         .map(|c| c.transform_var_type(&mut |v| VariableOrBoolean::from(v.clone())))
         .map(|c| extract_boolean(&c, || boolean_dispenser.next()).unwrap_or(c))
         .collect::<Vec<_>>();
+
+    let range_constraints = RangeConstraintProviderForVariableOrBoolean {
+        provider: range_constraints,
+    };
+
     // TODO create index?
     for (i, c1) in constraints.iter().enumerate() {
         let vars1 = c1.referenced_unknown_variables().collect::<HashSet<_>>();
@@ -52,12 +59,46 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
                 continue;
             };
 
-            // We know that `difference` has to be zero.
-            println!("Difference: {difference}");
-
-            // Now call difference.solve_for_equivalence()
-
-            todo!()
+            // Try out different factors
+            for var in difference.referenced_unknown_variables().cloned() {
+                let coeff = difference.coefficient_of_variable(&var).unwrap();
+                if !coeff.is_known_nonzero() {
+                    continue;
+                }
+                let diff = difference.clone() * coeff.field_inverse();
+                let Some(items) = diff.try_split(&range_constraints) else {
+                    continue;
+                };
+                if items.len() == 1 {
+                    continue;
+                }
+                // TODO we could also just add these as new constraints,
+                // if we don't care if the system grows.
+                let equivalences = items
+                    .into_iter()
+                    .filter(|item| item.referenced_unknown_variables().count() == 2)
+                    .filter_map(|item| {
+                        let var = item.referenced_unknown_variables().next().unwrap();
+                        let solution = item.try_solve_for(&var).unwrap();
+                        let (_, lin, off) = solution.components();
+                        if !off.is_known_zero() {
+                            return None;
+                        }
+                        let lin = lin.collect_vec();
+                        let [(other_var, coeff)] = lin.try_into().ok()?;
+                        if !coeff.is_known_minus_one() {
+                            return None;
+                        }
+                        Some((
+                            var.clone().try_into_variable()?,
+                            other_var.clone().try_into_variable()?,
+                        ))
+                    })
+                    .collect_vec();
+                if !equivalences.is_empty() {
+                    return equivalences;
+                }
+            }
         }
     }
     vec![]
@@ -75,11 +116,36 @@ impl<V> From<V> for VariableOrBoolean<V> {
     }
 }
 
+impl<V> VariableOrBoolean<V> {
+    fn try_into_variable(self) -> Option<V> {
+        match self {
+            VariableOrBoolean::Regular(v) => Some(v),
+            VariableOrBoolean::Boolean(_) => None,
+        }
+    }
+}
+
 impl<V: Display> Display for VariableOrBoolean<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VariableOrBoolean::Regular(v) => write!(f, "{v}"),
             VariableOrBoolean::Boolean(n) => write!(f, "boolean_{n}"),
+        }
+    }
+}
+
+struct RangeConstraintProviderForVariableOrBoolean<R> {
+    provider: R,
+}
+
+impl<V, T: FieldElement, R: RangeConstraintProvider<T, V>>
+    RangeConstraintProvider<T, VariableOrBoolean<V>>
+    for RangeConstraintProviderForVariableOrBoolean<R>
+{
+    fn get(&self, var: &VariableOrBoolean<V>) -> crate::range_constraint::RangeConstraint<T> {
+        match var {
+            VariableOrBoolean::Regular(v) => self.provider.get(v),
+            VariableOrBoolean::Boolean(_) => RangeConstraint::from_mask(1u64),
         }
     }
 }
@@ -101,12 +167,7 @@ impl BooleanDispenser {
 mod test {
     use std::collections::HashMap;
 
-    use powdr_number::GoldilocksField;
-
-    use crate::{
-        range_constraint::RangeConstraint,
-        test_utils::{constant, var},
-    };
+    use crate::test_utils::{constant, var};
 
     use super::*;
 
