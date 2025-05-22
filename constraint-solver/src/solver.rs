@@ -23,7 +23,7 @@ mod quadratic_equivalences;
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    pub assignments: BTreeMap<V, T>,
+    pub assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
     /// The final state of the constraint system, with known variables
     /// replaced by their values and constraints simplified accordingly.
     pub simplified_constraint_system: ConstraintSystem<T, V>,
@@ -46,11 +46,14 @@ pub enum Error {
 pub struct Solver<T: FieldElement, V> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: IndexedConstraintSystem<T, V>,
+    constraint_system: IndexedConstraintSystem<T, Variable<V>>,
     /// The handler for bus interactions.
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
-    range_constraints: RangeConstraints<T, V>,
+    range_constraints: RangeConstraints<T, Variable<V>>,
+    /// The concrete variable assignments or replacements that were derived for variables
+    /// that do not occur in the constraints any more.
+    assignments: BTreeMap<V, QuadraticSymbolicExpression<T, Variable<V>>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -250,6 +253,14 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 }
             })
     }
+}
+
+/// We introduce new variables (that are always boolean-constrained).
+/// This enum avoids clashes with the original variables.
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+enum Variable<V> {
+    Regular(V),
+    Boolean(usize),
 }
 
 /// The currently known range constraints for the variables.
