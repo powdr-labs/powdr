@@ -2,7 +2,7 @@ use exhaustive_search::ExhaustiveSearch;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
-use crate::boolean_extractor::{self, extract_boolean};
+use crate::boolean_extractor::extract_boolean;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
@@ -120,7 +120,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let mut constraint_system = IndexedConstraintSystem::from(original_system);
         for (variable, value) in &assignments {
-            constraint_system.substitute_by_unknown(variable, &value);
+            constraint_system.substitute_by_unknown(variable, value);
         }
 
         Ok(SolveResult {
