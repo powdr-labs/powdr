@@ -54,6 +54,9 @@ pub struct Solver<T: FieldElement, V> {
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
     assignments: BTreeMap<V, QuadraticSymbolicExpression<T, Variable<V>>>,
+    /// The concrete variable assignments or replacements that were derived for variables
+    /// that do not occur in the constraints any more.
+    assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -67,6 +70,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            assignments: BTreeMap::new(),
         }
     }
 
@@ -85,13 +89,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
-        let assignments = self
-            .range_constraints
-            .all_range_constraints()
-            .filter_map(|(v, rc)| Some((v, rc.try_to_single_value()?)))
-            .collect();
         Ok(SolveResult {
-            assignments,
+            assignments: self.assignments,
             simplified_constraint_system: self.constraint_system.into(),
         })
     }
@@ -200,6 +199,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     fn apply_assignment(&mut self, variable: &V, expr: &SymbolicExpression<T, V>) -> bool {
+        assert!(expr.try_to_number().is_some());
         self.apply_range_constraint_update(variable, expr.range_constraint())
     }
 
@@ -209,13 +209,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         range_constraint: RangeConstraint<T>,
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
-            // The range constraint was updated.
-            log::trace!("({variable}: {range_constraint})");
-
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
+                log::debug!("({variable} := {value})");
                 self.constraint_system
                     .substitute_by_known(variable, &value.into());
+                self.assignments.insert(variable.clone(), value.into());
+            } else {
+                // The range constraint was updated.
+                log::trace!("({variable}: {range_constraint})");
             }
             true
         } else {
@@ -305,13 +307,5 @@ impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
         } else {
             false
         }
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RangeConstraints<T, V> {
-    fn all_range_constraints(self) -> impl Iterator<Item = (V, RangeConstraint<T>)> {
-        self.range_constraints
-            .into_iter()
-            .sorted_by_key(|(v, _)| v.clone())
     }
 }

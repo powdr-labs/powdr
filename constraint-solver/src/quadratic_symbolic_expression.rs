@@ -312,7 +312,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
     pub fn transform_var_type<V2: Ord + Clone>(
         &self,
-        mut var_transform: impl FnMut(&V1) -> V2,
+        var_transform: &mut impl FnMut(&V1) -> V2,
     ) -> QuadraticSymbolicExpression<T, V2> {
         QuadraticSymbolicExpression {
             quadratic: self
@@ -320,8 +320,8 @@ impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
                 .iter()
                 .map(|(l, r)| {
                     (
-                        l.transform_var_type(&mut var_transform),
-                        r.transform_var_type(&mut var_transform),
+                        l.transform_var_type(var_transform),
+                        r.transform_var_type(var_transform),
                     )
                 })
                 .collect(),
@@ -330,10 +330,10 @@ impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
                 .iter()
                 .map(|(var, coeff)| {
                     let new_var = var_transform(var);
-                    (new_var, coeff.transform_var_type(&mut var_transform))
+                    (new_var, coeff.transform_var_type(var_transform))
                 })
                 .collect(),
-            constant: self.constant.transform_var_type(&mut var_transform),
+            constant: self.constant.transform_var_type(var_transform),
         }
     }
 }
