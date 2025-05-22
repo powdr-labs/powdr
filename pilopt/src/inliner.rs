@@ -86,7 +86,7 @@ pub fn replace_constrained_witness_columns<
 /// Attempts to apply one valid variable substitution across the constraint system.
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
-/// or affect variables in the `keep` set. Returns true if a substitution was applied.
+/// Returns true if a substitution was applied.
 fn try_apply_substitution<
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display + Send + Sync + Display,
