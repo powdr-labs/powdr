@@ -75,12 +75,17 @@ impl SharedChips {
 impl SharedChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
-    pub fn apply(&self, bus_id: u16, mult: u32, args: &[u32]) {
+    pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
         match bus_id {
             id if id == self.bitwise_lookup_8.bus().inner.index => {
                 // bitwise operation lookup
                 // interpret the arguments, see `Air<AB> for BitwiseOperationLookupAir<NUM_BITS>`
-                let [x, y, x_xor_y, selector] = args.try_into().unwrap();
+                let [x, y, x_xor_y, selector] = [
+                    args.next().unwrap(),
+                    args.next().unwrap(),
+                    args.next().unwrap(),
+                    args.next().unwrap(),
+                ];
 
                 for _ in 0..mult {
                     match selector {
@@ -99,7 +104,7 @@ impl SharedChips {
             }
             id if id == self.range_checker.bus().index() => {
                 // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
-                let [value, max_bits] = args.try_into().unwrap();
+                let [value, max_bits] = [args.next().unwrap(), args.next().unwrap()];
 
                 for _ in 0..mult {
                     self.range_checker.add_count(value, max_bits as usize);
@@ -113,8 +118,9 @@ impl SharedChips {
             {
                 // tuple range checker
                 // We pass a slice. It is checked inside `add_count`.
+                let args = args.collect_vec();
                 for _ in 0..mult {
-                    self.tuple_range_checker.as_ref().unwrap().add_count(args);
+                    self.tuple_range_checker.as_ref().unwrap().add_count(&args);
                 }
             }
             0..=2 => {
@@ -341,6 +347,33 @@ impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicBusInteraction<F>>
             args,
             // TODO: Is this correct?
             count_weight: 1,
+        }
+    }
+}
+
+pub struct RangeCheckerSend<F> {
+    pub mult: SymbolicExpression<F>,
+    pub value: SymbolicExpression<F>,
+    pub max_bits: SymbolicExpression<F>,
+}
+
+impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
+    for RangeCheckerSend<F>
+{
+    type Error = ();
+
+    fn try_from(i: &powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Result<Self, Self::Error> {
+        if i.id == 3 {
+            assert_eq!(i.args.len(), 2);
+            let value = &i.args[0];
+            let max_bits = &i.args[1];
+            Ok(Self {
+                mult: algebraic_to_symbolic(&i.mult),
+                value: algebraic_to_symbolic(value),
+                max_bits: algebraic_to_symbolic(max_bits),
+            })
+        } else {
+            Err(())
         }
     }
 }

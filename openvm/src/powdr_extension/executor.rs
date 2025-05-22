@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::powdr_extension::chip::RowEvaluator;
+use crate::powdr_extension::chip::{RangeCheckerSend, RowEvaluator};
 
 use super::{chip::SharedChips, vm::OriginalInstruction};
 use itertools::Itertools;
@@ -228,10 +228,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .collect_vec()
             });
 
-        // precompute the symbolic bus interactions to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction: Vec<
-            Vec<crate::powdr_extension::chip::SymbolicBusInteraction<F>>,
-        > = self
+        // precompute the symbolic bus sends to the range checker for each original instruction
+        let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<F>>> = self
             .instructions
             .iter()
             .map(|instruction| {
@@ -241,8 +239,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .unwrap()
                     .bus_interactions
                     .iter()
-                    .filter(|i| i.id == 3)
-                    .map(|send| send.clone().into())
+                    .filter_map(|interaction| interaction.try_into().ok())
                     .collect_vec()
             })
             .collect_vec();
@@ -261,10 +258,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-                for (instruction_id, (dummy_row, range_checker_sends)) in dummy_values
-                    .iter()
-                    .zip_eq(&range_checker_sends_per_original_instruction)
-                    .enumerate()
+                for ((dummy_row, range_checker_sends), dummy_trace_index_to_apc_index) in
+                    dummy_values
+                        .iter()
+                        .zip_eq(&range_checker_sends_per_original_instruction)
+                        .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
@@ -273,12 +271,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         let mult = evaluator
                             .eval_expr(&range_checker_send.mult)
                             .as_canonical_u32();
-                        let args = range_checker_send
-                            .args
-                            .iter()
-                            .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
-                            .collect_vec();
-                        let [value, max_bits] = args.try_into().unwrap();
+                        let value = evaluator
+                            .eval_expr(&range_checker_send.value)
+                            .as_canonical_u32();
+                        let max_bits = evaluator
+                            .eval_expr(&range_checker_send.max_bits)
+                            .as_canonical_u32();
                         for _ in 0..mult {
                             self.periphery
                                 .range_checker
@@ -286,9 +284,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         }
                     }
 
-                    for (dummy_trace_index, apc_index) in
-                        &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
-                    {
+                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
@@ -299,17 +295,16 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
-                for bus_interaction in bus_interactions.iter() {
+                for bus_interaction in &bus_interactions {
                     let mult = evaluator
                         .eval_expr(&bus_interaction.mult)
                         .as_canonical_u32();
                     let args = bus_interaction
                         .args
                         .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
-                        .collect_vec();
+                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32());
 
-                    self.periphery.apply(bus_interaction.id, mult, &args);
+                    self.periphery.apply(bus_interaction.id, mult, args);
                 }
             });
 
