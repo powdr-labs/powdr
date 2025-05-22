@@ -41,6 +41,13 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         .map(|constr| {
             let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
             let constr = try_remove_is_valid(&constr).unwrap_or(&constr);
+            if constr
+                .referenced_unknown_variables()
+                .find(|v| v.to_string().contains("279") || v.to_string().contains("175"))
+                .is_some()
+            {
+                println!("Found a constraint with 279 or 280: {}", constr);
+            }
             zero_check_transformer.transform(constr.clone())
         })
         .collect_vec();
