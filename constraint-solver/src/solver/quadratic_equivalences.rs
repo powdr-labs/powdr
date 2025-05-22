@@ -26,9 +26,6 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
     let mut boolean_dispenser = BooleanDispenser::default();
     // Introduce new boolean variables and turn some quadratic constraints
     // into affine constraints.
-    for c in constraints {
-        println!("Processing {c}");
-    }
     let constraints = constraints
         .iter()
         .cloned()
@@ -43,12 +40,15 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
 
     // TODO create index?
     for (i, c1) in constraints.iter().enumerate() {
-        println!("Processing {c1}");
         if i % 100 == 0 {
             println!("Processing {i} of {}", constraints.len());
         }
         let vars1 = c1.referenced_unknown_variables().collect::<HashSet<_>>();
         for c2 in &constraints[i + 1..] {
+            // TODO we cannot solve others currently.
+            if !(c1.components().2 - c2.components().2).is_known_zero() {
+                continue;
+            }
             let vars2 = c2.referenced_unknown_variables().collect::<HashSet<_>>();
             // Check if the two constraints share at least one variable.
             let Some(var) = vars1.intersection(&vars2).next() else {
@@ -69,14 +69,17 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
 
             // Try out different factors
             for var in difference.referenced_unknown_variables().cloned() {
+                println!("{var}, rc: {}", range_constraints.get(&var));
                 let coeff = difference.coefficient_of_variable(&var).unwrap();
                 if !coeff.is_known_nonzero() {
                     continue;
                 }
                 let diff = difference.clone() * coeff.field_inverse();
                 let Some(items) = diff.try_split(&range_constraints) else {
+                    panic!();
                     continue;
                 };
+
                 if items.len() == 1 {
                     continue;
                 }
