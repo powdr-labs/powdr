@@ -3,38 +3,39 @@
 resolver = "2"
 
 members = [
-    "powdr",
-    "powdr-test",
-    "number",
-    "parser",
-    "cargo-powdr",
-    "cli",
-    "cli-rs",
-    "constraint-solver",
-    "executor",
-    "jit-compiler",
-    "riscv",
-    "parser-util",
-    "pil-analyzer",
-    "pipeline",
-    "pilopt",
-    "plonky3",
-    "asm-to-pil",
-    "asmopt",
-    "backend",
-    "ast",
-    "analysis",
-    "linker",
-    "isa-utils",
-    "airgen",
-    "riscv-executor",
-    "syscalls",
-    "schemas",
-    "backend-utils",
-    "executor-utils",
-    "autoprecompiles",
-    "openvm",
-    "cli-openvm",
+  "powdr",
+  "number",
+  "parser",
+  "cargo-powdr",
+  "cli",
+  "cli-rs",
+  "constraint-solver",
+  "executor",
+  "jit-compiler",
+  "riscv",
+  "riscv-elf",
+  "riscv-types",
+  "parser-util",
+  "pil-analyzer",
+  "pipeline",
+  "pilopt",
+  "plonky3",
+  "asm-to-pil",
+  "asmopt",
+  "backend",
+  "ast",
+  "analysis",
+  "linker",
+  "isa-utils",
+  "airgen",
+  "riscv-executor",
+  "syscalls",
+  "schemas",
+  "backend-utils",
+  "executor-utils",
+  "autoprecompiles",
+  "openvm",
+  "cli-openvm",
 ]
 
 exclude = ["riscv-runtime"]
@@ -71,7 +72,9 @@ powdr-pilopt = { path = "./pilopt", version = "0.1.4" }
 powdr-pipeline = { path = "./pipeline", version = "0.1.4" }
 powdr-plonky3 = { path = "./plonky3", version = "0.1.4" }
 powdr-riscv = { path = "./riscv", version = "0.1.4" }
+powdr-riscv-elf = { path = "./riscv-elf", version = "0.1.4" }
 powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.4" }
+powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-schemas = { path = "./schemas", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }

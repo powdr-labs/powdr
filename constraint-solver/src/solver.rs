@@ -5,7 +5,6 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
-use crate::effect::Condition;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
@@ -191,19 +190,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             }
             Effect::BitDecomposition(..) => unreachable!(),
             Effect::Assertion(..) => unreachable!(),
-            Effect::ConditionalAssignment {
-                variable,
-                condition: Condition { value, condition },
-                in_range_value,
-                out_of_range_value,
-            } => {
-                let value = value.try_to_number().unwrap();
-                if condition.allows_value(value) {
-                    self.apply_assignment(&variable, &in_range_value)
-                } else {
-                    self.apply_assignment(&variable, &out_of_range_value)
-                }
-            }
+            // There are no known-but-not-concrete variables, so we should never
+            // encounter a conditional assignment.
+            Effect::ConditionalAssignment { .. } => unreachable!(),
         }
     }
 

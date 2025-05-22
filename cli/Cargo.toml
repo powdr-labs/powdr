@@ -10,14 +10,10 @@ default-run = "powdr"
 
 [features]
 default = ["plonky3"]
-halo2 = ["powdr/halo2"]
 plonky3 = ["powdr/plonky3"]
-estark-starky = ["powdr/estark-starky"]
-estark-polygon = ["powdr/estark-polygon"]
 stwo = ["powdr/stwo"]
 
 plonky3-simd = ["powdr/plonky3-simd"]
-estark-starky-simd = ["powdr/estark-starky-simd"]
 
 [dependencies]
 powdr.workspace = true
@@ -33,7 +29,7 @@ tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 tracing-forest = { version = "0.1.6", features = ["ansi", "smallvec"] }
 
 [dev-dependencies]
-powdr = { workspace = true, features = ["estark-starky"] }
+powdr = { workspace = true }
 
 tempfile = "3.6"
 

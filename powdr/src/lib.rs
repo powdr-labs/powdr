@@ -143,7 +143,7 @@ impl Session {
 
     pub fn with_backend(self, backend: backend::BackendType) -> Self {
         Session {
-            pipeline: self.pipeline.with_backend(backend, None),
+            pipeline: self.pipeline.with_backend(backend),
             ..self
         }
     }

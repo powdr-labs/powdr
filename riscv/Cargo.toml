@@ -13,7 +13,6 @@ default = []
 
 # features below only affects tests
 # not sure this is the best approach
-estark-polygon = ["powdr-pipeline/estark-polygon"]
 plonky3 = ["powdr-pipeline/plonky3"]
 
 [dependencies]
@@ -25,6 +24,8 @@ powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-parser-util.workspace = true
 powdr-pipeline.workspace = true
+powdr-riscv-elf.workspace = true
+powdr-riscv-types.workspace = true
 powdr-riscv-executor.workspace = true
 powdr-syscalls.workspace = true
 

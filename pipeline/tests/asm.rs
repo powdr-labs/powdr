@@ -214,28 +214,6 @@ fn block_to_block_with_bus_different_sizes() {
     test_stwo_pipeline(pipeline);
 }
 
-#[cfg(feature = "halo2")]
-#[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
-fn block_to_block_with_bus_composite() {
-    // This currently fails because of #1608 ("Emulate shared challenges in CompositeBackend"):
-    // - `CompositeBackend::prove` correctly gets the challenges of each machine and accumulates them.
-    //   The shared challenges are used during witness generation.
-    // - `CompositeBackend::verify` simply verifies each machine proof independently, using the local
-    //   challenges. As a result, the challenges during verification differ and the constraints are
-    //   not satisfied.
-
-    use powdr_number::Bn254Field;
-    use powdr_pipeline::test_util::{test_halo2_with_backend_variant, BackendVariant};
-    let f = "asm/block_to_block_with_bus.asm";
-    let pipeline = make_simple_prepared_pipeline::<Bn254Field>(f, LinkerMode::Bus);
-    test_mock_backend(pipeline);
-
-    // Native linker mode, because bus constraints are exponential in Halo2
-    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
-}
-
 #[test]
 fn block_to_block_lookup_and_permutation() {
     let f = "asm/block_to_block_lookup_and_permutation.asm";
@@ -442,45 +420,6 @@ fn intermediate_nested() {
 fn pil_at_module_level() {
     let f = "asm/pil_at_module_level.asm";
     regular_test_all_fields(f, Default::default());
-}
-
-#[cfg(feature = "estark-starky")]
-#[test]
-fn read_poly_files() {
-    use powdr_backend::BackendType;
-    use powdr_executor::constant_evaluator::get_uniquely_sized;
-    use powdr_linker::{DegreeMode, LinkerParams};
-    use powdr_number::Bn254Field;
-    use powdr_pipeline::util::{FixedPolySet, PolySet, WitnessPolySet};
-
-    let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
-    for f in asm_files {
-        let tmp_dir = mktemp::Temp::new_dir().unwrap();
-
-        // generate poly files
-        let mut pipeline = Pipeline::<Bn254Field>::default()
-            .from_file(resolve_test_file(f))
-            .with_output(tmp_dir.to_path_buf(), true)
-            .with_linker_params(LinkerParams {
-                degree_mode: DegreeMode::Monolithic,
-                ..Default::default()
-            })
-            .with_backend(BackendType::EStarkDump, None);
-        pipeline.compute_witness().unwrap();
-        let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
-        pipeline.compute_proof().unwrap();
-
-        // check fixed cols (may have no fixed cols)
-        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
-        let fixed = get_uniquely_sized(&fixed).unwrap();
-        if !fixed.is_empty() {
-            assert_eq!(pil.degree(), fixed[0].1.len() as u64);
-        }
-
-        // check witness cols (examples assumed to have at least one witness col)
-        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
-        assert_eq!(pil.degree(), witness[0].1.len() as u64);
-    }
 }
 
 #[test]

@@ -151,11 +151,6 @@ enum Commands {
         #[arg(long)]
         params: Option<String>,
 
-        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
-        #[arg(long)]
-        backend_options: Option<String>,
-
         /// Linker mode, deciding how to reduce links to constraints.
         #[arg(long)]
         #[arg(value_parser = clap_enum_variants!(LinkerMode))]
@@ -201,11 +196,6 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
-        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
-        #[arg(long)]
-        backend_options: Option<String>,
-
         /// File containing previously generated proof for aggregation.
         #[arg(long)]
         proof: Option<String>,
@@ -242,11 +232,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
-
-        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
-        #[arg(long)]
-        backend_options: Option<String>,
 
         /// File containing the proof.
         #[arg(long)]
@@ -286,11 +271,6 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
-        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
-        #[arg(long)]
-        backend_options: Option<String>,
-
         /// File containing previously generated setup parameters.
         /// This will be needed for SNARK verification keys but not for STARK.
         #[arg(long)]
@@ -321,11 +301,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
-
-        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
-        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
-        #[arg(long)]
-        backend_options: Option<String>,
 
         /// File containing previously generated setup parameters.
         /// This will be needed for SNARK verification keys but not for STARK.
@@ -474,7 +449,6 @@ fn run_command(command: Commands) {
             pilo,
             prove_with,
             params,
-            backend_options,
             linker_mode,
             degree_mode,
             export_witness_csv,
@@ -490,7 +464,6 @@ fn run_command(command: Commands) {
                 pilo,
                 prove_with,
                 params,
-                backend_options,
                 linker_mode,
                 degree_mode,
                 export_witness_csv,
@@ -506,7 +479,6 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
-            backend_options,
             proof,
             vkey,
             vkey_app,
@@ -515,14 +487,7 @@ fn run_command(command: Commands) {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             call_with_field!(read_and_prove::<field>(
-                pil,
-                dir,
-                &backend,
-                backend_options,
-                proof,
-                vkey,
-                vkey_app,
-                params
+                pil, dir, &backend, proof, vkey, vkey_app, params
             ))
         }
         Commands::Verify {
@@ -530,7 +495,6 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
-            backend_options,
             proof,
             publics,
             params,
@@ -539,14 +503,7 @@ fn run_command(command: Commands) {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             call_with_field!(read_and_verify::<field>(
-                pil,
-                dir,
-                &backend,
-                backend_options,
-                proof,
-                publics,
-                params,
-                vkey
+                pil, dir, &backend, proof, publics, params, vkey
             ))
         }
         Commands::VerificationKey {
@@ -554,19 +511,13 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
-            backend_options,
             params,
             vkey_app,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             call_with_field!(verification_key::<field>(
-                pil,
-                dir,
-                &backend,
-                backend_options,
-                params,
-                vkey_app
+                pil, dir, &backend, params, vkey_app
             ))
         }
         Commands::ExportVerifier {
@@ -574,20 +525,12 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
-            backend_options,
             params,
             vkey,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
-            call_with_field!(export_verifier::<field>(
-                pil,
-                dir,
-                &backend,
-                backend_options,
-                params,
-                vkey
-            ))
+            call_with_field!(export_verifier::<field>(pil, dir, &backend, params, vkey))
         }
         Commands::Setup {
             size,
@@ -611,7 +554,6 @@ fn verification_key<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
-    backend_options: Option<String>,
     params: Option<String>,
     vkey_app: Option<String>,
 ) -> Result<(), Vec<String>> {
@@ -621,7 +563,7 @@ fn verification_key<T: FieldElement>(
         .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
-        .with_backend(*backend_type, backend_options);
+        .with_backend(*backend_type);
 
     log::info!("Generating verification key...");
     buffered_write_file(&dir.join("vkey.bin"), |w| {
@@ -637,7 +579,6 @@ fn export_verifier<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
-    backend_options: Option<String>,
     params: Option<String>,
     vkey: Option<String>,
 ) -> Result<(), Vec<String>> {
@@ -647,7 +588,7 @@ fn export_verifier<T: FieldElement>(
         .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
-        .with_backend(*backend_type, backend_options);
+        .with_backend(*backend_type);
 
     buffered_write_file(&dir.join("verifier.sol"), |w| {
         pipeline.export_ethereum_verifier(w).unwrap()
@@ -682,7 +623,6 @@ fn run_pil<F: FieldElement>(
     pilo: bool,
     prove_with: Option<BackendType>,
     params: Option<String>,
-    backend_options: Option<String>,
     linker_mode: Option<LinkerMode>,
     degree_mode: Option<DegreeMode>,
     export_witness: bool,
@@ -707,7 +647,7 @@ fn run_pil<F: FieldElement>(
         export_all_columns,
         csv_mode,
     );
-    run(pipeline, prove_with, params, backend_options)?;
+    run(pipeline, prove_with, params)?;
     Ok(())
 }
 
@@ -715,11 +655,10 @@ fn run<F: FieldElement>(
     pipeline: Pipeline<F>,
     prove_with: Option<BackendType>,
     params: Option<String>,
-    backend_options: Option<String>,
 ) -> Result<(), Vec<String>> {
     pipeline
         .with_setup_file(params.map(PathBuf::from))
-        .with_backend(prove_with.unwrap_or_default(), backend_options.clone())
+        .with_backend(prove_with.unwrap_or_default())
         .compute_proof()
         .unwrap();
 
@@ -737,7 +676,6 @@ fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
-    backend_options: Option<String>,
     proof_path: Option<String>,
     vkey: Option<String>,
     vkey_app: Option<String>,
@@ -752,7 +690,7 @@ fn read_and_prove<T: FieldElement>(
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
-        .with_backend(*backend_type, backend_options)
+        .with_backend(*backend_type)
         .compute_proof()?;
     Ok(())
 }
@@ -762,7 +700,6 @@ fn read_and_verify<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
-    backend_options: Option<String>,
     proof: String,
     publics: String,
     params: Option<String>,
@@ -780,7 +717,7 @@ fn read_and_verify<T: FieldElement>(
         .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(Some(vkey))
-        .with_backend(*backend_type, backend_options);
+        .with_backend(*backend_type);
 
     pipeline.verify(&proof, &[publics])?;
     log::info!("Proof is valid!");
@@ -819,9 +756,8 @@ mod test {
             inputs: "3,2,1,2".into(),
             force: false,
             pilo: false,
-            prove_with: Some(BackendType::EStarkDump),
+            prove_with: Some(BackendType::Mock),
             params: None,
-            backend_options: Some("stark_gl".to_string()),
             linker_mode: None,
             degree_mode: None,
             export_witness_csv: false,
@@ -829,26 +765,5 @@ mod test {
             csv_mode: CsvRenderModeCLI::Hex,
         };
         run_command(pil_command);
-
-        #[cfg(feature = "halo2")]
-        {
-            let file = output_dir
-                .path()
-                .join("simple_sum.pil")
-                .to_string_lossy()
-                .to_string();
-            let prove_command = Commands::Prove {
-                file,
-                dir: output_dir_str,
-                field: FieldArgument::Bn254,
-                backend: BackendType::Halo2Mock,
-                backend_options: None,
-                proof: None,
-                vkey: None,
-                vkey_app: None,
-                params: None,
-            };
-            run_command(prove_command);
-        }
     }
 }

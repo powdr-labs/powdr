@@ -2,12 +2,12 @@ use itertools::Itertools;
 use optimizer::{optimize, IsBusStateful};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperator,
+    AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
 };
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use register_optimizer::{check_register_operation_consistency, optimize_register_operations};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -18,6 +18,7 @@ use powdr_pilopt::simplify_expression;
 
 pub mod optimizer;
 pub mod powdr;
+pub mod register_optimizer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -321,24 +322,20 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
-        assert!(check_precompile(&machine));
+        assert!(check_register_operation_consistency(&machine));
 
         // We need to remove memory bus interactions with inlined multiplicity zero before
         // doing register memory optimizations.
         let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
-        assert!(check_precompile(&machine));
-        let machine = remove_zero_mult(machine);
+        assert!(check_register_operation_consistency(&machine));
 
-        let machine = optimize_precompile(machine);
-        assert!(check_precompile(&machine));
+        let machine = optimize_register_operations(machine);
+        assert!(check_register_operation_consistency(&machine));
 
         // Fixpoint style re-attempt.
         // TODO we probably need proper fixpoint here at some point.
         let machine = optimize(machine, bus_interaction_handler, degree_bound);
-        assert!(check_precompile(&machine));
-
-        let machine = remove_zero_constraint(machine);
-        assert!(check_precompile(&machine));
+        assert!(check_register_operation_consistency(&machine));
 
         // add guards to constraints that are not satisfied by zeroes
         let machine = add_guards(machine);
@@ -376,15 +373,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         blocks
     }
-}
-
-// TODO: This should probably be done by pilopt
-pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    machine
-        .bus_interactions
-        .retain(|bus_int| !powdr::is_zero(&bus_int.mult));
-
-    machine
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
@@ -483,14 +471,6 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     machine
 }
 
-// TODO: This should probably be done by pilopt
-pub fn remove_zero_constraint<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-) -> SymbolicMachine<T> {
-    machine.constraints.retain(|c| !powdr::is_zero(&c.expr));
-    machine
-}
-
 pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let cols = machine.constraint_columns();
 
@@ -521,144 +501,6 @@ pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBu
         .unwrap();
     // TODO assert that r.mult matches -expr
     r
-}
-
-// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
-// Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_precompile<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
-    let count_per_addr = machine
-        .bus_interactions
-        .iter()
-        .filter_map(|bus_int| bus_int.clone().try_into().ok())
-        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
-        .map(|mem_int| {
-            mem_int.try_addr_u32().unwrap_or_else(|| {
-                panic!(
-                    "Register memory access must have constant address but found {}",
-                    mem_int.addr
-                )
-            })
-        })
-        .fold(BTreeMap::new(), |mut map, addr| {
-            *map.entry(addr).or_insert(0) += 1;
-            map
-        });
-
-    count_per_addr.values().all(|&v| v % 2 == 0)
-}
-
-pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let mut receive = true;
-    let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
-    let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut to_remove: BTreeSet<usize> = Default::default();
-    let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
-    machine
-        .bus_interactions
-        .iter()
-        .enumerate()
-        .for_each(|(i, bus_int)| {
-            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
-                Ok(mem_int) => mem_int,
-                Err(_) => {
-                    return;
-                }
-            };
-
-            if !matches!(mem_int.ty, MemoryType::Register) {
-                return;
-            }
-
-            let addr = match mem_int.try_addr_u32() {
-                None => {
-                    panic!(
-                        "Register memory access must have constant address but found {}",
-                        mem_int.addr
-                    );
-                }
-                Some(addr) => addr,
-            };
-
-            if receive {
-                match local_reg_mem.get(&addr) {
-                    Some(data) => {
-                        assert_eq!(data.len(), mem_int.data.len());
-                        mem_int
-                            .data
-                            .iter()
-                            .zip_eq(data.iter())
-                            .for_each(|(new_data, old_data)| {
-                                let eq_expr = AlgebraicExpression::new_binary(
-                                    new_data.clone(),
-                                    AlgebraicBinaryOperator::Sub,
-                                    old_data.clone(),
-                                );
-                                new_constraints.push(eq_expr.into());
-                            });
-
-                        to_remove.insert(i);
-                    }
-                    None => {
-                        local_reg_mem.insert(addr, mem_int.data.clone());
-                    }
-                }
-            } else {
-                last_store.insert(addr, i);
-                local_reg_mem.insert(addr, mem_int.data.clone());
-            }
-
-            receive = !receive;
-        });
-
-    let mut receive = true;
-    machine.bus_interactions = machine
-        .bus_interactions
-        .into_iter()
-        .enumerate()
-        .filter_map(|(i, bus_int)| {
-            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
-                Ok(mem_int) => mem_int,
-                Err(_) => {
-                    return Some(bus_int);
-                }
-            };
-
-            if !matches!(mem_int.ty, MemoryType::Register) {
-                return Some(bus_int);
-            }
-
-            let addr = match mem_int.try_addr_u32() {
-                None => {
-                    panic!(
-                        "Register memory access must have constant address but found {}",
-                        mem_int.addr
-                    );
-                }
-                Some(addr) => addr,
-            };
-
-            let keep = if receive && !to_remove.contains(&i) {
-                Some(bus_int)
-            } else if receive && to_remove.contains(&i) {
-                None
-            } else if last_store
-                .get(&addr)
-                .is_some_and(|&last_index| last_index == i)
-            {
-                Some(bus_int)
-            } else {
-                None
-            };
-
-            receive = !receive;
-
-            keep
-        })
-        .collect();
-
-    machine.constraints.extend(new_constraints);
-
-    machine
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(

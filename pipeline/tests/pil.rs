@@ -4,9 +4,8 @@ use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_mock,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
-        test_halo2_with_backend_variant, test_mock_backend, test_stwo, test_stwo_stage1_public,
-        BackendVariant,
+        make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl, test_mock_backend,
+        test_stwo, test_stwo_stage1_public,
     },
     Pipeline,
 };
@@ -35,29 +34,13 @@ fn lookup_with_selector() {
             "main::w".to_string(),
             witness.iter().cloned().map(GoldilocksField::from).collect(),
         )])
-        .with_backend(powdr_backend::BackendType::Mock, None)
+        .with_backend(powdr_backend::BackendType::Mock)
         .compute_proof()
         .unwrap();
 
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-}
-
-#[test]
-#[cfg(feature = "estark-starky")]
-#[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
-fn lookup_with_selector_starky() {
-    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
-    // witness[0] and witness[2] have to be in {2, 4}
-
-    let f = "pil/lookup_with_selector.pil";
-
-    // Invalid witness: 0 is not in the set {2, 4}
-    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
-    // Unfortunately, eStark panics in this case. That's why the test is marked
-    // as should_panic, with the error message that would be coming from eStark...
-    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
 #[test]
@@ -75,29 +58,13 @@ fn permutation_with_selector() {
             "main::w".to_string(),
             witness.iter().cloned().map(GoldilocksField::from).collect(),
         )])
-        .with_backend(powdr_backend::BackendType::Mock, None)
+        .with_backend(powdr_backend::BackendType::Mock)
         .compute_proof()
         .unwrap();
 
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-}
-
-#[test]
-#[cfg(feature = "estark-starky")]
-#[should_panic = "assertion failed: check_val._eq(&F::one())"]
-fn permutation_with_selector_starky() {
-    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
-    // witness[0] and witness[2] have to be in {2, 4}
-
-    let f = "pil/permutation_with_selector.pil";
-
-    // Invalid witness: 0 is not in the set {2, 4}
-    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
-    // Unfortunately, eStark panics in this case. That's why the test is marked
-    // as should_panic, with the error message that would be coming from eStark...
-    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
 #[test]
@@ -344,16 +311,6 @@ fn conditional_fixed_constraints() {
 fn referencing_arrays() {
     let f = "pil/referencing_array.pil";
     regular_test_all_fields(f, Default::default());
-}
-
-#[test]
-fn naive_byte_decomposition_bn254() {
-    // This should pass, because BN254 is a field that can fit all 64-Bit integers.
-    let f = "pil/naive_byte_decomposition.pil";
-
-    // Native linker mode, because bus constraints are exponential in Halo2
-    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
