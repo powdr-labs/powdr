@@ -101,6 +101,8 @@ impl BooleanDispenser {
 mod test {
     use std::collections::HashMap;
 
+    use powdr_number::GoldilocksField;
+
     use crate::{
         range_constraint::RangeConstraint,
         test_utils::{constant, var},
@@ -118,18 +120,45 @@ mod test {
 
     #[test]
     fn test_find_quadratic_equalities() {
-        // Adding zero check 321 for -943718400 * mem_ptr_limbs__0_379 + 30720 * mem_ptr_limbs__1_379 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893 = 0
-        // Adding zero check 195 for -943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893 = 0
+        // (-943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893) * (-943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632892)
+
+        // (-943718400 * mem_ptr_limbs__0_279 + 30720 * mem_ptr_limbs__1_279 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 251658182) * (-943718400 * mem_ptr_limbs__0_279 + 30720 * mem_ptr_limbs__1_279 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 251658181)
 
         let constraints = vec![
-            var("m1") + var("m2") * constant(65536)
-                - var("d1")
-                - var("d2") * constant(256)
-                - var("d3") * constant(65536)
-                - var("d4") * constant(0x1000000)
-                + constant(8),
+            // (30720 * mem_ptr_limbs__0_175 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -4423680) * (30720 * mem_ptr_limbs__0_175 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -4423681)
+            (var("mem_ptr_limbs__0_175") * constant(30720)
+                - var("rs1_data__0_661") * constant(30720)
+                - var("rs1_data__1_661") * constant(7864320)
+                - constant(4423680))
+                * (var("mem_ptr_limbs__0_175") * constant(30720)
+                    - var("rs1_data__0_661") * constant(30720)
+                    - var("rs1_data__1_661") * constant(7864320)
+                    - constant(4423681)),
+            // (30720 * mem_ptr_limbs__0_279 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -3809280) * (30720 * mem_ptr_limbs__0_279 + -30720 * rs1_data__0_661 + -7864320 * rs1_data__1_661 + -3809281)
+            (var("mem_ptr_limbs__0_279") * constant(30720)
+                - var("rs1_data__0_661") * constant(30720)
+                - var("rs1_data__1_661") * constant(7864320)
+                - constant(4423680))
+                * (var("mem_ptr_limbs__0_279") * constant(30720)
+                    - var("rs1_data__0_661") * constant(30720)
+                    - var("rs1_data__1_661") * constant(7864320)
+                    - constant(4423681)),
         ];
-        let result = find_quadratic_equalities(&constraints, ());
+        let range_constraints = [
+            (
+                "mem_ptr_limbs__0_175",
+                RangeConstraint::from_mask(0xffffu32),
+            ),
+            (
+                "mem_ptr_limbs__0_279",
+                RangeConstraint::from_mask(0xffffu32),
+            ),
+            ("rs1_data__0_661", RangeConstraint::from_mask(0xffffu32)),
+            ("rs1_data__1_661", RangeConstraint::from_mask(0xffffu32)),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let result = find_quadratic_equalities(&constraints, range_constraints);
         assert_eq!(result.len(), 0);
     }
 }
