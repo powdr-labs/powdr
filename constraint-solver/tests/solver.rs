@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
