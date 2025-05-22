@@ -31,6 +31,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         .cloned()
         .map(|c| c.transform_var_type(&mut |v| VariableOrBoolean::from(v.clone())))
         .map(|c| extract_boolean(&c, || boolean_dispenser.next()).unwrap_or(c))
+        .filter(|c| c.is_affine())
         .collect::<Vec<_>>();
 
     let range_constraints = RangeConstraintProviderForVariableOrBoolean {
@@ -39,6 +40,9 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
 
     // TODO create index?
     for (i, c1) in constraints.iter().enumerate() {
+        if i % 100 == 0 {
+            println!("Processing {i} of {}", constraints.len());
+        }
         let vars1 = c1.referenced_unknown_variables().collect::<HashSet<_>>();
         for c2 in &constraints[i + 1..] {
             let vars2 = c2.referenced_unknown_variables().collect::<HashSet<_>>();
@@ -89,10 +93,10 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
                         if !coeff.is_known_minus_one() {
                             return None;
                         }
-                        Some((
-                            var.clone().try_into_variable()?,
-                            other_var.clone().try_into_variable()?,
-                        ))
+                        let var = var.clone().try_into_variable()?;
+                        let other = other_var.clone().try_into_variable()?;
+                        println!("EQUIV {var} = {other}");
+                        Some((var, other))
                     })
                     .collect_vec();
                 if !equivalences.is_empty() {
