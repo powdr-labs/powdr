@@ -96,3 +96,40 @@ impl BooleanDispenser {
         VariableOrBoolean::Boolean(n)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use crate::{
+        range_constraint::RangeConstraint,
+        test_utils::{constant, var},
+    };
+
+    use super::*;
+
+    // impl<T: FieldElement> RangeConstraintProvider<T, &'static str>
+    //     for HashMap<&'static str, RangeConstraint<T>>
+    // {
+    //     fn get(&self, var: &&'static str) -> RangeConstraint<T> {
+    //         self.get(var).cloned().unwrap_or_default()
+    //     }
+    // }
+
+    #[test]
+    fn test_find_quadratic_equalities() {
+        // Adding zero check 321 for -943718400 * mem_ptr_limbs__0_379 + 30720 * mem_ptr_limbs__1_379 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893 = 0
+        // Adding zero check 195 for -943718400 * mem_ptr_limbs__0_175 + 30720 * mem_ptr_limbs__1_175 + 943718400 * rs1_data__0_661 + -120 * rs1_data__1_661 + -30720 * rs1_data__2_661 + -7864320 * rs1_data__3_661 + 1006632893 = 0
+
+        let constraints = vec![
+            var("m1") + var("m2") * constant(65536)
+                - var("d1")
+                - var("d2") * constant(256)
+                - var("d3") * constant(65536)
+                - var("d4") * constant(0x1000000)
+                + constant(8),
+        ];
+        let result = find_quadratic_equalities(&constraints, ());
+        assert_eq!(result.len(), 0);
+    }
+}
