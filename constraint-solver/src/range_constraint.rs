@@ -149,7 +149,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// The range constraint of the product of two expressions.
     pub fn combine_product(&self, other: &Self) -> Self {
         if let Some(v) = other.try_to_single_value() {
-            return self.multiple(v);
+            self.multiple(v)
         } else if let Some(v) = self.try_to_single_value() {
             return other.multiple(v);
         } else if self.min <= self.max

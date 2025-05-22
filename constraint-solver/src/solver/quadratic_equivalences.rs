@@ -10,7 +10,6 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    boolean_extractor::extract_boolean,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     symbolic_expression::SymbolicExpression,
@@ -40,8 +39,8 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
     let mut equalities = vec![];
     let constraints = constraints
         .iter()
+        .filter(|&c| c.is_affine())
         .cloned()
-        .filter(|c| c.is_affine())
         .collect::<Vec<_>>();
 
     // TODO do we still need the hack?
@@ -79,19 +78,19 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
 
             let bool_vars = difference
                 .referenced_unknown_variables()
+                .filter(|&v| range_constraints.get(v).range_width() == 2.into())
                 .cloned()
-                .filter(|v| range_constraints.get(&v).range_width() == 2.into())
                 .collect_vec();
             if bool_vars.len() > 6 {
                 continue;
             }
             let Some(solve_for) = difference
                 .referenced_unknown_variables()
-                .cloned()
-                .find(|v| {
-                    let rc = range_constraints.get(&v);
+                .find(|&v| {
+                    let rc = range_constraints.get(v);
                     rc.range_width() > 2.into()
                 })
+                .cloned()
             else {
                 // TODO In this case, there are only booleans left in the differenc,
                 // which should be a valid case!
@@ -121,7 +120,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
                 .collect::<BTreeSet<_>>();
             // Conflicting system
             assert!(!results.is_empty());
-            if let Some(result) = results.into_iter().exactly_one().ok() {
+            if let Ok(result) = results.into_iter().exactly_one() {
                 if let Some(var) = result.try_to_simple_unknown() {
                     if var < solve_for {
                         equalities.push((var, solve_for));
