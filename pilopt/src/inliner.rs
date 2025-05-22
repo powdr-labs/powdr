@@ -58,7 +58,6 @@ pub fn replace_constrained_witness_columns<
     };
 
     loop {
-        // let did_something = try_apply_substitution(
         let did_something = try_apply_substitution(
             &mut constraint_system,
             max_degree,
