@@ -1,5 +1,4 @@
 use exhaustive_search::ExhaustiveSearch;
-use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
