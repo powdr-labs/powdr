@@ -19,7 +19,8 @@ const MEMORY: u64 = 1;
 const PC_LOOKUP: u64 = 2;
 const VARIABLE_RANGE_CHECKER: u64 = 3;
 const BITWISE_LOOKUP: u64 = 6;
-const TUPLE_RANGE_CHECKER: u64 = 7;
+const SHA: u64 = 7;
+const TUPLE_RANGE_CHECKER: u64 = 8;
 
 pub enum BusType {
     ExecutionBridge,
@@ -27,6 +28,7 @@ pub enum BusType {
     PcLookup,
     VariableRangeChecker,
     BitwiseLookup,
+    Sha,
     TupleRangeChecker,
 }
 
@@ -37,6 +39,7 @@ pub fn bus_type(bus_id: u64) -> BusType {
         PC_LOOKUP => BusType::PcLookup,
         VARIABLE_RANGE_CHECKER => BusType::VariableRangeChecker,
         BITWISE_LOOKUP => BusType::BitwiseLookup,
+        SHA => BusType::Sha,
         TUPLE_RANGE_CHECKER => BusType::TupleRangeChecker,
         _ => panic!("Unknown bus ID: {bus_id}"),
     }
@@ -76,6 +79,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
                 handle_variable_range_checker(&bus_interaction.payload)
             }
             BusType::TupleRangeChecker => handle_tuple_range_checker(&bus_interaction.payload),
+            BusType::Sha => bus_interaction.payload,
         };
         BusInteraction {
             payload: payload_constraints,
@@ -98,6 +102,7 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::VariableRangeChecker => false,
             BusType::BitwiseLookup => false,
             BusType::TupleRangeChecker => false,
+            BusType::Sha => false,
         }
     }
 }

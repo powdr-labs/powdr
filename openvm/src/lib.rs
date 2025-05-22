@@ -169,6 +169,7 @@ pub fn compile_openvm(
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = GuestOptions::default();
+    let guest_opts = guest_opts.with_features(vec!["openvm".to_string()]);
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
 
     // Point to our local guest
@@ -206,6 +207,7 @@ pub fn compile_exe(
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = GuestOptions::default();
+    let guest_opts = guest_opts.with_features(vec!["openvm".to_string()]);
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
 
     // Point to our local guest

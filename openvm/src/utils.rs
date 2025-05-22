@@ -203,7 +203,8 @@ namespace {name};
         (2, "PC_LOOKUP"),
         (3, "VARIABLE_RANGE_CHECKER"),
         (6, "BITWISE_LOOKUP"),
-        (7, "TUPLE_RANGE_CHECKER"),
+        (7, "SHA"),
+        (8, "TUPLE_RANGE_CHECKER"),
     ]
     .into_iter()
     .collect::<BTreeMap<_, _>>();
