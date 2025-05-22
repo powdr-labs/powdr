@@ -135,6 +135,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
             .collect())
     }
 
+    // a + 256 * b = 0..0xffff
+    // can we deduce range constaints on a and b?
+
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         Box::new(self.fields().flat_map(|expr| expr.referenced_variables()))

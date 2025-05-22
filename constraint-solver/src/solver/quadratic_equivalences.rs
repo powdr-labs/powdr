@@ -1,6 +1,10 @@
 //! Module to help find certain pairs of equivalent variables in a system of quadratic constraints.
 
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -9,7 +13,24 @@ use crate::{
     boolean_extractor::extract_boolean,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
+    symbolic_expression::SymbolicExpression,
 };
+
+struct RangeConstraintHack<R>(R);
+
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, R: RangeConstraintProvider<T, V>>
+    RangeConstraintProvider<T, V> for RangeConstraintHack<R>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        let name = var.to_string();
+        if name.starts_with("mem_ptr_limbs_") {
+            RangeConstraint::from_mask(0xffffu64)
+        } else {
+            RangeConstraint::default()
+        }
+        .conjunction(&self.0.get(var))
+    }
+}
 
 // New way:
 // - Introduce boolean variables
@@ -23,6 +44,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
     constraints: &[QuadraticSymbolicExpression<T, V>],
     range_constraints: impl RangeConstraintProvider<T, V>,
 ) -> Vec<(V, V)> {
+    let mut equalities = vec![];
     let mut boolean_dispenser = BooleanDispenser::default();
     // Introduce new boolean variables and turn some quadratic constraints
     // into affine constraints.
@@ -35,7 +57,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         .collect::<Vec<_>>();
 
     let range_constraints = RangeConstraintProviderForVariableOrBoolean {
-        provider: range_constraints,
+        provider: RangeConstraintHack(range_constraints),
     };
 
     // TODO create index?
@@ -45,7 +67,8 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         }
         let vars1 = c1.referenced_unknown_variables().collect::<HashSet<_>>();
         for c2 in &constraints[i + 1..] {
-            // TODO we cannot solve others currently.
+            // TODO It's unlikely that we get something with a non-zero constant differnce,
+            // but it could happen!
             if !(c1.components().2 - c2.components().2).is_known_zero() {
                 continue;
             }
@@ -67,52 +90,86 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
                 continue;
             };
 
-            // Try out different factors
-            for var in difference.referenced_unknown_variables().cloned() {
-                println!("{var}, rc: {}", range_constraints.get(&var));
-                let coeff = difference.coefficient_of_variable(&var).unwrap();
-                if !coeff.is_known_nonzero() {
-                    continue;
-                }
-                let diff = difference.clone() * coeff.field_inverse();
-                let Some(items) = diff.try_split(&range_constraints) else {
-                    panic!();
-                    continue;
-                };
-
-                if items.len() == 1 {
-                    continue;
-                }
-                // TODO we could also just add these as new constraints,
-                // if we don't care if the system grows.
-                let equivalences = items
-                    .into_iter()
-                    .filter(|item| item.referenced_unknown_variables().count() == 2)
-                    .filter_map(|item| {
-                        let var = item.referenced_unknown_variables().next().unwrap();
-                        let solution = item.try_solve_for(&var).unwrap();
-                        let (_, lin, off) = solution.components();
-                        if !off.is_known_zero() {
-                            return None;
-                        }
-                        let lin = lin.collect_vec();
-                        let [(other_var, coeff)] = lin.try_into().ok()?;
-                        if !coeff.is_known_minus_one() {
-                            return None;
-                        }
-                        let var = var.clone().try_into_variable()?;
-                        let other = other_var.clone().try_into_variable()?;
-                        println!("EQUIV {var} = {other}");
-                        Some((var, other))
-                    })
-                    .collect_vec();
-                if !equivalences.is_empty() {
-                    return equivalences;
+            let bool_vars = difference
+                .referenced_unknown_variables()
+                .cloned()
+                .filter(|v| range_constraints.get(&v).range_width() == 2.into())
+                .collect_vec();
+            if bool_vars.len() > 6 {
+                continue;
+            }
+            let Some(solve_for) = difference
+                .referenced_unknown_variables()
+                .cloned()
+                .find(|v| {
+                    let rc = range_constraints.get(&v);
+                    rc.range_width() > 2.into()
+                })
+            else {
+                // TODO In this case, there are only booleans left in the differenc,
+                // which should be a valid case!
+                // We really shouldn't be calling `solve_for()` below, but instead
+                // detect inconsistency itself.
+                continue;
+            };
+            let solve_for_rc = range_constraints.get(&solve_for);
+            let results = get_all_possible_assignments(bool_vars, &range_constraints)
+                .filter_map(|assignment| {
+                    let mut diff = difference.clone();
+                    for (var, val) in assignment {
+                        diff.substitute_by_known(&var, &SymbolicExpression::from(val));
+                    }
+                    let solved = diff.try_solve_for(&solve_for).unwrap();
+                    // TODO there has to be a better way, we should get an error
+                    // just when calling solve().
+                    if solved
+                        .range_constraint(&range_constraints)
+                        .is_disjoint(&solve_for_rc)
+                    {
+                        None
+                    } else {
+                        Some(solved)
+                    }
+                })
+                .collect::<BTreeSet<_>>();
+            // Conflicting system
+            assert!(!results.is_empty());
+            let Some(solve_for) = solve_for.try_into_variable() else {
+                continue;
+            };
+            if let Some(result) = results.into_iter().exactly_one().ok() {
+                if let Some(var) = result
+                    .try_to_simple_unknown()
+                    .and_then(|v| v.try_into_variable())
+                {
+                    equalities.push((var, solve_for));
                 }
             }
         }
     }
-    vec![]
+    equalities
+}
+
+// TODO copied from exhaustive search
+fn get_all_possible_assignments<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    variables: impl IntoIterator<Item = V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> impl Iterator<Item = BTreeMap<V, T>> {
+    let variables = variables.into_iter().collect_vec();
+    variables
+        .iter()
+        .map(|v| range_constraints.get(v))
+        .map(|rc| rc.allowed_values().collect::<Vec<_>>())
+        .multi_cartesian_product()
+        .map(|assignment| {
+            variables
+                .iter()
+                .cloned()
+                .zip(assignment)
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
@@ -153,7 +210,7 @@ impl<V, T: FieldElement, R: RangeConstraintProvider<T, V>>
     RangeConstraintProvider<T, VariableOrBoolean<V>>
     for RangeConstraintProviderForVariableOrBoolean<R>
 {
-    fn get(&self, var: &VariableOrBoolean<V>) -> crate::range_constraint::RangeConstraint<T> {
+    fn get(&self, var: &VariableOrBoolean<V>) -> RangeConstraint<T> {
         match var {
             VariableOrBoolean::Regular(v) => self.provider.get(v),
             VariableOrBoolean::Boolean(_) => RangeConstraint::from_mask(1u64),

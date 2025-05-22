@@ -482,8 +482,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         let units_rc = units.range_constraint(range_constraints);
 
         println!("units: {units}, coeff: {coeff}, others: {others}");
-        println!("units_rc: {units_rc}");
-        println!("others_rc: {}", others.range_constraint(range_constraints));
+        println!("units_rc: {units_rc}, range {}", units_rc.range_width());
+        println!(
+            "others_rc: {}, range {}",
+            others.range_constraint(range_constraints),
+            others.range_constraint(range_constraints).range_width()
+        );
 
         if units_rc.is_disjoint(&units_rc.combine_sum(&RangeConstraint::from_value(coeff)))
         // TODO is this the right condition?
