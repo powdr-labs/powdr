@@ -26,6 +26,9 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
     let mut boolean_dispenser = BooleanDispenser::default();
     // Introduce new boolean variables and turn some quadratic constraints
     // into affine constraints.
+    for c in constraints {
+        println!("Processing {c}");
+    }
     let constraints = constraints
         .iter()
         .cloned()
@@ -40,6 +43,7 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
 
     // TODO create index?
     for (i, c1) in constraints.iter().enumerate() {
+        println!("Processing {c1}");
         if i % 100 == 0 {
             println!("Processing {i} of {}", constraints.len());
         }
