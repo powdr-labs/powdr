@@ -8,6 +8,7 @@ use powdr_number::FieldElement;
 use std::hash::Hash;
 
 /// Description of a constraint system.
+#[derive(Clone)]
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
