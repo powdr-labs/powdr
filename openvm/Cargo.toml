@@ -69,6 +69,7 @@ struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.gi
 
 [dev-dependencies]
 test-log = { version = "0.2.17", features = ["trace"] }
+pretty_assertions = "1.4.0"
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458

@@ -71,7 +71,7 @@ mod customize_exe;
 // A module for our extension
 mod powdr_extension;
 
-mod bus_interaction_handler;
+pub mod bus_interaction_handler;
 mod instruction_formatter;
 
 #[allow(dead_code)]
