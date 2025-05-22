@@ -127,7 +127,7 @@ mod tests {
     fn test_extract_boolean() {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b") + constant(10));
-        let result = extract_boolean(expr, &mut var_dispenser);
+        let result = extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(result.to_string(), "a + b + -10 * z + 10");

@@ -1,4 +1,5 @@
 use exhaustive_search::ExhaustiveSearch;
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::boolean_extractor::{self, extract_boolean};
@@ -48,11 +49,11 @@ pub struct Solver<T: FieldElement, V> {
     original_system: ConstraintSystem<T, V>,
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: IndexedConstraintSystem<T, Variable<V>>,
+    constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
-    range_constraints: RangeConstraints<T, Variable<V>>,
+    range_constraints: RangeConstraints<T, V>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
     assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
@@ -66,36 +67,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         );
         let original_system = constraint_system;
         let constraint_system = IndexedConstraintSystem::from(original_system.clone());
-
-        let mut counter = 0;
-        let mut var_dispenser = || {
-            let v = Variable::Boolean(counter);
-            counter += 1;
-            v
-        };
-
-        let algebraic_constraints = constraint_system
-            .algebraic_constraints
-            .into_iter()
-            .map(|constr| {
-                let constr = constr.transform_var_type(&mut |v| Variable::Regular(v.clone()));
-                extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
-            })
-            .collect::<Vec<_>>();
-        let bus_interactions = constraint_system
-            .bus_interactions
-            .into_iter()
-            .map(|bi| {
-                bi.fields()
-                    .map(|c| c.transform_var_type(&mut |v| Variable::Regular(v.clone())))
-                    .collect()
-            })
-            .collect::<Vec<_>>();
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints,
-            bus_interactions,
-        }
-        .into();
 
         Solver {
             original_system,
@@ -119,17 +90,85 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
-        self.loop_until_no_progress()?;
+        assert!(self.assignments.is_empty());
+        let original_system = self.original_system.clone();
 
-        let mut constraint_system = IndexedConstraintSystem::from(self.original_system);
-        for (variable, value) in &self.assignments {
+        let mut solver = self.introduce_boolean_variables();
+        solver.loop_until_no_progress()?;
+
+        // Clear anything from the assignments that references boolean variables.
+        // TODO if we get an assignment for a boolean variable, we could simplify a constraint.
+        let assignments = solver
+            .assignments
+            .into_iter()
+            .filter_map(|(variable, value)| {
+                let var = variable.try_to_original()?;
+                let mut failed = false;
+                let value = value.transform_var_type(&mut |v| {
+                    match v {
+                        Variable::Regular(v) => v.clone(),
+                        Variable::Boolean(index) => {
+                            failed = true;
+                            // Just return some variable
+                            var.clone()
+                        }
+                    }
+                });
+                (!failed).then_some((var, value))
+            })
+            .collect_vec();
+
+        let mut constraint_system = IndexedConstraintSystem::from(original_system);
+        for (variable, value) in &assignments {
             constraint_system.substitute_by_unknown(variable, &value);
         }
 
         Ok(SolveResult {
-            assignments: self.assignments.into_iter().collect(),
+            assignments: assignments.into_iter().collect(),
             simplified_constraint_system: constraint_system.into(),
         })
+    }
+
+    fn introduce_boolean_variables(self) -> Solver<T, Variable<V>> {
+        assert!(self.assignments.is_empty());
+        let mut counter = 0;
+        let mut var_dispenser = || {
+            let v = Variable::Boolean(counter);
+            counter += 1;
+            v
+        };
+
+        let algebraic_constraints = self
+            .original_system
+            .algebraic_constraints
+            .into_iter()
+            .map(|constr| {
+                let constr = constr.transform_var_type(&mut |v| Variable::Regular(v.clone()));
+                extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+            })
+            .collect::<Vec<_>>();
+        let bus_interactions = self
+            .original_system
+            .bus_interactions
+            .into_iter()
+            .map(|bi| {
+                bi.fields()
+                    .map(|c| c.transform_var_type(&mut |v| Variable::Regular(v.clone())))
+                    .collect()
+            })
+            .collect::<Vec<_>>();
+        let mut solver = Solver::new(ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions,
+        })
+        .with_bus_interaction_handler(self.bus_interaction_handler);
+        for index in 0..counter {
+            solver.apply_range_constraint_update(
+                &Variable::Boolean(index),
+                RangeConstraint::from_mask(1u64),
+            );
+        }
+        solver
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
@@ -303,6 +342,26 @@ enum Variable<V> {
     Regular(V),
     /// A new boolean-constrained variable that was introduced by the solver.
     Boolean(usize),
+}
+
+impl<V: Clone> Variable<V> {
+    /// Converts the variable to its original type.
+    /// Returns `None` if the variable is a boolean variable.
+    fn try_to_original(&self) -> Option<V> {
+        match self {
+            Variable::Regular(v) => Some(v.clone()),
+            Variable::Boolean(_) => None,
+        }
+    }
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Regular(v) => write!(f, "{v}"),
+            Variable::Boolean(i) => write!(f, "boolean_{i}"),
+        }
+    }
 }
 
 /// The currently known range constraints for the variables.
