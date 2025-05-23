@@ -449,10 +449,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             return None;
         };
         if constant != 0.into() {
-            // TODO implement this
+            // TODO can we solve this?
             return None;
         }
-        let mut components = self
+        // Group the linear part by absolute coefficients.
+        let components = self
             .linear
             .iter()
             .map(|(var, coeff)| Some((coeff.try_to_number()?, var)))
@@ -466,37 +467,65 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     (coeff, Self::from_unknown_variable(var.clone()))
                 }
             })
-            .into_group_map();
-        if components.len() != 2 || !components.keys().contains(&T::from(1)) {
-            // TODO try to find common coefficient.
+            .into_grouping_map()
+            .sum()
+            .into_iter()
+            .sorted()
+            .collect_vec();
+        if components.len() < 2 {
             return None;
         }
 
-        let units: Self = components.remove(&T::from(1)).unwrap().into_iter().sum();
-        let (coeff, others) = components.into_iter().next().unwrap();
-        let others: Self = others.into_iter().sum();
-        // We have `units + coeff * others = 0`.
-        let units_rc = units.range_constraint(range_constraints);
+        // Now try to split of each one in turn.
+        for index in 0..components.len() {
+            println!("--------");
+            let (candidate_coeff, candidate) = &components[index];
+            let rest = components
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != index)
+                .map(|(_, (coeff, expr))| (*coeff / *candidate_coeff, expr.clone()))
+                .collect_vec();
+            println!(
+                "({candidate}) + {} = 0",
+                rest.iter()
+                    .map(|(coeff, expr)| format!("{coeff} * ({expr})"))
+                    .join(" + ")
+            );
+            // The original constraint is equivalent to `candidate + rest = 0`.
+            // Now we try to extract the smallest coefficient in rest.
+            let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
 
-        println!("units: {units}, coeff: {coeff}, others: {others}");
-        println!("units_rc: {units_rc}, range {}", units_rc.range_width());
-        println!(
-            "others_rc: {}, range {}",
-            others.range_constraint(range_constraints),
-            others.range_constraint(range_constraints).range_width()
-        );
+            let candidate_rc = candidate.range_constraint(range_constraints);
+            println!("smallest_coeff: {smallest_coeff}");
+            println!("candidate_rc: {candidate_rc}");
 
-        if units_rc.is_disjoint(&units_rc.combine_sum(&RangeConstraint::from_value(coeff)))
-        // TODO is this the right condition?
-            && others
+            if !candidate_rc.is_disjoint(
+                &candidate_rc.combine_sum(&RangeConstraint::from_value(smallest_coeff)),
+            ) {
+                continue;
+            }
+            println!("is disjoint");
+
+            // If `rest` change by one, the result will "step over" the range constraint of
+            // the candidate. Now what remains is to check that the others do not wrap.
+
+            let rest: QuadraticSymbolicExpression<_, _> = rest
+                .into_iter()
+                .map(|(coeff, expr)| expr * &SymbolicExpression::from(coeff / smallest_coeff))
+                .sum();
+            println!("rest: {rest}");
+            // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`.
+
+            if !rest
                 .range_constraint(range_constraints)
-                .multiple(coeff)
-                != RangeConstraint::default()
-        {
-            Some(vec![units, others])
-        } else {
-            None
+                .multiple(smallest_coeff)
+                .is_unconstrained()
+            {
+                return Some(vec![candidate.clone(), rest]);
+            }
         }
+        None
     }
 
     fn solve_affine(
@@ -870,8 +899,6 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExp
         self.linear.retain(|_, f| !f.is_known_zero());
     }
 }
-
-// TODO find a more efficient impl?
 
 impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sum for QuadraticSymbolicExpression<T, V> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
@@ -1653,6 +1680,31 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         println!("rc a: {}", (var("a")).range_constraint(&rcs));
         println!("rc -a: {}", (-var("a")).range_constraint(&rcs));
         let items = expr.try_split(&rcs).unwrap();
+        for item in items {
+            println!("{item}");
+        }
+    }
+
+    #[test]
+    fn split_multiple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+            ("r", four_bit_rc.clone()),
+            ("s", four_bit_rc.clone()),
+            ("w", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(200) - var("a") + var("b") * constant(200)
+            - var("r") * constant(6000)
+            + var("s") * constant(6000)
+            + var("w") * constant(120000);
+        let items = expr.try_split(&rcs).unwrap();
+        println!("ITEMS");
         for item in items {
             println!("{item}");
         }
