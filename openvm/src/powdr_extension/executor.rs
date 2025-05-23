@@ -249,72 +249,63 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .for_each(
                 |((row_slice, dummy_values), (from_record_id, to_record_id))| {
                     // For each register, find the first read and last write, if they exist
-                    let table: BTreeMap<u8, (MemoryRecord<F>, MemoryRecord<F>)> = {
-                        let (reads, writes) = self
-                            .offline_memory
+                    let table: BTreeMap<u8, (Option<MemoryRecord<F>>, Option<MemoryRecord<F>>)> =
+                        self.offline_memory
                             .lock()
                             .unwrap()
-                            .record_for_range(*from_record_id, *to_record_id)
+                            .records_for_range(*from_record_id, *to_record_id)
                             .iter()
                             .filter_map(|r| r.as_ref())
                             .filter(|record| record.address_space.is_one())
                             .fold(
                                 Default::default(),
-                                |(mut reads, mut writes): (
-                                    BTreeMap<u8, MemoryRecord<_>>,
-                                    BTreeMap<u8, MemoryRecord<_>>,
-                                ),
-                                 new_record: &MemoryRecord<F>| {
+                                |mut registers, new_record: &MemoryRecord<F>| {
                                     let register = new_record.pointer.as_canonical_u32() as u8;
                                     let is_write = new_record.prev_data.is_some();
+                                    let timestamp = new_record.timestamp;
+                                    let (read, write) = registers.entry(register).or_default();
+
                                     if is_write {
-                                        writes
-                                            .entry(register)
-                                            .and_modify(|record| {
-                                                if new_record.timestamp > record.timestamp {
-                                                    *record = new_record.clone();
-                                                }
-                                            })
-                                            .or_insert(new_record.clone());
+                                        // update the write if the new record happens later
+                                        match write {
+                                            Some(write_record)
+                                                if write_record.timestamp < timestamp =>
+                                            {
+                                                // do nothing
+                                            }
+                                            _ => {
+                                                *write = Some(new_record.clone());
+                                            }
+                                        }
                                     } else {
-                                        reads
-                                            .entry(register)
-                                            .and_modify(|record| {
-                                                if new_record.timestamp < record.timestamp {
-                                                    *record = new_record.clone();
-                                                }
-                                            })
-                                            .or_insert(new_record.clone());
-                                    }
-                                    (reads, writes)
+                                        // update the read if the new record happens before
+                                        match read {
+                                            Some(read_record)
+                                                if read_record.timestamp > timestamp =>
+                                            {
+                                                // do nothing
+                                            }
+                                            _ => {
+                                                *read = Some(new_record.clone());
+                                            }
+                                        }
+                                    };
+
+                                    registers
                                 },
                             );
 
-                        assert!(reads.len() <= 32);
-                        assert!(writes.len() <= 32);
-                        // print addresses written to but not read
-                        for (key, value) in &writes {
-                            if !reads.contains_key(key) {
-                                println!("write without read: {value:#?}");
-                            }
+                    // For each register, println the first read and last write in the form of the timestamp and data
+                    for (register, (read, write)) in &table {
+                        println!("Register: {register:x}");
+                        if let Some(read_record) = read {
+                            println!("\tRead value {:?} at timestamp {}, previous value was the same at timestamp {}", read_record.data, read_record.timestamp, read_record.prev_timestamp);
                         }
-                        // print addresses read but not written
-                        for (key, value) in &reads {
-                            if !writes.contains_key(key) {
-                                println!("read without write: {value:#?}");
-                            }
+                        if let Some(write_record) = write {
+                            println!("\tWrite value {:?} at timestamp {}, previous value was {:?} at timestamp {}", write_record.data, write_record.timestamp, write_record.prev_data.as_ref().unwrap(), write_record.prev_timestamp);
                         }
-                        panic!();
-
-                        // Combine the reads and writes into a single map
-                        let mut table = BTreeMap::new();
-                        for (key, value) in reads {
-                            table.insert(key, (value, writes.remove(&key).unwrap()));
-                        }
-                        table
-                    };
-
-                    println!("table: {table:#?}");
+                    }
+                    
                     panic!();
 
                     // map the dummy rows to the autoprecompile row
