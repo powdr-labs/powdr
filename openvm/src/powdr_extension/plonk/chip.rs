@@ -1,10 +1,16 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use crate::powdr_extension::executor::PowdrExecutor;
+use crate::powdr_extension::PowdrOpcode;
+use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
-    system::memory::MemoryController,
+    system::memory::{MemoryController, OfflineMemory},
 };
 use openvm_instructions::instruction::Instruction;
+use openvm_instructions::LocalOpcode;
+use openvm_sdk::config::SdkVmConfig;
+use openvm_stark_backend::p3_air::BaseAir;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::PrimeField32,
@@ -16,43 +22,66 @@ use openvm_stark_backend::{
 use super::air::PlonkAir;
 
 pub struct PlonkChip<F: PrimeField32> {
+    name: String,
+    opcode: PowdrOpcode,
     air: Arc<PlonkAir<F>>,
+    executor: PowdrExecutor<F>,
 }
 
-impl<F: PrimeField32> Default for PlonkChip<F> {
-    fn default() -> Self {
-        let air = Arc::new(PlonkAir {
+impl<F: PrimeField32> PlonkChip<F> {
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        precompile: PowdrPrecompile<F>,
+        memory: Arc<Mutex<OfflineMemory<F>>>,
+        base_config: SdkVmConfig,
+        periphery: SharedChips,
+    ) -> Self {
+        let air = PlonkAir {
             _marker: std::marker::PhantomData,
-        });
-        Self { air }
+        };
+        let name = precompile.name.clone();
+        let opcode = precompile.opcode.clone();
+        let executor = PowdrExecutor::new(precompile, memory, base_config, periphery);
+
+        Self {
+            name,
+            opcode,
+            air: Arc::new(air),
+            executor,
+        }
     }
 }
 
 impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
     fn execute(
         &mut self,
-        _memory: &mut MemoryController<F>,
-        _instruction: &Instruction<F>,
-        _from_state: ExecutionState<u32>,
+        memory: &mut MemoryController<F>,
+        instruction: &Instruction<F>,
+        from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
-        todo!()
+        let &Instruction { opcode, .. } = instruction;
+        assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
+
+        let execution_state = self.executor.execute(memory, from_state)?;
+
+        Ok(execution_state)
     }
 
     fn get_opcode_name(&self, _opcode: usize) -> String {
-        todo!()
+        self.name.clone()
     }
 }
 
 impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
     fn air_name(&self) -> String {
-        todo!()
+        format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
     fn current_trace_height(&self) -> usize {
-        todo!()
+        self.executor.number_of_calls()
     }
 
     fn trace_width(&self) -> usize {
-        todo!()
+        self.air.width()
     }
 }
 
