@@ -13,15 +13,15 @@ use struct_reflection::StructReflectionHelper;
 #[repr(C)]
 #[derive(AlignedBorrow, StructReflection)]
 pub struct PlonkColumns<T> {
-    q_l: T,
-    q_r: T,
-    q_o: T,
-    q_mul: T,
-    q_const: T,
+    pub q_l: T,
+    pub q_r: T,
+    pub q_o: T,
+    pub q_mul: T,
+    pub q_const: T,
 
-    a: T,
-    b: T,
-    c: T,
+    pub a: T,
+    pub b: T,
+    pub c: T,
 }
 
 pub struct PlonkAir<F> {
