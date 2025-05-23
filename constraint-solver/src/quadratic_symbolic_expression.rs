@@ -380,14 +380,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     ///
     /// Returns the resulting solved quadratic symbolic expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<QuadraticSymbolicExpression<T, V>> {
-        if self.is_quadratic() {
+        if self.is_quadratic() || !self.coefficient_of_variable(variable)?.is_known_nonzero() {
             return None;
         }
         let mut result = self.clone();
         let coefficient = result.linear.remove(variable)?;
-        if !coefficient.is_known_nonzero() {
-            return None;
-        }
         Some(result * (SymbolicExpression::from(-T::from(1)).field_div(&coefficient)))
     }
 
@@ -603,14 +600,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         assert!(!self.is_quadratic());
         self.linear
             .iter()
-            .filter(|(_, coeff)| coeff.is_known_nonzero())
-            .map(|(var, _)| {
-                (
-                    var,
-                    self.try_solve_for(var)
-                        .unwrap()
-                        .range_constraint(range_constraints),
-                )
+            .filter_map(|(var, _)| {
+                let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
+                Some((var, rc))
             })
             .filter(|(_, constraint)| !constraint.is_unconstrained())
             .map(|(var, constraint)| Effect::RangeConstraint(var.clone(), constraint))
