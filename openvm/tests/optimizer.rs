@@ -1,4 +1,5 @@
 use powdr_autoprecompiles::optimizer::optimize;
+use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -14,11 +15,11 @@ fn load_machine_cbor() {
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
     assert_eq!(
         [
-            machine.constraint_columns().len(),
+            machine.unique_columns().count(),
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [562, 3207, 506]
+        [3540, 3207, 506]
     );
 }
 
@@ -32,16 +33,16 @@ fn test_optimize() {
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",
-        machine.constraint_columns().len(),
+        machine.unique_columns().count(),
         machine.bus_interactions.len(),
         machine.constraints.len()
     );
     assert_eq!(
         [
-            machine.constraint_columns().len(),
+            machine.unique_columns().count(),
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [562, 3207, 506]
+        [3540, 3207, 506]
     );
 }
