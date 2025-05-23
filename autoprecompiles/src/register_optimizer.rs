@@ -122,3 +122,27 @@ pub fn optimize_register_operations<T: FieldElement>(
 
     machine
 }
+
+// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
+// Assumption: all register memory bus interactions feature a concrete address.
+pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
+    let count_per_addr = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| bus_int.clone().try_into().ok())
+        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .map(|mem_int| {
+            mem_int.try_addr_u32().unwrap_or_else(|| {
+                panic!(
+                    "Register memory access must have constant address but found {}",
+                    mem_int.addr
+                )
+            })
+        })
+        .fold(BTreeMap::new(), |mut map, addr| {
+            *map.entry(addr).or_insert(0) += 1;
+            map
+        });
+
+    count_per_addr.values().all(|&v| v % 2 == 0)
+}

@@ -7,7 +7,7 @@ use powdr_ast::analyzed::{
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use register_optimizer::optimize_register_operations;
+use register_optimizer::{check_register_operation_consistency, optimize_register_operations};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -322,20 +322,20 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         let machine = optimize_pc_lookup(machine, opcode);
         let machine = optimize_exec_bus(machine);
-        assert!(check_precompile(&machine));
+        assert!(check_register_operation_consistency(&machine));
 
         // We need to remove memory bus interactions with inlined multiplicity zero before
         // doing register memory optimizations.
         let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
-        assert!(check_precompile(&machine));
+        assert!(check_register_operation_consistency(&machine));
 
         let machine = optimize_register_operations(machine);
-        assert!(check_precompile(&machine));
+        assert!(check_register_operation_consistency(&machine));
 
         // Fixpoint style re-attempt.
         // TODO we probably need proper fixpoint here at some point.
         let machine = optimize(machine, bus_interaction_handler, degree_bound);
-        assert!(check_precompile(&machine));
+        assert!(check_register_operation_consistency(&machine));
 
         // add guards to constraints that are not satisfied by zeroes
         let machine = add_guards(machine);
@@ -477,30 +477,6 @@ pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBu
         .unwrap();
     // TODO assert that r.mult matches -expr
     r
-}
-
-// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
-// Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_precompile<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
-    let count_per_addr = machine
-        .bus_interactions
-        .iter()
-        .filter_map(|bus_int| bus_int.clone().try_into().ok())
-        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
-        .map(|mem_int| {
-            mem_int.try_addr_u32().unwrap_or_else(|| {
-                panic!(
-                    "Register memory access must have constant address but found {}",
-                    mem_int.addr
-                )
-            })
-        })
-        .fold(BTreeMap::new(), |mut map, addr| {
-            *map.entry(addr).or_insert(0) += 1;
-            map
-        });
-
-    count_per_addr.values().all(|&v| v % 2 == 0)
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(

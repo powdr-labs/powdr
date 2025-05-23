@@ -1,5 +1,5 @@
-use powdr::{FieldElement, LargeInt};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_number::{FieldElement, LargeInt};
 
 use super::byte_constraint;
 
@@ -68,8 +68,8 @@ mod tests {
     };
 
     use super::*;
-    use powdr::number::BabyBearField;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
+    use powdr_number::BabyBearField;
 
     fn run(
         x: RangeConstraint<BabyBearField>,

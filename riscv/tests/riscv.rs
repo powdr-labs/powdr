@@ -26,7 +26,7 @@ pub fn test_continuations(case: &str, prover_data: Vec<Vec<u8>>) {
 
     // Test continuations from ELF file.
     let powdr_asm =
-        powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl().with_continuations());
+        powdr_riscv::translate(&executable, CompilerOptions::new_gl().with_continuations());
     run_continuations_test(case, powdr_asm, prover_data);
 }
 
@@ -73,7 +73,7 @@ fn bn254_sanity_check() {
 
     log::info!("Verifying {case} converted from ELF file");
     let options = CompilerOptions::new(KnownField::Bn254Field, RuntimeLibs::new(), false);
-    let from_elf = powdr_riscv::elf::translate(&executable, options);
+    let from_elf = powdr_riscv::translate(&executable, options);
 
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
 
@@ -395,7 +395,7 @@ fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, options);
+    let powdr_asm = powdr_riscv::translate(&executable, options);
 
     let data: Vec<u32> = vec![];
     let answer = data.iter().sum::<u32>();
@@ -508,7 +508,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options);
+    let from_elf = powdr_riscv::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -526,7 +526,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options);
+    let from_elf = powdr_riscv::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -544,7 +544,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options);
+    let from_elf = powdr_riscv::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -568,7 +568,7 @@ fn many_chunks_dry() {
         None,
     );
     let powdr_asm =
-        powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl().with_continuations());
+        powdr_riscv::translate(&executable, CompilerOptions::new_gl().with_continuations());
 
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
@@ -599,7 +599,7 @@ fn output_syscall_with_options<T: FieldElement>(options: CompilerOptions) {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, options);
+    let powdr_asm = powdr_riscv::translate(&executable, options);
 
     let inputs = vec![1u32, 2, 3].into_iter().map(T::from).collect();
     let mut pipeline = Pipeline::<T>::default()
@@ -695,7 +695,7 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
     );
 
     log::info!("Verifying {case}");
-    let from_elf = powdr_riscv::elf::translate(&executable, options);
+    let from_elf = powdr_riscv::translate(&executable, options);
     verify_riscv_asm_string(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -717,7 +717,7 @@ fn profiler_sanity_check() {
     );
 
     let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeLibs::new(), false);
-    let asm = powdr_riscv::elf::translate(&executable, options);
+    let asm = powdr_riscv::translate(&executable, options);
 
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
     let file_name = format!("{case}.asm");
@@ -769,14 +769,14 @@ fn exported_csv_as_external_witness() {
 
     // compile
     let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeLibs::new(), false);
-    let asm = powdr_riscv::elf::translate(&executable, options);
+    let asm = powdr_riscv::translate(&executable, options);
 
     // export witness
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
     let file_name = format!("{case}.asm");
     let mut pipeline = Pipeline::<GoldilocksField>::default()
         .with_output(temp_dir.to_path_buf(), false)
-        .with_backend(powdr_backend::BackendType::Plonky3, None)
+        .with_backend(powdr_backend::BackendType::Plonky3)
         .with_witness_csv_settings(true, false, CsvRenderMode::Hex)
         .from_asm_string(asm, Some(PathBuf::from(file_name)));
     pipeline.compute_witness().unwrap();

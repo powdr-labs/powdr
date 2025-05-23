@@ -214,28 +214,6 @@ fn block_to_block_with_bus_different_sizes() {
     test_stwo_pipeline(pipeline);
 }
 
-#[cfg(feature = "halo2")]
-#[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
-fn block_to_block_with_bus_composite() {
-    // This currently fails because of #1608 ("Emulate shared challenges in CompositeBackend"):
-    // - `CompositeBackend::prove` correctly gets the challenges of each machine and accumulates them.
-    //   The shared challenges are used during witness generation.
-    // - `CompositeBackend::verify` simply verifies each machine proof independently, using the local
-    //   challenges. As a result, the challenges during verification differ and the constraints are
-    //   not satisfied.
-
-    use powdr_number::Bn254Field;
-    use powdr_pipeline::test_util::{test_halo2_with_backend_variant, BackendVariant};
-    let f = "asm/block_to_block_with_bus.asm";
-    let pipeline = make_simple_prepared_pipeline::<Bn254Field>(f, LinkerMode::Bus);
-    test_mock_backend(pipeline);
-
-    // Native linker mode, because bus constraints are exponential in Halo2
-    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
-}
-
 #[test]
 fn block_to_block_lookup_and_permutation() {
     let f = "asm/block_to_block_lookup_and_permutation.asm";

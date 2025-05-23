@@ -309,6 +309,35 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     }
 }
 
+impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
+    pub fn transform_var_type<V2: Ord + Clone>(
+        &self,
+        var_transform: &mut impl FnMut(&V1) -> V2,
+    ) -> QuadraticSymbolicExpression<T, V2> {
+        QuadraticSymbolicExpression {
+            quadratic: self
+                .quadratic
+                .iter()
+                .map(|(l, r)| {
+                    (
+                        l.transform_var_type(var_transform),
+                        r.transform_var_type(var_transform),
+                    )
+                })
+                .collect(),
+            linear: self
+                .linear
+                .iter()
+                .map(|(var, coeff)| {
+                    let new_var = var_transform(var);
+                    (new_var, coeff.transform_var_type(var_transform))
+                })
+                .collect(),
+            constant: self.constant.transform_var_type(var_transform),
+        }
+    }
+}
+
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
@@ -351,14 +380,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     ///
     /// Returns the resulting solved quadratic symbolic expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<QuadraticSymbolicExpression<T, V>> {
-        if self.is_quadratic() {
+        if self.is_quadratic() || !self.coefficient_of_variable(variable)?.is_known_nonzero() {
             return None;
         }
         let mut result = self.clone();
         let coefficient = result.linear.remove(variable)?;
-        if !coefficient.is_known_nonzero() {
-            return None;
-        }
         Some(result * (SymbolicExpression::from(-T::from(1)).field_div(&coefficient)))
     }
 
@@ -450,14 +476,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             if r.complete {
                 r
             } else {
-                let negated = -self;
-                let effects = self
-                    .transfer_constraints(range_constraints)
-                    .into_iter()
-                    .chain(negated.transfer_constraints(range_constraints))
-                    .collect();
                 ProcessResult {
-                    effects,
+                    effects: self.transfer_constraints(range_constraints),
                     complete: false,
                 }
             }
@@ -574,39 +594,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     fn transfer_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> Option<Effect<T, V>> {
-        // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
-        // where X is least constrained.
-
+    ) -> Vec<Effect<T, V>> {
+        // Solve for each of the variables in the linear component and
+        // compute the range constraints.
         assert!(!self.is_quadratic());
-
-        let (solve_for, solve_for_coefficient) = self
-            .linear
+        self.linear
             .iter()
-            .filter(|(_var, coeff)| coeff.is_known_one() || coeff.is_known_minus_one())
-            .max_by_key(|(var, _c)| {
-                // Sort so that we get the least constrained variable.
-                range_constraints.get(var).range_width()
-            })?;
-
-        // This only works if the coefficients are all known.
-        let summands = self
-            .linear
-            .iter()
-            .filter(|(var, _)| *var != solve_for)
-            .map(|(var, coeff)| {
-                let coeff = coeff.try_to_number()?;
-                Some(range_constraints.get(var).multiple(coeff))
+            .filter_map(|(var, _)| {
+                let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
+                Some((var, rc))
             })
-            .chain(std::iter::once(Some(self.constant.range_constraint())))
-            .collect::<Option<Vec<_>>>()?;
-        let constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
-        let constraint = if solve_for_coefficient.is_known_one() {
-            -constraint
-        } else {
-            constraint
-        };
-        Some(Effect::RangeConstraint(solve_for.clone(), constraint))
+            .filter(|(_, constraint)| !constraint.is_unconstrained())
+            .map(|(var, constraint)| Effect::RangeConstraint(var.clone(), constraint))
+            .collect()
     }
 
     fn solve_quadratic(
@@ -1257,7 +1257,6 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         assert_eq!(
             effects,
             "Z: [10, 4294967050] & 0xffffff0a;
-Z: [10, 4294967050] & 0xffffffff;
 "
         );
     }
@@ -1294,6 +1293,18 @@ Z: [10, 4294967050] & 0xffffffff;
             "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
 "
         );
+
+        // Do the same, but setting b to a concrete value (2).
+        // The result should be an unconditional assignment to b + 10 = 12.
+        let mut constr = constr;
+        constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
+            panic!("Expected 1 assignment");
+        };
+        assert_eq!(var, &"a");
+        assert_eq!(expr.to_string(), "12");
     }
 
     fn unpack_range_constraint(
