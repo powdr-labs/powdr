@@ -131,12 +131,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn introduce_boolean_variables(self) -> Solver<T, Variable<V>> {
         assert!(self.assignments.is_empty());
-        let mut counter = 0;
-        let mut var_dispenser = || {
-            let v = Variable::Boolean(counter);
-            counter += 1;
-            v
-        };
+        let mut counter = 0..;
+        let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
 
         let algebraic_constraints = self
             .original_system
@@ -162,7 +158,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             bus_interactions,
         })
         .with_bus_interaction_handler(self.bus_interaction_handler);
-        for index in 0..counter {
+        for index in 0..counter.next().unwrap() {
             solver.apply_range_constraint_update(
                 &Variable::Boolean(index),
                 RangeConstraint::from_mask(1u64),
