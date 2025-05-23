@@ -95,6 +95,7 @@ fn main() -> Result<(), io::Error> {
 }
 
 fn run_command(command: Commands) {
+    let guest_features = None;
     match command {
         Commands::Compile {
             guest,
@@ -103,10 +104,17 @@ fn run_command(command: Commands) {
             pgo,
             input,
         } => {
-            let pc_idx_count =
-                pgo.then(|| powdr_openvm::get_pc_idx_count(&guest, stdin_from(input)));
-            let program =
-                powdr_openvm::compile_guest(&guest, autoprecompiles, skip, pc_idx_count).unwrap();
+            let pc_idx_count = pgo.then(|| {
+                powdr_openvm::get_pc_idx_count(&guest, guest_features.clone(), stdin_from(input))
+            });
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_features,
+                autoprecompiles,
+                skip,
+                pc_idx_count,
+            )
+            .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -117,10 +125,17 @@ fn run_command(command: Commands) {
             pgo,
             input,
         } => {
-            let pc_idx_count =
-                pgo.then(|| powdr_openvm::get_pc_idx_count(&guest, stdin_from(input)));
-            let program =
-                powdr_openvm::compile_guest(&guest, autoprecompiles, skip, pc_idx_count).unwrap();
+            let pc_idx_count = pgo.then(|| {
+                powdr_openvm::get_pc_idx_count(&guest, guest_features.clone(), stdin_from(input))
+            });
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_features,
+                autoprecompiles,
+                skip,
+                pc_idx_count,
+            )
+            .unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
         }
 
@@ -133,10 +148,17 @@ fn run_command(command: Commands) {
             pgo,
             input,
         } => {
-            let pc_idx_count =
-                pgo.then(|| powdr_openvm::get_pc_idx_count(&guest, stdin_from(input)));
-            let program =
-                powdr_openvm::compile_guest(&guest, autoprecompiles, skip, pc_idx_count).unwrap();
+            let pc_idx_count = pgo.then(|| {
+                powdr_openvm::get_pc_idx_count(&guest, guest_features.clone(), stdin_from(input))
+            });
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_features,
+                autoprecompiles,
+                skip,
+                pc_idx_count,
+            )
+            .unwrap();
             powdr_openvm::prove(&program, mock, recursion, stdin_from(input)).unwrap();
         }
 
@@ -144,7 +166,7 @@ fn run_command(command: Commands) {
         // By default, Compile, Execute, and Prove all run Pgo first
         // This command is only used to test the powdr_openvm::pgo API
         Commands::Pgo { guest, input } => {
-            let program = powdr_openvm::compile_openvm(&guest).unwrap();
+            let program = powdr_openvm::compile_openvm(&guest, guest_features).unwrap();
             powdr_openvm::pgo(program, stdin_from(input)).unwrap();
         }
     }
