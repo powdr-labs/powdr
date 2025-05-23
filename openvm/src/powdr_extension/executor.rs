@@ -8,6 +8,7 @@ use crate::powdr_extension::chip::RowEvaluator;
 use super::{
     chip::{SharedChips, SymbolicBusInteraction, SymbolicMachine},
     vm::OriginalInstruction,
+    PowdrPrecompile,
 };
 use itertools::Itertools;
 use openvm_circuit::{
@@ -39,7 +40,6 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::IntoParallelIterator,
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::powdr::Column;
 
 type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
@@ -55,17 +55,20 @@ pub struct PowdrExecutor<F: PrimeField32> {
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
-        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
-        is_valid_column: Column,
+        precompile: PowdrPrecompile<F>,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
+        let air_by_opcode_id = precompile
+            .original_airs
+            .into_iter()
+            .map(|(k, v)| (k, v.into()))
+            .collect();
         Self {
-            instructions,
+            instructions: precompile.original_instructions,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id.id,
+            is_valid_poly_id: precompile.is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.range_checker.clone(),

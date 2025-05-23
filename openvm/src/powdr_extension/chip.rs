@@ -134,22 +134,10 @@ impl<F: PrimeField32> PowdrChip<F> {
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
-        let air: PowdrAir<F> = PowdrAir::new(precompile.machine);
-        let original_airs = precompile
-            .original_airs
-            .into_iter()
-            .map(|(k, v)| (k, v.into()))
-            .collect();
-        let executor = PowdrExecutor::new(
-            precompile.original_instructions,
-            original_airs,
-            precompile.is_valid_column,
-            memory,
-            base_config,
-            periphery,
-        );
-        let name = precompile.name;
-        let opcode = precompile.opcode;
+        let air: PowdrAir<F> = PowdrAir::new(precompile.machine.clone());
+        let name = precompile.name.clone();
+        let opcode = precompile.opcode.clone();
+        let executor = PowdrExecutor::new(precompile, memory, base_config, periphery);
 
         Self {
             name,
