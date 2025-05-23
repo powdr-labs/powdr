@@ -31,7 +31,11 @@ fn test_optimize() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize(machine, OpenVmBusInteractionHandler::default(), 5);
+    let machine = optimize(
+        machine,
+        OpenVmBusInteractionHandler::new(Default::default()),
+        5,
+    );
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",
