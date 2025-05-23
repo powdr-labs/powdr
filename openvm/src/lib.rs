@@ -63,6 +63,7 @@ use tracing_subscriber::{
 type SC = BabyBearPoseidon2Config;
 pub type F = BabyBear;
 
+pub use bus_interaction_handler::{BusMap, BusType};
 pub use openvm_build::GuestOptions;
 
 /// We do not use the transpiler, instead we customize an already transpiled program
@@ -185,8 +186,6 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram { exe, sdk_vm_config })
 }
 
-pub use bus_interaction_handler::BusMap;
-
 #[derive(Default, Clone)]
 pub struct PowdrConfig {
     pub autoprecompiles: u64,
@@ -254,12 +253,12 @@ pub fn compile_exe(
         sdk_vm_config.clone(),
         &elf_powdr.text_labels,
         &airs,
-        config,
+        config.clone(),
         pgo_data,
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", 1000);
+    export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -528,7 +527,7 @@ where
         .collect()
 }
 
-pub fn export_pil<VC: VmConfig<F>>(vm_config: VC, path: &str, max_width: usize)
+pub fn export_pil<VC: VmConfig<F>>(vm_config: VC, path: &str, max_width: usize, bus_map: &BusMap)
 where
     VC::Executor: Chip<SC>,
     VC::Periphery: Chip<SC>,
@@ -553,7 +552,7 @@ where
 
             let constraints = get_constraints(air);
 
-            Some(get_pil(&name, &constraints, &columns, vec![]))
+            Some(get_pil(&name, &constraints, &columns, vec![], bus_map))
         })
         .join("\n\n\n");
 

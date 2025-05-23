@@ -34,6 +34,21 @@ pub enum BusType {
     Sha,
 }
 
+impl std::fmt::Display for BusType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            BusType::ExecutionBridge => "EXECUTION_BRIDGE",
+            BusType::Memory => "MEMORY",
+            BusType::PcLookup => "PC_LOOKUP",
+            BusType::VariableRangeChecker => "VARIABLE_RANGE_CHECKER",
+            BusType::BitwiseLookup => "BITWISE_LOOKUP",
+            BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
+            BusType::Sha => "SHA",
+        };
+        write!(f, "{name}")
+    }
+}
+
 #[derive(Clone)]
 pub struct BusMap {
     bus_ids: HashMap<u64, BusType>,
@@ -77,6 +92,10 @@ impl BusMap {
     pub fn with_bus_map(mut self, bus_map: BusMap) -> Self {
         self.bus_ids.extend(bus_map.bus_ids);
         self
+    }
+
+    pub fn inner(&self) -> &HashMap<u64, BusType> {
+        &self.bus_ids
     }
 }
 
