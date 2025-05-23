@@ -444,13 +444,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         if self.is_quadratic() {
             return None;
         }
-        let Some(constant) = self.constant.try_to_number() else {
-            return None;
-        };
-        if constant != 0.into() {
-            // TODO can we solve this?
-            return None;
-        }
+        let mut constant = self.constant.try_to_number()?;
+
         // Group the linear part by absolute coefficients.
         let mut components = self
             .linear
@@ -479,17 +474,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         let mut parts = vec![];
         for index in 0..components.len() {
             let (candidate_coeff, candidate) = &components[index];
+            let candidate_coeff = *candidate_coeff;
             let rest = components
                 .iter()
                 .enumerate()
                 .filter(|(i, _)| *i != index && components[*i].0 != 0.into())
-                .map(|(_, (coeff, expr))| (*coeff / *candidate_coeff, expr.clone()))
+                .map(|(_, (coeff, expr))| (*coeff / candidate_coeff, expr.clone()))
                 .collect_vec();
             if rest.is_empty() {
                 // We are done anyway.
                 continue;
             }
-            // The original constraint is equivalent to `candidate + rest = 0`.
+            // The original constraint is equivalent to `candidate + rest + constant / candidate_coeff = 0`.
             // Now we try to extract the smallest coefficient in rest.
             let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
 
@@ -509,15 +505,29 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 .sum();
             // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`.
 
-            if !rest
+            let rest_rc = rest
                 .range_constraint(range_constraints)
                 .multiple(smallest_coeff)
-                .is_unconstrained()
-            {
-                // `candidate` has to be zero regardless of the value of `rest`,
-                // we can split it out into its own constraint.
-                parts.push(candidate.clone());
+                .combine_sum(&RangeConstraint::from_value(constant / candidate_coeff));
+
+            if !rest_rc.is_unconstrained() {
+                // `candidate` is independent from `rest`, in the sense that for any value
+                // of `rest` (inside its range constraints), the value for `candidate` is the same.
+                // But there still is an offset we have to compute, which is the remainder
+                // of `constant`.
+                // `candidate + smallest_coeff * [a..b] + constant / candidate_coeff = 0`
+                // i.e. we can split off `candidate + (constant / candidate_coeff) % smallest_coeff`.
+
+                let candidate_constant =
+                    (constant / candidate_coeff).to_integer().try_into_u64()?
+                        % smallest_coeff.to_integer().try_into_u64()?;
+                parts.push(
+                    candidate + &QuadraticSymbolicExpression::from(T::from(candidate_constant)),
+                );
                 components[index] = (0.into(), T::from(0).into());
+
+                // But now we have to modify the constant in the remaining constraint.
+                constant -= T::from(candidate_constant) * candidate_coeff;
             }
         }
         if parts.is_empty() {
@@ -530,11 +540,14 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 .filter(|(coeff, _)| *coeff != 0.into())
                 .collect_vec();
             parts.push(match remaining.as_slice() {
-                [(_, expr)] => expr.clone(), // if there is only one component, we can ignore the coefficient
-                _ => remaining
-                    .into_iter()
-                    .map(|(coeff, expr)| expr * SymbolicExpression::from(coeff))
-                    .sum(),
+                [(coeff, expr)] => expr.clone() + (constant / *coeff).into(), // if there is only one component, we can ignore the coefficient
+                _ => {
+                    remaining
+                        .into_iter()
+                        .map(|(coeff, expr)| expr * SymbolicExpression::from(coeff))
+                        .sum::<QuadraticSymbolicExpression<_, _>>()
+                        + constant.into()
+                }
             });
             Some(parts)
         }
@@ -1722,6 +1735,36 @@ b + y"
 b + y
 -r + s
 w"
+        );
+    }
+
+    #[test]
+    fn split_multiple_with_const() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+            ("r", four_bit_rc.clone()),
+            ("s", four_bit_rc.clone()),
+            ("w", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(64) - var("a") + var("b") * constant(64)
+            - var("r") * constant(65536)
+            + var("s") * constant(65536)
+            + var("w") * constant(0x1000000)
+            + constant(0x1f050046);
+
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-a + x + 6
+b + y + 1
+-r + s + 5
+w + 31"
         );
     }
 }
