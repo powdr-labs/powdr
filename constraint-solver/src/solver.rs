@@ -133,11 +133,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .constraint_system
             .bus_interactions()
             .iter()
-            .map(|bi| {
-                bi.fields()
-                    .map(|c| c.transform_var_type(&mut |v| Variable::Regular(v.clone())))
-                    .collect()
-            })
+            .map(|bi| bi.transform_var_type(&mut |v| Variable::Regular(v.clone())))
             .collect::<Vec<_>>();
         let mut solver = Solver::new(ConstraintSystem {
             algebraic_constraints,
