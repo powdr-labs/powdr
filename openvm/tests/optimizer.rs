@@ -13,6 +13,8 @@ fn load_machine_cbor() {
     let file = std::fs::File::open("tests/keccak_apc_post_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    // This cbor file above has the `is_valid` column removed, this is why the number below
+    // might be one less than in other tests.
     assert_eq!(
         [
             machine.unique_columns().count(),
@@ -37,6 +39,8 @@ fn test_optimize() {
         machine.bus_interactions.len(),
         machine.constraints.len()
     );
+    // This cbor file above has the `is_valid` column removed, this is why the number below
+    // might be one less than in other tests.
     assert_eq!(
         [
             machine.unique_columns().count(),
