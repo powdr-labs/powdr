@@ -137,6 +137,8 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
         Ok(self
             .fields()
             .zip_eq(range_constraints.fields())
+            // TODO: This does not handle all cases. We might want to introduce variables for
+            // bus interaction parameters.
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
                 expr.referenced_unknown_variables().filter_map(|var| {
