@@ -1,8 +1,6 @@
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
-use openvm_build::{
-    build_guest_package, find_unique_executable, get_package, GuestOptions, TargetFilter,
-};
+use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::{
     instructions::exe::VmExe, Streams, SystemConfig, VirtualMachine, VmChipComplex, VmConfig,
     VmInventoryError,
@@ -64,6 +62,8 @@ use tracing_subscriber::{
 
 type SC = BabyBearPoseidon2Config;
 pub type F = BabyBear;
+
+pub use openvm_build::GuestOptions;
 
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
@@ -154,7 +154,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 // compile the original openvm program without powdr extension
 pub fn compile_openvm(
     guest: &str,
-    guest_features: Option<Vec<String>>,
+    guest_opts: GuestOptions,
 ) -> Result<OriginalCompiledProgram<F>, Box<dyn std::error::Error>> {
     // wrap the sdk config (with the standard extensions) in our custom config (with our custom extension)
     let sdk_vm_config = SdkVmConfig::builder()
@@ -169,11 +169,6 @@ pub fn compile_openvm(
 
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
-    let guest_opts = if let Some(features) = guest_features {
-        GuestOptions::default().with_features(features)
-    } else {
-        GuestOptions::default()
-    };
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
 
     // Point to our local guest
@@ -192,16 +187,15 @@ pub fn compile_openvm(
 
 pub fn compile_guest(
     guest: &str,
-    guest_features: Option<Vec<String>>,
+    guest_opts: GuestOptions,
     autoprecompiles: usize,
     skip: usize,
     pgo_data: Option<HashMap<u32, u32>>,
 ) -> Result<CompiledProgram<F>, Box<dyn std::error::Error>> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } =
-        compile_openvm(guest, guest_features.clone())?;
+    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
     compile_exe(
         guest,
-        guest_features,
+        guest_opts,
         exe,
         sdk_vm_config,
         autoprecompiles,
@@ -212,7 +206,7 @@ pub fn compile_guest(
 
 pub fn compile_exe(
     guest: &str,
-    guest_features: Option<Vec<String>>,
+    guest_opts: GuestOptions,
     exe: VmExe<F>,
     sdk_vm_config: SdkVmConfig,
     autoprecompiles: usize,
@@ -221,11 +215,6 @@ pub fn compile_exe(
 ) -> Result<CompiledProgram<F>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
-    let guest_opts = if let Some(features) = guest_features {
-        GuestOptions::default().with_features(features)
-    } else {
-        GuestOptions::default()
-    };
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
 
     // Point to our local guest
@@ -465,12 +454,8 @@ pub fn prove(
     Ok(())
 }
 
-pub fn get_pc_idx_count(
-    guest: &str,
-    guest_features: Option<Vec<String>>,
-    inputs: StdIn,
-) -> HashMap<u32, u32> {
-    let program = compile_openvm(guest, guest_features).unwrap();
+pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) -> HashMap<u32, u32> {
+    let program = compile_openvm(guest, guest_opts).unwrap();
     // times executed by program index, where index = (pc - base_pc) / step
     // help determine the basic blocks to create autoprecompile for
     pgo(program, inputs).unwrap()
@@ -631,7 +616,7 @@ mod tests {
         recursion: bool,
         stdin: StdIn,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(guest, None, apc, skip, None).unwrap();
+        let program = compile_guest(guest, GuestOptions::default(), apc, skip, None).unwrap();
         prove(&program, mock, recursion, stdin)
     }
 
@@ -730,7 +715,7 @@ mod tests {
     fn test_keccak_machine(pc_idx_count: Option<HashMap<u32, u32>>) {
         let machines = compile_guest(
             GUEST_KECCAK,
-            None,
+            GuestOptions::default(),
             GUEST_KECCAK_APC,
             GUEST_KECCAK_SKIP,
             pc_idx_count,
@@ -746,7 +731,7 @@ mod tests {
 
     #[test]
     fn guest_machine() {
-        let machines = compile_guest(GUEST, None, GUEST_APC, GUEST_SKIP, None)
+        let machines = compile_guest(GUEST, GuestOptions::default(), GUEST_APC, GUEST_SKIP, None)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -763,13 +748,20 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
 
+        let guest_opts = GuestOptions::default();
         // Guest machine should have more optimized results with pgo
         // because we didn't accelerate the "costliest block" in the non-pgo version.
-        let pc_idx_count = get_pc_idx_count(GUEST, None, stdin);
+        let pc_idx_count = get_pc_idx_count(GUEST, guest_opts.clone(), stdin);
         // We don't skip any sorted basic block here to accelerate the "costliest" block.
-        let machines = compile_guest(GUEST, None, GUEST_APC, GUEST_SKIP_PGO, Some(pc_idx_count))
-            .unwrap()
-            .powdr_airs_metrics();
+        let machines = compile_guest(
+            GUEST,
+            guest_opts,
+            GUEST_APC,
+            GUEST_SKIP_PGO,
+            Some(pc_idx_count),
+        )
+        .unwrap()
+        .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.width, 53);
@@ -788,7 +780,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         // Keccak machine should have the same results with pgo
         // because we already accelerate the "costliest" block with the non-pgo version.
-        let pc_idx_count = get_pc_idx_count(GUEST_KECCAK, None, stdin);
+        let pc_idx_count = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_keccak_machine(Some(pc_idx_count));
     }
 }

@@ -2,7 +2,7 @@ use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::CompiledProgram;
+use powdr_openvm::{CompiledProgram, GuestOptions};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use std::io;
@@ -95,7 +95,7 @@ fn main() -> Result<(), io::Error> {
 }
 
 fn run_command(command: Commands) {
-    let guest_features = None;
+    let guest_opts = GuestOptions::default();
     match command {
         Commands::Compile {
             guest,
@@ -105,11 +105,11 @@ fn run_command(command: Commands) {
             input,
         } => {
             let pc_idx_count = pgo.then(|| {
-                powdr_openvm::get_pc_idx_count(&guest, guest_features.clone(), stdin_from(input))
+                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
             });
             let program = powdr_openvm::compile_guest(
                 &guest,
-                guest_features,
+                guest_opts,
                 autoprecompiles,
                 skip,
                 pc_idx_count,
@@ -126,11 +126,11 @@ fn run_command(command: Commands) {
             input,
         } => {
             let pc_idx_count = pgo.then(|| {
-                powdr_openvm::get_pc_idx_count(&guest, guest_features.clone(), stdin_from(input))
+                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
             });
             let program = powdr_openvm::compile_guest(
                 &guest,
-                guest_features,
+                guest_opts,
                 autoprecompiles,
                 skip,
                 pc_idx_count,
@@ -149,11 +149,11 @@ fn run_command(command: Commands) {
             input,
         } => {
             let pc_idx_count = pgo.then(|| {
-                powdr_openvm::get_pc_idx_count(&guest, guest_features.clone(), stdin_from(input))
+                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
             });
             let program = powdr_openvm::compile_guest(
                 &guest,
-                guest_features,
+                guest_opts,
                 autoprecompiles,
                 skip,
                 pc_idx_count,
@@ -166,7 +166,7 @@ fn run_command(command: Commands) {
         // By default, Compile, Execute, and Prove all run Pgo first
         // This command is only used to test the powdr_openvm::pgo API
         Commands::Pgo { guest, input } => {
-            let program = powdr_openvm::compile_openvm(&guest, guest_features).unwrap();
+            let program = powdr_openvm::compile_openvm(&guest, guest_opts).unwrap();
             powdr_openvm::pgo(program, stdin_from(input)).unwrap();
         }
     }
