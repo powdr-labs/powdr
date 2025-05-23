@@ -269,7 +269,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                                         // update the write if the new record happens later
                                         match write {
                                             Some(write_record)
-                                                if write_record.timestamp < timestamp =>
+                                                if write_record.timestamp > timestamp =>
                                             {
                                                 // do nothing
                                             }
@@ -281,7 +281,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                                         // update the read if the new record happens before
                                         match read {
                                             Some(read_record)
-                                                if read_record.timestamp > timestamp =>
+                                                if read_record.timestamp < timestamp =>
                                             {
                                                 // do nothing
                                             }
