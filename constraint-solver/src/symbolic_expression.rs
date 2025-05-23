@@ -37,7 +37,7 @@ pub enum BinaryOperator {
     Div,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnaryOperator {
     Neg,
 }

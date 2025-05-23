@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use memory_optimizer::optimize_memory;
 use optimizer::{optimize, IsBusStateful};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
@@ -16,6 +17,7 @@ use std::iter::once;
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
@@ -320,6 +322,8 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         let machine = optimize_register_operations(machine);
         assert!(check_register_operation_consistency(&machine));
+
+        let machine = optimize_memory(machine);
 
         // Fixpoint style re-attempt.
         // TODO we probably need proper fixpoint here at some point.
