@@ -5,7 +5,7 @@ use crate::{
 };
 use itertools::Itertools;
 use powdr_number::FieldElement;
-use std::hash::Hash;
+use std::{fmt::Display, hash::Hash};
 
 /// Description of a constraint system.
 #[derive(Clone)]
@@ -82,6 +82,18 @@ impl<V> BusInteraction<V> {
     }
 }
 
+impl<V: Display> Display for BusInteraction<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "BusInteraction {{ bus_id: {}, multiplicity: {}, payload: {} }}",
+            self.bus_id,
+            self.multiplicity,
+            self.payload.iter().format(", ")
+        )
+    }
+}
+
 impl<V> FromIterator<V> for BusInteraction<V> {
     fn from_iter<T: IntoIterator<Item = V>>(iter: T) -> Self {
         let mut iter = iter.into_iter();
@@ -96,7 +108,7 @@ impl<V> FromIterator<V> for BusInteraction<V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
+impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
     BusInteraction<QuadraticSymbolicExpression<T, V>>
 {
     /// Converts a bus interactions with fields represented by expressions
@@ -118,20 +130,29 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq>
     pub fn solve(
         &self,
         bus_interaction_handler: &dyn BusInteractionHandler<T>,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraint_provider: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
-        let range_constraints = self.to_range_constraints(range_constraints);
+        let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
         Ok(self
             .fields()
             .zip_eq(range_constraints.fields())
-            .filter_map(|(expr, rc)| {
-                // TODO: Handle range constraint updates for complex expressions.
-                if let Some(var) = expr.try_to_simple_unknown() {
-                    return Some(Effect::RangeConstraint(var, rc.clone()));
-                }
-                None
+            // TODO: This does not handle all cases. We might want to introduce variables for
+            // bus interaction parameters.
+            .filter(|(expr, _)| expr.is_affine())
+            .flat_map(|(expr, rc)| {
+                expr.referenced_unknown_variables().filter_map(|var| {
+                    // `k * var + e` is in range rc <=>
+                    // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
+                    // If we solve `expr` for `var`, we get `-e / k`.
+                    let k = expr.coefficient_of_variable(var).unwrap().try_to_number()?;
+                    let expr = expr.try_solve_for(var)?;
+                    let rc = rc
+                        .multiple(T::from(1) / k)
+                        .combine_sum(&expr.range_constraint(range_constraint_provider));
+                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
+                })
             })
             .collect())
     }
@@ -207,7 +228,7 @@ pub enum ConstraintRef<'a, T: FieldElement, V> {
     BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
 }
 
-impl<'a, T: FieldElement, V: Ord + Clone + Hash> ConstraintRef<'a, T, V> {
+impl<'a, T: FieldElement, V: Ord + Clone + Hash + Display> ConstraintRef<'a, T, V> {
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         match self {
             ConstraintRef::AlgebraicConstraint(expr) => Box::new(expr.referenced_variables()),
