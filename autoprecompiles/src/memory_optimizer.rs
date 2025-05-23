@@ -32,23 +32,12 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         })
         .collect_vec();
 
-    // Transform the constraints such that some quadratic constraints are turned into
-    // affine when we introduce a new boolean variable ("zero check variable").
-    let mut zero_check_transformer = ZeroCheckTransformer::default();
     let constraints = machine
         .constraints
         .iter()
         .map(|constr| {
-            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-            let constr = try_remove_is_valid(&constr).unwrap_or(&constr);
-            if constr
-                .referenced_unknown_variables()
-                .find(|v| v.to_string().contains("279") || v.to_string().contains("175"))
-                .is_some()
-            {
-                println!("Found a constraint with 279 or 280: {}", constr);
-            }
-            zero_check_transformer.transform(constr.clone())
+            algebraic_to_quadratic_symbolic_expression(&constr.expr)
+            // TODO run boolean extractor here?
         })
         .collect_vec();
 
@@ -219,26 +208,6 @@ fn get_all_possible_assignments<T: FieldElement, V: Ord + Clone + Hash + Eq + Di
         })
         .collect::<Vec<_>>()
         .into_iter()
-}
-
-fn try_remove_is_valid<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    expr: &QuadraticSymbolicExpression<T, V>,
-) -> Option<&QuadraticSymbolicExpression<T, V>> {
-    // TODO this is a crude heursitic
-    let (left, right) = expr.try_as_single_product()?;
-    if left.is_affine()
-        && left.referenced_variables().count() == 1
-        && left.to_string() == "is_valid"
-    {
-        Some(right)
-    } else if right.is_affine()
-        && right.referenced_variables().count() == 1
-        && right.to_string() == "is_valid"
-    {
-        Some(left)
-    } else {
-        None
-    }
 }
 
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
