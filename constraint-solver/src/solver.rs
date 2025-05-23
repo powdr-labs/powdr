@@ -1,6 +1,8 @@
 use exhaustive_search::ExhaustiveSearch;
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
+use crate::boolean_extractor::extract_boolean;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
@@ -22,10 +24,9 @@ mod quadratic_equivalences;
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    pub assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
-    /// The final state of the constraint system, with known variables
-    /// replaced by their values and constraints simplified accordingly.
-    pub simplified_constraint_system: ConstraintSystem<T, V>,
+    /// Values might contain variables that are replaced as well,
+    /// and because of that, assignments should be applied in order.
+    pub assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -52,7 +53,7 @@ pub struct Solver<T: FieldElement, V> {
     range_constraints: RangeConstraints<T, V>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
-    assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
+    assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -66,7 +67,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
-            assignments: BTreeMap::new(),
+            assignments: Default::default(),
         }
     }
 
@@ -82,13 +83,70 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
-        self.loop_until_no_progress()?;
+    pub fn solve(self) -> Result<SolveResult<T, V>, Error> {
+        assert!(self.assignments.is_empty());
 
-        Ok(SolveResult {
-            assignments: self.assignments,
-            simplified_constraint_system: self.constraint_system.into(),
+        let mut solver = self.introduce_boolean_variables();
+        solver.loop_until_no_progress()?;
+
+        // Clear anything from the assignments that references boolean variables.
+        // TODO if we get an assignment for a boolean variable, we could simplify a constraint.
+        let assignments = solver
+            .assignments
+            .into_iter()
+            .filter_map(|(variable, value)| {
+                let var = variable.try_to_original()?;
+                let mut failed = false;
+                let value = value.transform_var_type(&mut |v| {
+                    match v {
+                        Variable::Regular(v) => v.clone(),
+                        Variable::Boolean(_) => {
+                            failed = true;
+                            // Just return some variable
+                            var.clone()
+                        }
+                    }
+                });
+                (!failed).then_some((var, value))
+            })
+            .collect_vec();
+
+        Ok(SolveResult { assignments })
+    }
+
+    fn introduce_boolean_variables(self) -> Solver<T, Variable<V>> {
+        assert!(self.assignments.is_empty());
+
+        let mut counter = 0..;
+        let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
+
+        let algebraic_constraints = self
+            .constraint_system
+            .algebraic_constraints()
+            .iter()
+            .map(|constr| {
+                let constr = constr.transform_var_type(&mut |v| Variable::Regular(v.clone()));
+                extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+            })
+            .collect::<Vec<_>>();
+        let bus_interactions = self
+            .constraint_system
+            .bus_interactions()
+            .iter()
+            .map(|bi| bi.transform_var_type(&mut |v| Variable::Regular(v.clone())))
+            .collect::<Vec<_>>();
+        let mut solver = Solver::new(ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions,
         })
+        .with_bus_interaction_handler(self.bus_interaction_handler);
+        for index in 0..counter.next().unwrap() {
+            solver.apply_range_constraint_update(
+                &Variable::Boolean(index),
+                RangeConstraint::from_mask(1u64),
+            );
+        }
+        solver
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
@@ -157,8 +215,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
-            // TODO can we make this work with Effects?
-            self.constraint_system.substitute_by_unknown(
+            self.apply_assignment(
                 y,
                 &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
             );
@@ -174,7 +231,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let mut progress = false;
         for (variable, value) in &assignments {
-            progress |= self.apply_assignment(variable, &(*value).into());
+            progress |=
+                self.apply_range_constraint_update(variable, RangeConstraint::from_value(*value));
         }
 
         Ok(progress)
@@ -182,7 +240,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr),
+            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr.into()),
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
@@ -194,11 +252,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
-    fn apply_assignment(&mut self, variable: &V, expr: &SymbolicExpression<T, V>) -> bool {
-        assert!(expr.try_to_number().is_some());
-        self.apply_range_constraint_update(variable, expr.range_constraint())
-    }
-
     fn apply_range_constraint_update(
         &mut self,
         variable: &V,
@@ -207,10 +260,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                log::debug!("({variable} := {value})");
-                self.constraint_system
-                    .substitute_by_known(variable, &value.into());
-                self.assignments.insert(variable.clone(), value.into());
+                self.apply_assignment(variable, &value.into());
             } else {
                 // The range constraint was updated.
                 log::trace!("({variable}: {range_constraint})");
@@ -219,6 +269,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         } else {
             false
         }
+    }
+
+    fn apply_assignment(&mut self, variable: &V, expr: &QuadraticSymbolicExpression<T, V>) -> bool {
+        log::debug!("({variable} := {expr})");
+        self.constraint_system.substitute_by_unknown(variable, expr);
+        self.assignments.push((variable.clone(), expr.clone()));
+        // TODO we could check if the variable already has an assignment,
+        // but usually it should not be in the system once it has been assigned.
+        true
     }
 
     /// Given a set of variable assignments, checks if they violate any constraint.
@@ -250,6 +309,36 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                         .is_err()
                 }
             })
+    }
+}
+
+/// We introduce new variables (that are always boolean-constrained).
+/// This enum avoids clashes with the original variables.
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+enum Variable<V> {
+    /// A regular variable that also exists in the caller's system.
+    Regular(V),
+    /// A new boolean-constrained variable that was introduced by the solver.
+    Boolean(usize),
+}
+
+impl<V: Clone> Variable<V> {
+    /// Converts the variable to its original type.
+    /// Returns `None` if the variable is a boolean variable.
+    fn try_to_original(&self) -> Option<V> {
+        match self {
+            Variable::Regular(v) => Some(v.clone()),
+            Variable::Boolean(_) => None,
+        }
+    }
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Regular(v) => write!(f, "{v}"),
+            Variable::Boolean(i) => write!(f, "boolean_{i}"),
+        }
     }
 }
 
