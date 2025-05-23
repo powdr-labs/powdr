@@ -17,7 +17,7 @@ use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
-use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
+use openvm_sdk::config::{SdkVmConfig, SdkVmConfigPeriphery};
 use openvm_stark_backend::p3_field::{Field, PrimeField32};
 use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
@@ -26,8 +26,6 @@ use serde::{Deserialize, Serialize};
 use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
-
-pub type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]

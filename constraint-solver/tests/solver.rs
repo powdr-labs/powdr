@@ -26,7 +26,7 @@ pub fn assert_solve_result(
 }
 
 fn assert_expected_state(
-    final_state: BTreeMap<Var, GoldilocksField>,
+    final_state: BTreeMap<Var, QuadraticSymbolicExpression<GoldilocksField, Var>>,
     expected_final_state: BTreeMap<Var, GoldilocksField>,
 ) {
     assert_eq!(
