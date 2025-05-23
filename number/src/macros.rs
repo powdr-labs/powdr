@@ -33,24 +33,8 @@ macro_rules! powdr_field {
             value: $ark_type,
         }
 
-        #[derive(
-            Clone,
-            Copy,
-            PartialEq,
-            Eq,
-            Debug,
-            Default,
-            PartialOrd,
-            Ord,
-            Hash,
-            Serialize,
-            Deserialize,
-        )]
+        #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, PartialOrd, Ord, Hash)]
         pub struct LargeIntImpl {
-            #[serde(
-                serialize_with = "crate::serialize::ark_se",
-                deserialize_with = "crate::serialize::ark_de"
-            )]
             value: <$ark_type as PrimeField>::BigInt,
         }
 
