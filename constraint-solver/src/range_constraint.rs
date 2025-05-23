@@ -67,6 +67,11 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self::from_mask(!T::Integer::zero())
     }
 
+    pub fn is_unconstrained(&self) -> bool {
+        self.range_width() == Self::unconstrained().range_width()
+            && self.mask == Self::unconstrained().mask
+    }
+
     /// Returns a bit mask. This might be drastically under-fitted in case
     /// the constraint is more resembling an interval.
     /// Semantics: X & mask == X holds for all possible values of X.
@@ -148,7 +153,11 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// The range constraint of the product of two expressions.
     pub fn combine_product(&self, other: &Self) -> Self {
-        if self.min <= self.max
+        if let Some(v) = other.try_to_single_value() {
+            self.multiple(v)
+        } else if let Some(v) = self.try_to_single_value() {
+            other.multiple(v)
+        } else if self.min <= self.max
             && other.min <= other.max
             && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
                 < T::modulus().to_arbitrary_integer()
