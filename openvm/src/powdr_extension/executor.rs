@@ -15,7 +15,7 @@ use openvm_circuit::{
         ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
         VmInventoryError,
     },
-    system::memory::OfflineMemory,
+    system::memory::{OfflineMemory, RecordId},
 };
 use openvm_circuit::{
     arch::{VmConfig, VmInventory},
@@ -49,7 +49,8 @@ pub struct PowdrExecutor<F: PrimeField32> {
     air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
     is_valid_poly_id: u64,
     inventory: SdkVmInventory<F>,
-    number_of_calls: usize,
+    /// For each execution of this chip, the range of RecordId that were used.
+    record_ranges: Vec<(RecordId, RecordId)>,
     periphery: SharedChips,
 }
 
@@ -73,13 +74,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             )
             .unwrap()
             .inventory,
-            number_of_calls: 0,
+            record_ranges: Default::default(),
             periphery,
         }
     }
 
     pub fn number_of_calls(&self) -> usize {
-        self.number_of_calls
+        self.record_ranges.len()
     }
 
     pub fn execute(
@@ -87,6 +88,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
+        // save the next available RecordId
+        let from_record_id = RecordId(memory.get_memory_logs().len());
+
         // execute the original instructions one by one
         let res = self
             .instructions
@@ -99,7 +103,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 executor.execute(memory, instruction.as_ref(), execution_state)
             });
 
-        self.number_of_calls += 1;
+        let to_record_id = RecordId(memory.get_memory_logs().len());
+
+        self.record_ranges.push((from_record_id, to_record_id));
 
         res
     }
@@ -116,9 +122,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
+        let number_of_calls = self.number_of_calls();
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
+        let height = next_power_of_two_or_zero(number_of_calls);
         let mut values = F::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
@@ -207,29 +214,25 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             dummy_trace_index_to_apc_index_by_instruction.len()
         );
 
-        let dummy_values = (0..self.number_of_calls)
-            .into_par_iter()
-            .map(|record_index| {
-                (0..self.instructions.len())
-                    .map(|index| {
-                        // get the air name and offset for this instruction (by index)
-                        let (air_name, offset) =
-                            instruction_index_to_table_offset.get(&index).unwrap();
-                        // get the table
-                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                        // get how many times this table is used per record
-                        let occurrences_per_record =
-                            occurrences_by_table_name.get(air_name).unwrap();
-                        // get the width of each occurrence
-                        let width = table.width();
-                        // start after the previous record ended, and offset by the correct offset
-                        let start = (record_index * occurrences_per_record + offset) * width;
-                        // end at the start + width
-                        let end = start + width;
-                        &table.values[start..end]
-                    })
-                    .collect_vec()
-            });
+        let dummy_values = (0..number_of_calls).into_par_iter().map(|record_index| {
+            (0..self.instructions.len())
+                .map(|index| {
+                    // get the air name and offset for this instruction (by index)
+                    let (air_name, offset) = instruction_index_to_table_offset.get(&index).unwrap();
+                    // get the table
+                    let table = dummy_trace_by_air_name.get(*air_name).unwrap();
+                    // get how many times this table is used per record
+                    let occurrences_per_record = occurrences_by_table_name.get(air_name).unwrap();
+                    // get the width of each occurrence
+                    let width = table.width();
+                    // start after the previous record ended, and offset by the correct offset
+                    let start = (record_index * occurrences_per_record + offset) * width;
+                    // end at the start + width
+                    let end = start + width;
+                    &table.values[start..end]
+                })
+                .collect_vec()
+        });
 
         // go through the final table and fill in the values
         values
