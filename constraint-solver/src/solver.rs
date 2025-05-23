@@ -24,11 +24,9 @@ mod quadratic_equivalences;
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    /// Values might contain variables that are replaced as well.
-    pub assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
-    /// The final state of the constraint system, with known variables
-    /// replaced by their values and constraints simplified accordingly.
-    pub simplified_constraint_system: ConstraintSystem<T, V>,
+    /// Values might contain variables that are replaced as well,
+    /// and because of that, assignments should be applied in order.
+    pub assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -46,7 +44,6 @@ pub enum Error {
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
-    original_system: ConstraintSystem<T, V>,
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -65,12 +62,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
-        let original_system = constraint_system;
-        let constraint_system = IndexedConstraintSystem::from(original_system.clone());
 
         Solver {
-            original_system,
-            constraint_system,
+            constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
             assignments: Default::default(),
@@ -91,7 +85,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// assignments and a simplified version of the algebraic constraints.
     pub fn solve(self) -> Result<SolveResult<T, V>, Error> {
         assert!(self.assignments.is_empty());
-        let original_system = self.original_system.clone();
 
         let mut solver = self.introduce_boolean_variables();
         solver.loop_until_no_progress()?;
@@ -118,35 +111,28 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             })
             .collect_vec();
 
-        let mut constraint_system = IndexedConstraintSystem::from(original_system);
-        for (variable, value) in &assignments {
-            constraint_system.substitute_by_unknown(variable, value);
-        }
-
-        Ok(SolveResult {
-            assignments: assignments.into_iter().collect(),
-            simplified_constraint_system: constraint_system.into(),
-        })
+        Ok(SolveResult { assignments })
     }
 
     fn introduce_boolean_variables(self) -> Solver<T, Variable<V>> {
         assert!(self.assignments.is_empty());
+
         let mut counter = 0..;
         let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
 
         let algebraic_constraints = self
-            .original_system
-            .algebraic_constraints
-            .into_iter()
+            .constraint_system
+            .algebraic_constraints()
+            .iter()
             .map(|constr| {
                 let constr = constr.transform_var_type(&mut |v| Variable::Regular(v.clone()));
                 extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
             })
             .collect::<Vec<_>>();
         let bus_interactions = self
-            .original_system
-            .bus_interactions
-            .into_iter()
+            .constraint_system
+            .bus_interactions()
+            .iter()
             .map(|bi| {
                 bi.fields()
                     .map(|c| c.transform_var_type(&mut |v| Variable::Regular(v.clone())))

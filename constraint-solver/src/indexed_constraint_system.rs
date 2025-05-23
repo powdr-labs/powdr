@@ -9,6 +9,18 @@ use crate::{
     symbolic_expression::SymbolicExpression,
 };
 
+/// Applies multiple substitutions to a ConstraintSystem in an efficient manner.
+pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
+    constraint_system: ConstraintSystem<T, V>,
+    substitutions: impl IntoIterator<Item = (V, QuadraticSymbolicExpression<T, V>)>,
+) -> ConstraintSystem<T, V> {
+    let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
+    for (variable, substitution) in substitutions {
+        indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
+    }
+    indexed_constraint_system.into()
+}
+
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 pub struct IndexedConstraintSystem<T: FieldElement, V> {

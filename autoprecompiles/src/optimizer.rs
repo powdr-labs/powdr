@@ -4,6 +4,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    indexed_constraint_system::apply_substitutions,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::Solver,
     symbolic_expression::SymbolicExpression,
@@ -91,7 +92,7 @@ fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
     bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
 ) -> ConstraintSystem<T, Variable> {
-    let result = Solver::new(constraint_system)
+    let result = Solver::new(constraint_system.clone())
         .with_bus_interaction_handler(Box::new(bus_interaction_handler))
         .solve()
         .map_err(|e| {
@@ -102,7 +103,7 @@ fn solver_based_optimization<T: FieldElement>(
     for (var, value) in result.assignments.iter() {
         log::trace!("  {var} = {value}");
     }
-    result.simplified_constraint_system
+    apply_substitutions(constraint_system, result.assignments)
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
