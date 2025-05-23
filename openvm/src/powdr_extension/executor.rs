@@ -15,7 +15,7 @@ use openvm_circuit::{
         ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
         VmInventoryError,
     },
-    system::memory::OfflineMemory,
+    system::memory::{MemoryRecord, OfflineMemory, RecordId},
 };
 use openvm_circuit::{
     arch::{VmConfig, VmInventory},
@@ -25,7 +25,10 @@ use openvm_circuit::{
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_stark_backend::{p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator};
+use openvm_stark_backend::{
+    p3_matrix::Matrix,
+    p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator},
+};
 
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
@@ -49,8 +52,10 @@ pub struct PowdrExecutor<F: PrimeField32> {
     air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
     is_valid_poly_id: u64,
     inventory: SdkVmInventory<F>,
-    number_of_calls: usize,
+    /// For each execution of this chip, the range of RecordId that were used.
+    record_ranges: Vec<(RecordId, RecordId)>,
     periphery: SharedChips,
+    offline_memory: Arc<Mutex<OfflineMemory<F>>>,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
@@ -58,7 +63,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
         is_valid_column: Column,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        offline_memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -67,19 +72,20 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             air_by_opcode_id,
             is_valid_poly_id: is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
-                memory,
+                offline_memory.clone(),
                 periphery.range_checker.clone(),
                 base_config.clone(),
             )
             .unwrap()
             .inventory,
-            number_of_calls: 0,
+            record_ranges: Default::default(),
             periphery,
+            offline_memory,
         }
     }
 
     pub fn number_of_calls(&self) -> usize {
-        self.number_of_calls
+        self.record_ranges.len()
     }
 
     pub fn execute(
@@ -87,6 +93,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
+        // save the next available RecordId
+        let from_record_id = RecordId(memory.get_memory_logs().len());
+
         // execute the original instructions one by one
         let res = self
             .instructions
@@ -99,7 +108,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 executor.execute(memory, instruction.as_ref(), execution_state)
             });
 
-        self.number_of_calls += 1;
+        let to_record_id = RecordId(memory.get_memory_logs().len());
+
+        self.record_ranges.push((from_record_id, to_record_id));
 
         res
     }
@@ -116,9 +127,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
+        let number_of_calls = self.number_of_calls();
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
+        let height = next_power_of_two_or_zero(number_of_calls);
         let mut values = F::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
@@ -207,93 +219,153 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             dummy_trace_index_to_apc_index_by_instruction.len()
         );
 
-        let dummy_values = (0..self.number_of_calls)
-            .into_par_iter()
-            .map(|record_index| {
-                (0..self.instructions.len())
-                    .map(|index| {
-                        // get the air name and offset for this instruction (by index)
-                        let (air_name, offset) =
-                            instruction_index_to_table_offset.get(&index).unwrap();
-                        // get the table
-                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                        // get how many times this table is used per record
-                        let occurrences_per_record =
-                            occurrences_by_table_name.get(air_name).unwrap();
-                        // get the width of each occurrence
-                        let width = table.width();
-                        // start after the previous record ended, and offset by the correct offset
-                        let start = (record_index * occurrences_per_record + offset) * width;
-                        // end at the start + width
-                        let end = start + width;
-                        &table.values[start..end]
-                    })
-                    .collect_vec()
-            });
+        let dummy_values = (0..number_of_calls).into_par_iter().map(|record_index| {
+            (0..self.instructions.len())
+                .map(|index| {
+                    // get the air name and offset for this instruction (by index)
+                    let (air_name, offset) = instruction_index_to_table_offset.get(&index).unwrap();
+                    // get the table
+                    let table = dummy_trace_by_air_name.get(*air_name).unwrap();
+                    // get how many times this table is used per record
+                    let occurrences_per_record = occurrences_by_table_name.get(air_name).unwrap();
+                    // get the width of each occurrence
+                    let width = table.width();
+                    // start after the previous record ended, and offset by the correct offset
+                    let start = (record_index * occurrences_per_record + offset) * width;
+                    // end at the start + width
+                    let end = start + width;
+                    &table.values[start..end]
+                })
+                .collect_vec()
+        });
 
         // go through the final table and fill in the values
         values
             // a record is `width` values
             .par_chunks_mut(width)
+            .take(1)
             .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
-                for (instruction_id, (instruction, dummy_row)) in
-                    self.instructions.iter().zip_eq(dummy_values).enumerate()
-                {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
+            .zip(self.record_ranges.par_iter())
+            .for_each(
+                |((row_slice, dummy_values), (from_record_id, to_record_id))| {
+                    // For each register, find the first read and last write, if they exist
+                    let table: BTreeMap<u8, (Option<MemoryRecord<F>>, Option<MemoryRecord<F>>)> =
+                        self.offline_memory
+                            .lock()
+                            .unwrap()
+                            .records_for_range(*from_record_id, *to_record_id)
+                            .iter()
+                            .filter_map(|r| r.as_ref())
+                            .filter(|record| record.address_space.is_one())
+                            .fold(
+                                Default::default(),
+                                |mut registers, new_record: &MemoryRecord<F>| {
+                                    let register = new_record.pointer.as_canonical_u32() as u8;
+                                    let is_write = new_record.prev_data.is_some();
+                                    let timestamp = new_record.timestamp;
+                                    let (read, write) = registers.entry(register).or_default();
 
-                    // first remove the side effects of this row on the main periphery
-                    for range_checker_send in self
-                        .air_by_opcode_id
-                        .get(&instruction.as_ref().opcode.as_usize())
-                        .unwrap()
-                        .bus_interactions
-                        .iter()
-                        .filter(|i| i.id == 3)
+                                    if is_write {
+                                        // update the write if the new record happens later
+                                        match write {
+                                            Some(write_record)
+                                                if write_record.timestamp > timestamp =>
+                                            {
+                                                // do nothing
+                                            }
+                                            _ => {
+                                                *write = Some(new_record.clone());
+                                            }
+                                        }
+                                    } else {
+                                        // update the read if the new record happens before
+                                        match read {
+                                            Some(read_record)
+                                                if read_record.timestamp < timestamp =>
+                                            {
+                                                // do nothing
+                                            }
+                                            _ => {
+                                                *read = Some(new_record.clone());
+                                            }
+                                        }
+                                    };
+
+                                    registers
+                                },
+                            );
+
+                    // For each register, println the first read and last write in the form of the timestamp and data
+                    for (register, (read, write)) in &table {
+                        println!("Register: {register:x}");
+                        if let Some(read_record) = read {
+                            println!("\tRead value {:?} at timestamp {}, previous value was the same at timestamp {}", read_record.data, read_record.timestamp, read_record.prev_timestamp);
+                        }
+                        if let Some(write_record) = write {
+                            println!("\tWrite value {:?} at timestamp {}, previous value was {:?} at timestamp {}", write_record.data, write_record.timestamp, write_record.prev_data.as_ref().unwrap(), write_record.prev_timestamp);
+                        }
+                    }
+
+                    panic!();
+
+                    // map the dummy rows to the autoprecompile row
+                    for (instruction_id, (instruction, dummy_row)) in
+                        self.instructions.iter().zip_eq(dummy_values).enumerate()
                     {
+                        let evaluator = RowEvaluator::new(dummy_row, None);
+
+                        // first remove the side effects of this row on the main periphery
+                        for range_checker_send in self
+                            .air_by_opcode_id
+                            .get(&instruction.as_ref().opcode.as_usize())
+                            .unwrap()
+                            .bus_interactions
+                            .iter()
+                            .filter(|i| i.id == 3)
+                        {
+                            let mult = evaluator
+                                .eval_expr(&range_checker_send.mult)
+                                .as_canonical_u32();
+                            let args = range_checker_send
+                                .args
+                                .iter()
+                                .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
+                                .collect_vec();
+                            let [value, max_bits] = args.try_into().unwrap();
+                            for _ in 0..mult {
+                                self.periphery
+                                    .range_checker
+                                    .remove_count(value, max_bits as usize);
+                            }
+                        }
+
+                        for (dummy_trace_index, apc_index) in
+                            &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
+                        {
+                            row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+                        }
+                    }
+
+                    // Set the is_valid column to 1
+                    row_slice[is_valid_index] = F::ONE;
+
+                    let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+
+                    // replay the side effects of this row on the main periphery
+                    for bus_interaction in bus_interactions.iter() {
                         let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
+                            .eval_expr(&bus_interaction.mult)
                             .as_canonical_u32();
-                        let args = range_checker_send
+                        let args = bus_interaction
                             .args
                             .iter()
                             .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
                             .collect_vec();
-                        let [value, max_bits] = args.try_into().unwrap();
-                        for _ in 0..mult {
-                            self.periphery
-                                .range_checker
-                                .remove_count(value, max_bits as usize);
-                        }
+
+                        self.periphery.apply(bus_interaction.id, mult, &args);
                     }
-
-                    for (dummy_trace_index, apc_index) in
-                        &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
-                    {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
-                    }
-                }
-
-                // Set the is_valid column to 1
-                row_slice[is_valid_index] = F::ONE;
-
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
-
-                // replay the side effects of this row on the main periphery
-                for bus_interaction in bus_interactions.iter() {
-                    let mult = evaluator
-                        .eval_expr(&bus_interaction.mult)
-                        .as_canonical_u32();
-                    let args = bus_interaction
-                        .args
-                        .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
-                        .collect_vec();
-
-                    self.periphery.apply(bus_interaction.id, mult, &args);
-                }
-            });
+                },
+            );
 
         RowMajorMatrix::new(values, width)
     }
