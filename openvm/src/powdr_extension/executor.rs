@@ -15,7 +15,7 @@ use openvm_circuit::{
         ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
         VmInventoryError,
     },
-    system::memory::{OfflineMemory, RecordId},
+    system::memory::{MemoryRecord, OfflineMemory, RecordId},
 };
 use openvm_circuit::{
     arch::{VmConfig, VmInventory},
@@ -25,7 +25,10 @@ use openvm_circuit::{
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_stark_backend::{p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator};
+use openvm_stark_backend::{
+    p3_matrix::Matrix,
+    p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator},
+};
 
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
@@ -52,6 +55,7 @@ pub struct PowdrExecutor<F: PrimeField32> {
     /// For each execution of this chip, the range of RecordId that were used.
     record_ranges: Vec<(RecordId, RecordId)>,
     periphery: SharedChips,
+    offline_memory: Arc<Mutex<OfflineMemory<F>>>,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
@@ -59,7 +63,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
         is_valid_column: Column,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        offline_memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -68,7 +72,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             air_by_opcode_id,
             is_valid_poly_id: is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
-                memory,
+                offline_memory.clone(),
                 periphery.range_checker.clone(),
                 base_config.clone(),
             )
@@ -76,6 +80,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .inventory,
             record_ranges: Default::default(),
             periphery,
+            offline_memory,
         }
     }
 
@@ -238,65 +243,138 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         values
             // a record is `width` values
             .par_chunks_mut(width)
+            .take(1)
             .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
-                for (instruction_id, (instruction, dummy_row)) in
-                    self.instructions.iter().zip_eq(dummy_values).enumerate()
-                {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
+            .zip(self.record_ranges.par_iter())
+            .for_each(
+                |((row_slice, dummy_values), (from_record_id, to_record_id))| {
+                    // For each register, find the first read and last write, if they exist
+                    let table: BTreeMap<u8, (MemoryRecord<F>, MemoryRecord<F>)> = {
+                        let (reads, writes) = self
+                            .offline_memory
+                            .lock()
+                            .unwrap()
+                            .record_for_range(*from_record_id, *to_record_id)
+                            .iter()
+                            .filter_map(|r| r.as_ref())
+                            .filter(|record| record.address_space.is_one())
+                            .fold(
+                                Default::default(),
+                                |(mut reads, mut writes): (
+                                    BTreeMap<u8, MemoryRecord<_>>,
+                                    BTreeMap<u8, MemoryRecord<_>>,
+                                ),
+                                 new_record: &MemoryRecord<F>| {
+                                    let register = new_record.pointer.as_canonical_u32() as u8;
+                                    let is_write = new_record.prev_data.is_some();
+                                    if is_write {
+                                        writes
+                                            .entry(register)
+                                            .and_modify(|record| {
+                                                if new_record.timestamp > record.timestamp {
+                                                    *record = new_record.clone();
+                                                }
+                                            })
+                                            .or_insert(new_record.clone());
+                                    } else {
+                                        reads
+                                            .entry(register)
+                                            .and_modify(|record| {
+                                                if new_record.timestamp < record.timestamp {
+                                                    *record = new_record.clone();
+                                                }
+                                            })
+                                            .or_insert(new_record.clone());
+                                    }
+                                    (reads, writes)
+                                },
+                            );
 
-                    // first remove the side effects of this row on the main periphery
-                    for range_checker_send in self
-                        .air_by_opcode_id
-                        .get(&instruction.as_ref().opcode.as_usize())
-                        .unwrap()
-                        .bus_interactions
-                        .iter()
-                        .filter(|i| i.id == 3)
+                        assert!(reads.len() <= 32);
+                        assert!(writes.len() <= 32);
+                        // print addresses written to but not read
+                        for (key, value) in &writes {
+                            if !reads.contains_key(key) {
+                                println!("write without read: {value:#?}");
+                            }
+                        }
+                        // print addresses read but not written
+                        for (key, value) in &reads {
+                            if !writes.contains_key(key) {
+                                println!("read without write: {value:#?}");
+                            }
+                        }
+                        panic!();
+
+                        // Combine the reads and writes into a single map
+                        let mut table = BTreeMap::new();
+                        for (key, value) in reads {
+                            table.insert(key, (value, writes.remove(&key).unwrap()));
+                        }
+                        table
+                    };
+
+                    println!("table: {table:#?}");
+                    panic!();
+
+                    // map the dummy rows to the autoprecompile row
+                    for (instruction_id, (instruction, dummy_row)) in
+                        self.instructions.iter().zip_eq(dummy_values).enumerate()
                     {
+                        let evaluator = RowEvaluator::new(dummy_row, None);
+
+                        // first remove the side effects of this row on the main periphery
+                        for range_checker_send in self
+                            .air_by_opcode_id
+                            .get(&instruction.as_ref().opcode.as_usize())
+                            .unwrap()
+                            .bus_interactions
+                            .iter()
+                            .filter(|i| i.id == 3)
+                        {
+                            let mult = evaluator
+                                .eval_expr(&range_checker_send.mult)
+                                .as_canonical_u32();
+                            let args = range_checker_send
+                                .args
+                                .iter()
+                                .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
+                                .collect_vec();
+                            let [value, max_bits] = args.try_into().unwrap();
+                            for _ in 0..mult {
+                                self.periphery
+                                    .range_checker
+                                    .remove_count(value, max_bits as usize);
+                            }
+                        }
+
+                        for (dummy_trace_index, apc_index) in
+                            &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
+                        {
+                            row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+                        }
+                    }
+
+                    // Set the is_valid column to 1
+                    row_slice[is_valid_index] = F::ONE;
+
+                    let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+
+                    // replay the side effects of this row on the main periphery
+                    for bus_interaction in bus_interactions.iter() {
                         let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
+                            .eval_expr(&bus_interaction.mult)
                             .as_canonical_u32();
-                        let args = range_checker_send
+                        let args = bus_interaction
                             .args
                             .iter()
                             .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
                             .collect_vec();
-                        let [value, max_bits] = args.try_into().unwrap();
-                        for _ in 0..mult {
-                            self.periphery
-                                .range_checker
-                                .remove_count(value, max_bits as usize);
-                        }
+
+                        self.periphery.apply(bus_interaction.id, mult, &args);
                     }
-
-                    for (dummy_trace_index, apc_index) in
-                        &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
-                    {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
-                    }
-                }
-
-                // Set the is_valid column to 1
-                row_slice[is_valid_index] = F::ONE;
-
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
-
-                // replay the side effects of this row on the main periphery
-                for bus_interaction in bus_interactions.iter() {
-                    let mult = evaluator
-                        .eval_expr(&bus_interaction.mult)
-                        .as_canonical_u32();
-                    let args = bus_interaction
-                        .args
-                        .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
-                        .collect_vec();
-
-                    self.periphery.apply(bus_interaction.id, mult, &args);
-                }
-            });
+                },
+            );
 
         RowMajorMatrix::new(values, width)
     }
