@@ -2,7 +2,7 @@ use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions};
+use powdr_openvm::{CompiledProgram, GuestOptions, PowdrConfig};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use std::io;
@@ -107,14 +107,10 @@ fn run_command(command: Commands) {
             let pc_idx_count = pgo.then(|| {
                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
             });
-            let program = powdr_openvm::compile_guest(
-                &guest,
-                guest_opts,
-                autoprecompiles,
-                skip,
-                pc_idx_count,
-            )
-            .unwrap();
+            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let program =
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pc_idx_count)
+                    .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -128,14 +124,10 @@ fn run_command(command: Commands) {
             let pc_idx_count = pgo.then(|| {
                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
             });
-            let program = powdr_openvm::compile_guest(
-                &guest,
-                guest_opts,
-                autoprecompiles,
-                skip,
-                pc_idx_count,
-            )
-            .unwrap();
+            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let program =
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pc_idx_count)
+                    .unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
         }
 
@@ -151,14 +143,10 @@ fn run_command(command: Commands) {
             let pc_idx_count = pgo.then(|| {
                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
             });
-            let program = powdr_openvm::compile_guest(
-                &guest,
-                guest_opts,
-                autoprecompiles,
-                skip,
-                pc_idx_count,
-            )
-            .unwrap();
+            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let program =
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pc_idx_count)
+                    .unwrap();
             powdr_openvm::prove(&program, mock, recursion, stdin_from(input)).unwrap();
         }
 
