@@ -8,6 +8,7 @@ use powdr_ast::analyzed::{
     Analyzed, Challenge, Identity, PolynomialIdentity,
 };
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
+use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::{self, SolveResult},
@@ -48,14 +49,12 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
     //replace_constrained_witness_columns(&mut constraint_system, 3);
 
-    match solver::Solver::new(constraint_system).solve() {
+    match solver::Solver::new(constraint_system.clone()).solve() {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
         }
-        Ok(SolveResult {
-            simplified_constraint_system,
-            assignments,
-        }) => {
+        Ok(SolveResult { assignments }) => {
+            let constraint_system = apply_substitutions(constraint_system, assignments.clone());
             pil_file
                 .identities
                 .iter_mut()
@@ -66,7 +65,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         None
                     }
                 })
-                .zip_eq(simplified_constraint_system.algebraic_constraints)
+                .zip_eq(constraint_system.algebraic_constraints)
                 .for_each(|(identity, simplified)| {
                     // We can ignore the negation because it is a polynomial identity
                     // that is equated to zero.

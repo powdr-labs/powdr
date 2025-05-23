@@ -4,6 +4,7 @@ use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    indexed_constraint_system::apply_substitutions,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::{Error, Solver},
@@ -26,9 +27,10 @@ pub fn assert_solve_result(
 }
 
 fn assert_expected_state(
-    final_state: BTreeMap<Var, QuadraticSymbolicExpression<GoldilocksField, Var>>,
+    final_state: impl IntoIterator<Item = (Var, QuadraticSymbolicExpression<GoldilocksField, Var>)>,
     expected_final_state: BTreeMap<Var, GoldilocksField>,
 ) {
+    let final_state = final_state.into_iter().collect::<BTreeMap<_, _>>();
     assert_eq!(
         final_state.keys().collect::<Vec<_>>(),
         expected_final_state.keys().collect::<Vec<_>>(),
@@ -276,11 +278,10 @@ fn add_with_carry() {
         ],
     };
 
-    let solver = Solver::new(constraint_system)
+    let solver = Solver::new(constraint_system.clone())
         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
     let final_state = solver.solve().unwrap();
-    let final_state = final_state
-        .simplified_constraint_system
+    let final_state = apply_substitutions(constraint_system, final_state.assignments)
         .algebraic_constraints
         .iter()
         .format("\n")
