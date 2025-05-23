@@ -22,11 +22,9 @@ mod quadratic_equivalences;
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    /// Values might contain variables that are replaced as well.
-    pub assignments: BTreeMap<V, QuadraticSymbolicExpression<T, V>>,
-    /// The final state of the constraint system, with known variables
-    /// replaced by their values and constraints simplified accordingly.
-    pub simplified_constraint_system: ConstraintSystem<T, V>,
+    /// Values might contain variables that are replaced as well,
+    /// and because of that, assignments should be applied in order.
+    pub assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -44,7 +42,6 @@ pub enum Error {
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
-    original_system: ConstraintSystem<T, V>,
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -63,12 +60,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
-        let original_system = constraint_system;
-        let constraint_system = IndexedConstraintSystem::from(original_system.clone());
 
         Solver {
-            original_system,
-            constraint_system,
+            constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
             assignments: Default::default(),
@@ -90,14 +84,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
-        let mut constraint_system = IndexedConstraintSystem::from(self.original_system);
-        for (variable, value) in &self.assignments {
-            constraint_system.substitute_by_unknown(variable, value);
-        }
-
         Ok(SolveResult {
-            assignments: self.assignments.into_iter().collect(),
-            simplified_constraint_system: constraint_system.into(),
+            assignments: self.assignments,
         })
     }
 
