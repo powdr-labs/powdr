@@ -16,6 +16,7 @@ powdr-pil-analyzer.workspace = true
 log = "0.4.27"
 pretty_assertions = "1.4.0"
 itertools = "0.13.0"
+rayon = "1.7.0"
 
 [lints]
 workspace = true

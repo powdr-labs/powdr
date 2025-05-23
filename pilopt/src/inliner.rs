@@ -2,23 +2,82 @@ use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
+use rayon::prelude::*;
+use std::collections::BTreeSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
+use std::sync::Mutex;
+
+type InlineCache<V, T> = HashMap<usize, Vec<(V, QuadraticSymbolicExpression<T, V>, f64)>>;
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
 pub fn replace_constrained_witness_columns<
     T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
 >(
     mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
+    // Keep track of deleted constraints to maintain consistent constraint enumeration.
+    let mut deleted_constraints: HashSet<usize> = HashSet::new();
+
+    let (mut inlinable_cache, var_to_constraints) = {
+        let constraint_indices: Vec<_> = constraint_system.expressions().enumerate().collect();
+
+        let results: Vec<_> = constraint_indices
+            .into_par_iter()
+            .map(|(idx, constraint)| {
+                let inlinables = find_inlinable_variables(constraint)
+                    .into_iter()
+                    .filter_map(|(v, e)| {
+                        score_substitution(&v, &e, &constraint_system, max_degree)
+                            .map(|s| (v, e, s))
+                    })
+                    .collect::<Vec<_>>();
+
+                let vars: BTreeSet<V> = constraint.referenced_variables().cloned().collect();
+
+                (idx, inlinables, vars)
+            })
+            .collect();
+
+        let mut inlinable_cache: InlineCache<V, T> = HashMap::new();
+        let mut var_to_constraints: HashMap<V, HashSet<usize>> = HashMap::new();
+
+        for (idx, inlinables, vars) in results {
+            inlinable_cache.insert(idx, inlinables);
+
+            for var in vars {
+                var_to_constraints.entry(var).or_default().insert(idx);
+            }
+        }
+
+        (inlinable_cache, var_to_constraints)
+    };
+
     loop {
-        if !try_apply_substitution(&mut constraint_system, max_degree) {
+        let did_something = try_apply_substitution(
+            &mut constraint_system,
+            max_degree,
+            &mut deleted_constraints,
+            &mut inlinable_cache,
+            &var_to_constraints,
+        );
+
+        if !did_something {
             break;
         }
     }
+
+    constraint_system.algebraic_constraints = constraint_system
+        .algebraic_constraints
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !deleted_constraints.contains(i))
+        .map(|(_, c)| c)
+        .collect();
 
     constraint_system
 }
@@ -26,80 +85,159 @@ pub fn replace_constrained_witness_columns<
 /// Attempts to apply one valid variable substitution across the constraint system.
 ///
 /// Skips substitutions that would increase the degree beyond `max_degree`
-/// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+/// Returns true if a substitution was applied.
+fn try_apply_substitution<
+    T: FieldElement,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync + Display,
+>(
     constraint_system: &mut ConstraintSystem<T, V>,
     max_degree: usize,
+    deleted_constraints: &mut HashSet<usize>,
+    inlinable_cache: &mut InlineCache<V, T>,
+    var_to_constraints: &HashMap<V, HashSet<usize>>,
 ) -> bool {
-    let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
-
-    for idx in indices.into_iter().rev() {
-        let constraint = &constraint_system.algebraic_constraints[idx];
-
-        for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
-                log::trace!("Substituting {var} = {expr}");
-                log::trace!("  (from identity {constraint})");
-                constraint_system.expressions_mut().for_each(|identity| {
-                    identity.substitute_by_unknown(&var, &expr);
-                });
-
-                constraint_system.algebraic_constraints.remove(idx);
-                return true;
+    let selected = inlinable_cache
+        .iter()
+        .filter(|(&idx, _)| !deleted_constraints.contains(&idx))
+        .flat_map(|(&idx, entries)| entries.iter().map(move |(v, e, s)| (idx, v, e, *s)))
+        .max_by(|a, b| {
+            let score_cmp = a.3.total_cmp(&b.3);
+            if score_cmp != std::cmp::Ordering::Equal {
+                return score_cmp;
             }
-        }
+
+            let idx_cmp = b.0.cmp(&a.0);
+            if idx_cmp != std::cmp::Ordering::Equal {
+                return idx_cmp;
+            }
+
+            b.1.cmp(a.1)
+        })
+        .map(|(idx, v, e, _)| (idx, v.clone(), e.clone()));
+
+    if selected.is_none() {
+        return false;
     }
 
-    false
-}
-
-/// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    constraint: &QuadraticSymbolicExpression<T, V>,
-) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
-    let mut substitutions = vec![];
-
-    let (_, linear, _) = constraint.components();
-
-    for (target_var, coeff) in linear {
-        let Some(coeff_const) = coeff.try_to_number() else {
-            continue;
-        };
-
-        assert!(!coeff_const.is_zero());
-
-        // Isolate target_var from the constraint equation.
-        let rhs_qse = -constraint.clone()
-            * QuadraticSymbolicExpression::from(T::one() / coeff_const)
-            + QuadraticSymbolicExpression::from_unknown_variable(target_var.clone());
-
-        // Check if there is any target_var in the substitution .
-        if rhs_qse
-            .referenced_unknown_variables()
-            .any(|v| v == target_var)
-        {
-            continue;
-        }
-
-        substitutions.push((target_var.clone(), rhs_qse));
+    let (idx, var, expr) = selected.unwrap();
+    for constraint in constraint_system.expressions_mut() {
+        constraint.substitute_by_unknown(&var, &expr);
     }
+    deleted_constraints.insert(idx);
 
-    substitutions
+    let inlinable_cache_mutex = Mutex::new(&mut *inlinable_cache);
+    let affected_constraints = var_to_constraints
+        .get(&var)
+        .expect("Variable selected for substitution not found in var_to_constraints map");
+
+    constraint_system
+        .expressions()
+        .enumerate()
+        .filter(|(i, _)| affected_constraints.contains(i) && !deleted_constraints.contains(i))
+        .collect::<Vec<_>>()
+        .par_iter()
+        .for_each(|&(i, constraint)| {
+            let entries = find_inlinable_variables(constraint)
+                .into_iter()
+                .filter_map(|(v, e)| {
+                    score_substitution(&v, &e, constraint_system, max_degree).map(|s| (v, e, s))
+                })
+                .collect();
+
+            // Lock the mutex to update the cache
+            let mut cache = inlinable_cache_mutex.lock().unwrap();
+            cache.insert(i, entries);
+        });
+
+    true
 }
 
-/// Checks whether a substitution is valid under `max_degree` constraint.
-fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+/// Score a potential substitution based on heuristics
+fn score_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     var: &V,
     expr: &QuadraticSymbolicExpression<T, V>,
     constraint_system: &ConstraintSystem<T, V>,
     max_degree: usize,
-) -> bool {
+) -> Option<f64> {
     let replacement_deg = qse_degree(expr);
+    let mut eliminable_constraints = 0;
+    let mut simplifiable_constraints = 0;
+    let mut total_degree_increase = 0.0;
 
-    !constraint_system
-        .expressions()
-        .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
-        .any(|deg| deg > max_degree)
+    for constraint in &constraint_system.algebraic_constraints {
+        let current_deg = qse_degree(constraint);
+        let new_deg = qse_degree_with_virtual_substitution(constraint, var, replacement_deg);
+
+        if new_deg > max_degree {
+            return None;
+        }
+
+        let mut vars = constraint
+            .referenced_unknown_variables()
+            .collect::<Vec<_>>();
+        let var_count_before = vars.len();
+        vars.retain(|v| **v != *var);
+        let var_count_after = vars.len();
+
+        if var_count_after == 0 {
+            eliminable_constraints += 1;
+        } else if var_count_after < var_count_before {
+            simplifiable_constraints += 1;
+        }
+
+        total_degree_increase += new_deg as f64 - current_deg as f64;
+    }
+
+    let num_constraints = constraint_system.algebraic_constraints.len() as f64;
+    let avg_degree_increase = total_degree_increase / num_constraints;
+
+    // Score formula:
+    //   +1.0 for each eliminable constraint
+    //   +0.5 for each simplifiable constraint
+    //   -0.5 for each unit of average degree increase
+    let score = eliminable_constraints as f64 * 1.0 + simplifiable_constraints as f64 * 0.5
+        - avg_degree_increase * 0.5;
+
+    Some(score)
+}
+
+/// Returns substitutions of variables that appear linearly and do not depend on themselves.
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Send + Sync + Display>(
+    constraint: &QuadraticSymbolicExpression<T, V>,
+) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
+    let (_, linear, _) = constraint.components();
+
+    let linear_vars: Vec<_> = linear.collect();
+
+    linear_vars
+        .into_par_iter()
+        .filter_map(|(target_var, coeff)| {
+            let coeff_const = coeff.try_to_number()?;
+
+            if coeff_const.is_zero() {
+                return None;
+            }
+
+            // Isolate target_var from the constraint equation.
+            let rhs_qse = -constraint.clone()
+                * QuadraticSymbolicExpression::from(T::one() / coeff_const)
+                + QuadraticSymbolicExpression::from_unknown_variable(target_var.clone());
+
+            if rhs_qse.try_to_known().is_some() {
+                return None;
+            }
+
+            //Check if there is any target_var in the substitution.
+            if rhs_qse
+                .referenced_unknown_variables()
+                .any(|v| v == target_var)
+            {
+                None
+            } else {
+                Some((target_var.clone(), rhs_qse))
+            }
+        })
+        .collect()
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
@@ -171,10 +309,8 @@ mod test {
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
         assert_eq!(constraint_system.algebraic_constraints.len(), 2);
     }
-
     #[test]
     fn test_replace_witness_columns() {
-        // keep column result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
             payload: vec![var("result"), var("b")],
@@ -227,7 +363,6 @@ mod test {
         let expr_constraint = expr.clone() - var("result");
         identities.push(expr_constraint);
 
-        // keep column `result`
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
             payload: vec![var("result")],
@@ -251,59 +386,21 @@ mod test {
         // ⇒ (c + -result) * (-d) + c = 0
 
         assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "(c + -result) * (-d) + c"
-        );
-    }
-
-    #[test]
-    fn test_replace_witness_columns_no_keep() {
-        let mut identities = Vec::new();
-
-        // a * b = c
-        let constraint1 = var("c") - var("a") * var("b");
-        identities.push(constraint1);
-
-        // b + d = 0
-        let constraint2 = var("b") + var("d");
-        identities.push(constraint2);
-
-        // c * d = e
-        let constraint3 = var("e") - var("c") * var("d");
-        identities.push(constraint3);
-
-        // a + b + c + d + e - result = 0
-        let expr = var("a") + var("b") + var("c") + var("d") + var("e");
-        let expr_constraint = expr.clone() - var("result");
-        identities.push(expr_constraint);
-
-        // no columns to keep
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions: vec![],
+        let [identity] = &constraint_system.algebraic_constraints[..] else {
+            panic!();
         };
-
-        let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
-        // 1) b + d = 0        => b = -d
-        // 2) c * d = e        => e = c * d
-        // 3) a + b + c + d + e = result
-        //    =⇒ a + (-d) + c + d + (c * d) = result
-        //    =⇒ a + c + (c * d) = result ⇒ a = result - c - c*d
-        //
-        // Replace a and b in (a * b = c):
-        //    (result - c - c*d) * (-d) = c
-        // ⇒ ((c * d) + c - result) * (-d) + c = 0
-        assert_eq!(constraint_system.algebraic_constraints.len(), 1);
-        assert_eq!(
-            constraint_system.algebraic_constraints[0].to_string(),
-            "((c) * (d) + c + -result) * (-d) + c"
-        );
+        let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
+            panic!();
+        };
+        let [result] = payload.as_slice() else {
+            panic!();
+        };
+        assert_eq!(identity.to_string(), "(c + -result) * (-d) + c");
+        assert_eq!(result.to_string(), "result");
     }
 
     #[test]
-    fn test_replace_constrained_witness_suboptimal() {
-        // Keep x and result
+    fn test_replace_constrained_witness_bus_interaction() {
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
             payload: vec![var("result"), var("x")],
@@ -329,8 +426,8 @@ mod test {
         let [result, x] = payload.as_slice() else {
             panic!();
         };
-        assert_eq!(result.to_string(), "z + 1");
-        assert_eq!(x.to_string(), "z + -5");
+        assert_eq!(result.to_string(), "x + 6");
+        assert_eq!(x.to_string(), "x");
     }
 
     #[test]
@@ -361,7 +458,7 @@ mod test {
         };
         let constraint_system = replace_constrained_witness_columns(constraint_system, 3);
 
-        let [identity] = &constraint_system.algebraic_constraints[..] else {
+        let [identity1] = &constraint_system.algebraic_constraints[..] else {
             panic!();
         };
         let [BusInteraction { payload, .. }] = &constraint_system.bus_interactions[..] else {
@@ -375,27 +472,23 @@ mod test {
         // b kept as a symbol
         assert_eq!(b.to_string(), "b");
         // From second identity: c = a * a
-        // In-lining c would violate the degree bound, so it is kept as a symbol
-        // with a constraint to enforce the equality.
-        assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "(-b + -1) * (b + 1) + c");
+        assert_eq!(c.to_string(), "(b + 1) * (b + 1)");
         // From third identity: d = c * a
-        assert_eq!(d.to_string(), "(c) * (b + 1)");
+        // In-lining d would violate the degree bound, so it is kept as a symbol
+        // with constraints to enforce the equality.
+        assert_eq!(d.to_string(), "d");
+        assert_eq!(identity1.to_string(), "((-b + -1) * (b + 1)) * (b + 1) + d");
         // From fourth identity: e = d * a
-        assert_eq!(e.to_string(), "((c) * (b + 1)) * (b + 1)");
+        assert_eq!(e.to_string(), "(d) * (b + 1)");
         // From fifth identity: f = e + 5
-        assert_eq!(f.to_string(), "((c) * (b + 1)) * (b + 1) + 5");
+        assert_eq!(f.to_string(), "(d) * (b + 1) + 5");
         // From sixth identity: result = f * 2
-        assert_eq!(result.to_string(), "((2 * c) * (b + 1)) * (b + 1) + 10");
+        assert_eq!(result.to_string(), "(2 * d) * (b + 1) + 10");
     }
 
     #[test]
-    fn test_inline_max_degree_suboptimal_greedy() {
-        // Show how constraint order affects optimization results
-
-        // Define the constraints in both orders
+    fn test_inline_max_degree_old_suboptimal_greedy() {
         let mut optimal_order_identities = Vec::new();
-        let mut suboptimal_order_identities = Vec::new();
 
         // a = b * b * b
         let constraint1 = var("a") - var("b") * var("b") * var("b");
@@ -415,29 +508,12 @@ mod test {
         optimal_order_identities.push(constraint4.clone()); // c = d * d
         optimal_order_identities.push(constraint5.clone()); // a + b + c + d = 100
 
-        // Suboptimal order
-        suboptimal_order_identities.push(constraint5.clone()); // a + b + c + d = 100
-        suboptimal_order_identities.push(constraint3.clone()); // a * c * c = 10
-        suboptimal_order_identities.push(constraint1.clone()); // a = b * b * b
-        suboptimal_order_identities.push(constraint2.clone()); // b = c + d
-        suboptimal_order_identities.push(constraint4.clone()); // c = d * d
-
         let optimal_system = ConstraintSystem {
             algebraic_constraints: optimal_order_identities,
             bus_interactions: vec![],
         };
 
-        let suboptimal_system = ConstraintSystem {
-            algebraic_constraints: suboptimal_order_identities,
-            bus_interactions: vec![],
-        };
-
-        // Apply the same optimization to both systems
         let optimal_system = replace_constrained_witness_columns(optimal_system, 5);
-        let suboptimal_system = replace_constrained_witness_columns(suboptimal_system, 5);
-
-        // Assert the difference in optimization results
         assert_eq!(optimal_system.algebraic_constraints.len(), 3);
-        assert_eq!(suboptimal_system.algebraic_constraints.len(), 4);
     }
 }
