@@ -1,4 +1,5 @@
 use exhaustive_search::ExhaustiveSearch;
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
@@ -92,6 +93,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
+            self.split_constraints()?;
             // Try solving constraints in isolation.
             progress |= self.solve_in_isolation()?;
             // Try inferring new information using bus interactions.
@@ -112,6 +114,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Ok(())
     }
 
+    /// Tries to split single constraints into multiple, simpler ones.
+    fn split_constraints(&mut self) -> Result<bool, Error> {
+        for constr in self.constraint_system.algebraic_constraints() {
+            if let Some(new) = constr.try_split(&self.range_constraints) {
+                println!(
+                    "Splitting constraint: {constr} -> {}",
+                    new.iter().format(", ")
+                );
+            }
+        }
+        Ok(false)
+    }
     /// Tries to make progress by solving each constraint in isolation.
     fn solve_in_isolation(&mut self) -> Result<bool, Error> {
         let mut progress = false;
