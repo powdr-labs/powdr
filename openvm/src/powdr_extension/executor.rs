@@ -305,7 +305,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                             println!("\tWrite value {:?} at timestamp {}, previous value was {:?} at timestamp {}", write_record.data, write_record.timestamp, write_record.prev_data.as_ref().unwrap(), write_record.prev_timestamp);
                         }
                     }
-                    
+
                     panic!();
 
                     // map the dummy rows to the autoprecompile row
