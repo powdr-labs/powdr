@@ -94,6 +94,7 @@ pub fn customize<F: PrimeField32>(
         SystemOpcode::TERMINATE.global_opcode().as_usize(),
         0x510, // not sure yet what this is
         0x513, // not sure yet what this is
+        0x516, // not sure yet what this is
         0x51c, // not sure yet what this is
         0x523, // not sure yet what this is
     ];
@@ -287,10 +288,12 @@ fn merge_bus_interactions_simple<F: PrimeField32>(interactions: Vec<Vec<Symbolic
 }
 
 fn merge_bus_interactions<F: PrimeField32>(interactions_by_machine: Vec<Vec<SymbolicBusInteraction<F>>>) -> Vec<SymbolicBusInteraction<F>> {
-    let mut interactions_by_bus: HashMap<u64, Vec<Vec<SymbolicBusInteraction<F>>>> = Default::default();
+    let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<F>>>> = Default::default();
 
     for interactions in interactions_by_machine {
-        let interactions_by_bus_this_machine = interactions.into_iter().into_group_map_by(|interaction| interaction.id);
+        let interactions_by_bus_this_machine = interactions.into_iter()
+            // we group by bus id and number of args
+            .into_group_map_by(|interaction| (interaction.id, interaction.args.len()));
         for (k,v) in interactions_by_bus_this_machine {
             let e = interactions_by_bus.entry(k).or_default();
             e.push(v);
