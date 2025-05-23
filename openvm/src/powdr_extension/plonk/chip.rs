@@ -177,6 +177,11 @@ fn derive_tmp_values<F: PrimeField32>(
 ) {
     // TODO: Solve for tmp variables of other columns too.
     if let Variable::Tmp(id) = &gate.c {
+        if tmp_vars[*id].is_some() {
+            // Already know the value.
+            return;
+        }
+
         // Note that this panics if any unknown tmp variable is in a or b.
         let a = get_variable_value(&gate.a, witness, column_index_by_poly_id, tmp_vars);
         let b = get_variable_value(&gate.b, witness, column_index_by_poly_id, tmp_vars);
