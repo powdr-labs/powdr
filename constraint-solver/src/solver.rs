@@ -1,6 +1,8 @@
 use exhaustive_search::ExhaustiveSearch;
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
+use crate::boolean_extractor::extract_boolean;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
 };
@@ -81,12 +83,70 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
-        self.loop_until_no_progress()?;
+    pub fn solve(self) -> Result<SolveResult<T, V>, Error> {
+        assert!(self.assignments.is_empty());
 
-        Ok(SolveResult {
-            assignments: self.assignments,
+        let mut solver = self.introduce_boolean_variables();
+        solver.loop_until_no_progress()?;
+
+        // Clear anything from the assignments that references boolean variables.
+        // TODO if we get an assignment for a boolean variable, we could simplify a constraint.
+        let assignments = solver
+            .assignments
+            .into_iter()
+            .filter_map(|(variable, value)| {
+                let var = variable.try_to_original()?;
+                let mut failed = false;
+                let value = value.transform_var_type(&mut |v| {
+                    match v {
+                        Variable::Regular(v) => v.clone(),
+                        Variable::Boolean(_) => {
+                            failed = true;
+                            // Just return some variable
+                            var.clone()
+                        }
+                    }
+                });
+                (!failed).then_some((var, value))
+            })
+            .collect_vec();
+
+        Ok(SolveResult { assignments })
+    }
+
+    fn introduce_boolean_variables(self) -> Solver<T, Variable<V>> {
+        assert!(self.assignments.is_empty());
+
+        let mut counter = 0..;
+        let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
+
+        let algebraic_constraints = self
+            .constraint_system
+            .algebraic_constraints()
+            .iter()
+            .map(|constr| {
+                let constr = constr.transform_var_type(&mut |v| Variable::Regular(v.clone()));
+                extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+            })
+            .collect::<Vec<_>>();
+        let bus_interactions = self
+            .constraint_system
+            .bus_interactions()
+            .iter()
+            .map(|bi| bi.transform_var_type(&mut |v| Variable::Regular(v.clone())))
+            .collect::<Vec<_>>();
+        let mut solver = Solver::new(ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions,
         })
+        .with_bus_interaction_handler(self.bus_interaction_handler);
+        for index in 0..counter.next().unwrap() {
+            solver.apply_range_constraint_update(
+                &Variable::Boolean(index),
+                RangeConstraint::from_mask(1u64),
+            );
+        }
+        solver
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
@@ -249,6 +309,36 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                         .is_err()
                 }
             })
+    }
+}
+
+/// We introduce new variables (that are always boolean-constrained).
+/// This enum avoids clashes with the original variables.
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+enum Variable<V> {
+    /// A regular variable that also exists in the caller's system.
+    Regular(V),
+    /// A new boolean-constrained variable that was introduced by the solver.
+    Boolean(usize),
+}
+
+impl<V: Clone> Variable<V> {
+    /// Converts the variable to its original type.
+    /// Returns `None` if the variable is a boolean variable.
+    fn try_to_original(&self) -> Option<V> {
+        match self {
+            Variable::Regular(v) => Some(v.clone()),
+            Variable::Boolean(_) => None,
+        }
+    }
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Regular(v) => write!(f, "{v}"),
+            Variable::Boolean(i) => write!(f, "boolean_{i}"),
+        }
     }
 }
 
