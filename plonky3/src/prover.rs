@@ -13,7 +13,7 @@ use p3_matrix::dense::{DenseMatrix, RowMajorMatrix};
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::log2_strict_usize;
-use tracing::{info_span, instrument};
+use tracing::{info, info_span, instrument};
 
 use crate::circuit_builder::{generate_matrix, PowdrCircuit, PowdrTable};
 use crate::params::{Challenge, Challenger, Pcs};
@@ -408,6 +408,8 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
+    let mut table_max_degree = BTreeMap::new();
+    let degree_bound = T::degree_bound();
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = witness_by_machine
         .iter()
         .map(|(name, columns)| {
@@ -421,8 +423,8 @@ where
 
             // Sanity-check that the degree bound is not exceeded
             // If we don't panic here, Plonky3 panics with a bad error message when computing the quotient polynomial
-            let degree_bound = T::degree_bound();
             let max_degree = table.max_constraint_degree();
+            table_max_degree.insert(name.clone(), max_degree);
             if max_degree > degree_bound {
                 panic!(
                     "Table {} has a constraint of degree {} which exceeds the degree bound of {}.",
@@ -463,6 +465,26 @@ where
     let multi_table = MultiTable { tables };
 
     let config = T::get_config();
+    let (log_blowup, num_queries, proof_of_work_bits) = T::get_fri_parameters();
+    let security_level = log_blowup * num_queries + proof_of_work_bits;
+
+    info!(
+        "FRI Parameters: log_blowup: {}, num_queries: {}, proof_of_work_bits: {}, security level: {} bits",
+        log_blowup, num_queries, proof_of_work_bits, security_level
+    );
+
+    
+
+    let max_degree = *table_max_degree.values().max().unwrap();
+
+    info!(
+        "Constraint degree bound: {}, The highest constraint degree of the current circuit: {}",
+        degree_bound,max_degree
+    );
+
+    if max_degree < degree_bound && max_degree >= (degree_bound - 1) >> 1 && log_blowup -1 > 0 {
+        info!("Potential optimization of FRI parameters under same security level: log_blowup: {}, num_queries: {}", log_blowup - 1,(security_level-proof_of_work_bits)/(log_blowup - 1));
+    }
 
     assert_eq!(stage_0.keys().collect_vec(), multi_table.table_names());
 

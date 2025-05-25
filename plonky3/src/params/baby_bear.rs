@@ -49,8 +49,8 @@ type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
 type Dft = Radix2DitParallel<BabyBear>;
 type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
 
-const FRI_LOG_BLOWUP: usize = 1;
-const FRI_NUM_QUERIES: usize = 100;
+const FRI_LOG_BLOWUP: usize = 2;
+const FRI_NUM_QUERIES: usize = 50;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
 lazy_static! {
@@ -92,16 +92,22 @@ impl FieldElementMap for BabyBearField {
 
         let dft = Dft::default();
 
+        let (log_blowup, num_queries, proof_of_work_bits) = Self::get_fri_parameters();
+
         let fri_config = FriConfig {
-            log_blowup: FRI_LOG_BLOWUP,
-            num_queries: FRI_NUM_QUERIES,
-            proof_of_work_bits: FRI_PROOF_OF_WORK_BITS,
+            log_blowup,
+            num_queries,
+            proof_of_work_bits,
             mmcs: challenge_mmcs,
         };
 
         let pcs = MyPcs::new(dft, val_mmcs, fri_config);
 
         Self::Config::new(pcs)
+    }
+
+    fn get_fri_parameters() -> (usize, usize, usize) {
+        (FRI_LOG_BLOWUP, FRI_NUM_QUERIES, FRI_PROOF_OF_WORK_BITS)
     }
 
     fn degree_bound() -> usize {
