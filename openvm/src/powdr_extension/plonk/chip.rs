@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use crate::powdr_extension::executor::PowdrExecutor;
-use crate::powdr_extension::PowdrOpcode;
-use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
+use crate::powdr_extension::{
+    chip::SharedChips, executor::PowdrExecutor, PowdrOpcode, PowdrPrecompile,
+};
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
     system::memory::{MemoryController, OfflineMemory},

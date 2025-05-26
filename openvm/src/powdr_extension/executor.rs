@@ -3,9 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::powdr_extension::chip::{RangeCheckerSend, RowEvaluator};
-
-use super::{chip::SharedChips, vm::OriginalInstruction, PowdrPrecompile};
+use super::{
+    chip::{RangeCheckerSend, RowEvaluator, SharedChips},
+    vm::OriginalInstruction,
+    PowdrPrecompile,
+};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::{
