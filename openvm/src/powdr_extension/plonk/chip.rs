@@ -87,7 +87,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
 
 impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
     fn air_name(&self) -> String {
-        format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
+        format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
     fn current_trace_height(&self) -> usize {
         self.executor.number_of_calls()
