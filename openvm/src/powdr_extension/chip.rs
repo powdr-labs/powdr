@@ -150,8 +150,6 @@ impl<F: PrimeField32> PowdrChip<F> {
             opcode,
         } = precompile;
         let air: PowdrAir<F> = PowdrAir::new(machine);
-        let name = name;
-        let opcode = opcode;
         let executor = PowdrExecutor::new(
             original_instructions,
             original_airs,
