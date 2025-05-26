@@ -350,9 +350,6 @@ fn air_stacking<F: PrimeField32>(
     mut extensions: Vec<PowdrPrecompile<F>>,
 ) -> Vec<PowdrStackedPrecompile<F>> {
     assert!(!extensions.is_empty());
-    // TODO: for now group every precompile into a single stacked one. Next,
-    // group them by some heuristic (i.e., by powers of number of witness
-    // columns)
 
     extensions.iter_mut().for_each(compact_ids);
 
@@ -366,6 +363,22 @@ fn air_stacking<F: PrimeField32>(
     let mut result = vec![];
 
     for mut extensions in groups.into_values() {
+        // if there is only one precompile in the group, we can just return it as a stacked precompile
+        if extensions.len() == 1 {
+            println!("not stacking precompile");
+            result.push(PowdrStackedPrecompile {
+                machine: SymbolicMachine {
+                    constraints: extensions[0].machine.constraints.clone(),
+                    bus_interactions: extensions[0].machine.bus_interactions.clone(),
+                },
+                precompiles: extensions
+                    .into_iter()
+                    .map(|p| (p.opcode.clone(), p))
+                    .collect(),
+            });
+            continue;
+        }
+
         let mut stacked_constraints = vec![];
         let mut interactions_by_machine = vec![];
 
