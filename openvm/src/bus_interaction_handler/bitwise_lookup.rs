@@ -64,7 +64,7 @@ pub fn handle_bitwise_lookup<T: FieldElement>(
 #[cfg(test)]
 mod tests {
     use crate::bus_interaction_handler::{
-        test_utils::*, OpenVmBusInteractionHandler, DEFAULT_BITWISE_LOOKUP,
+        test_utils::*, BusMap, OpenVmBusInteractionHandler, DEFAULT_BITWISE_LOOKUP,
     };
 
     use super::*;
@@ -77,7 +77,7 @@ mod tests {
         z: RangeConstraint<BabyBearField>,
         op: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(Default::default());
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(BusMap::openvm_base());
 
         let bus_interaction = BusInteraction {
             bus_id: RangeConstraint::from_value(DEFAULT_BITWISE_LOOKUP.into()),

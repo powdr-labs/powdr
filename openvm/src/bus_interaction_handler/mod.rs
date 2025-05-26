@@ -54,8 +54,8 @@ pub struct BusMap {
     bus_ids: HashMap<u64, BusType>,
 }
 
-impl Default for BusMap {
-    fn default() -> Self {
+impl BusMap {
+    pub fn openvm_base() -> Self {
         let bus_ids = [
             (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
             (DEFAULT_MEMORY, BusType::Memory),
@@ -72,9 +72,7 @@ impl Default for BusMap {
 
         Self { bus_ids }
     }
-}
 
-impl BusMap {
     pub fn bus_type(&self, bus_id: u64) -> BusType {
         self.bus_ids[&bus_id]
     }

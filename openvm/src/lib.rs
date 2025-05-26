@@ -186,10 +186,14 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram { exe, sdk_vm_config })
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct PowdrConfig {
+    /// Number of autoprecompiles to generate.
     pub autoprecompiles: u64,
+    /// Number of basic blocks to skip for autoprecompiles.
+    /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
+    /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
 }
 
@@ -198,7 +202,7 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            bus_map: BusMap::default(),
+            bus_map: BusMap::openvm_base(),
         }
     }
 
