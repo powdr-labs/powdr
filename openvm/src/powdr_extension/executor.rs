@@ -54,7 +54,6 @@ pub struct PowdrExecutor<F: PrimeField32> {
     inventory: SdkVmInventory<F>,
     number_of_calls: usize,
     periphery: SharedChips,
-    offline_memory: Arc<Mutex<OfflineMemory<F>>>,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
@@ -62,7 +61,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
         is_valid_column: Column,
-        offline_memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -71,7 +69,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             air_by_opcode_id,
             is_valid_poly_id: is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
-                offline_memory.clone(),
+                offline_memory,
                 periphery.range_checker.clone(),
                 base_config.clone(),
             )
@@ -79,7 +77,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .inventory,
             number_of_calls: 0,
             periphery,
-            offline_memory,
         }
     }
 
@@ -107,9 +104,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 executor.execute(memory, instruction.as_ref(), execution_state)
             });
 
+        self.number_of_calls += 1;
         let to_record_id = RecordId(memory.get_memory_logs().len());
 
-        memory.memory.apc_ranges.push((from_record_id.0, to_record_id.0));
+        memory
+            .memory
+            .apc_ranges
+            .push((from_record_id.0, to_record_id.0));
 
         res
     }
@@ -217,25 +218,29 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             dummy_trace_index_to_apc_index_by_instruction.len()
         );
 
-        let dummy_values = (0..self.number_of_calls).into_par_iter().map(|record_index| {
-            (0..self.instructions.len())
-                .map(|index| {
-                    // get the air name and offset for this instruction (by index)
-                    let (air_name, offset) = instruction_index_to_table_offset.get(&index).unwrap();
-                    // get the table
-                    let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                    // get how many times this table is used per record
-                    let occurrences_per_record = occurrences_by_table_name.get(air_name).unwrap();
-                    // get the width of each occurrence
-                    let width = table.width();
-                    // start after the previous record ended, and offset by the correct offset
-                    let start = (record_index * occurrences_per_record + offset) * width;
-                    // end at the start + width
-                    let end = start + width;
-                    &table.values[start..end]
-                })
-                .collect_vec()
-        });
+        let dummy_values = (0..self.number_of_calls)
+            .into_par_iter()
+            .map(|record_index| {
+                (0..self.instructions.len())
+                    .map(|index| {
+                        // get the air name and offset for this instruction (by index)
+                        let (air_name, offset) =
+                            instruction_index_to_table_offset.get(&index).unwrap();
+                        // get the table
+                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
+                        // get how many times this table is used per record
+                        let occurrences_per_record =
+                            occurrences_by_table_name.get(air_name).unwrap();
+                        // get the width of each occurrence
+                        let width = table.width();
+                        // start after the previous record ended, and offset by the correct offset
+                        let start = (record_index * occurrences_per_record + offset) * width;
+                        // end at the start + width
+                        let end = start + width;
+                        &table.values[start..end]
+                    })
+                    .collect_vec()
+            });
 
         // go through the final table and fill in the values
         values
