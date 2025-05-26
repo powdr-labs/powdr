@@ -36,12 +36,25 @@ impl<F: PrimeField32> PlonkChip<F> {
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
+        let PowdrPrecompile {
+            original_instructions,
+            original_airs,
+            is_valid_column,
+            name,
+            opcode,
+            ..
+        } = precompile;
         let air = PlonkAir {
             _marker: std::marker::PhantomData,
         };
-        let name = precompile.name.clone();
-        let opcode = precompile.opcode.clone();
-        let executor = PowdrExecutor::new(precompile, memory, base_config, periphery);
+        let executor = PowdrExecutor::new(
+            original_instructions,
+            original_airs,
+            is_valid_column,
+            memory,
+            base_config,
+            periphery,
+        );
 
         Self {
             name,

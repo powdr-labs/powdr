@@ -6,7 +6,6 @@ use std::{
 use super::{
     chip::{RangeCheckerSend, RowEvaluator, SharedChips},
     vm::OriginalInstruction,
-    PowdrPrecompile,
 };
 use itertools::Itertools;
 use openvm_circuit::{
@@ -38,7 +37,7 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::IntoParallelIterator,
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicMachine};
+use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
 
 type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
@@ -54,15 +53,17 @@ pub struct PowdrExecutor<F: PrimeField32> {
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        precompile: PowdrPrecompile<F>,
+        instructions: Vec<OriginalInstruction<F>>,
+        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
+        is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
         Self {
-            instructions: precompile.original_instructions,
-            air_by_opcode_id: precompile.original_airs,
-            is_valid_poly_id: precompile.is_valid_column.id.id,
+            instructions,
+            air_by_opcode_id,
+            is_valid_poly_id: is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.range_checker.clone(),
