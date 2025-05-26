@@ -2,7 +2,7 @@ use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
-use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
+use powdr_openvm::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 
 use test_log::test;
 
@@ -31,7 +31,11 @@ fn test_optimize() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize(machine, OpenVmBusInteractionHandler::default(), 5);
+    let machine = optimize(
+        machine,
+        OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
+        5,
+    );
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",

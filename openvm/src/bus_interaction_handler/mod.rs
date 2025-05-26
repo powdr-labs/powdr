@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
 use powdr_autoprecompiles::optimizer::IsBusStateful;
@@ -14,13 +16,14 @@ mod memory;
 mod tuple_range_checker;
 mod variable_range_checker;
 
-const EXECUTION_BRIDGE: u64 = 0;
-const MEMORY: u64 = 1;
-const PC_LOOKUP: u64 = 2;
-const VARIABLE_RANGE_CHECKER: u64 = 3;
-const BITWISE_LOOKUP: u64 = 6;
-const TUPLE_RANGE_CHECKER: u64 = 7;
+const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
+const DEFAULT_MEMORY: u64 = 1;
+const DEFAULT_PC_LOOKUP: u64 = 2;
+const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
+const DEFAULT_BITWISE_LOOKUP: u64 = 6;
+const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
 
+#[derive(Debug, Copy, Clone)]
 pub enum BusType {
     ExecutionBridge,
     Memory,
@@ -28,23 +31,85 @@ pub enum BusType {
     VariableRangeChecker,
     BitwiseLookup,
     TupleRangeChecker,
+    Sha,
 }
 
-pub fn bus_type(bus_id: u64) -> BusType {
-    match bus_id {
-        EXECUTION_BRIDGE => BusType::ExecutionBridge,
-        MEMORY => BusType::Memory,
-        PC_LOOKUP => BusType::PcLookup,
-        VARIABLE_RANGE_CHECKER => BusType::VariableRangeChecker,
-        BITWISE_LOOKUP => BusType::BitwiseLookup,
-        TUPLE_RANGE_CHECKER => BusType::TupleRangeChecker,
-        _ => panic!("Unknown bus ID: {bus_id}"),
+impl std::fmt::Display for BusType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            BusType::ExecutionBridge => "EXECUTION_BRIDGE",
+            BusType::Memory => "MEMORY",
+            BusType::PcLookup => "PC_LOOKUP",
+            BusType::VariableRangeChecker => "VARIABLE_RANGE_CHECKER",
+            BusType::BitwiseLookup => "BITWISE_LOOKUP",
+            BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
+            BusType::Sha => "SHA",
+        };
+        write!(f, "{name}")
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
+pub struct BusMap {
+    bus_ids: HashMap<u64, BusType>,
+}
+
+impl BusMap {
+    pub fn openvm_base() -> Self {
+        let bus_ids = [
+            (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
+            (DEFAULT_MEMORY, BusType::Memory),
+            (DEFAULT_PC_LOOKUP, BusType::PcLookup),
+            (
+                DEFAULT_VARIABLE_RANGE_CHECKER,
+                BusType::VariableRangeChecker,
+            ),
+            (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
+            (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
+        ]
+        .into_iter()
+        .collect::<HashMap<u64, BusType>>();
+
+        Self { bus_ids }
+    }
+
+    pub fn bus_type(&self, bus_id: u64) -> BusType {
+        self.bus_ids[&bus_id]
+    }
+
+    pub fn with_sha(mut self, id: u64) -> Self {
+        self.bus_ids.insert(id, BusType::Sha);
+        self
+    }
+
+    pub fn with_bus_type(mut self, id: u64, bus_type: BusType) -> Self {
+        self.bus_ids.insert(id, bus_type);
+        self
+    }
+
+    pub fn with_bus_map(mut self, bus_map: BusMap) -> Self {
+        self.bus_ids.extend(bus_map.bus_ids);
+        self
+    }
+
+    pub fn inner(&self) -> &HashMap<u64, BusType> {
+        &self.bus_ids
+    }
+}
+
+#[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
+    bus_map: BusMap,
     _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
+    pub fn new(bus_map: BusMap) -> Self {
+        Self {
+            bus_map,
+            _phantom: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T> {
@@ -63,7 +128,10 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             return bus_interaction;
         }
 
-        let payload_constraints = match bus_type(bus_id.to_integer().try_into_u64().unwrap()) {
+        let payload_constraints = match self
+            .bus_map
+            .bus_type(bus_id.to_integer().try_into_u64().unwrap())
+        {
             // Sends / receives (pc, timestamp) pairs. They could have any value.
             BusType::ExecutionBridge => bus_interaction.payload,
             // Sends a (pc, opcode, args..) tuple. In theory, we could refine the range constraints
@@ -76,6 +144,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
                 handle_variable_range_checker(&bus_interaction.payload)
             }
             BusType::TupleRangeChecker => handle_tuple_range_checker(&bus_interaction.payload),
+            BusType::Sha => bus_interaction.payload,
         };
         BusInteraction {
             payload: payload_constraints,
@@ -91,13 +160,14 @@ fn byte_constraint<T: FieldElement>() -> RangeConstraint<T> {
 impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
     fn is_stateful(&self, bus_id: T) -> bool {
         let bus_id = bus_id.to_integer().try_into_u64().unwrap();
-        match bus_type(bus_id) {
+        match self.bus_map.bus_type(bus_id) {
             BusType::ExecutionBridge => true,
             BusType::Memory => true,
             BusType::PcLookup => false,
             BusType::VariableRangeChecker => false,
             BusType::BitwiseLookup => false,
             BusType::TupleRangeChecker => false,
+            BusType::Sha => false,
         }
     }
 }
