@@ -61,6 +61,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
         is_valid_column: Column,
+        memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -69,7 +70,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             air_by_opcode_id,
             is_valid_poly_id: is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
-                offline_memory,
+                memory,
                 periphery.range_checker.clone(),
                 base_config.clone(),
             )
