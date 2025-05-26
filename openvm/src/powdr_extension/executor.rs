@@ -15,7 +15,7 @@ use openvm_circuit::{
         ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
         VmInventoryError,
     },
-    system::memory::{MemoryRecord, OfflineMemory, RecordId},
+    system::memory::OfflineMemory,
 };
 use openvm_circuit::{
     arch::{VmConfig, VmInventory},
@@ -25,10 +25,7 @@ use openvm_circuit::{
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_stark_backend::{
-    p3_matrix::Matrix,
-    p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator},
-};
+use openvm_stark_backend::{p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator};
 
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
@@ -90,8 +87,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
-        // save the next available RecordId
-        let from_record_id = RecordId(memory.get_memory_logs().len());
+        // save the next available `RecordId`
+        let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
         let res = self
@@ -106,12 +103,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             });
 
         self.number_of_calls += 1;
-        let to_record_id = RecordId(memory.get_memory_logs().len());
+        let to_record_id = memory.get_memory_logs().len();
 
         memory
             .memory
             .apc_ranges
-            .push((from_record_id.0, to_record_id.0));
+            .push((from_record_id, to_record_id));
 
         res
     }
@@ -254,6 +251,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     self.instructions.iter().zip_eq(dummy_values).enumerate()
                 {
                     let evaluator = RowEvaluator::new(dummy_row, None);
+
                     // first remove the side effects of this row on the main periphery
                     for range_checker_send in self
                         .air_by_opcode_id
@@ -278,15 +276,19 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                                 .remove_count(value, max_bits as usize);
                         }
                     }
+
                     for (dummy_trace_index, apc_index) in
                         &dummy_trace_index_to_apc_index_by_instruction[instruction_id]
                     {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
+
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
+
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+
                 // replay the side effects of this row on the main periphery
                 for bus_interaction in bus_interactions.iter() {
                     let mult = evaluator
@@ -297,9 +299,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .iter()
                         .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
                         .collect_vec();
+
                     self.periphery.apply(bus_interaction.id, mult, &args);
                 }
             });
+
         RowMajorMatrix::new(values, width)
     }
 }
