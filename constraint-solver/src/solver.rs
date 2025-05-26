@@ -1,5 +1,4 @@
 use exhaustive_search::ExhaustiveSearch;
-use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
@@ -23,10 +22,9 @@ mod quadratic_equivalences;
 /// The result of the solving process.
 pub struct SolveResult<T: FieldElement, V> {
     /// The concrete variable assignments that were derived.
-    pub assignments: BTreeMap<V, T>,
-    /// The final state of the constraint system, with known variables
-    /// replaced by their values and constraints simplified accordingly.
-    pub simplified_constraint_system: ConstraintSystem<T, V>,
+    /// Values might contain variables that are replaced as well,
+    /// and because of that, assignments should be applied in order.
+    pub assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -51,6 +49,9 @@ pub struct Solver<T: FieldElement, V> {
     bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
+    /// The concrete variable assignments or replacements that were derived for variables
+    /// that do not occur in the constraints any more.
+    assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
@@ -64,6 +65,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            assignments: Default::default(),
         }
     }
 
@@ -82,14 +84,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
-        let assignments = self
-            .range_constraints
-            .all_range_constraints()
-            .filter_map(|(v, rc)| Some((v, rc.try_to_single_value()?)))
-            .collect();
         Ok(SolveResult {
-            assignments,
-            simplified_constraint_system: self.constraint_system.into(),
+            assignments: self.assignments,
         })
     }
 
@@ -159,8 +155,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
-            // TODO can we make this work with Effects?
-            self.constraint_system.substitute_by_unknown(
+            self.apply_assignment(
                 y,
                 &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
             );
@@ -176,7 +171,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let mut progress = false;
         for (variable, value) in &assignments {
-            progress |= self.apply_assignment(variable, &(*value).into());
+            progress |=
+                self.apply_range_constraint_update(variable, RangeConstraint::from_value(*value));
         }
 
         Ok(progress)
@@ -184,7 +180,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr),
+            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr.into()),
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
@@ -196,28 +192,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
-    fn apply_assignment(&mut self, variable: &V, expr: &SymbolicExpression<T, V>) -> bool {
-        self.apply_range_constraint_update(variable, expr.range_constraint())
-    }
-
     fn apply_range_constraint_update(
         &mut self,
         variable: &V,
         range_constraint: RangeConstraint<T>,
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
-            // The range constraint was updated.
-            log::trace!("({variable}: {range_constraint})");
-
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.constraint_system
-                    .substitute_by_known(variable, &value.into());
+                self.apply_assignment(variable, &value.into());
+            } else {
+                // The range constraint was updated.
+                log::trace!("({variable}: {range_constraint})");
             }
             true
         } else {
             false
         }
+    }
+
+    fn apply_assignment(&mut self, variable: &V, expr: &QuadraticSymbolicExpression<T, V>) -> bool {
+        log::debug!("({variable} := {expr})");
+        self.constraint_system.substitute_by_unknown(variable, expr);
+        self.assignments.push((variable.clone(), expr.clone()));
+        // TODO we could check if the variable already has an assignment,
+        // but usually it should not be in the system once it has been assigned.
+        true
     }
 
     /// Given a set of variable assignments, checks if they violate any constraint.
@@ -294,13 +294,5 @@ impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
         } else {
             false
         }
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RangeConstraints<T, V> {
-    fn all_range_constraints(self) -> impl Iterator<Item = (V, RangeConstraint<T>)> {
-        self.range_constraints
-            .into_iter()
-            .sorted_by_key(|(v, _)| v.clone())
     }
 }

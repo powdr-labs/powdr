@@ -9,7 +9,7 @@ use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use register_optimizer::{check_register_operation_consistency, optimize_register_operations};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::iter::once;
 
@@ -133,16 +133,6 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for Sy
                         .flat_map(|i| i.children_mut()),
                 ),
         )
-    }
-}
-
-impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
-    pub fn constraint_columns(&self) -> BTreeSet<Column> {
-        self.constraints
-            .iter()
-            .flat_map(|c| c.unique_columns())
-            .unique()
-            .collect()
     }
 }
 
@@ -305,7 +295,6 @@ pub enum VMBusInteraction<T> {
 const EXECUTION_BUS_ID: u64 = 0;
 const MEMORY_BUS_ID: u64 = 1;
 const PC_LOOKUP_BUS_ID: u64 = 2;
-const RANGE_CHECK_BUS_ID: u64 = 3;
 
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(
@@ -443,23 +432,6 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
             }
         }
     }
-
-    machine
-}
-
-pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let cols = machine.constraint_columns();
-
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id != RANGE_CHECK_BUS_ID {
-            return true;
-        }
-
-        bus_int
-            .args
-            .iter()
-            .any(|a| a.unique_columns().any(|c| cols.contains(&c)))
-    });
 
     machine
 }
