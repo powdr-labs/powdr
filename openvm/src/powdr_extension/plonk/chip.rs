@@ -165,9 +165,16 @@ where
                 // - Temporary variables appear in `c` for the first time.
                 // TODO: Solve for tmp variables of other columns too.
                 vars.derive_tmp_values_for_c(gate);
-                columns.a = vars.get(&gate.a).expect("Unknown tmp variable in a");
-                columns.b = vars.get(&gate.b).expect("Unknown tmp variable in b");
-                columns.c = vars.get(&gate.c).expect("Unknown tmp variable in c");
+                vars.assert_all_known_or_unused(gate);
+                if let Some(a) = vars.get(&gate.a) {
+                    columns.a = a;
+                }
+                if let Some(b) = vars.get(&gate.b) {
+                    columns.b = b;
+                }
+                if let Some(c) = vars.get(&gate.c) {
+                    columns.c = c;
+                }
             }
         }
 
@@ -224,6 +231,19 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
             let value =
                 -(gate.q_l * a + gate.q_r * b + gate.q_mul * a * b + gate.q_const) / gate.q_o;
             self.tmp_vars[*id] = Some(value);
+        }
+    }
+
+    /// Asserts that all variables `a`, `b`, and `c` in the given gate are known or unused.
+    fn assert_all_known_or_unused(&self, gate: &Gate<F, u64>) {
+        if let Variable::Tmp(id) = gate.a {
+            assert!(self.tmp_vars[id].is_some(), "Variable `a` is unknown.",);
+        }
+        if let Variable::Tmp(id) = gate.b {
+            assert!(self.tmp_vars[id].is_some(), "Variable `b` is unknown.",);
+        }
+        if let Variable::Tmp(id) = gate.c {
+            assert!(self.tmp_vars[id].is_some(), "Variable `c` is unknown.",);
         }
     }
 }
