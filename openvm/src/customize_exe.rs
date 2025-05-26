@@ -93,8 +93,10 @@ pub fn customize<F: PrimeField32>(
         SystemOpcode::TERMINATE.global_opcode().as_usize(),
         0x510, // not sure yet what this is
         0x513, // not sure yet what this is
+        0x516, // not sure yet what this is
         0x51c, // not sure yet what this is
         0x523, // not sure yet what this is
+        0x526, // not sure yet what this is
     ];
 
     let mut blocks = collect_basic_blocks(&exe.program, labels, &opcodes_no_apc);
