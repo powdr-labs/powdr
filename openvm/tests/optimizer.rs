@@ -2,7 +2,7 @@ use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
-use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
+use powdr_openvm::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 
 use test_log::test;
 
@@ -33,7 +33,7 @@ fn test_optimize() {
 
     let machine = optimize(
         machine,
-        OpenVmBusInteractionHandler::new(Default::default()),
+        OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
         5,
     );
 
