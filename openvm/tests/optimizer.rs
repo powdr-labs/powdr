@@ -1,6 +1,6 @@
+use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_autoprecompiles::{constraint_optimizer::optimize_constraints, optimizer::optimize};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 
@@ -52,6 +52,6 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [3194, 3207, 506]
+        [3194, 3207, 160]
     );
 }
