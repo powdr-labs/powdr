@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use powdr_autoprecompiles::constraint_optimizer::optimize_constraints;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
