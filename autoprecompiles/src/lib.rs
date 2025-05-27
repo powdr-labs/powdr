@@ -316,37 +316,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         (machine, subs)
     }
-
-    pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<T>> {
-        let mut blocks = Vec::new();
-        let mut curr_block = BasicBlock {
-            start_idx: 0,
-            statements: Vec::new(),
-        };
-        for (i, instr) in self.program.iter().enumerate() {
-            match self.instruction_kind.get(&instr.name).unwrap() {
-                InstructionKind::Normal => {
-                    curr_block.statements.push(instr.clone());
-                }
-                InstructionKind::ConditionalBranch
-                | InstructionKind::UnconditionalBranch
-                | InstructionKind::Terminal => {
-                    curr_block.statements.push(instr.clone());
-                    blocks.push(curr_block);
-                    curr_block = BasicBlock {
-                        start_idx: i as u64,
-                        statements: Vec::new(),
-                    };
-                }
-            }
-        }
-
-        if !curr_block.statements.is_empty() {
-            blocks.push(curr_block);
-        }
-
-        blocks
-    }
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
