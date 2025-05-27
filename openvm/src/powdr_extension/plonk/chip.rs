@@ -1,8 +1,14 @@
+use std::borrow::BorrowMut;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use crate::powdr_extension::{
-    chip::SharedChips, executor::PowdrExecutor, PowdrOpcode, PowdrPrecompile,
-};
+use crate::plonk::{Gate, PlonkCircuit, Variable};
+use crate::powdr_extension::executor::PowdrExecutor;
+use crate::powdr_extension::plonk::air::PlonkColumns;
+use crate::powdr_extension::PowdrOpcode;
+use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
+use itertools::Itertools;
+use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
     system::memory::{MemoryController, OfflineMemory},
@@ -11,6 +17,9 @@ use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_air::BaseAir;
+use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
+use openvm_stark_backend::p3_matrix::Matrix;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::PrimeField32,
@@ -18,6 +27,8 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
+use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
 
@@ -26,6 +37,7 @@ pub struct PlonkChip<F: PrimeField32> {
     opcode: PowdrOpcode,
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
+    machine: SymbolicMachine<F>,
 }
 
 impl<F: PrimeField32> PlonkChip<F> {
@@ -42,7 +54,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             is_valid_column,
             name,
             opcode,
-            ..
+            machine,
         } = precompile;
         let air = PlonkAir {
             _marker: std::marker::PhantomData,
@@ -61,6 +73,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             opcode,
             air: Arc::new(air),
             executor,
+            machine,
         }
     }
 }
@@ -107,6 +120,130 @@ where
     }
 
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
-        todo!()
+        tracing::trace!("Generating air proof input for PlonkChip {}", self.name);
+
+        // TODO: Compute the actual PlonK circuit from the machine.
+        let plonk_circuit = PlonkCircuit::<Val<SC>, u64>::default();
+        let number_of_calls = self.executor.number_of_calls();
+        let width = self.trace_width();
+        let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
+
+        // Get witness in a calls x variables matrix.
+        // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
+        // which is unnecessary.
+        let column_index_by_poly_id = self
+            .machine
+            .unique_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id.id, index))
+            .collect();
+        let witness = self
+            .executor
+            .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
+
+        // TODO: This should be parallelized.
+        let mut values = <Val<SC>>::zero_vec(height * width);
+        let num_tmp_vars = plonk_circuit.num_tmp_vars();
+        for (call_index, witness) in witness.rows().take(number_of_calls).enumerate() {
+            // Computing the trace values for the current call (starting at row call_index * circuit_length).
+            let witness = witness.collect_vec();
+            let mut vars = PlonkVariables::new(num_tmp_vars, &witness, &column_index_by_poly_id);
+            for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
+                let index = call_index * plonk_circuit.len() + gate_index;
+                let columns: &mut PlonkColumns<_> =
+                    values[index * width..(index + 1) * width].borrow_mut();
+
+                // TODO: These should be pre-processed columns (for soundness and efficiency).
+                columns.q_l = gate.q_l;
+                columns.q_r = gate.q_r;
+                columns.q_o = gate.q_o;
+                columns.q_mul = gate.q_mul;
+                columns.q_const = gate.q_const;
+
+                // We currently assume that:
+                // - We can always solve for temporary variables, by processing the gates in order.
+                // - Temporary variables appear in `c` for the first time.
+                // TODO: Solve for tmp variables of other columns too.
+                vars.derive_tmp_values_for_c(gate);
+                vars.assert_all_known_or_unused(gate);
+                if let Some(a) = vars.get(&gate.a) {
+                    columns.a = a;
+                }
+                if let Some(b) = vars.get(&gate.b) {
+                    columns.b = b;
+                }
+                if let Some(c) = vars.get(&gate.c) {
+                    columns.c = c;
+                }
+            }
+        }
+
+        AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
+    }
+}
+
+/// Variables of the PlonK circuit.
+struct PlonkVariables<'a, F> {
+    /// Temporary variables, indexed by their ID.
+    /// If None, the value is not known yet.
+    tmp_vars: Vec<Option<F>>,
+    /// The vector of witness values, indexed by the column index.
+    witness: &'a [F],
+    /// Maps a poly ID to its index in the witness vector.
+    column_index_by_poly_id: &'a BTreeMap<u64, usize>,
+}
+
+impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
+    fn new(
+        num_tmp_vars: usize,
+        witness: &'a [F],
+        column_index_by_poly_id: &'a BTreeMap<u64, usize>,
+    ) -> Self {
+        Self {
+            tmp_vars: vec![None; num_tmp_vars],
+            witness,
+            column_index_by_poly_id,
+        }
+    }
+
+    /// Get the value of a variable. None if the value is not known yet.
+    fn get(&self, variable: &Variable<u64>) -> Option<F> {
+        match variable {
+            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[id]]),
+            Variable::Tmp(id) => self.tmp_vars[*id],
+            Variable::Unused => None,
+        }
+    }
+
+    /// If the given gate's `c` value is unknown and `a` and `b` are known,
+    /// derives the value of `c`.
+    fn derive_tmp_values_for_c(&mut self, gate: &Gate<F, u64>) {
+        if self.get(&gate.c).is_some() {
+            // Already know the value.
+            return;
+        }
+        if let (Some(a), Some(b), Variable::Tmp(id)) =
+            (self.get(&gate.a), self.get(&gate.b), &gate.c)
+        {
+            // The PlonK constraint is:
+            // q_l * a + q_r * b + q_o * c + q_mul * a * b + q_const = 0
+            // We can derive c as:
+            let value =
+                -(gate.q_l * a + gate.q_r * b + gate.q_mul * a * b + gate.q_const) / gate.q_o;
+            self.tmp_vars[*id] = Some(value);
+        }
+    }
+
+    /// Asserts that all variables `a`, `b`, and `c` in the given gate are known or unused.
+    fn assert_all_known_or_unused(&self, gate: &Gate<F, u64>) {
+        if let Variable::Tmp(id) = gate.a {
+            assert!(self.tmp_vars[id].is_some(), "Variable `a` is unknown.",);
+        }
+        if let Variable::Tmp(id) = gate.b {
+            assert!(self.tmp_vars[id].is_some(), "Variable `b` is unknown.",);
+        }
+        if let Variable::Tmp(id) = gate.c {
+            assert!(self.tmp_vars[id].is_some(), "Variable `c` is unknown.",);
+        }
     }
 }
