@@ -1,4 +1,10 @@
+use powdr_number::FieldElement;
+use std::fmt::{self, Display};
+
+pub mod air_to_plonkish;
+
 /// A variable in a PlonK gate.
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Variable<V> {
     /// A variable from the input constraint system.
     /// At run-time, we can get the concrete values from the APC witness generation.
@@ -6,6 +12,18 @@ enum Variable<V> {
     /// A temporary variable (represented by an ID). Assuming there is at most one temporary variable in a gate,
     /// we can solve for its value at run-time.
     Tmp(usize),
+    /// An unused variable. This cell will be unconstrained; the prover can choose any value.
+    Unused,
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable::Witness(v) => write!(f, "{v}"),
+            Variable::Tmp(id) => write!(f, "tmp_{id}"),
+            Variable::Unused => write!(f, "Unused"),
+        }
+    }
 }
 
 /// A PlonK gate. For each gate, the following equation must hold:
@@ -14,7 +32,11 @@ enum Variable<V> {
 /// and a, b, c are variables.
 /// If the same variable appears in multiple gates, a copy constraint
 /// must be enforced.
-struct Gate<T, V> {
+#[derive(Clone, Debug)]
+pub struct Gate<T, V>
+where
+    T: Display,
+{
     q_l: T,
     q_r: T,
     q_o: T,
@@ -26,6 +48,52 @@ struct Gate<T, V> {
 }
 
 /// The PlonK circuit, which is just a collection of gates.
-struct PlonkCircuit<T, V> {
-    gates: Vec<Gate<T, V>>,
+#[derive(Clone, Debug)]
+pub struct PlonkCircuit<T, V>
+where
+    T: Display,
+{
+    pub gates: Vec<Gate<T, V>>,
+}
+
+impl<T, V> PlonkCircuit<T, V>
+where
+    T: FieldElement,
+{
+    fn new() -> Self {
+        PlonkCircuit { gates: Vec::new() }
+    }
+
+    fn add_gate(&mut self, gate: Gate<T, V>) {
+        self.gates.push(gate);
+    }
+}
+
+impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fmt_fe = |v: &T| {
+            if v.is_in_lower_half() {
+                format!("{v}")
+            } else {
+                format!("-{}", -*v)
+            }
+        };
+        for gate in &self.gates {
+            writeln!(
+                f,
+                "{} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
+                fmt_fe(&gate.q_l),
+                gate.a,
+                fmt_fe(&gate.q_r),
+                gate.b,
+                fmt_fe(&gate.q_o),
+                gate.c,
+                fmt_fe(&gate.q_mul),
+                gate.a,
+                gate.b,
+                fmt_fe(&gate.q_const),
+            )?;
+        }
+        Ok(())
+    }
 }
