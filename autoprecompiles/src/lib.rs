@@ -144,19 +144,6 @@ pub enum InstructionKind {
     Terminal,
 }
 
-#[derive(Debug, Clone)]
-pub struct Autoprecompiles<T> {
-    pub program: Vec<SymbolicInstructionStatement<T>>,
-    pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct BasicBlock<T> {
-    pub start_idx: u64,
-    pub statements: Vec<SymbolicInstructionStatement<T>>,
-}
-
 #[derive(Clone, Debug)]
 pub enum MemoryType {
     Constant,
@@ -296,33 +283,30 @@ const EXECUTION_BUS_ID: u64 = 0;
 const MEMORY_BUS_ID: u64 = 1;
 const PC_LOOKUP_BUS_ID: u64 = 2;
 
-impl<T: FieldElement> Autoprecompiles<T> {
-    pub fn build(
-        &self,
-        bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
-        degree_bound: usize,
-        opcode: u32,
-    ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        let (machine, subs) = generate_precompile(
-            &self.program,
-            &self.instruction_kind,
-            &self.instruction_machines,
-        );
+pub fn build<T: FieldElement>(
+    program: Vec<SymbolicInstructionStatement<T>>,
+    instruction_kind: BTreeMap<String, InstructionKind>,
+    instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    degree_bound: usize,
+    opcode: u32,
+) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+    let (machine, subs) =
+        generate_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-        let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
+    let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
 
-        // add guards to constraints that are not satisfied by zeroes
-        let machine = add_guards(machine);
+    // add guards to constraints that are not satisfied by zeroes
+    let machine = add_guards(machine);
 
-        (machine, subs)
-    }
+    (machine, subs)
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
 /// Assumptions:
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
-pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let max_id = machine
         .unique_columns()
         .map(|c| {
@@ -414,7 +398,7 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     machine
 }
 
-pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInteraction<T> {
+fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInteraction<T> {
     let [r, _s] = machine
         .bus_interactions
         .iter()
@@ -429,7 +413,7 @@ pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBu
     r
 }
 
-pub fn generate_precompile<T: FieldElement>(
+pub fn generate_symbolic_machine<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
