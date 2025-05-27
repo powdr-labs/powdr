@@ -1,4 +1,7 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -19,22 +22,36 @@ pub fn optimize<T: FieldElement>(
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
     let machine = optimize_pc_lookup(machine, opcode);
-    let machine = optimize_exec_bus(machine);
+    let mut machine = optimize_exec_bus(machine);
     assert!(check_register_operation_consistency(&machine));
 
-    // We need to remove memory bus interactions with inlined multiplicity zero before
-    // doing register memory optimizations.
-    let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
+    let hash = machine_hash(&machine);
+    loop {
+        machine =
+            optimization_loop_iteration(machine, bus_interaction_handler.clone(), degree_bound);
+        if machine_hash(&machine) == hash {
+            break machine;
+        }
+    }
+}
+
+fn optimization_loop_iteration<T: FieldElement>(
+    machine: SymbolicMachine<T>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    degree_bound: usize,
+) -> SymbolicMachine<T> {
+    let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound);
     assert!(check_register_operation_consistency(&machine));
 
     let machine = optimize_register_operations(machine);
     assert!(check_register_operation_consistency(&machine));
-
-    // Fixpoint style re-attempt.
-    // TODO we probably need proper fixpoint here at some point.
-    let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound);
-    assert!(check_register_operation_consistency(&machine));
     machine
+}
+
+fn machine_hash<T: FieldElement>(machine: &SymbolicMachine<T>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    machine.hash(&mut hasher);
+    hasher.finish()
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(

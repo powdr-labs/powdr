@@ -27,7 +27,7 @@ pub struct SymbolicInstructionStatement<T> {
     pub args: Vec<T>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -94,7 +94,7 @@ pub enum BusInteractionKind {
     Receive,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
