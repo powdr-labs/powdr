@@ -21,6 +21,7 @@ pub trait LargeInt:
     + Eq
     + PartialOrd
     + Ord
+    + Hash
     + From<u64>
     + BitAnd<Output = Self>
     + BitOr<Output = Self>

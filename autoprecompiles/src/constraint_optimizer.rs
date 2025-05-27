@@ -49,6 +49,9 @@ pub fn optimize_constraints<P: FieldElement>(
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("After removing trivial constraints", &constraint_system);
 
+    let constraint_system = remove_equal_constraints(constraint_system);
+    stats_logger.log("After removing equal constraints", &constraint_system);
+
     constraint_system_to_symbolic_machine(constraint_system)
 }
 
@@ -182,6 +185,17 @@ fn remove_trivial_constraints<P: FieldElement>(
     symbolic_machine
         .bus_interactions
         .retain(|bus_interaction| bus_interaction.multiplicity != zero);
+    symbolic_machine
+}
+
+fn remove_equal_constraints<P: FieldElement>(
+    mut symbolic_machine: ConstraintSystem<P, Variable>,
+) -> ConstraintSystem<P, Variable> {
+    symbolic_machine.algebraic_constraints = symbolic_machine
+        .algebraic_constraints
+        .into_iter()
+        .unique()
+        .collect();
     symbolic_machine
 }
 
