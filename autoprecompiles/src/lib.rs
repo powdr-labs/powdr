@@ -27,7 +27,7 @@ pub struct SymbolicInstructionStatement<T> {
     pub args: Vec<T>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -94,7 +94,7 @@ pub enum BusInteractionKind {
     Receive,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
@@ -294,7 +294,7 @@ pub fn build<T: FieldElement>(
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-    let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
+    let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);

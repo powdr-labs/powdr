@@ -108,6 +108,17 @@ impl<V> FromIterator<V> for BusInteraction<V> {
     }
 }
 
+impl<T: FieldElement, V1: Clone + Ord> BusInteraction<QuadraticSymbolicExpression<T, V1>> {
+    pub fn transform_var_type<V2: Clone + Ord>(
+        &self,
+        var_transform: &mut impl FnMut(&V1) -> V2,
+    ) -> BusInteraction<QuadraticSymbolicExpression<T, V2>> {
+        self.fields()
+            .map(|expr| expr.transform_var_type(var_transform))
+            .collect()
+    }
+}
+
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
     BusInteraction<QuadraticSymbolicExpression<T, V>>
 {
