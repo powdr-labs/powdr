@@ -13,9 +13,23 @@ where
     T: FieldElement,
 {
     let mut plonkish_expr = PlonkCircuit::new();
-    air_to_plonkish(algebraic_expr, &mut plonkish_expr, temp_id_offset);
+    let a = air_to_plonkish(algebraic_expr, &mut plonkish_expr, temp_id_offset);
     // The last gate's output is the result of the expression, which is evaluated to zero.
-    plonkish_expr.gates.last_mut().unwrap().q_o = T::ZERO;
+    if !plonkish_expr.gates.is_empty() {
+        plonkish_expr.gates.last_mut().unwrap().q_o = T::ZERO;
+    } else {
+        // For expression like x=0, the gates will be empty, but we add a dummy gate to represent this expression.
+        plonkish_expr.add_gate(Gate {
+            q_l: T::ONE,
+            q_r: T::ZERO,
+            q_o: T::ZERO,
+            q_mul: T::ZERO,
+            q_const: T::ZERO,
+            a,
+            b: Variable::Unused,
+            c: Variable::Unused,
+        });
+    }
 
     plonkish_expr
 }
@@ -203,6 +217,19 @@ mod tests {
             "0 * Unused + 0 * Unused + -1 * tmp_0 + 0 * Unused * Unused + -2 = 0
 2 * tmp_0 + 0 * Unused + -1 * tmp_1 + 0 * tmp_0 * Unused + 0 = 0
 0 * Unused + 1 * tmp_1 + 0 * tmp_2 + 0 * Unused * tmp_1 + 1 = 0
+"
+        )
+    }
+
+    #[test]
+    fn single_variable() {
+        let x = var("x", 0);
+        let expr = x.clone();
+        let mut temp_id_offset = 0;
+
+        assert_eq!(
+            format!("{}", build_plonk_expr(&expr, &mut temp_id_offset)),
+            "1 * x + 0 * Unused + 0 * Unused + 0 * x * Unused + 0 = 0
 "
         )
     }
