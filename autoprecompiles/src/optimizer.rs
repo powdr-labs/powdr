@@ -15,10 +15,14 @@ use crate::{
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
-    opcode: u32,
+    opcode: Option<u32>,
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
-    let machine = optimize_pc_lookup(machine, opcode);
+    let machine = if let Some(opcode) = opcode {
+        optimize_pc_lookup(machine, opcode)
+    } else {
+        machine
+    };
     let machine = optimize_exec_bus(machine);
     assert!(check_register_operation_consistency(&machine));
 
