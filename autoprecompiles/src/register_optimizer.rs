@@ -103,14 +103,5 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
             map
         });
 
-    if let Some((addr, _)) = count_per_addr.iter().find(|(_, &v)| v % 2 != 0) {
-        println!(
-            "Register memory bus interactions for address {} are not consistent (count is odd)",
-            *addr
-        );
-        panic!();
-        false
-    } else {
-        true
-    }
+    count_per_addr.values().any(|&v| v % 2 != 0)
 }

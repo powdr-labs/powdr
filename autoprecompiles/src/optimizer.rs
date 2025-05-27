@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    hash::{DefaultHasher, Hash, Hasher},
-};
+use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
