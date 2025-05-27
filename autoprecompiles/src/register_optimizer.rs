@@ -14,7 +14,7 @@ pub fn optimize_register_operations<T: FieldElement>(
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
-    let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
+    let mut previous_store: BTreeMap<u32, usize> = BTreeMap::new();
     machine
         .bus_interactions
         .iter()
@@ -45,27 +45,29 @@ pub fn optimize_register_operations<T: FieldElement>(
                 match local_reg_mem.get(&addr) {
                     Some(data) => {
                         assert_eq!(data.len(), mem_int.data.len());
-                        mem_int
-                            .data
-                            .iter()
-                            .zip_eq(data.iter())
-                            .for_each(|(new_data, old_data)| {
-                                let eq_expr = AlgebraicExpression::new_binary(
-                                    new_data.clone(),
-                                    AlgebraicBinaryOperator::Sub,
-                                    old_data.clone(),
-                                );
-                                new_constraints.push(eq_expr.into());
-                            });
+                        new_constraints.extend(mem_int.data.iter().zip_eq(data.iter()).filter_map(
+                            |(new_data, old_data)| {
+                                (new_data != old_data).then(|| {
+                                    let eq_expr = AlgebraicExpression::new_binary(
+                                        new_data.clone(),
+                                        AlgebraicBinaryOperator::Sub,
+                                        old_data.clone(),
+                                    );
+                                    eq_expr.into()
+                                })
+                            },
+                        ));
 
-                        to_remove.insert(i);
+                        if let Some(j) = previous_store.get(&addr) {
+                            to_remove.extend([i, *j]);
+                        }
                     }
                     None => {
                         local_reg_mem.insert(addr, mem_int.data.clone());
                     }
                 }
             } else {
-                last_store.insert(addr, i);
+                previous_store.insert(addr, i);
                 local_reg_mem.insert(addr, mem_int.data.clone());
             }
 
@@ -89,24 +91,7 @@ pub fn optimize_register_operations<T: FieldElement>(
                 return Some(bus_int);
             }
 
-            let addr = match mem_int.try_addr_u32() {
-                None => {
-                    panic!(
-                        "Register memory access must have constant address but found {}",
-                        mem_int.addr
-                    );
-                }
-                Some(addr) => addr,
-            };
-
-            let keep = if receive && !to_remove.contains(&i) {
-                Some(bus_int)
-            } else if receive && to_remove.contains(&i) {
-                None
-            } else if last_store
-                .get(&addr)
-                .is_some_and(|&last_index| last_index == i)
-            {
+            let keep = if !to_remove.contains(&i) {
                 Some(bus_int)
             } else {
                 None
@@ -144,5 +129,14 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
             map
         });
 
-    count_per_addr.values().all(|&v| v % 2 == 0)
+    if let Some((addr, _)) = count_per_addr.iter().find(|(_, &v)| v % 2 != 0) {
+        println!(
+            "Register memory bus interactions for address {} are not consistent (count is odd)",
+            *addr
+        );
+        panic!();
+        false
+    } else {
+        true
+    }
 }

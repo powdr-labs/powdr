@@ -25,11 +25,11 @@ pub fn optimize<T: FieldElement>(
     let mut machine = optimize_exec_bus(machine);
     assert!(check_register_operation_consistency(&machine));
 
-    let hash = machine_hash(&machine);
+    let size = machine_size(&machine);
     loop {
         machine =
             optimization_loop_iteration(machine, bus_interaction_handler.clone(), degree_bound);
-        if machine_hash(&machine) == hash {
+        if machine_size(&machine) == size {
             break machine;
         }
     }
@@ -40,18 +40,24 @@ fn optimization_loop_iteration<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
-    let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound);
+    let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
     assert!(check_register_operation_consistency(&machine));
 
+    let machine_before = machine.clone();
     let machine = optimize_register_operations(machine);
-    assert!(check_register_operation_consistency(&machine));
-    machine
+    if !check_register_operation_consistency(&machine) {
+        println!("before:\n{machine_before}\n\n===================================\n\n{machine}\n");
+        panic!();
+    }
+    optimize_constraints(machine, bus_interaction_handler, degree_bound)
 }
 
-fn machine_hash<T: FieldElement>(machine: &SymbolicMachine<T>) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    machine.hash(&mut hasher);
-    hasher.finish()
+fn machine_size<T: FieldElement>(machine: &SymbolicMachine<T>) -> [usize; 3] {
+    [
+        machine.constraints.len(),
+        machine.bus_interactions.len(),
+        machine.columns.len(),
+    ]
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(
