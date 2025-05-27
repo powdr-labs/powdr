@@ -28,7 +28,7 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, Symb
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
-pub fn optimize<P: FieldElement>(
+pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + 'static + Clone,
     degree_bound: usize,
