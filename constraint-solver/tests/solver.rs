@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    indexed_constraint_system::apply_substitutions,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::{Error, Solver},
@@ -255,42 +257,41 @@ fn xor_invalid() {
     }
 }
 
-// Disabled until boolean equivalence module is revamped
-// #[test]
-// fn add_with_carry() {
-//     // This tests a case of equivalent constraints that appear in the
-//     // way "add with carry" is performed in openvm.
-//     // X and Y end up being equivalent because they are both either
-//     // A or A - 256, depending on whether the value of A is between
-//     // 0 and 255 or not.
-//     // A is the result of an addition with carry.
-//     let constraint_system = ConstraintSystem {
-//         algebraic_constraints: vec![
-//             (var("X") * constant(7) - var("A") * constant(7) + constant(256) * constant(7))
-//                 * (var("X") * constant(7) - var("A") * constant(7)),
-//             (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
-//         ],
-//         // Byte range constraints on X and Y
-//         bus_interactions: vec![
-//             send(BYTE_BUS_ID, vec![var("X")]),
-//             send(BYTE_BUS_ID, vec![var("Y")]),
-//         ],
-//     };
+#[test]
+fn add_with_carry() {
+    // This tests a case of equivalent constraints that appear in the
+    // way "add with carry" is performed in openvm.
+    // X and Y end up being equivalent because they are both either
+    // A or A - 256, depending on whether the value of A is between
+    // 0 and 255 or not.
+    // A is the result of an addition with carry.
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            (var("X") * constant(7) - var("A") * constant(7) + constant(256) * constant(7))
+                * (var("X") * constant(7) - var("A") * constant(7)),
+            (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
+        ],
+        // Byte range constraints on X and Y
+        bus_interactions: vec![
+            send(BYTE_BUS_ID, vec![var("X")]),
+            send(BYTE_BUS_ID, vec![var("Y")]),
+        ],
+    };
 
-//     let solver = Solver::new(constraint_system.clone())
-//         .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
-//     let final_state = solver.solve().unwrap();
-//     let final_state = apply_substitutions(constraint_system, final_state.assignments)
-//         .algebraic_constraints
-//         .iter()
-//         .format("\n")
-//         .to_string();
-//     assert_eq!(
-//         final_state,
-//         "(-7 * A + 7 * X + 1792) * (-7 * A + 7 * X)
-// (-A + X + 256) * (-A + X)"
-//     );
-// }
+    let solver = Solver::new(constraint_system.clone())
+        .with_bus_interaction_handler(Box::new(TestBusInteractionHandler {}));
+    let final_state = solver.solve().unwrap();
+    let final_state = apply_substitutions(constraint_system, final_state.assignments)
+        .algebraic_constraints
+        .iter()
+        .format("\n")
+        .to_string();
+    assert_eq!(
+        final_state,
+        "(-7 * A + 7 * X + 1792) * (-7 * A + 7 * X)
+(-A + X + 256) * (-A + X)"
+    );
+}
 
 #[test]
 fn one_hot_flags() {
