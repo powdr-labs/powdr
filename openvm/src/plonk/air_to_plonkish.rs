@@ -14,7 +14,7 @@ where
 {
     let mut plonkish_expr = PlonkCircuit::new();
     air_to_plonkish(algebraic_expr, &mut plonkish_expr, temp_id_offset);
-    // The last gate's output is the result of the expression, which is evluated to zero.
+    // The last gate's output is the result of the expression, which is evaluated to zero.
     plonkish_expr.gates.last_mut().unwrap().q_o = T::ZERO;
 
     plonkish_expr
