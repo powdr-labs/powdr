@@ -10,7 +10,7 @@ use powdr_pilopt::simplify_expression;
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    powdr,
+    powdr::{self, UniqueColumns},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     SymbolicMachine, EXECUTION_BUS_ID, PC_LOOKUP_BUS_ID,
 };
@@ -56,7 +56,7 @@ fn machine_size<T: FieldElement>(machine: &SymbolicMachine<T>) -> [usize; 3] {
     [
         machine.constraints.len(),
         machine.bus_interactions.len(),
-        machine.columns.len(),
+        machine.unique_columns().count(),
     ]
 }
 
