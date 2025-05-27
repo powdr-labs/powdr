@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
-use powdr_autoprecompiles::optimizer::IsBusStateful;
+use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,

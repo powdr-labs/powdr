@@ -13,8 +13,8 @@ use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeFiel
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    Autoprecompiles, BusInteractionKind, InstructionKind, SymbolicBusInteraction,
-    SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine,
+    BusInteractionKind, InstructionKind, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::{FieldElement, LargeInt};
 
@@ -401,13 +401,10 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         })
         .collect();
 
-    let autoprecompiles = Autoprecompiles {
+    let (precompile, subs) = powdr_autoprecompiles::build(
         program,
         instruction_kind,
         instruction_machines,
-    };
-
-    let (precompile, subs) = autoprecompiles.build(
         OpenVmBusInteractionHandler::new(bus_map),
         OPENVM_DEGREE_BOUND,
         apc_opcode as u32,

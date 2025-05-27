@@ -1,24 +1,24 @@
+use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
-use optimizer::{optimize, IsBusStateful};
-use powdr::{Column, UniqueColumns};
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
-};
+use powdr::UniqueColumns;
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use register_optimizer::{check_register_operation_consistency, optimize_register_operations};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::iter::once;
+use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+pub mod constraint_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
+pub mod symbolic_machine_generator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -142,19 +142,6 @@ pub enum InstructionKind {
     ConditionalBranch,
     UnconditionalBranch,
     Terminal,
-}
-
-#[derive(Debug, Clone)]
-pub struct Autoprecompiles<T> {
-    pub program: Vec<SymbolicInstructionStatement<T>>,
-    pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct BasicBlock<T> {
-    pub start_idx: u64,
-    pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
 #[derive(Clone, Debug)]
@@ -292,83 +279,34 @@ pub enum VMBusInteraction<T> {
     Memory(MemoryBusInteraction<T>),
 }
 
-const EXECUTION_BUS_ID: u64 = 0;
-const MEMORY_BUS_ID: u64 = 1;
-const PC_LOOKUP_BUS_ID: u64 = 2;
+pub const EXECUTION_BUS_ID: u64 = 0;
+pub const MEMORY_BUS_ID: u64 = 1;
+pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
-impl<T: FieldElement> Autoprecompiles<T> {
-    pub fn build(
-        &self,
-        bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
-        degree_bound: usize,
-        opcode: u32,
-    ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        let (machine, subs) = generate_precompile(
-            &self.program,
-            &self.instruction_kind,
-            &self.instruction_machines,
-        );
+pub fn build<T: FieldElement>(
+    program: Vec<SymbolicInstructionStatement<T>>,
+    instruction_kind: BTreeMap<String, InstructionKind>,
+    instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    degree_bound: usize,
+    opcode: u32,
+) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+    let (machine, subs) =
+        statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-        let machine = optimize_pc_lookup(machine, opcode);
-        let machine = optimize_exec_bus(machine);
-        assert!(check_register_operation_consistency(&machine));
+    let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
 
-        // We need to remove memory bus interactions with inlined multiplicity zero before
-        // doing register memory optimizations.
-        let machine = optimize(machine, bus_interaction_handler.clone(), degree_bound);
-        assert!(check_register_operation_consistency(&machine));
+    // add guards to constraints that are not satisfied by zeroes
+    let machine = add_guards(machine);
 
-        let machine = optimize_register_operations(machine);
-        assert!(check_register_operation_consistency(&machine));
-
-        // Fixpoint style re-attempt.
-        // TODO we probably need proper fixpoint here at some point.
-        let machine = optimize(machine, bus_interaction_handler, degree_bound);
-        assert!(check_register_operation_consistency(&machine));
-
-        // add guards to constraints that are not satisfied by zeroes
-        let machine = add_guards(machine);
-
-        (machine, subs)
-    }
-
-    pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<T>> {
-        let mut blocks = Vec::new();
-        let mut curr_block = BasicBlock {
-            start_idx: 0,
-            statements: Vec::new(),
-        };
-        for (i, instr) in self.program.iter().enumerate() {
-            match self.instruction_kind.get(&instr.name).unwrap() {
-                InstructionKind::Normal => {
-                    curr_block.statements.push(instr.clone());
-                }
-                InstructionKind::ConditionalBranch
-                | InstructionKind::UnconditionalBranch
-                | InstructionKind::Terminal => {
-                    curr_block.statements.push(instr.clone());
-                    blocks.push(curr_block);
-                    curr_block = BasicBlock {
-                        start_idx: i as u64,
-                        statements: Vec::new(),
-                    };
-                }
-            }
-        }
-
-        if !curr_block.statements.is_empty() {
-            blocks.push(curr_block);
-        }
-
-        blocks
-    }
+    (machine, subs)
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
 /// Assumptions:
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
-pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let max_id = machine
         .unique_columns()
         .map(|c| {
@@ -458,291 +396,4 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     machine.constraints.extend(is_valid_mults);
 
     machine
-}
-
-pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInteraction<T> {
-    let [r, _s] = machine
-        .bus_interactions
-        .iter()
-        .filter_map(|bus_int| match bus_int.id {
-            EXECUTION_BUS_ID => Some(bus_int.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    // TODO assert that r.mult matches -expr
-    r
-}
-
-pub fn optimize_pc_lookup<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    opcode: u32,
-) -> SymbolicMachine<T> {
-    let mut first_pc = None;
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id == PC_LOOKUP_BUS_ID {
-            if first_pc.is_none() {
-                first_pc = Some(bus_int.clone());
-            }
-            return false;
-        }
-        true
-    });
-    let mut first_pc = first_pc.unwrap();
-    assert_eq!(first_pc.args.len(), 9);
-    first_pc.args[1] = AlgebraicExpression::Number(T::from(opcode));
-    first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[4] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[5] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[6] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[7] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[8] = AlgebraicExpression::Number(T::from(0u32));
-
-    machine.bus_interactions.push(first_pc);
-
-    machine
-}
-
-pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let mut first_seen = false;
-    let mut receive = true;
-    let mut latest_send = None;
-    let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
-    let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id != EXECUTION_BUS_ID {
-            return true;
-        }
-
-        if receive {
-            // TODO assert that mult matches -expr
-        }
-
-        // Keep the first receive
-        let keep = if !first_seen {
-            first_seen = true;
-            true
-        } else if !receive {
-            // Save the latest send and remove the bus interaction
-            let mut pc_expr = bus_int.args[0].clone();
-            powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
-            pc_expr = simplify_expression(pc_expr);
-
-            let mut ts_expr = bus_int.args[1].clone();
-            powdr::substitute_algebraic_algebraic(&mut ts_expr, &subs_ts);
-            ts_expr = simplify_expression(ts_expr);
-
-            let mut send = bus_int.clone();
-            send.args[0] = pc_expr;
-            send.args[1] = ts_expr;
-
-            latest_send = Some(send);
-            false
-        } else {
-            // Equate the latest send to the new receive and remove the bus interaction
-            subs_pc.insert(
-                bus_int.args[0].clone(),
-                latest_send.clone().unwrap().args[0].clone(),
-            );
-            subs_ts.insert(
-                bus_int.args[1].clone(),
-                latest_send.clone().unwrap().args[1].clone(),
-            );
-            false
-        };
-
-        receive = !receive;
-
-        keep
-    });
-
-    // Re-add the last send
-    machine.bus_interactions.push(latest_send.unwrap());
-
-    for c in &mut machine.constraints {
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_ts);
-        c.expr = simplify_expression(c.expr.clone());
-    }
-    for b in &mut machine.bus_interactions {
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_ts);
-        b.mult = simplify_expression(b.mult.clone());
-        for a in &mut b.args {
-            powdr::substitute_algebraic_algebraic(a, &subs_pc);
-            powdr::substitute_algebraic_algebraic(a, &subs_ts);
-            *a = simplify_expression(a.clone());
-        }
-    }
-
-    machine
-}
-
-pub fn generate_precompile<T: FieldElement>(
-    statements: &[SymbolicInstructionStatement<T>],
-    instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
-    let mut col_subs: Vec<Vec<u64>> = Vec::new();
-    let mut global_idx: u64 = 3;
-
-    for (i, instr) in statements.iter().enumerate() {
-        match instruction_kinds.get(&instr.name).unwrap() {
-            InstructionKind::Normal
-            | InstructionKind::UnconditionalBranch
-            | InstructionKind::ConditionalBranch => {
-                let machine = instruction_machines.get(&instr.name).unwrap().clone();
-
-                let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
-                global_idx = next_global_idx;
-
-                let pc_lookup: PcLookupBusInteraction<T> = machine
-                    .bus_interactions
-                    .iter()
-                    .filter_map(|bus_int| bus_int.clone().try_into().ok())
-                    .exactly_one()
-                    .expect("Expected single pc lookup");
-
-                let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
-                let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-
-                let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
-                let one = AlgebraicExpression::Number(1u64.into());
-                local_constraints.push((is_valid.clone() + one).into());
-
-                let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> =
-                    Default::default();
-                if is_loadstore(instr.opcode) {
-                    sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
-                }
-
-                // Constrain the opcode expression to equal the actual opcode.
-                let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
-                local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
-
-                assert_eq!(instr.args.len(), pc_lookup.args.len());
-                instr
-                    .args
-                    .iter()
-                    .zip_eq(&pc_lookup.args)
-                    .for_each(|(instr_arg, pc_arg)| {
-                        let arg = AlgebraicExpression::Number(*instr_arg);
-                        match pc_arg {
-                            AlgebraicExpression::Reference(ref arg_ref) => {
-                                sub_map.insert(Column::from(arg_ref), arg);
-                            }
-                            AlgebraicExpression::BinaryOperation(_expr) => {
-                                local_constraints.push((arg - pc_arg.clone()).into());
-                            }
-                            AlgebraicExpression::UnaryOperation(_expr) => {
-                                local_constraints.push((arg - pc_arg.clone()).into());
-                            }
-                            _ => {}
-                        }
-                    });
-
-                let local_identities = machine
-                    .constraints
-                    .iter()
-                    .chain(&local_constraints)
-                    .map(|expr| {
-                        let mut expr = expr.expr.clone();
-                        powdr::substitute_algebraic(&mut expr, &sub_map);
-                        powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                        expr = simplify_expression(expr);
-                        SymbolicConstraint { expr }
-                    })
-                    .collect::<Vec<_>>();
-
-                constraints.extend(local_identities);
-
-                for bus_int in &machine.bus_interactions {
-                    let mut link = bus_int.clone();
-                    link.args
-                        .iter_mut()
-                        .chain(std::iter::once(&mut link.mult))
-                        .for_each(|e| {
-                            powdr::substitute_algebraic(e, &sub_map);
-                            powdr::substitute_algebraic(e, &sub_map_loadstore);
-                            *e = simplify_expression(e.clone());
-                        });
-                    bus_interactions.push(link);
-                }
-
-                col_subs.push(subs);
-
-                // after the first round of simplifying,
-                // we need to look for register memory bus interactions
-                // and replace the addr by the first argument of the instruction
-                for bus_int in &mut bus_interactions {
-                    if bus_int.id != MEMORY_BUS_ID {
-                        continue;
-                    }
-
-                    let addr_space = match bus_int.args[0] {
-                        AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
-                        _ => panic!(
-                            "Address space must be a constant but got {}",
-                            bus_int.args[0]
-                        ),
-                    };
-
-                    if addr_space != 1 {
-                        continue;
-                    }
-
-                    match bus_int.args[1] {
-                        AlgebraicExpression::Number(_) => {}
-                        _ => {
-                            if let Some(arg) = bus_int.args.get_mut(1) {
-                                *arg = instr.args[0].into();
-                            } else {
-                                panic!("Expected address argument");
-                            }
-                        }
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-
-    (
-        SymbolicMachine {
-            constraints,
-            bus_interactions,
-        },
-        col_subs,
-    )
-}
-
-fn is_loadstore(opcode: usize) -> bool {
-    (0x210..=0x215).contains(&opcode)
-}
-
-fn loadstore_chip_info<T: FieldElement>(
-    machine: &SymbolicMachine<T>,
-    opcode: usize,
-) -> BTreeMap<Column, AlgebraicExpression<T>> {
-    let is_load = if opcode == 0x210 || opcode == 0x211 || opcode == 0x212 {
-        T::from(1u32)
-    } else {
-        T::from(0u32)
-    };
-    let is_load = AlgebraicExpression::Number(is_load);
-    let is_load_expr = match &machine.constraints[7].expr {
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, .. }) => left.clone(),
-        _ => panic!("Expected subtraction."),
-    };
-    let is_load_col = if let AlgebraicExpression::Reference(r) = &*is_load_expr {
-        r.into()
-    } else {
-        panic!("expected a single reference")
-    };
-
-    [(is_load_col, is_load)].into()
 }
