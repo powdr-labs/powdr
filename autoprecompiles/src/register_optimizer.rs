@@ -18,7 +18,7 @@ pub fn optimize_register_operations<T: FieldElement>(
     let mut to_remove: BTreeSet<usize> = Default::default();
     let mut previous_send: BTreeMap<u32, usize> = BTreeMap::new();
     for (i, bus_int) in machine.bus_interactions.iter().enumerate() {
-        let Some(mem_int) = try_to_register_memory_bus_interaction(&bus_int) else {
+        let Some(mem_int) = try_to_register_memory_bus_interaction(bus_int) else {
             continue;
         };
 
