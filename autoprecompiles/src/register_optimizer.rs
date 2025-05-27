@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use powdr_number::FieldElement;
 
-use crate::{MemoryBusInteraction, MemoryType, SymbolicConstraint, SymbolicMachine};
+use crate::{
+    MemoryBusInteraction, MemoryType, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+};
 
 /// Optimizes bus sends that correspend to register read and write operations.
 pub fn optimize_register_operations<T: FieldElement>(
@@ -14,113 +16,70 @@ pub fn optimize_register_operations<T: FieldElement>(
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut to_remove: BTreeSet<usize> = Default::default();
-    let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
-    machine
-        .bus_interactions
-        .iter()
-        .enumerate()
-        .for_each(|(i, bus_int)| {
-            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
-                Ok(mem_int) => mem_int,
-                Err(_) => {
-                    return;
-                }
-            };
+    let mut previous_send: BTreeMap<u32, usize> = BTreeMap::new();
+    for (i, bus_int) in machine.bus_interactions.iter().enumerate() {
+        let Some(mem_int) = try_to_register_memory_bus_interaction(bus_int) else {
+            continue;
+        };
 
-            if !matches!(mem_int.ty, MemoryType::Register) {
-                return;
-            }
+        let Some(addr) = mem_int.try_addr_u32() else {
+            panic!(
+                "Register memory access must have constant address but found {}",
+                mem_int.addr
+            );
+        };
 
-            let addr = match mem_int.try_addr_u32() {
-                None => {
-                    panic!(
-                        "Register memory access must have constant address but found {}",
-                        mem_int.addr
-                    );
-                }
-                Some(addr) => addr,
-            };
-
-            if receive {
-                match local_reg_mem.get(&addr) {
-                    Some(data) => {
-                        assert_eq!(data.len(), mem_int.data.len());
-                        mem_int
-                            .data
-                            .iter()
-                            .zip_eq(data.iter())
-                            .for_each(|(new_data, old_data)| {
+        if receive {
+            match local_reg_mem.get(&addr) {
+                Some(data) => {
+                    new_constraints.extend(mem_int.data.iter().zip_eq(data).flat_map(
+                        |(new_data, old_data)| {
+                            (new_data != old_data).then(|| {
                                 let eq_expr = AlgebraicExpression::new_binary(
                                     new_data.clone(),
                                     AlgebraicBinaryOperator::Sub,
                                     old_data.clone(),
                                 );
-                                new_constraints.push(eq_expr.into());
-                            });
-
-                        to_remove.insert(i);
-                    }
-                    None => {
-                        local_reg_mem.insert(addr, mem_int.data.clone());
+                                eq_expr.into()
+                            })
+                        },
+                    ));
+                    // Only remove the recive if there was a previous send.
+                    if let Some(last_store_index) = previous_send.get(&addr) {
+                        to_remove.extend([*last_store_index, i]);
                     }
                 }
-            } else {
-                last_store.insert(addr, i);
-                local_reg_mem.insert(addr, mem_int.data.clone());
+                None => {
+                    local_reg_mem.insert(addr, mem_int.data.clone());
+                }
             }
+        } else {
+            previous_send.insert(addr, i);
+            local_reg_mem.insert(addr, mem_int.data.clone());
+        }
 
-            receive = !receive;
-        });
+        receive = !receive;
+    }
 
-    let mut receive = true;
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
         .enumerate()
-        .filter_map(|(i, bus_int)| {
-            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
-                Ok(mem_int) => mem_int,
-                Err(_) => {
-                    return Some(bus_int);
-                }
-            };
-
-            if !matches!(mem_int.ty, MemoryType::Register) {
-                return Some(bus_int);
-            }
-
-            let addr = match mem_int.try_addr_u32() {
-                None => {
-                    panic!(
-                        "Register memory access must have constant address but found {}",
-                        mem_int.addr
-                    );
-                }
-                Some(addr) => addr,
-            };
-
-            let keep = if receive && !to_remove.contains(&i) {
-                Some(bus_int)
-            } else if receive && to_remove.contains(&i) {
-                None
-            } else if last_store
-                .get(&addr)
-                .is_some_and(|&last_index| last_index == i)
-            {
-                Some(bus_int)
-            } else {
-                None
-            };
-
-            receive = !receive;
-
-            keep
-        })
+        .filter(|(i, _)| !to_remove.contains(i))
+        .map(|(_, bus_int)| bus_int)
         .collect();
 
     machine.constraints.extend(new_constraints);
 
     machine
+}
+
+fn try_to_register_memory_bus_interaction<T: FieldElement>(
+    bus_int: &SymbolicBusInteraction<T>,
+) -> Option<MemoryBusInteraction<T>> {
+    let mem_int: MemoryBusInteraction<T> = bus_int.clone().try_into().ok()?;
+
+    matches!(mem_int.ty, MemoryType::Register).then(|| mem_int)
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.

@@ -13,12 +13,12 @@ use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeFiel
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    Autoprecompiles, BusInteractionKind, InstructionKind, SymbolicBusInteraction,
-    SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine,
+    BusInteractionKind, InstructionKind, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::{FieldElement, LargeInt};
 
-use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
+use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
@@ -29,13 +29,14 @@ const OPENVM_DEGREE_BOUND: usize = 5;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
+use crate::PowdrConfig;
+
 pub fn customize<F: PrimeField32>(
     mut exe: VmExe<F>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
     airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
-    autoprecompiles: usize,
-    skip: usize,
+    config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
 ) -> (VmExe<F>, PowdrExtension<F>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
@@ -93,8 +94,10 @@ pub fn customize<F: PrimeField32>(
         SystemOpcode::TERMINATE.global_opcode().as_usize(),
         0x510, // not sure yet what this is
         0x513, // not sure yet what this is
+        0x516, // not sure yet what this is
         0x51c, // not sure yet what this is
         0x523, // not sure yet what this is
+        0x526, // not sure yet what this is
     ];
 
     let mut blocks = collect_basic_blocks(&exe.program, labels, &opcodes_no_apc);
@@ -166,8 +169,8 @@ pub fn customize<F: PrimeField32>(
     };
 
     let mut extensions = Vec::new();
-    let n_acc = autoprecompiles;
-    let n_skip = skip;
+    let n_acc = config.autoprecompiles as usize;
+    let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles");
 
     for (i, acc_block) in blocks.iter().skip(n_skip).take(n_acc).enumerate() {
@@ -216,8 +219,12 @@ pub fn customize<F: PrimeField32>(
         program.splice(pc..pc + n_acc, new_instrs);
         assert_eq!(program.len(), len_before);
 
-        let (autoprecompile, subs) =
-            generate_autoprecompile::<F, powdr_number::BabyBearField>(acc_block, airs, apc_opcode);
+        let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
+            acc_block,
+            airs,
+            apc_opcode,
+            config.bus_map.clone(),
+        );
 
         let is_valid_column = autoprecompile
             .unique_columns()
@@ -355,6 +362,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     block: &BasicBlock<F>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
+    bus_map: BusMap,
 ) -> (SymbolicMachine<P>, Vec<Vec<u64>>) {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -393,14 +401,11 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         })
         .collect();
 
-    let autoprecompiles = Autoprecompiles {
+    let (precompile, subs) = powdr_autoprecompiles::build(
         program,
         instruction_kind,
         instruction_machines,
-    };
-
-    let (precompile, subs) = autoprecompiles.build(
-        OpenVmBusInteractionHandler::default(),
+        OpenVmBusInteractionHandler::new(bus_map),
         OPENVM_DEGREE_BOUND,
         apc_opcode as u32,
     );

@@ -50,7 +50,9 @@ pub fn handle_memory<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler, MEMORY};
+    use crate::bus_interaction_handler::{
+        test_utils::*, BusMap, OpenVmBusInteractionHandler, DEFAULT_MEMORY,
+    };
 
     use super::*;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
@@ -63,10 +65,10 @@ mod tests {
         timestamp: RangeConstraint<BabyBearField>,
         multiplicity: u64,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::default();
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(BusMap::openvm_base());
 
         let bus_interaction = BusInteraction {
-            bus_id: RangeConstraint::from_value(MEMORY.into()),
+            bus_id: RangeConstraint::from_value(DEFAULT_MEMORY.into()),
             multiplicity: value(multiplicity),
             payload: std::iter::once(address_space)
                 .chain(std::iter::once(pointer))

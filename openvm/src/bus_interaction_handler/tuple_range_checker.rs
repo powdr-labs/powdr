@@ -29,7 +29,7 @@ pub fn handle_tuple_range_checker<T: FieldElement>(
 #[cfg(test)]
 mod tests {
     use crate::bus_interaction_handler::{
-        test_utils::*, OpenVmBusInteractionHandler, TUPLE_RANGE_CHECKER,
+        test_utils::*, BusMap, OpenVmBusInteractionHandler, DEFAULT_TUPLE_RANGE_CHECKER,
     };
 
     use super::*;
@@ -40,10 +40,10 @@ mod tests {
         x: RangeConstraint<BabyBearField>,
         y: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::default();
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(BusMap::openvm_base());
 
         let bus_interaction = BusInteraction {
-            bus_id: RangeConstraint::from_value(TUPLE_RANGE_CHECKER.into()),
+            bus_id: RangeConstraint::from_value(DEFAULT_TUPLE_RANGE_CHECKER.into()),
             multiplicity: value(1),
             payload: vec![x, y],
         };
