@@ -13,7 +13,24 @@ where
     T: FieldElement,
 {
     let mut plonkish_expr = PlonkCircuit::new();
-    air_to_plonkish(algebraic_expr, &mut plonkish_expr, temp_id_offset);
+    let a = air_to_plonkish(algebraic_expr, &mut plonkish_expr, temp_id_offset);
+    // The last gate's output is the result of the expression, which is evaluated to zero.
+    if !plonkish_expr.gates.is_empty() {
+        plonkish_expr.gates.last_mut().unwrap().q_o = T::ZERO;
+        plonkish_expr.gates.last_mut().unwrap().c = Variable::Unused;
+    } else {
+        // For expression like x=0, the gates will be empty, but we add a dummy gate to represent this expression.
+        plonkish_expr.add_gate(Gate {
+            q_l: T::ONE,
+            q_r: T::ZERO,
+            q_o: T::ZERO,
+            q_mul: T::ZERO,
+            q_const: T::ZERO,
+            a,
+            b: Variable::Unused,
+            c: Variable::Unused,
+        });
+    }
 
     plonkish_expr
 }
@@ -177,30 +194,43 @@ mod tests {
             // tmp_2 = x + y
             // tmp_3 = tmp_1 * tmp_2
             // tmp_4 = tmp_0 - tmp_3
-            // tmp_5 = -tmp_4
+            // -tmp_4 = 0
             "0 * x + 0 * y + -1 * tmp_0 + 1 * x * y + 0 = 0
 -1 * x + 0 * Unused + -1 * tmp_1 + 0 * x * Unused + 0 = 0
 1 * x + 1 * y + -1 * tmp_2 + 0 * x * y + 0 = 0
 0 * tmp_1 + 0 * tmp_2 + -1 * tmp_3 + 1 * tmp_1 * tmp_2 + 0 = 0
 1 * tmp_0 + -1 * tmp_3 + -1 * tmp_4 + 0 * tmp_0 * tmp_3 + 0 = 0
--1 * tmp_4 + 0 * Unused + -1 * tmp_5 + 0 * tmp_4 * Unused + 0 = 0
+-1 * tmp_4 + 0 * Unused + 0 * Unused + 0 * tmp_4 * Unused + 0 = 0
 "
         );
     }
 
     #[test]
     fn only_constants() {
-        let expr = c(1) + c(2) * (c(3) - c(5));
+        let expr = c(4) + c(2) * (c(3) - c(5));
         let mut temp_id_offset = 0;
 
         assert_eq!(
             format!("{}", build_plonk_expr(&expr, &mut temp_id_offset)),
             // tmp_0 = -2        (3 - 5)
             // tmp_1 = 2 * tmp_0
-            // tmp_2 = 1 + tmp_1
+            // 4 + tmp_1 = 0
             "0 * Unused + 0 * Unused + -1 * tmp_0 + 0 * Unused * Unused + -2 = 0
 2 * tmp_0 + 0 * Unused + -1 * tmp_1 + 0 * tmp_0 * Unused + 0 = 0
-0 * Unused + 1 * tmp_1 + -1 * tmp_2 + 0 * Unused * tmp_1 + 1 = 0
+0 * Unused + 1 * tmp_1 + 0 * Unused + 0 * Unused * tmp_1 + 4 = 0
+"
+        )
+    }
+
+    #[test]
+    fn single_variable() {
+        let x = var("x", 0);
+        let expr = x.clone();
+        let mut temp_id_offset = 0;
+
+        assert_eq!(
+            format!("{}", build_plonk_expr(&expr, &mut temp_id_offset)),
+            "1 * x + 0 * Unused + 0 * Unused + 0 * x * Unused + 0 = 0
 "
         )
     }
@@ -218,12 +248,12 @@ mod tests {
             // tmp_1 = tmp_0 * x
             // tmp_2 = -tmp_1 + 3
             // tmp_3 = -tmp_2
-            // tmp_4 = tmp_3 + 1
+            // tmp_3 + 1 = 0
             "2 * x + 0 * Unused + -1 * tmp_0 + 0 * x * Unused + 0 = 0
 0 * tmp_0 + 0 * y + -1 * tmp_1 + 1 * tmp_0 * y + 0 = 0
 0 * Unused + -1 * tmp_1 + -1 * tmp_2 + 0 * Unused * tmp_1 + 3 = 0
 -1 * tmp_2 + 0 * Unused + -1 * tmp_3 + 0 * tmp_2 * Unused + 0 = 0
-1 * tmp_3 + 0 * Unused + -1 * tmp_4 + 0 * tmp_3 * Unused + 1 = 0
+1 * tmp_3 + 0 * Unused + 0 * Unused + 0 * tmp_3 * Unused + 1 = 0
 "
         );
     }
@@ -236,9 +266,9 @@ mod tests {
         assert_eq!(
             format!("{}", build_plonk_expr(&expr, &mut temp_id_offset)),
             // tmp_0 = 3
-            // tmp_1 = -tmp_0
+            // -tmp_0
             "0 * Unused + 0 * Unused + -1 * tmp_0 + 0 * Unused * Unused + 3 = 0
--1 * tmp_0 + 0 * Unused + -1 * tmp_1 + 0 * tmp_0 * Unused + 0 = 0
+-1 * tmp_0 + 0 * Unused + 0 * Unused + 0 * tmp_0 * Unused + 0 = 0
 "
         );
     }
@@ -252,9 +282,9 @@ mod tests {
         assert_eq!(
             format!("{}", build_plonk_expr(&expr, &mut temp_id_offset)),
             // tmp_0 = -y
-            // tmp_1 = x - tmp_0
+            // x - tmp_0 = 0
             "-1 * y + 0 * Unused + -1 * tmp_0 + 0 * y * Unused + 0 = 0
-1 * x + -1 * tmp_0 + -1 * tmp_1 + 0 * x * tmp_0 + 0 = 0
+1 * x + -1 * tmp_0 + 0 * Unused + 0 * x * tmp_0 + 0 = 0
 "
         );
     }

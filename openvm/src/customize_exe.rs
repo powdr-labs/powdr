@@ -14,8 +14,8 @@ use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, Polyn
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    Autoprecompiles, BusInteractionKind, InstructionKind, SymbolicBusInteraction,
-    SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine,
+    BusInteractionKind, InstructionKind, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::{FieldElement, LargeInt};
 
@@ -625,13 +625,10 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         })
         .collect();
 
-    let autoprecompiles = Autoprecompiles {
+    let (precompile, subs) = powdr_autoprecompiles::build(
         program,
         instruction_kind,
         instruction_machines,
-    };
-
-    let (precompile, subs) = autoprecompiles.build(
         OpenVmBusInteractionHandler::new(bus_map),
         // chip stacking needs to add guards to bus arguments also, so we restrict the optimizer by 1 degree here.
         OPENVM_DEGREE_BOUND - 1,
