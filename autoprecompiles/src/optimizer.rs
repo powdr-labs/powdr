@@ -42,10 +42,7 @@ fn optimization_loop_iteration<T: FieldElement>(
 
     let machine_before = machine.clone();
     let machine = optimize_register_operations(machine);
-    if !check_register_operation_consistency(&machine) {
-        println!("before:\n{machine_before}\n\n===================================\n\n{machine}\n");
-        panic!();
-    }
+    asert!(check_register_operation_consistency(&machine));
     optimize_constraints(machine, bus_interaction_handler, degree_bound)
 }
 

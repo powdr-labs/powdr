@@ -88,8 +88,7 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
     let count_per_addr = machine
         .bus_interactions
         .iter()
-        .filter_map(|bus_int| bus_int.clone().try_into().ok())
-        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .filter_map(|bus_int| try_to_register_memory_bus_interaction(bus_int))
         .map(|mem_int| {
             mem_int.try_addr_u32().unwrap_or_else(|| {
                 panic!(
@@ -103,5 +102,5 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
             map
         });
 
-    count_per_addr.values().any(|&v| v % 2 != 0)
+    count_per_addr.values().all(|&v| v % 2 == 0)
 }
