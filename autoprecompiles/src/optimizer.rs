@@ -25,8 +25,8 @@ pub fn optimize<T: FieldElement>(
     let mut machine = optimize_exec_bus(machine);
     assert!(check_register_operation_consistency(&machine));
 
-    let size = machine_size(&machine);
     loop {
+        let size = machine_size(&machine);
         machine =
             optimization_loop_iteration(machine, bus_interaction_handler.clone(), degree_bound);
         if machine_size(&machine) == size {
