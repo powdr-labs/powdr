@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::optimizer::optimize;
+use powdr_autoprecompiles::constraint_optimizer::optimize;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;

@@ -1,5 +1,5 @@
+use constraint_optimizer::{optimize, IsBusStateful};
 use itertools::Itertools;
-use optimizer::{optimize, IsBusStateful};
 use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
@@ -16,7 +16,7 @@ use std::iter::once;
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
-pub mod optimizer;
+pub mod constraint_optimizer;
 pub mod powdr;
 pub mod register_optimizer;
 
