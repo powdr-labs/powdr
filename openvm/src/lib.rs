@@ -661,7 +661,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: usize = 1;
-    const GUEST_SKIP: usize = 39;
+    const GUEST_SKIP: usize = 56;
     const GUEST_SKIP_PGO: usize = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
@@ -755,10 +755,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        // TODO we need to find a new block because this one is not executed anymore.
-        assert_eq!(m.width, 113);
-        assert_eq!(m.constraints, 36);
-        assert_eq!(m.bus_interactions, 88);
+        assert_eq!(m.width, 70);
+        assert_eq!(m.constraints, 37);
+        assert_eq!(m.bus_interactions, 55);
     }
 
     #[test]
