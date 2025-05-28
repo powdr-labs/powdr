@@ -52,7 +52,7 @@ pub fn optimize_register_operations<T: FieldElement>(
                                 })
                             },
                         ));
-                        // Only remove the recive if there was a previous send.
+                        // Only remove the receive if there was a previous send.
                         if let Some(previous_store_index) = previous_store {
                             to_remove.extend([*previous_store_index, i]);
                         }
