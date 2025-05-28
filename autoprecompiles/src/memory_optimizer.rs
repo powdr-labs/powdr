@@ -33,49 +33,25 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
 fn redundant_memory_interactions_indices<T: FieldElement>(
     machine: &SymbolicMachine<T>,
 ) -> impl Iterator<Item = usize> {
-    let memory_bus_interactions = machine
+    let address_by_index = machine
         .bus_interactions
         .iter()
-        .filter_map(|bus| {
+        .enumerate()
+        .filter_map(|(index, bus)| {
             MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
                 bus,
                 MemoryType::Memory,
             )
             .ok()
             .flatten()
+            .map(|bus| (index, bus))
         })
-        .collect_vec();
+        .map(|(index, bus)| (index, algebraic_to_quadratic_symbolic_expression(&bus.addr)))
+        .collect::<HashMap<_, _>>();
 
     let constraints = symbolic_to_simplified_contraints(&machine.constraints);
-    let constraints_by_variable = constraints
-        .iter()
-        .flat_map(|constr| {
-            let vars = constr.referenced_unknown_variables();
-            vars.map(move |var| (var.clone(), constr))
-        })
-        .into_group_map();
-
-    // Collect the expressions that are used as addresses and try to solve
-    // a constraint about them in the constraint system.
-    // TODO we could also collect all related constraints.
-    // TODO name this better
-    let memory_addresses = memory_bus_interactions
-        .iter()
-        // TODO we are doing this conversion twice
-        .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr))
-        .flat_map(|addr| {
-            // Go through the constraints related to this address
-            // and try to solve for the address.
-            let expr = addr
-                .referenced_unknown_variables()
-                .flat_map(|v| constraints_by_variable.get(v).map(|constrs| constrs.iter()))
-                .flatten()
-                .unique_by(|constr| constr as *const _)
-                .find_map(|constr| constr.try_solve_for_expr(&addr));
-            // If we cannot solve for the address, we just take the address unmodified.
-            Some((addr.clone(), expr.unwrap_or(addr)))
-        })
-        .collect::<HashMap<_, _>>();
+    let memory_addresses =
+        compile_facts_about_addresses(address_by_index.values().cloned(), &constraints);
 
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
@@ -98,11 +74,11 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 continue;
             }
         };
-        let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
+        let addr = &address_by_index[&index];
 
         match mem_int.op {
             MemoryOp::Receive => {
-                if let Some((previous_send, existing_values)) = memory_contents.get(&addr) {
+                if let Some((previous_send, existing_values)) = memory_contents.get(addr) {
                     for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
                         if existing != new {
                             new_constraints.push(
@@ -121,18 +97,16 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                         to_remove.extend([index, *previous_send]);
                     }
                 } else {
-                    memory_contents.insert(addr, (None, mem_int.data.clone()));
+                    memory_contents.insert(addr.clone(), (None, mem_int.data.clone()));
                 }
             }
             MemoryOp::Send => {
-                let addr_expr = &memory_addresses[&addr];
-                memory_contents.retain(|k, _| {
-                    let other_addr_expr = &memory_addresses[k];
-                    // TODO if we store multiple exprs, it is enough to find one with the below property.
-                    is_known_to_be_different_by_word(
-                        addr_expr,
-                        other_addr_expr,
-                        RangeConstraintsForBoleans,
+                memory_contents.retain(|other_addr, _| {
+                    is_addr_known_to_be_different_by_word(
+                        addr,
+                        other_addr,
+                        &memory_addresses,
+                        &RangeConstraintsForBoleans,
                     )
                 });
                 memory_contents.insert(addr.clone(), (Some(index), mem_int.data.clone()));
@@ -140,11 +114,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
         }
     }
 
-    log::debug!(
-        "Removing {} memory interactions out of {} total memory bus interactions",
-        to_remove.len(),
-        memory_bus_interactions.len()
-    );
+    log::debug!("Removing {} memory interactions", to_remove.len(),);
     to_remove.into_iter()
 }
 
@@ -177,11 +147,73 @@ impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsF
     }
 }
 
-/// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
-fn is_known_to_be_different_by_word<T: FieldElement>(
+/// Takes at iterator over all expressions used as addresses and tries to
+/// compile facts about them based on the constraints provided.
+/// The facts are just constraints that are related to the addresses.
+fn compile_facts_about_addresses<T: FieldElement>(
+    addresses: impl IntoIterator<Item = QuadraticSymbolicExpression<T, Variable>>,
+    constraints: &[QuadraticSymbolicExpression<T, Variable>],
+) -> HashMap<QuadraticSymbolicExpression<T, Variable>, Vec<QuadraticSymbolicExpression<T, Variable>>>
+{
+    let constraints_by_variable = constraints
+        .iter()
+        .flat_map(|constr| {
+            let vars = constr.referenced_unknown_variables();
+            vars.map(move |var| (var.clone(), constr))
+        })
+        .into_group_map();
+
+    // Collect the expressions that are used as addresses and try to solve
+    // a constraint about them in the constraint system.
+    // The result is a list of constraints for each address that are
+    // related to that address and can be used to reason difference-ness for addresses.
+    addresses
+        .into_iter()
+        .flat_map(|addr| {
+            // Go through the constraints related to this address
+            // and try to solve for the address.
+            let mut exprs = addr
+                .referenced_unknown_variables()
+                .flat_map(|v| constraints_by_variable.get(v))
+                .flatten()
+                .unique_by(|constr| constr as *const _)
+                .flat_map(|constr| constr.try_solve_for_expr(&addr))
+                .collect_vec();
+            if exprs.is_empty() {
+                // If we cannot solve for the address, we just take the address unmodified.
+                exprs.push(addr.clone());
+            }
+            Some((addr.clone(), exprs))
+        })
+        .collect()
+}
+
+/// Returns true if we can prove that for two addresses `a` and `b`,
+/// `a - b` never falls into the range `0..=3`.
+fn is_addr_known_to_be_different_by_word<T: FieldElement>(
     a: &QuadraticSymbolicExpression<T, Variable>,
     b: &QuadraticSymbolicExpression<T, Variable>,
-    range_constraints: impl RangeConstraintProvider<T, Variable>,
+    memory_addresses: &HashMap<
+        QuadraticSymbolicExpression<T, Variable>,
+        Vec<QuadraticSymbolicExpression<T, Variable>>,
+    >,
+    range_constraints: &impl RangeConstraintProvider<T, Variable>,
+) -> bool {
+    let a_exprs = &memory_addresses[a];
+    let b_exprs = &memory_addresses[b];
+    a_exprs
+        .iter()
+        .cartesian_product(b_exprs)
+        .any(|(a_exprs, b_exprs)| {
+            is_value_known_to_be_different_by_word(a_exprs, b_exprs, range_constraints)
+        })
+}
+
+/// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
+fn is_value_known_to_be_different_by_word<T: FieldElement>(
+    a: &QuadraticSymbolicExpression<T, Variable>,
+    b: &QuadraticSymbolicExpression<T, Variable>,
+    range_constraints: &impl RangeConstraintProvider<T, Variable>,
 ) -> bool {
     let diff = a - b;
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
@@ -196,12 +228,12 @@ fn is_known_to_be_different_by_word<T: FieldElement>(
         return false;
     }
     let disallowed_range = RangeConstraint::from_range(T::from(0), T::from(3));
-    let r = get_all_possible_assignments(variables, &range_constraints).all(|assignment| {
+    let r = get_all_possible_assignments(variables, range_constraints).all(|assignment| {
         let mut diff = diff.clone();
         for (variable, value) in assignment.iter() {
             diff.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
         }
-        diff.range_constraint(&range_constraints)
+        diff.range_constraint(range_constraints)
             .is_disjoint(&disallowed_range)
     });
     r
