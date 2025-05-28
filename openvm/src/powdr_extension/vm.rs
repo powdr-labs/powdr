@@ -23,6 +23,8 @@ use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
+use crate::PrecompileImplementation;
+
 use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
@@ -32,6 +34,7 @@ use super::{chip::PowdrChip, PowdrOpcode};
 pub struct PowdrExtension<F: PrimeField32> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
     pub base_config: SdkVmConfig,
+    pub implementation: PrecompileImplementation,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -93,6 +96,14 @@ impl<F: PrimeField32> PowdrExtension<F> {
         Self {
             precompiles,
             base_config,
+            implementation: PrecompileImplementation::default(),
+        }
+    }
+
+    pub fn with_implementation(self, implementation: PrecompileImplementation) -> Self {
+        Self {
+            implementation,
+            ..self
         }
     }
 }
@@ -138,16 +149,30 @@ impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
             .cloned();
 
         for precompile in &self.precompiles {
-            let powdr_chip: PowdrChip<F> = PowdrChip::new(
-                precompile.clone(),
-                offline_memory.clone(),
-                self.base_config.clone(),
-                SharedChips::new(
-                    bitwise_lookup.clone(),
-                    range_checker.clone(),
-                    tuple_range_checker.cloned(),
-                ),
-            );
+            let powdr_chip: PowdrExecutor<F> = match self.implementation {
+                PrecompileImplementation::SingleRowChip => PowdrChip::new(
+                    precompile.clone(),
+                    offline_memory.clone(),
+                    self.base_config.clone(),
+                    SharedChips::new(
+                        bitwise_lookup.clone(),
+                        range_checker.clone(),
+                        tuple_range_checker.cloned(),
+                    ),
+                )
+                .into(),
+                PrecompileImplementation::PlonkChip => PlonkChip::new(
+                    precompile.clone(),
+                    offline_memory.clone(),
+                    self.base_config.clone(),
+                    SharedChips::new(
+                        bitwise_lookup.clone(),
+                        range_checker.clone(),
+                        tuple_range_checker.cloned(),
+                    ),
+                )
+                .into(),
+            };
 
             inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;
         }

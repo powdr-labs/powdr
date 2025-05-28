@@ -50,10 +50,7 @@ pub struct PlonkCircuit<T, V> {
     pub gates: Vec<Gate<T, V>>,
 }
 
-impl<T, V> PlonkCircuit<T, V>
-where
-    T: FieldElement,
-{
+impl<T, V> PlonkCircuit<T, V> {
     fn new() -> Self {
         PlonkCircuit { gates: Vec::new() }
     }

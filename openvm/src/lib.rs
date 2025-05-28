@@ -186,6 +186,13 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram { exe, sdk_vm_config })
 }
 
+#[derive(Default, Clone, Deserialize, Serialize)]
+pub enum PrecompileImplementation {
+    #[default]
+    SingleRowChip,
+    PlonkChip,
+}
+
 #[derive(Clone)]
 pub struct PowdrConfig {
     /// Number of autoprecompiles to generate.
@@ -195,6 +202,7 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
+    pub precompile_implementation: PrecompileImplementation,
 }
 
 impl PowdrConfig {
@@ -203,6 +211,7 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
+            precompile_implementation: PrecompileImplementation::default(),
         }
     }
 
@@ -215,6 +224,16 @@ impl PowdrConfig {
 
     pub fn with_bus_map(self, bus_map: BusMap) -> Self {
         Self { bus_map, ..self }
+    }
+
+    pub fn with_precompile_implementation(
+        self,
+        precompile_implementation: PrecompileImplementation,
+    ) -> Self {
+        Self {
+            precompile_implementation,
+            ..self
+        }
     }
 }
 
@@ -260,6 +279,7 @@ pub fn compile_exe(
         config.clone(),
         pgo_data,
     );
+    let extension = extension.with_implementation(config.precompile_implementation);
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
     export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
@@ -303,7 +323,7 @@ impl CompiledProgram<F> {
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
-                if name.starts_with("PowdrAir") {
+                if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                     let constraints = get_constraints(air);
                     Some(AirMetrics {
                         name: name.to_string(),
@@ -632,43 +652,42 @@ mod tests {
 
     fn compile_and_prove(
         guest: &str,
-        apc: usize,
-        skip: usize,
+        config: PowdrConfig,
         mock: bool,
         recursion: bool,
         stdin: StdIn,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let config = PowdrConfig::new(apc as u64, skip as u64);
         let program = compile_guest(guest, GuestOptions::default(), config, None).unwrap();
         prove(&program, mock, recursion, stdin)
     }
 
-    fn prove_simple(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
-        let result = compile_and_prove(guest, apc, skip, false, false, stdin);
+    fn prove_simple(guest: &str, apc: u64, skip: u64, stdin: StdIn) {
+        let config = PowdrConfig::new(apc, skip);
+        let result = compile_and_prove(guest, config, false, false, stdin);
         assert!(result.is_ok());
     }
 
-    fn prove_mock(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
-        let result = compile_and_prove(guest, apc, skip, true, false, stdin);
+    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, true, false, stdin);
         assert!(result.is_ok());
     }
 
-    fn _prove_recursion(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
-        let result = compile_and_prove(guest, apc, skip, false, true, stdin);
+    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, false, true, stdin);
         assert!(result.is_ok());
     }
 
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
-    const GUEST_APC: usize = 1;
-    const GUEST_SKIP: usize = 56;
-    const GUEST_SKIP_PGO: usize = 0;
+    const GUEST_APC: u64 = 1;
+    const GUEST_SKIP: u64 = 56;
+    const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
     const GUEST_KECCAK_ITER: u32 = 1000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
-    const GUEST_KECCAK_APC: usize = 1;
-    const GUEST_KECCAK_SKIP: usize = 0;
+    const GUEST_KECCAK_APC: u64 = 1;
+    const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
     fn guest_prove_simple() {
@@ -681,7 +700,19 @@ mod tests {
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        prove_mock(GUEST, GUEST_APC, GUEST_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        prove_mock(GUEST, config, stdin);
+    }
+
+    // All gate constraints should be satisfied, but bus interactions are not implemented yet.
+    #[test]
+    #[should_panic = "LogUp multiset equality check failed."]
+    fn guest_plonk_prove_mock() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
+            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
+        prove_mock(GUEST, config, stdin);
     }
 
     // #[test]
@@ -713,7 +744,20 @@ mod tests {
     fn keccak_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        prove_mock(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(GUEST_KECCAK, config, stdin);
+    }
+
+    // All gate constraints should be satisfied, but bus interactions are not implemented yet.
+    #[test]
+    #[should_panic = "LogUp multiset equality check failed."]
+    fn keccak_plonk_small_prove_mock() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP)
+            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
+        prove_mock(GUEST_KECCAK, config, stdin);
     }
 
     #[test]
@@ -721,7 +765,8 @@ mod tests {
     fn keccak_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        prove_mock(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(GUEST_KECCAK, config, stdin);
     }
 
     // #[test]
@@ -736,7 +781,7 @@ mod tests {
 
     // The following are compilation tests only
     fn test_keccak_machine(pc_idx_count: Option<HashMap<u32, u32>>) {
-        let config = PowdrConfig::new(GUEST_KECCAK_APC as u64, GUEST_KECCAK_SKIP as u64);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pc_idx_count)
             .unwrap()
             .powdr_airs_metrics();
@@ -749,7 +794,7 @@ mod tests {
 
     #[test]
     fn guest_machine() {
-        let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP as u64);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
         let machines = compile_guest(GUEST, GuestOptions::default(), config, None)
             .unwrap()
             .powdr_airs_metrics();
@@ -758,6 +803,20 @@ mod tests {
         assert_eq!(m.width, 70);
         assert_eq!(m.constraints, 37);
         assert_eq!(m.bus_interactions, 55);
+    }
+
+    #[test]
+    fn guest_machine_plonk() {
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
+            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, None)
+            .unwrap()
+            .powdr_airs_metrics();
+        assert_eq!(machines.len(), 1);
+        let m = &machines[0];
+        assert_eq!(m.width, 8);
+        assert_eq!(m.constraints, 1);
+        assert_eq!(m.bus_interactions, 0);
     }
 
     #[test]
@@ -771,7 +830,7 @@ mod tests {
         // because we didn't accelerate the "costliest block" in the non-pgo version.
         let pc_idx_count = get_pc_idx_count(GUEST, guest_opts.clone(), stdin);
         // We don't skip any sorted basic block here to accelerate the "costliest" block.
-        let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP_PGO as u64);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
         let machines = compile_guest(GUEST, guest_opts, config, Some(pc_idx_count))
             .unwrap()
             .powdr_airs_metrics();

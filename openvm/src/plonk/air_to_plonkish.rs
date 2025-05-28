@@ -5,6 +5,21 @@ use powdr_ast::analyzed::{
 };
 use powdr_number::FieldElement;
 
+pub fn build_circuit<T>(
+    algebraic_expr: &[AlgebraicExpression<T>],
+) -> PlonkCircuit<T, AlgebraicReference>
+where
+    T: FieldElement,
+{
+    let mut circuit = PlonkCircuit::new();
+    let mut temp_id_offset = 0;
+    for expr in algebraic_expr {
+        air_to_plonkish(expr, &mut circuit, &mut temp_id_offset);
+    }
+
+    circuit
+}
+
 pub fn build_plonk_expr<T>(
     algebraic_expr: &AlgebraicExpression<T>,
     temp_id_offset: &mut usize,
@@ -34,6 +49,7 @@ where
 
     plonkish_expr
 }
+
 fn air_to_plonkish<T>(
     algebraic_expr: &AlgebraicExpression<T>,
     plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
