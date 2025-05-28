@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::constraint_optimizer::optimize_constraints;
+use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
@@ -31,9 +31,10 @@ fn test_optimize() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize_constraints(
+    let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
+        None, // opcode
         5,
     );
 
