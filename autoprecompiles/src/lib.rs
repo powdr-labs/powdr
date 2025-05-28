@@ -228,7 +228,7 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
         // are in the right order.
-        let ty = bus_interaction.args[0].into();
+        let ty = bus_interaction.args[0].clone().into();
         if ty != memory_type {
             return Ok(None);
         }
