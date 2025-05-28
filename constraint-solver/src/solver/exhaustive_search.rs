@@ -85,7 +85,7 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     rc: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<Option<BTreeMap<V, T>>, Error> {
-    match get_all_possible_assignments(variables.iter().cloned(), rc.clone())
+    match get_all_possible_assignments(variables.iter().cloned(), &rc)
         .filter(|assignments| {
             !constraint_system.is_assignment_conflicting(assignments, &rc, bus_interaction_handler)
         })
@@ -122,6 +122,6 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
         .unique()
         .filter(|variables| !variables.is_empty())
         .filter(move |variables| {
-            has_few_possible_assignments(variables.iter().cloned(), MAX_SEARCH_WIDTH, rc.clone())
+            has_few_possible_assignments(variables.iter().cloned(), MAX_SEARCH_WIDTH, &rc)
         })
 }

@@ -44,8 +44,8 @@ fn optimization_loop_iteration<T: FieldElement>(
     let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
     let machine = optimize_register_operations(machine);
     assert!(check_register_operation_consistency(&machine));
-    let machine = optimize_memory(machine);
-    machine
+    
+    optimize_memory(machine)
 }
 
 fn machine_size<T: FieldElement>(machine: &SymbolicMachine<T>) -> [usize; 3] {

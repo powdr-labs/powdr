@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -11,11 +11,12 @@ use powdr_ast::analyzed::{
 use powdr_constraint_solver::boolean_extractor;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::utils::{get_all_possible_assignments, has_few_possible_assignments};
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
 
@@ -135,6 +136,25 @@ fn symbolic_to_simplified_contraints<T: FieldElement>(
         .collect_vec()
 }
 
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
+pub enum Variable {
+    Reference(AlgebraicReference),
+    PublicReference(String),
+    Challenge(Challenge),
+    Boolean(usize),
+}
+
+impl Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable::Reference(r) => write!(f, "{r}"),
+            Variable::PublicReference(r) => write!(f, "{r}"),
+            Variable::Challenge(c) => write!(f, "{c}"),
+            Variable::Boolean(id) => write!(f, "boolean_{id}"),
+        }
+    }
+}
+
 #[derive(Default)]
 struct RangeConstraintsForBoleans;
 
@@ -217,14 +237,7 @@ fn is_value_known_to_be_different_by_word<T: FieldElement>(
 ) -> bool {
     let diff = a - b;
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
-    if !variables
-        .iter()
-        .map(|v| range_constraints.get(v))
-        .map(|rc| rc.range_width().try_into_u64())
-        .try_fold(1u64, |acc, x| acc.checked_mul(x?))
-        .map(|total_width| total_width < 20)
-        .unwrap_or(false)
-    {
+    if !has_few_possible_assignments(variables.iter().cloned(), 20, range_constraints) {
         return false;
     }
     let disallowed_range = RangeConstraint::from_range(T::from(0), T::from(3));
@@ -237,47 +250,6 @@ fn is_value_known_to_be_different_by_word<T: FieldElement>(
             .is_disjoint(&disallowed_range)
     });
     r
-}
-
-// TODO copied from exhaustive search
-fn get_all_possible_assignments<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    variables: impl IntoIterator<Item = V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
-) -> impl Iterator<Item = BTreeMap<V, T>> {
-    let variables = variables.into_iter().collect_vec();
-    variables
-        .iter()
-        .map(|v| range_constraints.get(v))
-        .map(|rc| rc.allowed_values().collect::<Vec<_>>())
-        .multi_cartesian_product()
-        .map(|assignment| {
-            variables
-                .iter()
-                .cloned()
-                .zip(assignment)
-                .collect::<BTreeMap<_, _>>()
-        })
-        .collect::<Vec<_>>()
-        .into_iter()
-}
-
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-pub enum Variable {
-    Reference(AlgebraicReference),
-    PublicReference(String),
-    Challenge(Challenge),
-    Boolean(usize),
-}
-
-impl Display for Variable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Variable::Reference(r) => write!(f, "{r}"),
-            Variable::PublicReference(r) => write!(f, "{r}"),
-            Variable::Challenge(c) => write!(f, "{c}"),
-            Variable::Boolean(id) => write!(f, "boolean_{id}"),
-        }
-    }
 }
 
 /// Turns an algebraic expression into a quadratic symbolic expression,
