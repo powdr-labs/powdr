@@ -201,7 +201,6 @@ pub struct MemoryBusInteraction<T> {
     pub op: MemoryOp,
     pub addr: AlgebraicExpression<T>,
     pub data: Vec<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
 impl<T: FieldElement> MemoryBusInteraction<T> {
