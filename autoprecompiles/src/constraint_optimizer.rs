@@ -40,7 +40,8 @@ pub fn optimize_constraints<P: FieldElement>(
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After solver-based optimization", &constraint_system);
 
-    let constraint_system = remove_disconnected_columns(constraint_system, bus_interaction_handler);
+    let constraint_system =
+        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After removing disconnected columns", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
@@ -51,6 +52,10 @@ pub fn optimize_constraints<P: FieldElement>(
 
     let constraint_system = remove_equal_constraints(constraint_system);
     stats_logger.log("After removing equal constraints", &constraint_system);
+
+    let constraint_system =
+        remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
+    stats_logger.log("After removing equal bus interactions", &constraint_system);
 
     constraint_system_to_symbolic_machine(constraint_system)
 }
@@ -195,6 +200,29 @@ fn remove_equal_constraints<P: FieldElement>(
         .algebraic_constraints
         .into_iter()
         .unique()
+        .collect();
+    symbolic_machine
+}
+
+fn remove_equal_bus_interactions<P: FieldElement>(
+    mut symbolic_machine: ConstraintSystem<P, Variable>,
+    bus_interaction_handler: impl IsBusStateful<P> + 'static,
+) -> ConstraintSystem<P, Variable> {
+    let mut seen = HashSet::new();
+    symbolic_machine.bus_interactions = symbolic_machine
+        .bus_interactions
+        .into_iter()
+        .filter_map(|interaction| {
+            // We only touch interactions with non-stateful buses.
+            if let Some(bus_id) = interaction.bus_id.try_to_number() {
+                if !bus_interaction_handler.is_stateful(bus_id) {
+                    if !seen.insert(interaction.clone()) {
+                        return None;
+                    }
+                }
+            }
+            Some(interaction)
+        })
         .collect();
     symbolic_machine
 }
