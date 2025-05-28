@@ -13,8 +13,8 @@ use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeFiel
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    BusInteractionKind, InstructionKind, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicInstructionStatement, SymbolicMachine,
+    InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
+    SymbolicMachine,
 };
 use powdr_number::{FieldElement, LargeInt};
 
@@ -404,12 +404,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
     columns: &[String],
 ) -> SymbolicBusInteraction<P> {
-    // TODO
-    let kind = BusInteractionKind::Send;
-    // let kind = match interaction.interaction_type {
-    //     InteractionType::Send => BusInteractionKind::Send,
-    //     InteractionType::Receive => BusInteractionKind::Receive,
-    // };
     let id = interaction.bus_index as u64;
 
     let mult = symbolic_to_algebraic(&interaction.count, columns);
@@ -419,12 +413,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .map(|e| symbolic_to_algebraic(e, columns))
         .collect();
 
-    SymbolicBusInteraction {
-        kind,
-        id,
-        mult,
-        args,
-    }
+    SymbolicBusInteraction { id, mult, args }
 }
 
 fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
@@ -481,7 +470,6 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
         .bus_interactions
         .into_iter()
         .map(|interaction| SymbolicBusInteraction {
-            kind: interaction.kind,
             id: interaction.id,
             mult: transpose_algebraic_expression(interaction.mult.clone()),
             args: interaction
