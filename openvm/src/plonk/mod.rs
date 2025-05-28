@@ -1,3 +1,4 @@
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
@@ -27,6 +28,12 @@ impl<V: Display> Display for Variable<V> {
     }
 }
 
+impl Default for Variable<AlgebraicReference> {
+    fn default() -> Self {
+        Variable::Unused
+    }
+}
+
 /// A PlonK gate. For each gate, the following equation must hold:
 /// q_l * a + q_r * b + q_o * c + q_mul * a * b + q_const = 0
 /// where q_l, q_r, q_o, q_mul, and q_const are fixed coefficients
@@ -52,6 +59,28 @@ pub struct Gate<T, V> {
     pub a: Variable<V>,
     pub b: Variable<V>,
     pub c: Variable<V>,
+}
+
+impl<T: FieldElement> Default for Gate<T, AlgebraicReference> {
+    fn default() -> Self {
+        Gate {
+            q_l: T::ZERO,
+            q_r: T::ZERO,
+            q_o: T::ZERO,
+            q_mul: T::ZERO,
+            q_const: T::ZERO,
+            q_bitwise: T::ZERO,
+            q_memory: T::ZERO,
+            q_range_check: T::ZERO,
+            q_execution: T::ZERO,
+            q_pc: T::ZERO,
+            q_rang_tuple: T::ZERO,
+
+            a: Variable::Unused,
+            b: Variable::Unused,
+            c: Variable::Unused,
+        }
+    }
 }
 
 /// The PlonK circuit, which is just a collection of gates.
