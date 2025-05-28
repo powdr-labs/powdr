@@ -1,11 +1,15 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+    hash::Hash,
+};
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem},
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
+    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
 
@@ -133,6 +137,43 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
                 .or_default()
                 .extend(items.iter().cloned());
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSystem<T, V> {
+    /// Given a set of variable assignments, checks if they violate any constraint.
+    /// Note that this might return false negatives, because it does not propagate any values.
+    pub fn is_assignment_conflicting(
+        &self,
+        assignments: &BTreeMap<V, T>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+        bus_interaction_handler: &impl BusInteractionHandler<T>,
+    ) -> bool {
+        self.constraints_referencing_variables(assignments.keys().cloned())
+            .any(|constraint| match constraint {
+                ConstraintRef::AlgebraicConstraint(identity) => {
+                    let mut identity = identity.clone();
+                    for (variable, value) in assignments.iter() {
+                        identity
+                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                    }
+                    identity.solve(range_constraints).is_err()
+                }
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    let mut bus_interaction = bus_interaction.clone();
+                    for (variable, value) in assignments.iter() {
+                        bus_interaction.fields_mut().for_each(|expr| {
+                            expr.substitute_by_known(
+                                variable,
+                                &SymbolicExpression::Concrete(*value),
+                            )
+                        })
+                    }
+                    bus_interaction
+                        .solve(bus_interaction_handler, range_constraints)
+                        .is_err()
+                }
+            })
     }
 }
 
