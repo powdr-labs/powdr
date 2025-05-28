@@ -195,6 +195,8 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
+    /// The max degree of constraints.
+    pub degree_bound: usize,
 }
 
 impl PowdrConfig {
@@ -203,6 +205,7 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
+            degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
         }
     }
 
@@ -215,6 +218,13 @@ impl PowdrConfig {
 
     pub fn with_bus_map(self, bus_map: BusMap) -> Self {
         Self { bus_map, ..self }
+    }
+
+    pub fn with_degree_bound(self, degree_bound: usize) -> Self {
+        Self {
+            degree_bound,
+            ..self
+        }
     }
 }
 
