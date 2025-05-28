@@ -44,8 +44,11 @@ pub struct ElfProgram {
 pub fn load_elf(file_name: &Path) -> ElfProgram {
     log::info!("Loading ELF file: {}", file_name.display());
     let file_buffer = fs::read(file_name).unwrap();
+    load_elf_from_buffer(&file_buffer)
+}
 
-    let elf = Elf::parse(&file_buffer).unwrap();
+pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
+    let elf = Elf::parse(file_buffer).unwrap();
 
     // Assert the file is 32 bits.
     assert_eq!(
@@ -167,7 +170,7 @@ pub fn load_elf(file_name: &Path) -> ElfProgram {
     // Try loading the debug information.
     let debug_info = match debug_info::DebugInfo::new(
         &elf,
-        &file_buffer,
+        file_buffer,
         &address_map,
         &|key| data_map.contains_key(&key),
         &referenced_text_addrs,

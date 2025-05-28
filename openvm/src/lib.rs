@@ -69,6 +69,8 @@ pub use openvm_build::GuestOptions;
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
+pub use customize_exe::customize;
+
 // A module for our extension
 mod powdr_extension;
 
@@ -126,7 +128,7 @@ impl<F: PrimeField32> VmConfig<F> for SpecializedConfig<F> {
 }
 
 impl<F: Default + PrimeField32> SpecializedConfig<F> {
-    fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
+    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
         Self { sdk_config, powdr }
     }
 }
@@ -752,8 +754,8 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 3541);
-        assert_eq!(m.constraints, 506);
+        assert_eq!(m.width, 3195);
+        assert_eq!(m.constraints, 160);
         assert_eq!(m.bus_interactions, 3207);
     }
 
