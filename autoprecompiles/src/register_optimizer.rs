@@ -74,12 +74,17 @@ pub fn optimize_register_operations<T: FieldElement>(
     machine
 }
 
+/// Tries to convert the bus interaction into a memory bus interaction.
+/// Returns `Ok(None)` if the bus interaction is not a memory bus interaction.
+/// Returns `Err(_)` if the conversion failed but the input might be a memory bus interaction
+/// (this happens mostly if the multiplicity is not either 1 or -1).
+/// Otherwise, returns `Ok(Some(memory_bus_interaction))`.
 fn try_to_register_memory_bus_interaction<T: FieldElement>(
     bus_int: &SymbolicBusInteraction<T>,
-) -> Option<MemoryBusInteraction<T>> {
-    let mem_int: MemoryBusInteraction<T> = bus_int.clone().try_into().ok()?;
+) -> Result<Option<MemoryBusInteraction<T>>, ()> {
+    let mem_int = MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int)?;
 
-    matches!(mem_int.ty, MemoryType::Register).then(|| mem_int)
+    Ok(matches!(mem_int.ty, MemoryType::Register).then(|| mem_int))
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.

@@ -75,6 +75,15 @@ impl<T: Display> Display for SymbolicBusInteraction<T> {
     }
 }
 
+impl<T: Copy> SymbolicBusInteraction<T> {
+    pub fn try_multiplicity_to_number(&self) -> Option<T> {
+        match self.mult {
+            AlgebraicExpression::Number(n) => Some(n),
+            _ => None,
+        }
+    }
+}
+
 impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
     for SymbolicBusInteraction<T>
 {
@@ -143,7 +152,7 @@ pub enum InstructionKind {
     Terminal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryType {
     Constant,
     Register,
@@ -204,30 +213,34 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
-    type Error = ();
-
-    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+impl<T: FieldElement> MemoryBusInteraction<T> {
+    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction` of the given memory type.
+    ///
+    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction of the given type.
+    /// Returns `Err(_)` if the bus interaction is a memory bus interaction of the given type but could not be converted properly
+    /// (usually because the multiplicity is not -1 or 1).
+    /// Otherwise returns `Ok(Some(memory_bus_interaction))`
+    fn try_from_symbolic_bus_interaction_with_memory_kind(
+        bus_interaction: &SymbolicBusInteraction<T>,
+        memory_type: MemoryType,
+    ) -> Result<Option<Self>, ()> {
         if bus_interaction.id != MEMORY_BUS_ID {
-            return Err(());
+            return Ok(None);
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
         // are in the right order.
-        let ty = bus_interaction.args[0].clone().into();
+        let ty = bus_interaction.args[0].into();
+        if ty != memory_type {
+            return Ok(None);
+        }
         let op = match bus_interaction.mult {
             AlgebraicExpression::Number(n) if n == 1.into() => MemoryOp::Receive,
             AlgebraicExpression::Number(n) if n == (-1).into() => MemoryOp::Send,
-            _ => return Err(()), // TODO distinguish between this case and the "is not a memory bus interaction" case.
+            _ => return Err(()),
         };
         let addr = bus_interaction.args[1].clone();
         let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
-        Ok(MemoryBusInteraction {
-            ty,
-            op,
-            addr,
-            data,
-            bus_interaction,
-        })
+        Ok(Some(MemoryBusInteraction { ty, op, addr, data }))
     }
 }
 
