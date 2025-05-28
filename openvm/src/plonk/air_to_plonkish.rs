@@ -200,8 +200,7 @@ mod tests {
 1 * x + 1 * y + -1 * tmp_2 + 0 * x * y + 0 = 0
 0 * tmp_1 + 0 * tmp_2 + -1 * tmp_3 + 1 * tmp_1 * tmp_2 + 0 = 0
 1 * tmp_0 + -1 * tmp_3 + -1 * tmp_4 + 0 * tmp_0 * tmp_3 + 0 = 0
--1 * tmp_4 + 0 * Unused + 0 * Unused + 0 * tmp_4 * Unused + 0 = 0
-"
+-1 * tmp_4 + 0 * Unused + 0 * Unused + 0 * tmp_4 * Unused + 0 = 0"
         );
     }
 
@@ -217,8 +216,7 @@ mod tests {
             // 4 + tmp_1 = 0
             "0 * Unused + 0 * Unused + -1 * tmp_0 + 0 * Unused * Unused + -2 = 0
 2 * tmp_0 + 0 * Unused + -1 * tmp_1 + 0 * tmp_0 * Unused + 0 = 0
-0 * Unused + 1 * tmp_1 + 0 * Unused + 0 * Unused * tmp_1 + 4 = 0
-"
+0 * Unused + 1 * tmp_1 + 0 * Unused + 0 * Unused * tmp_1 + 4 = 0"
         )
     }
 
@@ -230,8 +228,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_plonk_expr(&expr, &mut temp_id_offset)),
-            "1 * x + 0 * Unused + 0 * Unused + 0 * x * Unused + 0 = 0
-"
+            "1 * x + 0 * Unused + 0 * Unused + 0 * x * Unused + 0 = 0"
         )
     }
 
@@ -253,8 +250,7 @@ mod tests {
 0 * tmp_0 + 0 * y + -1 * tmp_1 + 1 * tmp_0 * y + 0 = 0
 0 * Unused + -1 * tmp_1 + -1 * tmp_2 + 0 * Unused * tmp_1 + 3 = 0
 -1 * tmp_2 + 0 * Unused + -1 * tmp_3 + 0 * tmp_2 * Unused + 0 = 0
-1 * tmp_3 + 0 * Unused + 0 * Unused + 0 * tmp_3 * Unused + 1 = 0
-"
+1 * tmp_3 + 0 * Unused + 0 * Unused + 0 * tmp_3 * Unused + 1 = 0"
         );
     }
 
@@ -268,8 +264,7 @@ mod tests {
             // tmp_0 = 3
             // -tmp_0
             "0 * Unused + 0 * Unused + -1 * tmp_0 + 0 * Unused * Unused + 3 = 0
--1 * tmp_0 + 0 * Unused + 0 * Unused + 0 * tmp_0 * Unused + 0 = 0
-"
+-1 * tmp_0 + 0 * Unused + 0 * Unused + 0 * tmp_0 * Unused + 0 = 0"
         );
     }
 
@@ -284,8 +279,7 @@ mod tests {
             // tmp_0 = -y
             // x - tmp_0 = 0
             "-1 * y + 0 * Unused + -1 * tmp_0 + 0 * y * Unused + 0 = 0
-1 * x + -1 * tmp_0 + 0 * Unused + 0 * x * tmp_0 + 0 = 0
-"
+1 * x + -1 * tmp_0 + 0 * Unused + 0 * x * tmp_0 + 0 = 0"
         );
     }
 }
