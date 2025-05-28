@@ -19,7 +19,7 @@ use powdr_pilopt::{
     simplify_expression,
 };
 
-use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// Simplifies the constraints as much as possible.
 /// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
@@ -227,8 +227,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         .unwrap();
     SymbolicBusInteraction {
         id,
-        // TODO: The kind of SymbolicBusInteraction is ignored, this field should be removed
-        kind: BusInteractionKind::Send,
         args: bus_interaction
             .payload
             .into_iter()
