@@ -69,6 +69,8 @@ pub use openvm_build::GuestOptions;
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
+pub use customize_exe::customize;
+
 // A module for our extension
 mod powdr_extension;
 

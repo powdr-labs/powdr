@@ -44,7 +44,10 @@ pub struct ElfProgram {
 pub fn load_elf(file_name: &Path) -> ElfProgram {
     log::info!("Loading ELF file: {}", file_name.display());
     let file_buffer = fs::read(file_name).unwrap();
+    load_elf_from_buffer(&file_buffer)
+}
 
+pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
     let elf = Elf::parse(&file_buffer).unwrap();
 
     // Assert the file is 32 bits.
