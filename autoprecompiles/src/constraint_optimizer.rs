@@ -215,10 +215,9 @@ fn remove_equal_bus_interactions<P: FieldElement>(
         .filter_map(|interaction| {
             // We only touch interactions with non-stateful buses.
             if let Some(bus_id) = interaction.bus_id.try_to_number() {
-                if !bus_interaction_handler.is_stateful(bus_id) {
-                    if !seen.insert(interaction.clone()) {
-                        return None;
-                    }
+                if !bus_interaction_handler.is_stateful(bus_id) && !seen.insert(interaction.clone())
+                {
+                    return None;
                 }
             }
             Some(interaction)
