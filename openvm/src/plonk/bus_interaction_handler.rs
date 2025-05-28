@@ -18,47 +18,13 @@ fn add_bus_to_plonk_circuit<T>(
 where
     T: FieldElement,
 {
-    // build gates for multiplicity
-    let mut multiplicity_number = T::ZERO;
-
-    let mut bus_variables = Vec::new();
-
-    match bus_interaction.mult {
-        AlgebraicExpression::Number(n) => multiplicity_number = n,
-        AlgebraicExpression::Reference(r) => {
-            bus_variables.push(Variable::Witness(r));
-        }
-        _ => {
-            // If the argument is not a polynomial reference, add plonk gates based on the arg expression,
-            // put the temp of the last gate into the payloads_variables.
-            let expr = air_to_plonkish(&bus_interaction.mult, plonk_circuit, temp_id_offset);
-            bus_variables.push(plonk_circuit.gates.last_mut().unwrap().c.clone());
-        }
-    }
-
-    // build gates for arguments
-    for arg in bus_interaction.args {
-        if let AlgebraicExpression::Reference(r) = arg {
-            bus_variables.push(Variable::Witness(r));
-        } else {
-            let expr = air_to_plonkish(&arg, plonk_circuit, temp_id_offset);
-            bus_variables.push(plonk_circuit.gates.last_mut().unwrap().c.clone());
-        }
-    }
-
     match bus_map.bus_type(bus_interaction.id) {
         Memory => {
             // Handle Memory bus interaction
             unimplemented!("Memory bus interaction is not implemented yet");
         }
         BitwiseLookup => {
-            assert_eq!(
-                bus_variables.len(),
-                4,
-                "Arguments number mismatch for BitwiseLookup"
-            );
-            let [x, y, z, op] = bus_variables.try_into().unwrap();
-            plonk_circuit.add_gate(Gate {
+            let mut bus_gate=Gate {
                 q_l: T::ZERO,
                 q_r: T::ZERO,
                 q_o: T::ZERO,
@@ -72,10 +38,44 @@ where
                 q_rang_tuple: T::ZERO,
                 q_range_check: T::ZERO,
 
-                a: x,
-                b: y,
-                c: z,
-            });
+                a: Variable::Unused,
+                b: Variable::Unused,
+                c: Variable::Unused,
+            };
+
+            let [x, y, z, op]: [AlgebraicExpression<T>; 4] = bus_interaction
+                .args
+                .try_into()
+                .expect("Expected 4 arguments");
+
+            [x, y, z]
+                .iter()
+                .zip([
+                    &mut bus_gate.a,
+                    &mut bus_gate.b,
+                    &mut bus_gate.c,
+                ])
+                .for_each(|(arg, payload)| {
+                    if let AlgebraicExpression::Reference(r) = arg {
+                        *payload = Variable::Witness(r.clone());
+                    } else {
+                        // If the argument is not a polynomial reference, add plonk gates based on the arg expression,
+                        // put the temp of the last gate into the payloads_variables.
+                        air_to_plonkish(&arg, plonk_circuit, temp_id_offset);
+                        *payload = plonk_circuit.gates.last_mut().unwrap().c.clone();
+                    }
+                });
+
+            assert!(
+                matches!(bus_interaction.mult, AlgebraicExpression::Number(_)),
+                "BitwiseLookup multiplicity should be a number"
+            );
+
+            assert!(
+                matches!(op, AlgebraicExpression::Number(_)),
+                "BitwiseLookup op payload should be a number"
+            );
+            plonk_circuit.add_gate(bus_gate);
         }
         ExecutionBridge => {
             // Handle Execution bus interaction
