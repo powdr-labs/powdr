@@ -283,7 +283,7 @@ pub fn build<T: FieldElement>(
     program: Vec<SymbolicInstructionStatement<T>>,
     instruction_kind: BTreeMap<String, InstructionKind>,
     instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     opcode: u32,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {

@@ -41,12 +41,12 @@ pub enum Error {
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: FieldElement, V> {
+pub struct Solver<T: FieldElement, V, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
-    bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
+    bus_interaction_handler: BusInterHandler,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
     /// The concrete variable assignments or replacements that were derived for variables
@@ -54,7 +54,9 @@ pub struct Solver<T: FieldElement, V> {
     assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug>
+    Solver<T, V, DefaultBusInteractionHandler<T>>
+{
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
@@ -64,18 +66,28 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Solver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
-            bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            bus_interaction_handler: Default::default(),
             assignments: Default::default(),
         }
     }
+}
 
-    pub fn with_bus_interaction_handler(
+impl<
+        T: FieldElement,
+        V: Ord + Clone + Hash + Eq + Display + Debug,
+        BusInter: BusInteractionHandler<T>,
+    > Solver<T, V, BusInter>
+{
+    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T>>(
         self,
-        bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
-    ) -> Self {
+        bus_interaction_handler: B,
+    ) -> Solver<T, V, B> {
+        assert!(self.assignments.is_empty());
         Solver {
             bus_interaction_handler,
-            ..self
+            constraint_system: self.constraint_system,
+            range_constraints: self.range_constraints,
+            assignments: self.assignments,
         }
     }
 
@@ -137,7 +149,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .bus_interactions()
             .iter()
             .map(|bus_interaction| {
-                bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+                bus_interaction.solve(&self.bus_interaction_handler, &self.range_constraints)
             })
             // Collect to satisfy borrow checker
             .collect::<Result<Vec<_>, _>>()
@@ -245,7 +257,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                         })
                     }
                     bus_interaction
-                        .solve(&*self.bus_interaction_handler, &self.range_constraints)
+                        .solve(&self.bus_interaction_handler, &self.range_constraints)
                         .is_err()
                 }
             })

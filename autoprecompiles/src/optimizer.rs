@@ -14,7 +14,7 @@ use crate::{
 
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: u32,
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
