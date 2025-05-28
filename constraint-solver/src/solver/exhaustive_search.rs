@@ -1,9 +1,8 @@
 use itertools::Itertools;
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::constraint_system::BusInteractionHandler;
-use crate::quadratic_symbolic_expression::RangeConstraintProvider;
-use crate::utils::get_all_possible_assignments;
+use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
@@ -95,18 +94,13 @@ impl<
             })
             .unique()
             .filter(|variables| !variables.is_empty())
-            .filter(|variables| self.has_few_possible_assignments(variables.iter().cloned()))
-    }
-
-    /// Returns true if the given range constraints allow for at most `MAX_SEARCH_WIDTH``
-    /// possible assignments for the given variables.
-    fn has_few_possible_assignments(&self, variables: impl Iterator<Item = V>) -> bool {
-        variables
-            .map(|v| self.solver.range_constraints.get(&v))
-            .map(|rc| rc.range_width().try_into_u64())
-            .try_fold(1u64, |acc, x| acc.checked_mul(x?))
-            .map(|total_width| total_width < MAX_SEARCH_WIDTH)
-            .unwrap_or(false)
+            .filter(|variables| {
+                has_few_possible_assignments(
+                    variables.iter().cloned(),
+                    MAX_SEARCH_WIDTH,
+                    self.solver,
+                )
+            })
     }
 
     /// Goes through all possible assignments for the given variables and checks whether they satisfy
