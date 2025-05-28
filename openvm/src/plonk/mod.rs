@@ -2,6 +2,8 @@ use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
+use crate::BusType;
+
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
 
@@ -83,6 +85,52 @@ impl<T: FieldElement> Default for Gate<T, AlgebraicReference> {
     }
 }
 
+impl<T: FieldElement,V> Gate<T, V> {
+    pub fn get_bus_gate_type(&self) -> Option<BusType> {
+        let selectors = [
+            (BusType::BitwiseLookup, &self.q_bitwise),
+            (BusType::Memory, &self.q_memory),
+            (BusType::VariableRangeChecker, &self.q_range_check),
+            (BusType::ExecutionBridge, &self.q_execution),
+            (BusType::PcLookup, &self.q_pc),
+            (BusType::TupleRangeChecker, &self.q_rang_tuple),
+        ];
+
+        let active: Vec<_> = selectors
+            .iter()
+            .filter(|(_, val)| *val == &T::ONE)
+            .collect();
+
+        // Assert that exactly one is active
+        assert!(
+            active.len() <= 1,
+            "Active more than one bus gate selector {:?}",
+            active.iter().map(|(name, _)| *name).collect::<Vec<_>>()
+        );
+        if active.is_empty() {
+            None
+        } else {
+            Some(active[0].0.clone())
+        }
+    }
+}
+
+fn format_bus_type<T,V>(gate: &Gate<T,V>) -> &'static str 
+where
+    T: FieldElement,
+    V: Display,{
+    match gate.get_bus_gate_type() {
+        Some(BusType::BitwiseLookup) => "bitwise",
+        Some(BusType::Memory) => "memory",
+        Some(BusType::VariableRangeChecker) => "range_check",
+        Some(BusType::ExecutionBridge) => "execution",
+        Some(BusType::PcLookup) => "pc",
+        Some(BusType::TupleRangeChecker) => "tuple_range",
+        Some(BusType::Sha) => "sha",
+        None => "none",
+    }
+}
+
 /// The PlonK circuit, which is just a collection of gates.
 #[derive(Clone, Debug, Default)]
 pub struct PlonkCircuit<T, V> {
@@ -111,10 +159,11 @@ impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
                 format!("-{}", -*v)
             }
         };
+
         for gate in &self.gates {
             writeln!(
                 f,
-                "{} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
+                "{} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0, bus: {}",
                 fmt_fe(&gate.q_l),
                 gate.a,
                 fmt_fe(&gate.q_r),
@@ -125,6 +174,7 @@ impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
                 gate.a,
                 gate.b,
                 fmt_fe(&gate.q_const),
+                 format_bus_type(gate),
             )?;
         }
         Ok(())
