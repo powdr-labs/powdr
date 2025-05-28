@@ -1,8 +1,7 @@
-use exhaustive_search::ExhaustiveSearch;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
@@ -11,8 +10,7 @@ use crate::utils::known_variables;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error as QseError, RangeConstraintProvider};
-use super::symbolic_expression::SymbolicExpression;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -41,12 +39,12 @@ pub enum Error {
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: FieldElement, V> {
+pub struct Solver<T: FieldElement, V, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
-    bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
+    bus_interaction_handler: BusInterHandler,
     /// The currently known range constraints of the variables.
     range_constraints: RangeConstraints<T, V>,
     /// The concrete variable assignments or replacements that were derived for variables
@@ -54,7 +52,9 @@ pub struct Solver<T: FieldElement, V> {
     assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug>
+    Solver<T, V, DefaultBusInteractionHandler<T>>
+{
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
@@ -64,18 +64,28 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Solver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
-            bus_interaction_handler: Box::new(DefaultBusInteractionHandler::default()),
+            bus_interaction_handler: Default::default(),
             assignments: Default::default(),
         }
     }
+}
 
-    pub fn with_bus_interaction_handler(
+impl<
+        T: FieldElement,
+        V: Ord + Clone + Hash + Eq + Display + Debug,
+        BusInter: BusInteractionHandler<T>,
+    > Solver<T, V, BusInter>
+{
+    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T>>(
         self,
-        bus_interaction_handler: Box<dyn BusInteractionHandler<T>>,
-    ) -> Self {
+        bus_interaction_handler: B,
+    ) -> Solver<T, V, B> {
+        assert!(self.assignments.is_empty());
         Solver {
             bus_interaction_handler,
-            ..self
+            constraint_system: self.constraint_system,
+            range_constraints: self.range_constraints,
+            assignments: self.assignments,
         }
     }
 
@@ -137,7 +147,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .bus_interactions()
             .iter()
             .map(|bus_interaction| {
-                bus_interaction.solve(&*self.bus_interaction_handler, &self.range_constraints)
+                bus_interaction.solve(&self.bus_interaction_handler, &self.range_constraints)
             })
             // Collect to satisfy borrow checker
             .collect::<Result<Vec<_>, _>>()
@@ -167,7 +177,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// If there is exactly one assignment that does not lead to a contradiction,
     /// apply it. This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
-        let assignments = ExhaustiveSearch::new(self).get_unique_assignments()?;
+        let assignments = exhaustive_search::get_unique_assignments(
+            &self.constraint_system,
+            &self.range_constraints,
+            &self.bus_interaction_handler,
+        )?;
 
         let mut progress = false;
         for (variable, value) in &assignments {
@@ -219,36 +233,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         // but usually it should not be in the system once it has been assigned.
         true
     }
+}
 
-    /// Given a set of variable assignments, checks if they violate any constraint.
-    /// Note that this might return false negatives, because it does not propagate any values.
-    fn is_assignment_conflicting(&self, assignments: &BTreeMap<V, T>) -> bool {
-        self.constraint_system
-            .constraints_referencing_variables(assignments.keys().cloned())
-            .any(|constraint| match constraint {
-                ConstraintRef::AlgebraicConstraint(identity) => {
-                    let mut identity = identity.clone();
-                    for (variable, value) in assignments.iter() {
-                        identity
-                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
-                    }
-                    identity.solve(&self.range_constraints).is_err()
-                }
-                ConstraintRef::BusInteraction(bus_interaction) => {
-                    let mut bus_interaction = bus_interaction.clone();
-                    for (variable, value) in assignments.iter() {
-                        bus_interaction.fields_mut().for_each(|expr| {
-                            expr.substitute_by_known(
-                                variable,
-                                &SymbolicExpression::Concrete(*value),
-                            )
-                        })
-                    }
-                    bus_interaction
-                        .solve(&*self.bus_interaction_handler, &self.range_constraints)
-                        .is_err()
-                }
-            })
+impl<T: FieldElement, V: Clone + Hash + Eq, B> RangeConstraintProvider<T, V> for &Solver<T, V, B> {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var)
     }
 }
 

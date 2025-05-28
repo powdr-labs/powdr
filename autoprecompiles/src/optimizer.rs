@@ -15,7 +15,7 @@ use crate::{
 
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
@@ -38,13 +38,13 @@ pub fn optimize<T: FieldElement>(
 
 fn optimization_loop_iteration<T: FieldElement>(
     machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
     let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
     let machine = optimize_register_operations(machine);
-    let machine = optimize_memory(machine);
     assert!(check_register_operation_consistency(&machine));
+    let machine = optimize_memory(machine);
     machine
 }
 
