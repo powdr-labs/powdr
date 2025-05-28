@@ -126,7 +126,7 @@ impl<F: PrimeField32> VmConfig<F> for SpecializedConfig<F> {
 }
 
 impl<F: Default + PrimeField32> SpecializedConfig<F> {
-    fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
+    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
         Self { sdk_config, powdr }
     }
 }
