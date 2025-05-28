@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
+use crate::constraint_system::BusInteractionHandler;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,17 +13,22 @@ use super::{Error, Solver};
 /// The maximum number of possible assignments to try when doing exhaustive search.
 const MAX_SEARCH_WIDTH: u64 = 1 << 12;
 
-pub struct ExhaustiveSearch<'a, T: FieldElement, V> {
-    solver: &'a Solver<T, V>,
+pub struct ExhaustiveSearch<'a, T: FieldElement, V, B> {
+    solver: &'a Solver<T, V, B>,
 }
 
-impl<'a, T: FieldElement, V> ExhaustiveSearch<'a, T, V> {
-    pub fn new(solver: &'a Solver<T, V>) -> Self {
+impl<'a, T: FieldElement, V, B> ExhaustiveSearch<'a, T, V, B> {
+    pub fn new(solver: &'a Solver<T, V, B>) -> Self {
         ExhaustiveSearch { solver }
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> ExhaustiveSearch<'_, T, V> {
+impl<
+        T: FieldElement,
+        V: Ord + Clone + Hash + Eq + Display + Debug,
+        B: BusInteractionHandler<T>,
+    > ExhaustiveSearch<'_, T, V, B>
+{
     /// Tries to find unique assignments via exhaustive search: For any group of variables that
     /// appear together in an identity, if there are fewer than `MAX_SEARCH_WIDTH` possible
     /// assignments, it tries them all and returns any unique assignments.
