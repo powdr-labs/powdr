@@ -233,8 +233,8 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
             return Ok(None);
         }
         let op = match bus_interaction.try_multiplicity_to_number() {
-            Some(n) if n == 1.into() => MemoryOp::Receive,
-            Some(n) if n == (-1).into() => MemoryOp::Send,
+            Some(n) if n == 1.into() => MemoryOp::Send,
+            Some(n) if n == (-1).into() => MemoryOp::Receive,
             _ => return Err(()),
         };
         let addr = bus_interaction.args[1].clone();
