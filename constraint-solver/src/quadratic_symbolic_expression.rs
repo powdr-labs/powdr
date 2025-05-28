@@ -1763,19 +1763,48 @@ w"
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
-        let expr = var("x") + var("y") * constant(64) - var("a") + var("b") * constant(64)
+        let expr = var("x") + var("y") * constant(64)
+            - var("a")
+            - var("b") * constant(64)
             - var("r") * constant(65536)
             + var("s") * constant(65536)
             + var("w") * constant(0x1000000)
-            + constant(0x1f050046);
+            - constant(5 * 0x1000000 - 6 + 1 * 64 - 5 * 65536);
 
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "-a + x + 6
-b + y + 1
+b + y - 1
 -r + s + 5
 w + 31"
+        );
+    }
+
+    #[test]
+    fn split_limb_decomposition() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("l0", four_bit_rc.clone()),
+            ("l1", four_bit_rc.clone()),
+            ("l2", four_bit_rc.clone()),
+            ("l3", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("l0")
+            + var("l1") * constant(0x10)
+            + var("l2") * constant(0x100)
+            + var("l3") * constant(0x1000)
+            - constant(0x1234);
+
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "l0 + -4
+l1 + -3
+l2 + -2
+l3 + -1"
         );
     }
 }
