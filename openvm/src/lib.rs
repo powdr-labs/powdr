@@ -186,10 +186,14 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram { exe, sdk_vm_config })
 }
 
+/// Determines how the precompile (a circuit with algebraic gates and bus interactions)
+/// is implemented as a RAP.
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub enum PrecompileImplementation {
+    /// Allocate a column for each variable and process a call in a single row.
     #[default]
     SingleRowChip,
+    /// Compile the circuit to a PlonK circuit.
     PlonkChip,
 }
 
@@ -202,7 +206,8 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
-    pub precompile_implementation: PrecompileImplementation,
+    /// Implementation of the precompile, i.e., how to compile it to a RAP.
+    pub implementation: PrecompileImplementation,
 }
 
 impl PowdrConfig {
@@ -211,7 +216,7 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
-            precompile_implementation: PrecompileImplementation::default(),
+            implementation: PrecompileImplementation::default(),
         }
     }
 
@@ -231,7 +236,7 @@ impl PowdrConfig {
         precompile_implementation: PrecompileImplementation,
     ) -> Self {
         Self {
-            precompile_implementation,
+            implementation: precompile_implementation,
             ..self
         }
     }
@@ -279,7 +284,6 @@ pub fn compile_exe(
         config.clone(),
         pgo_data,
     );
-    let extension = extension.with_implementation(config.precompile_implementation);
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
     export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
@@ -661,8 +665,7 @@ mod tests {
         prove(&program, mock, recursion, stdin)
     }
 
-    fn prove_simple(guest: &str, apc: u64, skip: u64, stdin: StdIn) {
-        let config = PowdrConfig::new(apc, skip);
+    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn) {
         let result = compile_and_prove(guest, config, false, false, stdin);
         assert!(result.is_ok());
     }
@@ -693,7 +696,8 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        prove_simple(GUEST, GUEST_APC, GUEST_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        prove_simple(GUEST, config, stdin);
     }
 
     #[test]
@@ -729,7 +733,8 @@ mod tests {
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        prove_simple(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, config, stdin);
     }
 
     #[test]
@@ -737,7 +742,8 @@ mod tests {
     fn keccak_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        prove_simple(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, config, stdin);
     }
 
     #[test]

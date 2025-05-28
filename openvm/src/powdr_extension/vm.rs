@@ -92,18 +92,15 @@ impl<F> PowdrPrecompile<F> {
 }
 
 impl<F: PrimeField32> PowdrExtension<F> {
-    pub fn new(precompiles: Vec<PowdrPrecompile<F>>, base_config: SdkVmConfig) -> Self {
+    pub fn new(
+        precompiles: Vec<PowdrPrecompile<F>>,
+        base_config: SdkVmConfig,
+        implementation: PrecompileImplementation,
+    ) -> Self {
         Self {
             precompiles,
             base_config,
-            implementation: PrecompileImplementation::default(),
-        }
-    }
-
-    pub fn with_implementation(self, implementation: PrecompileImplementation) -> Self {
-        Self {
             implementation,
-            ..self
         }
     }
 }
