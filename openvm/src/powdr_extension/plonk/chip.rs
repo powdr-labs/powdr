@@ -123,7 +123,7 @@ where
     }
 
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
-        tracing::info!("Generating air proof input for PlonkChip {}", self.name);
+        tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         // TODO: Add bus interactions
         let algebraic_constraints: Vec<AlgebraicExpression<BabyBearField>> = self
@@ -136,10 +136,10 @@ where
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
-        tracing::info!("   Number of calls: {number_of_calls}");
-        tracing::info!("   Plonk gates: {}", plonk_circuit.len());
-        tracing::info!("   Trace width: {width}");
-        tracing::info!("   Trace height: {height}");
+        tracing::debug!("   Number of calls: {number_of_calls}");
+        tracing::debug!("   Plonk gates: {}", plonk_circuit.len());
+        tracing::debug!("   Trace width: {width}");
+        tracing::debug!("   Trace height: {height}");
 
         // Get witness in a calls x variables matrix.
         // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
@@ -279,7 +279,8 @@ fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
     F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
 }
 
-pub fn transpose_algebraic_expression_back<F: PrimeField32, P: FieldElement>(
+// TODO: We transpose expressions from powdr -> openvm -> powdr, we should fix this...
+fn transpose_algebraic_expression_back<F: PrimeField32, P: FieldElement>(
     expr: AlgebraicExpression<F>,
 ) -> AlgebraicExpression<P> {
     match expr {
