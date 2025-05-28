@@ -53,7 +53,7 @@ impl<T: FieldElement, V: Display> Display for Gate<T, V> {
                 format!("-{}", -*v)
             }
         };
-        writeln!(
+        write!(
             f,
             "{} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
             fmt_fe(&self.q_l),
