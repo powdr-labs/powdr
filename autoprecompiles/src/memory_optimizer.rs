@@ -20,7 +20,7 @@ use powdr_number::{FieldElement, LargeInt};
 use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
 
 pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let to_remove = redundant_memory_interactions(&machine).collect::<HashSet<_>>();
+    let to_remove = redundant_memory_interactions_indices(&machine).collect::<HashSet<_>>();
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
@@ -30,7 +30,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     machine
 }
 
-fn redundant_memory_interactions<T: FieldElement>(
+fn redundant_memory_interactions_indices<T: FieldElement>(
     machine: &SymbolicMachine<T>,
 ) -> impl Iterator<Item = usize> {
     let memory_bus_interactions = machine
@@ -46,24 +46,12 @@ fn redundant_memory_interactions<T: FieldElement>(
         })
         .collect_vec();
 
-    let mut counter = 0..;
-    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
-
-    let constraints = machine
-        .constraints
-        .iter()
-        .map(|constr| {
-            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
-        })
-        .collect_vec();
-
+    let constraints = symbolic_to_simplified_contraints(&machine.constraints);
     let constraints_by_variable = constraints
         .iter()
         .flat_map(|constr| {
-            constr
-                .referenced_unknown_variables()
-                .map(move |var| (var.clone(), constr))
+            let vars = constr.referenced_unknown_variables();
+            vars.map(move |var| (var.clone(), constr))
         })
         .into_group_map();
 
@@ -158,6 +146,23 @@ fn redundant_memory_interactions<T: FieldElement>(
         memory_bus_interactions.len()
     );
     to_remove.into_iter()
+}
+
+/// Converts from SymbolicConstraint to QuadraticSymbolicExpressio and
+/// simplifies constraints by introducing boolean variables.
+fn symbolic_to_simplified_contraints<T: FieldElement>(
+    constraints: &[SymbolicConstraint<T>],
+) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
+    let mut counter = 0..;
+    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
+
+    constraints
+        .iter()
+        .map(|constr| {
+            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
+            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+        })
+        .collect_vec()
 }
 
 #[derive(Default)]
