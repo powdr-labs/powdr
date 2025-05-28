@@ -94,16 +94,23 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let res = self
             .instructions
             .iter()
-            .try_fold(from_state, |execution_state, instruction| {
+            .enumerate()
+            .try_fold(from_state, |execution_state, (idx, instruction)| {
+                let from_record = memory.get_memory_logs().len();
                 let executor = self
                     .inventory
                     .get_mut_executor(&instruction.opcode())
                     .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
+                let out = executor.execute(memory, instruction.as_ref(), execution_state);
+                let to_record = memory.get_memory_logs().len();
+                println!("Executing instruction {} from record {} to {}",
+                    idx, from_record, to_record - 1
+                );
+                out
             });
 
         self.number_of_calls += 1;
-        let to_record_id = memory.get_memory_logs().len();
+        let to_record_id = memory.get_memory_logs().len() - 1;
 
         memory
             .memory
@@ -185,7 +192,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
             .instructions
             .iter()
-            .map(|instruction| {
+            .enumerate()
+            .map(|(idx, instruction)| {
                 // look up how many dummy‐cells this AIR produces:
                 let air_width = dummy_trace_by_air_name
                     .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
@@ -207,6 +215,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         }
                     }
                 }
+                println!("instruction index {} instruction {:?} map {:?}", 
+                    idx, instruction.instruction, map);
                 map
             })
             .collect();
@@ -250,6 +260,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 for (instruction_id, (instruction, dummy_row)) in
                     self.instructions.iter().zip_eq(dummy_values).enumerate()
                 {
+                    println!("instruction {} dummy row {:?}", 
+                        instruction_id, dummy_row);
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
                     // first remove the side effects of this row on the main periphery
@@ -290,7 +302,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
-                for bus_interaction in bus_interactions.iter() {
+                for (idx, bus_interaction) in bus_interactions.iter().enumerate() {
                     let mult = evaluator
                         .eval_expr(&bus_interaction.mult)
                         .as_canonical_u32();
@@ -299,6 +311,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .iter()
                         .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
                         .collect_vec();
+
+                    println!("Applying mult: {}, args: {:?}, bus interaction: {:?}", 
+                        mult, args, bus_interaction);
 
                     self.periphery.apply(bus_interaction.id, mult, &args);
                 }

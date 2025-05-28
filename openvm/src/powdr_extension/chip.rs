@@ -99,6 +99,7 @@ impl SharedChips {
             id if id == self.range_checker.bus().index() => {
                 // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
                 let [value, max_bits] = args.try_into().unwrap();
+                println!("range_check add_count for value: {}, max_bits: {}, mult: {}", value, max_bits, mult);
 
                 for _ in 0..mult {
                     self.range_checker.add_count(value, max_bits as usize);
@@ -112,6 +113,7 @@ impl SharedChips {
             {
                 // tuple range checker
                 // We pass a slice. It is checked inside `add_count`.
+                println!("tuple_range_check add_count for args: {:?}, mult: {}", args, mult);
                 for _ in 0..mult {
                     self.tuple_range_checker.as_ref().unwrap().add_count(args);
                 }
@@ -260,6 +262,7 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
                 } else {
                     symbolic_var.index
                 };
+                println!("var index {} has value {}", index, self.row[index]);
                 self.row[index]
             }
             // currently only the current rotation of the main is supported
