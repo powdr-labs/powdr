@@ -518,9 +518,20 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 // `candidate + smallest_coeff * [a..b] + constant / candidate_coeff = 0`
                 // i.e. we can split off `candidate + (constant / candidate_coeff) % smallest_coeff`.
 
-                let candidate_constant =
-                    (constant / candidate_coeff).to_integer().try_into_u64()?
-                        % smallest_coeff.to_integer().try_into_u64()?;
+                let scaled_constant = constant / candidate_coeff;
+                let (scaled_constant, scaled_constant_is_negative) =
+                    if scaled_constant.is_in_lower_half() {
+                        (scaled_constant, false)
+                    } else {
+                        (-scaled_constant, true)
+                    };
+                let candidate_constant = scaled_constant.to_integer().try_into_u64()?
+                    % smallest_coeff.to_integer().try_into_u64()?;
+                let candidate_constant = if scaled_constant_is_negative {
+                    -T::from(candidate_constant)
+                } else {
+                    T::from(candidate_constant)
+                };
                 parts.push(
                     candidate + &QuadraticSymbolicExpression::from(T::from(candidate_constant)),
                 );
