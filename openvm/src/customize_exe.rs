@@ -25,7 +25,7 @@ use crate::{
     utils::symbolic_to_algebraic,
 };
 
-const OPENVM_DEGREE_BOUND: usize = 5;
+pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
@@ -206,6 +206,7 @@ pub fn customize<F: PrimeField32>(
             airs,
             apc_opcode,
             config.bus_map.clone(),
+            config.degree_bound,
         );
 
         let is_valid_column = autoprecompile
@@ -342,6 +343,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
+    degree_bound: usize,
 ) -> (SymbolicMachine<P>, Vec<Vec<u64>>) {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -385,7 +387,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         instruction_kind,
         instruction_machines,
         OpenVmBusInteractionHandler::new(bus_map),
-        OPENVM_DEGREE_BOUND,
+        degree_bound,
         apc_opcode as u32,
     );
 
