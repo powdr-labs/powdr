@@ -192,7 +192,6 @@ pub struct MemoryBusInteraction<T> {
     pub op: MemoryOp,
     pub addr: AlgebraicExpression<T>,
     pub data: Vec<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
 impl<T: FieldElement> MemoryBusInteraction<T> {
@@ -221,13 +220,7 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteractio
         };
         let addr = bus_interaction.args[1].clone();
         let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
-        Ok(MemoryBusInteraction {
-            ty,
-            op,
-            addr,
-            data,
-            bus_interaction,
-        })
+        Ok(MemoryBusInteraction { ty, op, addr, data })
     }
 }
 
