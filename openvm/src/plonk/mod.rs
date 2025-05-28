@@ -2,6 +2,7 @@ use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
 pub mod air_to_plonkish;
+pub mod bus_interaction_handler;
 
 /// A variable in a PlonK gate.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,6 +40,15 @@ pub struct Gate<T, V> {
     pub q_o: T,
     pub q_mul: T,
     pub q_const: T,
+
+    // The selectors for bus interactions.
+    pub q_bitwise: T,
+    pub q_memory: T,
+    pub q_range_check: T,
+    pub q_execution: T,
+    pub q_pc: T,
+    pub q_rang_tuple: T,
+
     pub a: Variable<V>,
     pub b: Variable<V>,
     pub c: Variable<V>,

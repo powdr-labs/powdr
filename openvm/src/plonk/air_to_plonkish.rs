@@ -26,6 +26,14 @@ where
             q_o: T::ZERO,
             q_mul: T::ZERO,
             q_const: T::ZERO,
+
+            q_bitwise: T::ZERO,
+            q_memory: T::ZERO,
+            q_execution: T::ZERO,
+            q_pc: T::ZERO,
+            q_rang_tuple: T::ZERO,
+            q_range_check: T::ZERO,
+
             a,
             b: Variable::Unused,
             c: Variable::Unused,
@@ -34,7 +42,7 @@ where
 
     plonkish_expr
 }
-fn air_to_plonkish<T>(
+pub fn air_to_plonkish<T>(
     algebraic_expr: &AlgebraicExpression<T>,
     plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
     temp_id_offset: &mut usize,
@@ -58,6 +66,14 @@ where
                 q_o: -T::ONE,
                 q_mul: T::ZERO,
                 q_const: *value,
+
+                q_bitwise: T::ZERO,
+                q_memory: T::ZERO,
+                q_execution: T::ZERO,
+                q_pc: T::ZERO,
+                q_rang_tuple: T::ZERO,
+                q_range_check: T::ZERO,
+
                 a: Variable::Unused,
                 b: Variable::Unused,
                 c,
@@ -127,6 +143,14 @@ where
                 q_o: -T::ONE,
                 q_mul,
                 q_const,
+
+                q_bitwise: T::ZERO,
+                q_memory: T::ZERO,
+                q_execution: T::ZERO,
+                q_pc: T::ZERO,
+                q_rang_tuple: T::ZERO,
+                q_range_check: T::ZERO,
+
                 a,
                 b,
                 c,
@@ -144,6 +168,14 @@ where
                     q_o: -T::ONE,
                     q_mul: T::ZERO,
                     q_const: T::ZERO,
+
+                    q_bitwise: T::ZERO,
+                    q_memory: T::ZERO,
+                    q_execution: T::ZERO,
+                    q_pc: T::ZERO,
+                    q_rang_tuple: T::ZERO,
+                    q_range_check: T::ZERO,
+
                     a,
                     b: Variable::Unused,
                     c,
