@@ -15,6 +15,7 @@ use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
 pub mod constraint_optimizer;
+pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;

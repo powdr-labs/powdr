@@ -7,6 +7,7 @@ use powdr_pilopt::simplify_expression;
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
+    memory_optimizer::optimize_memory,
     powdr::{self, UniqueColumns},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     SymbolicMachine, EXECUTION_BUS_ID, PC_LOOKUP_BUS_ID,
@@ -42,6 +43,7 @@ fn optimization_loop_iteration<T: FieldElement>(
 ) -> SymbolicMachine<T> {
     let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
     let machine = optimize_register_operations(machine);
+    let machine = optimize_memory(machine);
     assert!(check_register_operation_consistency(&machine));
     machine
 }
