@@ -3,6 +3,7 @@ use powdr_number::{FieldElement, LargeInt};
 
 use crate::constraint_system::BusInteractionHandler;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
+use crate::utils::get_all_possible_assignments;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
@@ -117,7 +118,7 @@ impl<
         &self,
         variables: &BTreeSet<V>,
     ) -> Result<Option<BTreeMap<V, T>>, Error> {
-        match get_all_possible_assignments(variables, self.solver)
+        match get_all_possible_assignments(variables.iter().cloned(), self.solver)
             .filter(|assignments| !self.solver.is_assignment_conflicting(assignments))
             .exactly_one()
         {
@@ -133,25 +134,4 @@ impl<
             }
         }
     }
-}
-
-/// Returns all possible assignments for the given variables.
-fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
-    variables: &BTreeSet<V>,
-    rc: impl RangeConstraintProvider<T, V>,
-) -> impl Iterator<Item = BTreeMap<V, T>> {
-    variables
-        .iter()
-        .map(|v| rc.get(v))
-        .map(|rc| rc.allowed_values().collect::<Vec<_>>())
-        .multi_cartesian_product()
-        .map(|assignment| {
-            variables
-                .iter()
-                .cloned()
-                .zip(assignment)
-                .collect::<BTreeMap<_, _>>()
-        })
-        .collect::<Vec<_>>()
-        .into_iter()
 }

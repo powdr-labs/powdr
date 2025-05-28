@@ -1,10 +1,11 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use crate::quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider};
 
 /// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
@@ -39,4 +40,26 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug +
     }
 
     all_known_variables
+}
+
+/// Returns all possible assignments for the given variables that satisfy their
+/// range constraints.
+///
+/// Note that it should be verified that the returned sequence is
+/// "small" before calling this function.
+pub fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
+    variables: impl IntoIterator<Item = V>,
+    rc: impl RangeConstraintProvider<T, V>,
+) -> impl Iterator<Item = BTreeMap<V, T>> {
+    variables
+        .into_iter()
+        .map(|v| {
+            rc.get(&v)
+                .allowed_values()
+                .collect_vec()
+                .into_iter()
+                .map(move |value| (v.clone(), value))
+        })
+        .multi_cartesian_product()
+        .map(|assignment| assignment.into_iter().collect::<BTreeMap<_, _>>())
 }
