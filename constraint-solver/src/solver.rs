@@ -264,6 +264,12 @@ impl<
     }
 }
 
+impl<T: FieldElement, V: Clone + Hash + Eq, B> RangeConstraintProvider<T, V> for &Solver<T, V, B> {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var)
+    }
+}
+
 /// The currently known range constraints for the variables.
 struct RangeConstraints<T: FieldElement, V> {
     range_constraints: HashMap<V, RangeConstraint<T>>,
