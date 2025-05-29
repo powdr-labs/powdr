@@ -55,3 +55,35 @@ fn test_optimize() {
         [3194, 2861, 160]
     );
 }
+
+#[test]
+fn test_conflicting_constraints_in_bus_interaction() {
+    let file =
+        std::fs::File::open("tests/conflicting_constraints_in_bus_interaction.cbor").unwrap();
+    let reader = std::io::BufReader::new(file);
+    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+
+    let machine = optimize(
+        machine,
+        OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
+        None, // opcode
+        5,
+    );
+
+    println!(
+        "Columns: {}, bus interactions: {}, constraints: {}",
+        machine.unique_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len()
+    );
+    // This cbor file above has the `is_valid` column removed, this is why the number below
+    // might be one less than in other tests.
+    assert_eq!(
+        [
+            machine.unique_columns().count(),
+            machine.bus_interactions.len(),
+            machine.constraints.len()
+        ],
+        [3194, 2861, 160]
+    );
+}
