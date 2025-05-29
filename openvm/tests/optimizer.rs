@@ -1,6 +1,6 @@
-use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 
