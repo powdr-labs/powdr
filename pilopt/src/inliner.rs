@@ -7,6 +7,12 @@ use powdr_number::FieldElement;
 use std::fmt::Display;
 use std::hash::Hash;
 
+#[derive(Debug, Clone, Copy)]
+pub struct DegreeBound {
+    pub identities: usize,
+    pub bus_interactions: usize,
+}
+
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
 pub fn replace_constrained_witness_columns<
@@ -14,7 +20,7 @@ pub fn replace_constrained_witness_columns<
     V: Ord + Clone + Hash + Eq + Display,
 >(
     constraint_system: ConstraintSystem<T, V>,
-    max_degree: usize,
+    degree_bound: DegreeBound,
 ) -> ConstraintSystem<T, V> {
     let mut to_remove_idx = vec![];
     let mut inlined_vars = vec![];
@@ -25,7 +31,7 @@ pub fn replace_constrained_witness_columns<
         let constraint = &constraint_system.algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(&var, &expr, &constraint_system, max_degree) {
+            if is_valid_substitution(&var, &expr, &constraint_system, degree_bound) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
@@ -49,7 +55,7 @@ pub fn replace_constrained_witness_columns<
         .collect();
 
     // sanity check
-    assert!(constraint_system.expressions_mut().all(|expr| {
+    assert!(constraint_system.expressions().all(|expr| {
         expr.referenced_unknown_variables()
             .all(|var| !inlined_vars.contains(var))
     }));
@@ -96,7 +102,7 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &QuadraticSymbolicExpression<T, V>,
     constraint_system: &IndexedConstraintSystem<T, V>,
-    max_degree: usize,
+    degree_bound: DegreeBound,
 ) -> bool {
     let replacement_deg = qse_degree(expr);
 
@@ -105,11 +111,11 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
                 let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
-                degree <= max_degree
+                degree <= degree_bound.identities
             }
             ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
                 let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
-                degree <= max_degree
+                degree <= degree_bound.bus_interactions
             }),
         })
 }

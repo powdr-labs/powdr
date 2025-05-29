@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_number::FieldElement;
-use powdr_pilopt::simplify_expression;
+use powdr_pilopt::{inliner::DegreeBound, simplify_expression};
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
@@ -16,7 +16,7 @@ pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> SymbolicMachine<T> {
     let machine = if let Some(opcode) = opcode {
         optimize_pc_lookup(machine, opcode)
@@ -38,7 +38,7 @@ pub fn optimize<T: FieldElement>(
 fn optimization_loop_iteration<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> SymbolicMachine<T> {
     let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
     let machine = optimize_register_operations(machine);

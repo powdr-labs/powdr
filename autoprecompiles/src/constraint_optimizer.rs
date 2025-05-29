@@ -11,7 +11,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 use powdr_pilopt::{
-    inliner::replace_constrained_witness_columns,
+    inliner::{replace_constrained_witness_columns, DegreeBound},
     qse_opt::{
         algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
         Variable,
@@ -31,7 +31,7 @@ use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
