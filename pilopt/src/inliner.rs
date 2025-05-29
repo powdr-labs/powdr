@@ -1,45 +1,11 @@
-use itertools::Itertools;
+use powdr_constraint_solver::constraint_system::ConstraintRef;
+use powdr_constraint_solver::indexed_constraint_system::{IndexedConstraintSystem};
 use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
-use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
-
-/// Keeps track of which constraints and bus interactions reference a given variable.
-/// Maps variables to constraint/bus interaction indices.
-struct VarIndex<V> {
-    constraints: HashMap<V, HashSet<usize>>,
-    bus_interactions: HashMap<V, HashSet<usize>>,
-}
-
-impl<V: Ord + Clone + Hash + Eq> VarIndex<V> {
-    fn build<T: FieldElement>(system: &ConstraintSystem<T, V>) -> Self {
-        let mut constraints: HashMap<_, HashSet<usize>> = Default::default();
-        let mut bus_interactions: HashMap<_, HashSet<usize>> = Default::default();
-
-        for (idx, constraint) in system.algebraic_constraints.iter().enumerate() {
-            for var in constraint.referenced_unknown_variables().unique() {
-                constraints.entry(var.clone()).or_default().insert(idx);
-            }
-        }
-        for (idx, interaction) in system.bus_interactions.iter().enumerate() {
-            for var in interaction
-                .fields()
-                .flat_map(|qse| qse.referenced_unknown_variables())
-                .unique()
-            {
-                bus_interactions.entry(var.clone()).or_default().insert(idx);
-            }
-        }
-
-        Self {
-            constraints,
-            bus_interactions,
-        }
-    }
-}
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
@@ -47,70 +13,29 @@ pub fn replace_constrained_witness_columns<
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    mut constraint_system: ConstraintSystem<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
-    let mut var_index = VarIndex::build(&constraint_system);
     let mut to_remove_idx = vec![];
     let mut inlined_vars = vec![];
 
-    for curr_idx in (0..constraint_system.algebraic_constraints.len()).rev() {
-        let constraint = &constraint_system.algebraic_constraints[curr_idx];
+    let mut constraint_system = IndexedConstraintSystem::from(constraint_system);
+
+    for curr_idx in (0..constraint_system.algebraic_constraints().len()).rev() {
+        let constraint = &constraint_system.algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
             if is_valid_substitution(
-                &var_index,
                 &var,
                 &expr,
                 &constraint_system,
                 max_degree,
-                &to_remove_idx[..],
             ) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
                 to_remove_idx.push(curr_idx);
-
-                // inline in constraints
-                #[allow(clippy::iter_over_hash_type)]
-                for idx in var_index.constraints[&var].clone() {
-                    if to_remove_idx.contains(&idx) {
-                        continue;
-                    }
-                    let qse = &mut constraint_system.algebraic_constraints[idx];
-                    qse.substitute_by_unknown(&var, &expr);
-                    // this constraint now references new variables
-                    for new_var in expr.referenced_unknown_variables() {
-                        var_index
-                            .constraints
-                            .entry(new_var.clone())
-                            .or_default()
-                            .insert(idx);
-                    }
-                }
-
-                // inline in bus interactions
-                #[allow(clippy::iter_over_hash_type)]
-                for idx in var_index
-                    .bus_interactions
-                    .get(&var)
-                    .unwrap_or(&HashSet::new())
-                    .clone()
-                {
-                    let interaction = &mut constraint_system.bus_interactions[idx];
-                    interaction.fields_mut().for_each(|qse| {
-                        qse.substitute_by_unknown(&var, &expr);
-                    });
-                    // this interaction now references new variables
-                    for new_var in expr.referenced_unknown_variables() {
-                        var_index
-                            .bus_interactions
-                            .entry(new_var.clone())
-                            .or_default()
-                            .insert(idx);
-                    }
-                }
-
+                constraint_system.substitute_by_unknown(&var, &expr);
                 inlined_vars.push(var);
 
                 break;
@@ -118,10 +43,14 @@ pub fn replace_constrained_witness_columns<
         }
     }
 
+    let mut constraint_system = ConstraintSystem::from(constraint_system);
+
     // remove inlined constraints from system
-    for idx in to_remove_idx {
-        constraint_system.algebraic_constraints.remove(idx);
-    }
+    constraint_system.algebraic_constraints = constraint_system
+        .algebraic_constraints
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, qse)| (!to_remove_idx.contains(&idx)).then_some(qse)).collect();
 
     // sanity check
     assert!(constraint_system.expressions_mut().all(|expr| {
@@ -168,45 +97,25 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 
 /// Checks whether a substitution is valid under `max_degree` constraint.
 fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    var_index: &VarIndex<V>,
     var: &V,
     expr: &QuadraticSymbolicExpression<T, V>,
-    constraint_system: &ConstraintSystem<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
     max_degree: usize,
-    // these are already marked for removal, so we can ignore them
-    ignore_constraints: &[usize],
 ) -> bool {
     let replacement_deg = qse_degree(expr);
 
-    let is_valid_constraints = constraint_system
-        .algebraic_constraints
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| {
-            var_index.constraints[var].contains(idx) && !ignore_constraints.contains(idx)
-        })
-        .all(|(_, identity)| {
-            let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
-            degree <= max_degree
-        });
-
-    let is_valid_interactions = constraint_system
-        .bus_interactions
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| {
-            var_index
-                .bus_interactions
-                .get(var)
-                .is_some_and(|bus_idx| bus_idx.contains(idx))
-        })
-        .all(|(_, interaction)| {
-            interaction.fields().all(|expr| {
-                let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
+    constraint_system.constraints_referencing_variables(std::iter::once(var.clone())).all(|cref| match cref {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                let degree = qse_degree_with_virtual_substitution(identity, &var, replacement_deg);
                 degree <= max_degree
-            })
-        });
-    is_valid_constraints && is_valid_interactions
+            }
+            ConstraintRef::BusInteraction(interaction) => {
+                interaction.fields().all(|expr| {
+                    let degree = qse_degree_with_virtual_substitution(expr, &var, replacement_deg);
+                    degree <= max_degree
+                })
+            }
+    })
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
