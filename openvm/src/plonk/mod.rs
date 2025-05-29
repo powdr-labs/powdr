@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
@@ -8,7 +8,7 @@ pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
 
 /// A variable in a PlonK gate.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Variable<V> {
     /// A variable from the input constraint system.
     /// At run-time, we can get the concrete values from the APC witness generation.
@@ -17,6 +17,7 @@ pub enum Variable<V> {
     /// we can solve for its value at run-time.
     Tmp(usize),
     /// An unused variable. This cell will be unconstrained; the prover can choose any value.
+    #[default]
     Unused,
 }
 
@@ -27,12 +28,6 @@ impl<V: Display> Display for Variable<V> {
             Variable::Tmp(id) => write!(f, "tmp_{id}"),
             Variable::Unused => write!(f, "Unused"),
         }
-    }
-}
-
-impl Default for Variable<AlgebraicReference> {
-    fn default() -> Self {
-        Variable::Unused
     }
 }
 
@@ -85,7 +80,7 @@ impl<T: FieldElement> Default for Gate<T, AlgebraicReference> {
     }
 }
 
-impl<T: FieldElement,V> Gate<T, V> {
+impl<T: FieldElement, V> Gate<T, V> {
     pub fn get_bus_gate_type(&self) -> Option<BusType> {
         let selectors = [
             (BusType::BitwiseLookup, &self.q_bitwise),
@@ -110,15 +105,16 @@ impl<T: FieldElement,V> Gate<T, V> {
         if active.is_empty() {
             None
         } else {
-            Some(active[0].0.clone())
+            Some(active[0].0)
         }
     }
 }
 
-fn format_bus_type<T,V>(gate: &Gate<T,V>) -> &'static str 
+fn format_bus_type<T, V>(gate: &Gate<T, V>) -> &'static str
 where
     T: FieldElement,
-    V: Display,{
+    V: Display,
+{
     match gate.get_bus_gate_type() {
         Some(BusType::BitwiseLookup) => "bitwise",
         Some(BusType::Memory) => "memory",
@@ -163,7 +159,8 @@ impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
         for gate in &self.gates {
             writeln!(
                 f,
-                "{} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0, bus: {}",
+                "bus: {}, {} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
+                format_bus_type(gate),
                 fmt_fe(&gate.q_l),
                 gate.a,
                 fmt_fe(&gate.q_r),
@@ -174,7 +171,6 @@ impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
                 gate.a,
                 gate.b,
                 fmt_fe(&gate.q_const),
-                 format_bus_type(gate),
             )?;
         }
         Ok(())

@@ -19,104 +19,102 @@ fn add_bus_to_plonk_circuit<T>(
 {
     match bus_map.bus_type(bus_interaction.id) {
         Memory => {
+            // Memory bus interaction:
+            // bus_interaction(MEMORY, [address_space, addr, val0, val1, val2, val3, timestamp], mult));
+            // witness allocation:
+            //        a         b        c
+            // row 0: addr      val0     val1
+            // row 1: val2      val3     timestamp
+            // row 2: mult      temp
+            // row 3: temp = address_space (const)
+
+            let mut bus_gate_0 = Gate::<T, AlgebraicReference> {
+                q_memory: T::ONE,
+                ..Default::default()
+            };
+
             let mut bus_gate_1 = Gate::default();
-            bus_gate_1.q_memory = T::ONE;
 
             let mut bus_gate_2 = Gate::default();
 
-            let mut bus_gate_3 = Gate::default();
-
-            let [as_bus, addr, val0, val1, val2, val3, timestamp]: [AlgebraicExpression<T>; 7] =
-                bus_interaction
-                    .args
-                    .try_into()
-                    .expect("Expected 7 arguments for Memory lookup");
+            let [address_space, addr, val0, val1, val2, val3, timestamp]: [AlgebraicExpression<T>;
+                7] = bus_interaction
+                .args
+                .try_into()
+                .expect("Expected 7 arguments for Memory lookup");
 
             [addr, val0, val1, val2, val3, timestamp]
                 .iter()
                 .zip([
+                    &mut bus_gate_0.a,
+                    &mut bus_gate_0.b,
+                    &mut bus_gate_0.c,
                     &mut bus_gate_1.a,
                     &mut bus_gate_1.b,
                     &mut bus_gate_1.c,
-                    &mut bus_gate_2.a,
-                    &mut bus_gate_2.b,
-                    &mut bus_gate_2.c,
                 ])
                 .for_each(|(arg, payload)| {
-                    if let AlgebraicExpression::Reference(r) = arg {
-                        *payload = Variable::Witness(r.clone());
-                    } else {
-                        // If the argument is not a polynomial reference, add plonk gates based on the arg expression,
-                        // put the temp of the last gate into the payload.
-                        air_to_plonkish(&arg, plonk_circuit, temp_id_offset);
-                        *payload = plonk_circuit.gates.last_mut().unwrap().c.clone();
+                    match arg {
+                        AlgebraicExpression::Reference(r) => {
+                            *payload = Variable::Witness(r.clone());
+                        }
+                        AlgebraicExpression::Number(n) => {
+                            panic!(
+                                "Expected argument to be a polynomial reference, got number: {n}",
+                            );
+                        }
+                        expr => {
+                            // If the argument is not a polynomial reference, add plonk gates based on the arg expression,
+                            // put the temp of the last gate into the payload.
+                            air_to_plonkish(expr, plonk_circuit, temp_id_offset);
+                            *payload = plonk_circuit.gates.last_mut().unwrap().c.clone();
+                        }
                     }
                 });
 
             match bus_interaction.mult {
                 AlgebraicExpression::Number(n) => {
-                    let mut gate = Gate::default();
-                    gate.q_const = n;
-                    gate.q_o = -T::ONE;
-                    gate.c = Variable::Tmp(*temp_id_offset);
+                    let gate = Gate::<T, AlgebraicReference> {
+                        q_const: n,
+                        q_o: -T::ONE,
+                        c: Variable::Tmp(*temp_id_offset),
+                        ..Default::default()
+                    };
+
                     *temp_id_offset += 1;
 
-                    bus_gate_3.a = gate.c.clone();
+                    bus_gate_2.a = gate.c.clone();
                     plonk_circuit.add_gate(gate);
                 }
                 AlgebraicExpression::Reference(r) => {
-                    bus_gate_3.a = Variable::Witness(r.clone());
+                    bus_gate_2.a = Variable::Witness(r.clone());
                 }
                 _ => {
                     air_to_plonkish(&bus_interaction.mult, plonk_circuit, temp_id_offset);
-                    bus_gate_3.a = plonk_circuit.gates.last_mut().unwrap().c.clone();
+                    bus_gate_2.a = plonk_circuit.gates.last_mut().unwrap().c.clone();
                 }
             }
 
-            assert!(
-                matches!(as_bus, AlgebraicExpression::Number(_)),
-                "Memory lookup payload as should be a number"
-            );
+            // add gate for address_space
+            let mut bus_gate_3 = Gate::default();
+            if let AlgebraicExpression::Number(n) = address_space {
+                bus_gate_3.q_const = n;
+                bus_gate_3.q_o = -T::ONE;
+                bus_gate_3.c = Variable::Tmp(*temp_id_offset);
+                *temp_id_offset += 1;
+                bus_gate_2.b = bus_gate_3.c.clone();
+            } else {
+                panic!("Expected address_space to be a number");
+            }
 
-            println!("Adding memory bus gates",);
-
+            // gates added in sequence to be consistant with next, next next reference
+            plonk_circuit.add_gate(bus_gate_0);
             plonk_circuit.add_gate(bus_gate_1);
             plonk_circuit.add_gate(bus_gate_2);
             plonk_circuit.add_gate(bus_gate_3);
         }
         BitwiseLookup => {
-            let mut bus_gate = Gate::default();
-            bus_gate.q_bitwise = T::ONE;
-
-            let [x, y, z, op]: [AlgebraicExpression<T>; 4] = bus_interaction
-                .args
-                .try_into()
-                .expect("Expected 4 arguments for bitwise lookup");
-
-            [x, y, z]
-                .iter()
-                .zip([&mut bus_gate.a, &mut bus_gate.b, &mut bus_gate.c])
-                .for_each(|(arg, payload)| {
-                    if let AlgebraicExpression::Reference(r) = arg {
-                        *payload = Variable::Witness(r.clone());
-                    } else {
-                        // If the argument is not a polynomial reference, add plonk gates based on the arg expression,
-                        // put the temp of the last gate into the payload.
-                        air_to_plonkish(&arg, plonk_circuit, temp_id_offset);
-                        *payload = plonk_circuit.gates.last_mut().unwrap().c.clone();
-                    }
-                });
-            // TODO: add gate for these constants
-            assert!(
-                matches!(bus_interaction.mult, AlgebraicExpression::Number(_)),
-                "BitwiseLookup multiplicity should be a number"
-            );
-
-            assert!(
-                matches!(op, AlgebraicExpression::Number(_)),
-                "BitwiseLookup op payload should be a number"
-            );
-            plonk_circuit.add_gate(bus_gate);
+            todo!();
         }
         ExecutionBridge => {
             todo!();
@@ -162,6 +160,10 @@ mod tests {
         })
     }
 
+    fn c(value: u64) -> AlgebraicExpression<BabyBearField> {
+        AlgebraicExpression::Number(BabyBearField::from(value))
+    }
+
     #[test]
     fn test_add_memory_bus_to_plonk_circuit() {
         let mut temp_id_offset = 0;
@@ -176,10 +178,10 @@ mod tests {
             id: DEFAULT_MEMORY,
             args: vec![
                 AlgebraicExpression::Number(BabyBearField::from(42)),
-                x.clone(),
+                x.clone() + y.clone(),
                 y.clone(),
-                x.clone(),
-                x.clone(),
+                -(x.clone() * y.clone()),
+                y.clone() * c(5),
                 x.clone(),
                 y.clone(),
             ],
@@ -193,6 +195,23 @@ mod tests {
             &bus_map,
         );
 
-        println!("the circuit is {}", plonk_circuit);
+        assert_eq!(
+            format!("{plonk_circuit}"),
+            //           a          b       c
+            // memory 0: x + y      y       -x * y
+            //        1: y * 5      x       y
+            //        2: temp_4(1)  tmp_5(42)
+            //        3: tmp_0 = 42
+            "bus: none, 1 * x + 1 * y + -1 * tmp_0 + 0 * x * y + 0 = 0
+bus: none, 0 * x + 0 * y + -1 * tmp_1 + 1 * x * y + 0 = 0
+bus: none, -1 * tmp_1 + 0 * Unused + -1 * tmp_2 + 0 * tmp_1 * Unused + 0 = 0
+bus: none, 5 * y + 0 * Unused + -1 * tmp_3 + 0 * y * Unused + 0 = 0
+bus: none, 0 * Unused + 0 * Unused + -1 * tmp_4 + 0 * Unused * Unused + 1 = 0
+bus: memory, 0 * tmp_0 + 0 * y + 0 * tmp_2 + 0 * tmp_0 * y + 0 = 0
+bus: none, 0 * tmp_3 + 0 * x + 0 * y + 0 * tmp_3 * x + 0 = 0
+bus: none, 0 * tmp_4 + 0 * tmp_5 + 0 * Unused + 0 * tmp_4 * tmp_5 + 0 = 0
+bus: none, 0 * Unused + 0 * Unused + -1 * tmp_5 + 0 * Unused * Unused + 42 = 0
+"
+        )
     }
 }
