@@ -47,7 +47,7 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug +
 pub fn has_few_possible_assignments<T: FieldElement, V: Clone + Ord>(
     variables: impl Iterator<Item = V>,
     max: u64,
-    rc: impl RangeConstraintProvider<T, V>,
+    rc: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     variables
         .map(|v| rc.get(&v))
@@ -65,7 +65,7 @@ pub fn has_few_possible_assignments<T: FieldElement, V: Clone + Ord>(
 /// the function `has_few_possible_assignments`.
 pub fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
     variables: impl IntoIterator<Item = V>,
-    rc: impl RangeConstraintProvider<T, V>,
+    rc: &impl RangeConstraintProvider<T, V>,
 ) -> impl Iterator<Item = BTreeMap<V, T>> {
     variables
         .into_iter()
