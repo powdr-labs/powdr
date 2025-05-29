@@ -126,9 +126,9 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let algebraic_constraints: SymbolicMachine<BabyBearField> =
+        let machine: SymbolicMachine<BabyBearField> =
             transpose_symbolic_machine_back(self.machine.clone());
-        let plonk_circuit = build_circuit(&algebraic_constraints);
+        let plonk_circuit = build_circuit(&machine);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
