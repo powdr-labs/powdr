@@ -99,7 +99,7 @@ fn solver_based_optimization<T: FieldElement>(
         .with_bus_interaction_handler(Box::new(bus_interaction_handler))
         .solve()
         .map_err(|e| {
-            panic!("Solver failed: {e:?}");
+            println!("Solver failed: {e:?}");
         })
         .unwrap();
     log::trace!("Solver figured out the following assignments:");
@@ -203,6 +203,7 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<QuadraticSymbolicExpression<P, Variable>> {
     BusInteraction {
+        original_index: bus_interaction.original_index,
         bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
         payload: bus_interaction
             .args
@@ -226,6 +227,7 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         .try_into()
         .unwrap();
     SymbolicBusInteraction {
+        original_index: bus_interaction.original_index,
         id,
         // TODO: The kind of SymbolicBusInteraction is ignored, this field should be removed
         kind: BusInteractionKind::Send,

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use itertools::Itertools;
+use openvm::platform::print;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
 use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program, VmOpcode};
@@ -39,6 +40,8 @@ pub fn customize<F: PrimeField32>(
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
 ) -> (VmExe<F>, PowdrExtension<F>) {
+    exe.program.instructions_and_debug_infos.iter().enumerate().for_each(|(idx, ins)| {println!("instruction {}: {:?}", idx, ins);});
+
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -116,6 +119,14 @@ pub fn customize<F: PrimeField32>(
         });
     }
 
+    tracing::info!("Retained {} basic blocks after filtering by pc_idx_count", blocks.len());
+
+    // print start index of all retained blocks
+    blocks.iter().enumerate()
+        .for_each(|(i, block)| {
+            tracing::info!("Block {}: start_idx {}", i, block.start_idx);
+        });
+
     // store air width by opcode, so that we don't repetitively calculate them later
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
     let air_width_by_opcode = airs
@@ -128,8 +139,12 @@ pub fn customize<F: PrimeField32>(
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
     let (cells_saved_per_row_by_bb, mut apcs): (HashMap<_, _>, HashMap<_, (_, _, _)>) = blocks
         .iter()
+        // .skip(423)
+        // .take(1)
+        .skip(427)
         .enumerate()
         .map(|(i, acc_block)| {
+            println!("block index {}: start_idx {}", i, acc_block.start_idx);
             let apc_opcode = POWDR_OPCODE + i;
             let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
                 acc_block, airs, apc_opcode, config.bus_map.clone(),
@@ -158,6 +173,8 @@ pub fn customize<F: PrimeField32>(
             )
         })
         .unzip();
+
+    panic!();
 
     // sort basic blocks by:
     // 1. if pc_idx_count (frequency) is provided, cost = frequency * cells_saved_per_row
@@ -272,13 +289,6 @@ pub fn customize<F: PrimeField32>(
         program.splice(pc..pc + n_acc, new_instrs);
         assert_eq!(program.len(), len_before);
 
-        let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
-            acc_block,
-            airs,
-            apc_opcode,
-            config.bus_map.clone(),
-        );
-
         let is_valid_column = autoprecompile
             .unique_columns()
             .find(|c| c.name == "is_valid")
@@ -359,6 +369,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if opcodes_no_apc.contains(&instr.opcode.as_usize()) {
+            println!("instruction {} contains bad opcode for bb", i);
             // If not empty, push the current block.
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
@@ -372,6 +383,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
             if is_target {
+                println!("instruction {} is a target (label)", i);
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
@@ -384,6 +396,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             // If the instruction is a branch, we need to close this block
             // with this instruction and start a new block from the next one.
             if is_branch {
+                println!("instruction {} is a branch", i);
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
                 curr_block = BasicBlock {
                     start_idx: i + 1,
@@ -491,6 +504,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect();
 
     SymbolicBusInteraction {
+        original_index: 0,
         kind,
         id,
         mult,
@@ -552,6 +566,7 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
         .bus_interactions
         .into_iter()
         .map(|interaction| SymbolicBusInteraction {
+            original_index: interaction.original_index,
             kind: interaction.kind,
             id: interaction.id,
             mult: transpose_algebraic_expression(interaction.mult.clone()),

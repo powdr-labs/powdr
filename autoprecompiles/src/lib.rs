@@ -62,13 +62,21 @@ pub struct SymbolicBusInteraction<T> {
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+    pub original_index: usize,
+}
+
+impl<T> SymbolicBusInteraction<T> {
+    pub fn set_original_index(&mut self, index: usize) {
+        self.original_index = index;
+    }
 }
 
 impl<T: Display> Display for SymbolicBusInteraction<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "(id={}, mult={}, args=[{}])",
+            "(idx={}, id={}, mult={}, args=[{}])",
+            self.original_index,
             self.id,
             self.mult,
             self.args.iter().join(", ")
@@ -293,6 +301,11 @@ pub fn build<T: FieldElement>(
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
+
+    if let Ok(machine_path) = std::env::var("APC_EXPORT_MACHINE") {
+        let file_name = format!("{machine_path}_{opcode}.cbor");
+        serde_cbor::to_writer(std::fs::File::create(file_name).unwrap(), &machine).unwrap();
+    }
 
     let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
 

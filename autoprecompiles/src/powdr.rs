@@ -239,6 +239,7 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
     };
 
     SymbolicBusInteraction {
+        original_index: 0,
         kind,
         id,
         mult: inline_intermediates(powdr_interaction.multiplicity, intermediates),

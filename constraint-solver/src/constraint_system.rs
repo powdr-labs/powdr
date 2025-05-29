@@ -55,6 +55,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 /// A bus interaction.
 #[derive(Clone, Debug)]
 pub struct BusInteraction<V> {
+    pub original_index: usize,
     /// The ID of the bus.
     pub bus_id: V,
     /// The payload of the bus interaction.
@@ -86,7 +87,8 @@ impl<V: Display> Display for BusInteraction<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "BusInteraction {{ bus_id: {}, multiplicity: {}, payload: {} }}",
+            "BusInteraction {{ idx: {}, bus_id: {}, multiplicity: {}, payload: {} }}",
+            self.original_index,
             self.bus_id,
             self.multiplicity,
             self.payload.iter().format(", ")
@@ -101,6 +103,7 @@ impl<V> FromIterator<V> for BusInteraction<V> {
         let multiplicity = iter.next().unwrap();
         let payload = iter.collect();
         BusInteraction {
+            original_index: 0, // This can be set later if needed
             bus_id,
             payload,
             multiplicity,
@@ -132,6 +135,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
         bus_interaction_handler: &dyn BusInteractionHandler<T>,
         range_constraint_provider: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
+        println!("solve bus_interaction: {}", self);
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
@@ -191,7 +195,7 @@ pub trait BusInteractionHandler<T: FieldElement> {
         bus_interaction: BusInteraction<RangeConstraint<T>>,
     ) -> Result<BusInteraction<RangeConstraint<T>>, ViolatesBusRules> {
         let previous_constraints = bus_interaction.clone();
-        let new_constraints = self.handle_bus_interaction(bus_interaction);
+        let new_constraints = self.handle_bus_interaction(bus_interaction.clone());
 
         // Intersect the old and new range constraints. If they don't overlap,
         // there is a contradiction.
@@ -199,7 +203,10 @@ pub trait BusInteractionHandler<T: FieldElement> {
             .fields()
             .zip_eq(new_constraints.fields())
         {
+            
+            println!("  bus interaction field prev rc: {}, field new rc {}", previous_rc, new_rc);
             if previous_rc.is_disjoint(new_rc) {
+                println!("  bad_interaction: {}, {}", previous_rc, new_rc);
                 return Err(ViolatesBusRules {});
             }
         }
