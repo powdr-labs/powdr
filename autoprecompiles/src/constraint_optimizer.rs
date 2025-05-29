@@ -19,7 +19,7 @@ use powdr_pilopt::{
     simplify_expression,
 };
 
-use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// Simplifies the constraints as much as possible.
 /// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
@@ -30,7 +30,7 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, Symb
 /// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
@@ -93,10 +93,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> ConstraintSystem<T, Variable> {
     let result = Solver::new(constraint_system.clone())
-        .with_bus_interaction_handler(Box::new(bus_interaction_handler))
+        .with_bus_interaction_handler(bus_interaction_handler)
         .solve()
         .map_err(|e| {
             panic!("Solver failed: {e:?}");
@@ -227,8 +227,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         .unwrap();
     SymbolicBusInteraction {
         id,
-        // TODO: The kind of SymbolicBusInteraction is ignored, this field should be removed
-        kind: BusInteractionKind::Send,
         args: bus_interaction
             .payload
             .into_iter()

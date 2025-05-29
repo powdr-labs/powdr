@@ -57,7 +57,6 @@ pub struct Gate<T, V> {
     pub b: Variable<V>,
     pub c: Variable<V>,
 }
-
 impl<T: FieldElement> Default for Gate<T, AlgebraicReference> {
     fn default() -> Self {
         Gate {
@@ -127,6 +126,33 @@ where
     }
 }
 
+impl<T: FieldElement, V: Display> Display for Gate<T, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fmt_fe = |v: &T| {
+            if v.is_in_lower_half() {
+                format!("{v}")
+            } else {
+                format!("-{}", -*v)
+            }
+        };
+        write!(
+            f,
+            "bus: {}, {} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
+            format_bus_type(&self),
+            fmt_fe(&self.q_l),
+            self.a,
+            fmt_fe(&self.q_r),
+            self.b,
+            fmt_fe(&self.q_o),
+            self.c,
+            fmt_fe(&self.q_mul),
+            self.a,
+            self.b,
+            fmt_fe(&self.q_const),
+        )?;
+        Ok(())
+    }
+}
 /// The PlonK circuit, which is just a collection of gates.
 #[derive(Clone, Debug, Default)]
 pub struct PlonkCircuit<T, V> {
@@ -148,30 +174,8 @@ where
 
 impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let fmt_fe = |v: &T| {
-            if v.is_in_lower_half() {
-                format!("{v}")
-            } else {
-                format!("-{}", -*v)
-            }
-        };
-
         for gate in &self.gates {
-            writeln!(
-                f,
-                "bus: {}, {} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
-                format_bus_type(gate),
-                fmt_fe(&gate.q_l),
-                gate.a,
-                fmt_fe(&gate.q_r),
-                gate.b,
-                fmt_fe(&gate.q_o),
-                gate.c,
-                fmt_fe(&gate.q_mul),
-                gate.a,
-                gate.b,
-                fmt_fe(&gate.q_const),
-            )?;
+            writeln!(f, "{gate}",)?;
         }
         Ok(())
     }

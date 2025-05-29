@@ -69,6 +69,8 @@ pub use openvm_build::GuestOptions;
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
+pub use customize_exe::customize;
+
 // A module for our extension
 mod powdr_extension;
 
@@ -126,7 +128,7 @@ impl<F: PrimeField32> VmConfig<F> for SpecializedConfig<F> {
 }
 
 impl<F: Default + PrimeField32> SpecializedConfig<F> {
-    fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
+    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
         Self { sdk_config, powdr }
     }
 }
@@ -195,6 +197,8 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
+    /// The max degree of constraints.
+    pub degree_bound: usize,
 }
 
 impl PowdrConfig {
@@ -203,6 +207,7 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
+            degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
         }
     }
 
@@ -215,6 +220,13 @@ impl PowdrConfig {
 
     pub fn with_bus_map(self, bus_map: BusMap) -> Self {
         Self { bus_map, ..self }
+    }
+
+    pub fn with_degree_bound(self, degree_bound: usize) -> Self {
+        Self {
+            degree_bound,
+            ..self
+        }
     }
 }
 
@@ -661,7 +673,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: usize = 1;
-    const GUEST_SKIP: usize = 39;
+    const GUEST_SKIP: usize = 56;
     const GUEST_SKIP_PGO: usize = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
@@ -742,8 +754,8 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 3541);
-        assert_eq!(m.constraints, 506);
+        assert_eq!(m.width, 3195);
+        assert_eq!(m.constraints, 160);
         assert_eq!(m.bus_interactions, 3207);
     }
 
@@ -755,10 +767,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        // TODO we need to find a new block because this one is not executed anymore.
-        assert_eq!(m.width, 113);
-        assert_eq!(m.constraints, 36);
-        assert_eq!(m.bus_interactions, 88);
+        assert_eq!(m.width, 70);
+        assert_eq!(m.constraints, 37);
+        assert_eq!(m.bus_interactions, 55);
     }
 
     #[test]
