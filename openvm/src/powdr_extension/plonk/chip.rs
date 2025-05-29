@@ -31,7 +31,7 @@ use openvm_stark_backend::{
 };
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::powdr::UniqueColumns;
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 use powdr_number::{BabyBearField, FieldElement};
 
 use super::air::PlonkAir;
@@ -126,13 +126,8 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        // TODO: Add bus interactions
-        let algebraic_constraints: Vec<AlgebraicExpression<BabyBearField>> = self
-            .machine
-            .constraints
-            .iter()
-            .map(|c| transpose_algebraic_expression_back(c.expr.clone()))
-            .collect();
+        let algebraic_constraints: SymbolicMachine<BabyBearField> =
+            transpose_symbolic_machine_back(self.machine.clone());
         let plonk_circuit = build_circuit(&algebraic_constraints);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
@@ -304,5 +299,35 @@ fn transpose_algebraic_expression_back<F: PrimeField32, P: FieldElement>(
                 )),
             })
         }
+    }
+}
+
+fn transpose_symbolic_machine_back<F: PrimeField32, P: FieldElement>(
+    machine: SymbolicMachine<F>,
+) -> SymbolicMachine<P> {
+    let constraints = machine
+        .constraints
+        .into_iter()
+        .map(|constraint| SymbolicConstraint {
+            expr: transpose_algebraic_expression_back(constraint.expr),
+        })
+        .collect();
+    let bus_interactions = machine
+        .bus_interactions
+        .into_iter()
+        .map(|interaction| SymbolicBusInteraction {
+            id: interaction.id,
+            mult: transpose_algebraic_expression_back(interaction.mult.clone()),
+            args: interaction
+                .args
+                .iter()
+                .map(|arg| transpose_algebraic_expression_back(arg.clone()))
+                .collect(),
+        })
+        .collect();
+
+    SymbolicMachine {
+        constraints,
+        bus_interactions,
     }
 }
