@@ -15,7 +15,7 @@ struct VarIndex<V> {
 }
 
 impl<V: Ord + Clone + Hash + Eq> VarIndex<V> {
-    fn build<T: FieldElement>(system: &ConstraintSystem<T,V>) -> Self {
+    fn build<T: FieldElement>(system: &ConstraintSystem<T, V>) -> Self {
         let mut constraints: HashMap<_, HashSet<usize>> = Default::default();
         let mut bus_interactions: HashMap<_, HashSet<usize>> = Default::default();
 
@@ -25,7 +25,11 @@ impl<V: Ord + Clone + Hash + Eq> VarIndex<V> {
             }
         }
         for (idx, interaction) in system.bus_interactions.iter().enumerate() {
-            for var in interaction.fields().flat_map(|qse| qse.referenced_unknown_variables()).unique() {
+            for var in interaction
+                .fields()
+                .flat_map(|qse| qse.referenced_unknown_variables())
+                .unique()
+            {
                 bus_interactions.entry(var.clone()).or_default().insert(idx);
             }
         }
@@ -54,7 +58,14 @@ pub fn replace_constrained_witness_columns<
         let constraint = &constraint_system.algebraic_constraints[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(&var_index, &var, &expr, &constraint_system, max_degree, &to_remove_idx[..]) {
+            if is_valid_substitution(
+                &var_index,
+                &var,
+                &expr,
+                &constraint_system,
+                max_degree,
+                &to_remove_idx[..],
+            ) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
@@ -69,21 +80,30 @@ pub fn replace_constrained_witness_columns<
                     qse.substitute_by_unknown(&var, &expr);
                     // this constraint now references new variables
                     for new_var in expr.referenced_unknown_variables() {
-                        var_index.constraints.entry(new_var.clone())
+                        var_index
+                            .constraints
+                            .entry(new_var.clone())
                             .or_default()
                             .insert(idx);
                     }
                 }
 
                 // inline in bus interactions
-                for idx in var_index.bus_interactions.get(&var).unwrap_or(&HashSet::new()).clone() {
+                for idx in var_index
+                    .bus_interactions
+                    .get(&var)
+                    .unwrap_or(&HashSet::new())
+                    .clone()
+                {
                     let interaction = &mut constraint_system.bus_interactions[idx];
                     interaction.fields_mut().for_each(|qse| {
                         qse.substitute_by_unknown(&var, &expr);
                     });
                     // this interaction now references new variables
                     for new_var in expr.referenced_unknown_variables() {
-                        var_index.bus_interactions.entry(new_var.clone())
+                        var_index
+                            .bus_interactions
+                            .entry(new_var.clone())
                             .or_default()
                             .insert(idx);
                     }
@@ -109,7 +129,6 @@ pub fn replace_constrained_witness_columns<
 
     constraint_system
 }
-
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
 fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
@@ -157,15 +176,28 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 ) -> bool {
     let replacement_deg = qse_degree(expr);
 
-    let is_valid_constraints = constraint_system.algebraic_constraints.iter().enumerate()
-        .filter(|(idx, _)| var_index.constraints[var].contains(idx) && !ignore_constraints.contains(idx))
+    let is_valid_constraints = constraint_system
+        .algebraic_constraints
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| {
+            var_index.constraints[var].contains(idx) && !ignore_constraints.contains(idx)
+        })
         .all(|(_, identity)| {
             let degree = qse_degree_with_virtual_substitution(identity, &var, replacement_deg);
             degree <= max_degree
         });
 
-    let is_valid_interactions = constraint_system.bus_interactions.iter().enumerate()
-        .filter(|(idx, _)| var_index.bus_interactions.get(var).map_or(false, |v| v.contains(idx)))
+    let is_valid_interactions = constraint_system
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| {
+            var_index
+                .bus_interactions
+                .get(var)
+                .map_or(false, |v| v.contains(idx))
+        })
         .all(|(_, interaction)| {
             interaction.fields().all(|expr| {
                 let degree = qse_degree_with_virtual_substitution(expr, &var, replacement_deg);
