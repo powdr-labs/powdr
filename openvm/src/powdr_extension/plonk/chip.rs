@@ -8,6 +8,7 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
+use crate::utils::to_ovm_field;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -31,7 +32,7 @@ use openvm_stark_backend::{
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{BabyBearField, FieldElement};
 
 use super::air::PlonkAir;
 
@@ -273,10 +274,6 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
             assert!(self.tmp_vars[id].is_some(), "Variable `c` is unknown.",);
         }
     }
-}
-
-fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
 }
 
 // TODO: We transpose expressions from powdr -> openvm -> powdr, we should fix this...
