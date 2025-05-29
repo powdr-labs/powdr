@@ -57,7 +57,9 @@ pub struct Gate<T, V> {
     pub b: Variable<V>,
     pub c: Variable<V>,
 }
-impl<T: FieldElement> Default for Gate<T, AlgebraicReference> {
+
+// Implemented manually so that we don't have to require V: Default
+impl<T: FieldElement, V> Default for Gate<T, V> {
     fn default() -> Self {
         Gate {
             q_l: T::ZERO,
