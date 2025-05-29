@@ -1,5 +1,5 @@
 use powdr_constraint_solver::constraint_system::ConstraintRef;
-use powdr_constraint_solver::indexed_constraint_system::{IndexedConstraintSystem};
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
@@ -25,12 +25,7 @@ pub fn replace_constrained_witness_columns<
         let constraint = &constraint_system.algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(
-                &var,
-                &expr,
-                &constraint_system,
-                max_degree,
-            ) {
+            if is_valid_substitution(&var, &expr, &constraint_system, max_degree) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
@@ -50,7 +45,8 @@ pub fn replace_constrained_witness_columns<
         .algebraic_constraints
         .into_iter()
         .enumerate()
-        .filter_map(|(idx, qse)| (!to_remove_idx.contains(&idx)).then_some(qse)).collect();
+        .filter_map(|(idx, qse)| (!to_remove_idx.contains(&idx)).then_some(qse))
+        .collect();
 
     // sanity check
     assert!(constraint_system.expressions_mut().all(|expr| {
@@ -104,18 +100,18 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 ) -> bool {
     let replacement_deg = qse_degree(expr);
 
-    constraint_system.constraints_referencing_variables(std::iter::once(var.clone())).all(|cref| match cref {
+    constraint_system
+        .constraints_referencing_variables(std::iter::once(var.clone()))
+        .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
                 let degree = qse_degree_with_virtual_substitution(identity, &var, replacement_deg);
                 degree <= max_degree
             }
-            ConstraintRef::BusInteraction(interaction) => {
-                interaction.fields().all(|expr| {
-                    let degree = qse_degree_with_virtual_substitution(expr, &var, replacement_deg);
-                    degree <= max_degree
-                })
-            }
-    })
+            ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
+                let degree = qse_degree_with_virtual_substitution(expr, &var, replacement_deg);
+                degree <= max_degree
+            }),
+        })
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
