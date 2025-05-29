@@ -206,7 +206,7 @@ fn remove_equal_constraints<P: FieldElement>(
 
 fn remove_equal_bus_interactions<P: FieldElement>(
     mut symbolic_machine: ConstraintSystem<P, Variable>,
-    bus_interaction_handler: impl IsBusStateful<P> + 'static,
+    bus_interaction_handler: impl IsBusStateful<P>,
 ) -> ConstraintSystem<P, Variable> {
     let mut seen = HashSet::new();
     symbolic_machine.bus_interactions = symbolic_machine
