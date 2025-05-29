@@ -42,19 +42,16 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug +
     all_known_variables
 }
 
-/// Returns true if the given range constraints allow for at most `max`
-/// possible assignments for the given variables.
-pub fn has_few_possible_assignments<T: FieldElement, V: Clone + Ord>(
+/// Returns the number of possible assignments for the variables given the range constraints.
+/// Returns `None` if this number would not fit a `u64`.
+pub fn count_possible_assignments<T: FieldElement, V: Clone + Ord>(
     variables: impl Iterator<Item = V>,
-    max: u64,
     rc: impl RangeConstraintProvider<T, V>,
-) -> bool {
+) -> Option<u64> {
     variables
         .map(|v| rc.get(&v))
         .map(|rc| rc.range_width().try_into_u64())
         .try_fold(1u64, |acc, x| acc.checked_mul(x?))
-        .map(|total_width| total_width <= max)
-        .unwrap_or(false)
 }
 
 /// Returns all possible assignments for the given variables that satisfy their
