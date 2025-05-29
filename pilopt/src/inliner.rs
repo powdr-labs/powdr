@@ -104,11 +104,11 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         .constraints_referencing_variables(std::iter::once(var.clone()))
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let degree = qse_degree_with_virtual_substitution(identity, &var, replacement_deg);
+                let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
                 degree <= max_degree
             }
             ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
-                let degree = qse_degree_with_virtual_substitution(expr, &var, replacement_deg);
+                let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
                 degree <= max_degree
             }),
         })
