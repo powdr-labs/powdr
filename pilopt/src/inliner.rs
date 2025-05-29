@@ -3,30 +3,30 @@ use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
 /// Keeps track of which constraints and bus interactions reference a given variable.
 /// Maps variables to constraint/bus interaction indices.
 struct VarIndex<V> {
-    constraints: HashMap<V, Vec<usize>>,
-    bus_interactions: HashMap<V, Vec<usize>>,
+    constraints: HashMap<V, HashSet<usize>>,
+    bus_interactions: HashMap<V, HashSet<usize>>,
 }
 
 impl<V: Ord + Clone + Hash + Eq> VarIndex<V> {
     fn build<T: FieldElement>(system: &ConstraintSystem<T,V>) -> Self {
-        let mut constraints: HashMap<_, Vec<usize>> = Default::default();
-        let mut bus_interactions: HashMap<_, Vec<usize>> = Default::default();
+        let mut constraints: HashMap<_, HashSet<usize>> = Default::default();
+        let mut bus_interactions: HashMap<_, HashSet<usize>> = Default::default();
 
         for (idx, constraint) in system.algebraic_constraints.iter().enumerate() {
             for var in constraint.referenced_unknown_variables().unique() {
-                constraints.entry(var.clone()).or_default().push(idx);
+                constraints.entry(var.clone()).or_default().insert(idx);
             }
         }
         for (idx, interaction) in system.bus_interactions.iter().enumerate() {
             for var in interaction.fields().flat_map(|qse| qse.referenced_unknown_variables()).unique() {
-                bus_interactions.entry(var.clone()).or_default().push(idx);
+                bus_interactions.entry(var.clone()).or_default().insert(idx);
             }
         }
 
@@ -46,8 +46,9 @@ pub fn replace_constrained_witness_columns<
     mut constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
-    let var_index = VarIndex::build(&constraint_system);
+    let mut var_index = VarIndex::build(&constraint_system);
     let mut to_remove_idx = vec![];
+    let mut inlined_vars = vec![];
 
     for curr_idx in (0..constraint_system.algebraic_constraints.len()).rev() {
         let constraint = &constraint_system.algebraic_constraints[curr_idx];
@@ -60,21 +61,35 @@ pub fn replace_constrained_witness_columns<
                 to_remove_idx.push(curr_idx);
 
                 // inline in constraints
-                for idx in &var_index.constraints[&var] {
-                    if to_remove_idx.contains(idx) {
+                for idx in var_index.constraints[&var].clone() {
+                    if to_remove_idx.contains(&idx) {
                         continue;
                     }
-                    let qse = &mut constraint_system.algebraic_constraints[*idx];
+                    let qse = &mut constraint_system.algebraic_constraints[idx];
                     qse.substitute_by_unknown(&var, &expr);
+                    // this constraint now references new variables
+                    for new_var in expr.referenced_unknown_variables() {
+                        var_index.constraints.entry(new_var.clone())
+                            .or_default()
+                            .insert(idx);
+                    }
                 }
 
                 // inline in bus interactions
-                for idx in var_index.bus_interactions.get(&var).unwrap_or(&vec![]) {
-                    let interaction = &mut constraint_system.bus_interactions[*idx];
+                for idx in var_index.bus_interactions.get(&var).unwrap_or(&HashSet::new()).clone() {
+                    let interaction = &mut constraint_system.bus_interactions[idx];
                     interaction.fields_mut().for_each(|qse| {
                         qse.substitute_by_unknown(&var, &expr);
                     });
+                    // this interaction now references new variables
+                    for new_var in expr.referenced_unknown_variables() {
+                        var_index.bus_interactions.entry(new_var.clone())
+                            .or_default()
+                            .insert(idx);
+                    }
                 }
+
+                inlined_vars.push(var);
 
                 break;
             }
@@ -85,6 +100,12 @@ pub fn replace_constrained_witness_columns<
     for idx in to_remove_idx {
         constraint_system.algebraic_constraints.remove(idx);
     }
+
+    // sanity check
+    assert!(constraint_system.expressions_mut().all(|expr| {
+        expr.referenced_unknown_variables()
+            .all(|var| !inlined_vars.contains(&var))
+    }));
 
     constraint_system
 }
