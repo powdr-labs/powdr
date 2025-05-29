@@ -133,8 +133,6 @@ fn add_bus_to_plonk_circuit<T>(
             unimplemented!("bus interaction type is not implemented");
         }
     }
-
-    // build gates for multiplicity
 }
 
 #[cfg(test)]
