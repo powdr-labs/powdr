@@ -72,6 +72,7 @@ pub fn replace_constrained_witness_columns<
                 to_remove_idx.push(curr_idx);
 
                 // inline in constraints
+                #[allow(clippy::iter_over_hash_type)]
                 for idx in var_index.constraints[&var].clone() {
                     if to_remove_idx.contains(&idx) {
                         continue;
@@ -89,6 +90,7 @@ pub fn replace_constrained_witness_columns<
                 }
 
                 // inline in bus interactions
+                #[allow(clippy::iter_over_hash_type)]
                 for idx in var_index
                     .bus_interactions
                     .get(&var)
@@ -124,7 +126,7 @@ pub fn replace_constrained_witness_columns<
     // sanity check
     assert!(constraint_system.expressions_mut().all(|expr| {
         expr.referenced_unknown_variables()
-            .all(|var| !inlined_vars.contains(&var))
+            .all(|var| !inlined_vars.contains(var))
     }));
 
     constraint_system
@@ -184,7 +186,7 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
             var_index.constraints[var].contains(idx) && !ignore_constraints.contains(idx)
         })
         .all(|(_, identity)| {
-            let degree = qse_degree_with_virtual_substitution(identity, &var, replacement_deg);
+            let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
             degree <= max_degree
         });
 
@@ -196,11 +198,11 @@ fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
             var_index
                 .bus_interactions
                 .get(var)
-                .map_or(false, |v| v.contains(idx))
+                .is_some_and(|bus_idx| bus_idx.contains(idx))
         })
         .all(|(_, interaction)| {
             interaction.fields().all(|expr| {
-                let degree = qse_degree_with_virtual_substitution(expr, &var, replacement_deg);
+                let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
                 degree <= max_degree
             })
         });
