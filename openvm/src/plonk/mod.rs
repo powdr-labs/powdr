@@ -138,7 +138,7 @@ impl<T: FieldElement, V: Display> Display for Gate<T, V> {
         write!(
             f,
             "bus: {}, {} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
-            format_bus_type(&self),
+            format_bus_type(self),
             fmt_fe(&self.q_l),
             self.a,
             fmt_fe(&self.q_r),

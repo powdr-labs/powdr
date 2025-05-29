@@ -145,7 +145,6 @@ mod tests {
     use powdr_ast::analyzed::AlgebraicReference;
     use powdr_ast::analyzed::PolyID;
     use powdr_ast::analyzed::PolynomialType;
-    use powdr_autoprecompiles::BusInteractionKind;
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
 
@@ -174,7 +173,6 @@ mod tests {
         let y = var("y", 1);
 
         let bus_interaction = SymbolicBusInteraction {
-            kind: BusInteractionKind::Send,
             id: DEFAULT_MEMORY,
             args: vec![
                 AlgebraicExpression::Number(BabyBearField::from(42)),
