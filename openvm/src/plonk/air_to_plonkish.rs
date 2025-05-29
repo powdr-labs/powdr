@@ -202,12 +202,12 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "0 * x + 0 * y + -1 * tmp_1 + 1 * x * y + 0 = 0
--1 * x + 0 * Unused + -1 * tmp_3 + 0 * x * Unused + 0 = 0
-1 * x + 1 * y + -1 * tmp_4 + 0 * x * y + 0 = 0
-0 * tmp_3 + 0 * tmp_4 + -1 * tmp_2 + 1 * tmp_3 * tmp_4 + 0 = 0
-1 * tmp_1 + -1 * tmp_2 + -1 * tmp_0 + 0 * tmp_1 * tmp_2 + 0 = 0
--1 * tmp_0 + 0 * Unused + 0 * Unused + 0 * tmp_0 * Unused + 0 = 0
+            "x * y = tmp_1
+-x = tmp_3
+x + y = tmp_4
+tmp_3 * tmp_4 = tmp_2
+tmp_1 + -tmp_2 = tmp_0
+-tmp_0 = 0
 "
         );
     }
@@ -218,9 +218,9 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "0 * Unused + 0 * Unused + -1 * tmp_1 + 0 * Unused * Unused + -2 = 0
-2 * tmp_1 + 0 * Unused + -1 * tmp_0 + 0 * tmp_1 * Unused + 0 = 0
-0 * Unused + 1 * tmp_0 + 0 * Unused + 0 * Unused * tmp_0 + 4 = 0
+            "-2 = tmp_1
+2 * tmp_1 = tmp_0
+tmp_0 + 4 = 0
 "
         )
     }
@@ -232,7 +232,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "1 * x + 0 * Unused + 0 * Unused + 0 * x * Unused + 0 = 0
+            "x = 0
 "
         )
     }
@@ -245,11 +245,11 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "2 * x + 0 * Unused + -1 * tmp_3 + 0 * x * Unused + 0 = 0
-0 * tmp_3 + 0 * y + -1 * tmp_2 + 1 * tmp_3 * y + 0 = 0
-0 * Unused + -1 * tmp_2 + -1 * tmp_1 + 0 * Unused * tmp_2 + 3 = 0
--1 * tmp_1 + 0 * Unused + -1 * tmp_0 + 0 * tmp_1 * Unused + 0 = 0
-1 * tmp_0 + 0 * Unused + 0 * Unused + 0 * tmp_0 * Unused + 1 = 0
+            "2 * x = tmp_3
+tmp_3 * y = tmp_2
+-tmp_2 + 3 = tmp_1
+-tmp_1 = tmp_0
+tmp_0 + 1 = 0
 "
         );
     }
@@ -260,8 +260,8 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "0 * Unused + 0 * Unused + -1 * tmp_0 + 0 * Unused * Unused + 3 = 0
--1 * tmp_0 + 0 * Unused + 0 * Unused + 0 * tmp_0 * Unused + 0 = 0
+            "3 = tmp_0
+-tmp_0 = 0
 "
         );
     }
@@ -274,8 +274,8 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "-1 * y + 0 * Unused + -1 * tmp_0 + 0 * y * Unused + 0 = 0
-1 * x + -1 * tmp_0 + 0 * Unused + 0 * x * tmp_0 + 0 = 0
+            "-y = tmp_0
+x + -tmp_0 = 0
 "
         );
     }
