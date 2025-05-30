@@ -1,6 +1,5 @@
 use crate::plonk::air_to_plonkish::air_to_plonkish;
-use crate::plonk::Gate;
-use crate::plonk::PlonkCircuit;
+use crate::plonk::{Gate, PlonkCircuit};
 use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
@@ -77,8 +76,7 @@ mod tests {
     use super::*;
     use crate::bus_interaction_handler::DEFAULT_MEMORY;
     use crate::plonk::test_utils::{c, var};
-    use powdr_ast::analyzed::AlgebraicExpression;
-    use powdr_ast::analyzed::AlgebraicReference;
+    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
