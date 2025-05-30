@@ -36,7 +36,7 @@ fn test_optimize() {
         OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
         None, // opcode
         5,
-    );
+    ).unwrap();
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",
