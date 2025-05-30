@@ -21,6 +21,7 @@ use powdr_pilopt::{
 
 use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
+#[derive(Debug)]
 pub enum Error {
     ConstraintSolverError,
 }
