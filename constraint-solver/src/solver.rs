@@ -93,17 +93,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         loop {
             let mut progress = false;
             // Try solving constraints in isolation.
-            println!("solve in isolation");
             progress |= self.solve_in_isolation()?;
             // Try inferring new information using bus interactions.
-            println!("solve bus interactions");
             progress |= self.solve_bus_interactions()?;
             // Try to find equivalent variables using quadratic constraints.
-            println!("solve quadratic equivalences");
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
-                println!("exhaustive search");
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
                 progress |= self.exhaustive_search()?;

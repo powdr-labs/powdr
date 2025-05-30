@@ -32,6 +32,16 @@ const POWDR_OPCODE: usize = 0x10ff;
 
 use crate::PowdrConfig;
 
+pub enum Error {
+    AutoPrecompileError,
+}
+
+impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
+    fn from(e: powdr_autoprecompiles::constraint_optimizer::Error) -> Self {
+        Error::AutoPrecompileError
+    }
+}
+
 pub fn customize<F: PrimeField32>(
     mut exe: VmExe<F>,
     base_config: SdkVmConfig,
@@ -40,8 +50,6 @@ pub fn customize<F: PrimeField32>(
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
 ) -> (VmExe<F>, PowdrExtension<F>) {
-    exe.program.instructions_and_debug_infos.iter().enumerate().for_each(|(idx, ins)| {println!("instruction {}: {:?}", idx, ins);});
-
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -119,13 +127,15 @@ pub fn customize<F: PrimeField32>(
         });
     }
 
-    tracing::info!("Retained {} basic blocks after filtering by pc_idx_count", blocks.len());
+    tracing::info!(
+        "Retained {} basic blocks after filtering by pc_idx_count",
+        blocks.len()
+    );
 
     // print start index of all retained blocks
-    blocks.iter().enumerate()
-        .for_each(|(i, block)| {
-            tracing::info!("Block {}: start_idx {}", i, block.start_idx);
-        });
+    blocks.iter().enumerate().for_each(|(i, block)| {
+        tracing::info!("Block {}: start_idx {}", i, block.start_idx);
+    });
 
     // store air width by opcode, so that we don't repetitively calculate them later
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
@@ -139,16 +149,20 @@ pub fn customize<F: PrimeField32>(
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
     let (cells_saved_per_row_by_bb, mut apcs): (HashMap<_, _>, HashMap<_, (_, _, _)>) = blocks
         .iter()
-        // .skip(423)
-        // .take(1)
-        .skip(427)
         .enumerate()
-        .map(|(i, acc_block)| {
-            println!("block index {}: start_idx {}", i, acc_block.start_idx);
+        .filter_map(|(i, acc_block)| {
             let apc_opcode = POWDR_OPCODE + i;
-            let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
-                acc_block, airs, apc_opcode, config.bus_map.clone(),
-            );
+            let (autoprecompile, subs) = match generate_autoprecompile::<
+                F,
+                powdr_number::BabyBearField,
+            >(
+                acc_block, airs, apc_opcode, config.bus_map.clone()
+            ) {
+                Err(_) => {
+                    return None;
+                }
+                Ok((autoprecompile, subs)) => (autoprecompile, subs),
+            };
             // calculate cells saved per row
             let apc_cells_per_row = autoprecompile.unique_columns().count();
             let original_cells_per_row: usize = acc_block
@@ -167,14 +181,15 @@ pub fn customize<F: PrimeField32>(
                 cells_saved_per_row
             );
             assert!(cells_saved_per_row > 0);
-            (
+            Some((
                 (acc_block.start_idx, cells_saved_per_row),
                 (acc_block.start_idx, (apc_opcode, autoprecompile, subs)),
-            )
+            ))
         })
         .unzip();
 
-    panic!();
+    // filter out the basic blocks where the apc generation errored out
+    blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
 
     // sort basic blocks by:
     // 1. if pc_idx_count (frequency) is provided, cost = frequency * cells_saved_per_row
@@ -183,7 +198,7 @@ pub fn customize<F: PrimeField32>(
         blocks.sort_by(|a, b| {
             let a_cells_saved = cells_saved_per_row_by_bb[&a.start_idx];
             let b_cells_saved = cells_saved_per_row_by_bb[&b.start_idx];
-            
+
             let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
             let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
 
@@ -369,7 +384,6 @@ pub fn collect_basic_blocks<F: PrimeField32>(
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if opcodes_no_apc.contains(&instr.opcode.as_usize()) {
-            println!("instruction {} contains bad opcode for bb", i);
             // If not empty, push the current block.
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
@@ -383,7 +397,6 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
             if is_target {
-                println!("instruction {} is a target (label)", i);
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
@@ -396,7 +409,6 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             // If the instruction is a branch, we need to close this block
             // with this instruction and start a new block from the next one.
             if is_branch {
-                println!("instruction {} is a branch", i);
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
                 curr_block = BasicBlock {
                     start_idx: i + 1,
@@ -426,7 +438,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-) -> (SymbolicMachine<P>, Vec<Vec<u64>>) {
+) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
         block.start_idx
@@ -471,7 +483,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         OpenVmBusInteractionHandler::new(bus_map),
         OPENVM_DEGREE_BOUND,
         apc_opcode as u32,
-    );
+    )?;
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());
@@ -481,7 +493,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         block.start_idx
     );
 
-    (precompile, subs)
+    Ok((precompile, subs))
 }
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(

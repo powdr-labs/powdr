@@ -756,7 +756,6 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         // TODO we need to find a new block because this one is not executed anymore.
-        println!("width: {}, constraints: {}, bus_interactions: {}", m.width, m.constraints, m.bus_interactions);
         assert_eq!(m.width, 113);
         assert_eq!(m.constraints, 36);
         assert_eq!(m.bus_interactions, 88);

@@ -298,7 +298,7 @@ pub fn build<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
     degree_bound: usize,
     opcode: u32,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
@@ -307,12 +307,13 @@ pub fn build<T: FieldElement>(
         serde_cbor::to_writer(std::fs::File::create(file_name).unwrap(), &machine).unwrap();
     }
 
-    let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
+    let machine: SymbolicMachine<T> =
+        optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound)?;
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
 
-    (machine, subs)
+    Ok((machine, subs))
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.

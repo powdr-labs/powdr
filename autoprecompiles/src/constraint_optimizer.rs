@@ -21,6 +21,16 @@ use powdr_pilopt::{
 
 use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
+pub enum Error {
+    ConstraintSolverError,
+}
+
+impl From<powdr_constraint_solver::solver::Error> for Error {
+    fn from(err: powdr_constraint_solver::solver::Error) -> Self {
+        Error::ConstraintSolverError
+    }
+}
+
 /// Simplifies the constraints as much as possible.
 /// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
 /// - Runs on the entire constraint system, including bus interactions.
@@ -32,12 +42,12 @@ pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + 'static + Clone,
     degree_bound: usize,
-) -> SymbolicMachine<P> {
+) -> Result<SymbolicMachine<P>, Error> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
     let mut stats_logger = StatsLogger::start(&constraint_system);
     let constraint_system =
-        solver_based_optimization(constraint_system, bus_interaction_handler.clone());
+        solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("After solver-based optimization", &constraint_system);
 
     let constraint_system = remove_disconnected_columns(constraint_system, bus_interaction_handler);
@@ -52,7 +62,7 @@ pub fn optimize_constraints<P: FieldElement>(
     let constraint_system = remove_equal_constraints(constraint_system);
     stats_logger.log("After removing equal constraints", &constraint_system);
 
-    constraint_system_to_symbolic_machine(constraint_system)
+    Ok(constraint_system_to_symbolic_machine(constraint_system))
 }
 
 fn symbolic_machine_to_constraint_system<P: FieldElement>(
@@ -94,19 +104,15 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
     bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
-) -> ConstraintSystem<T, Variable> {
+) -> Result<ConstraintSystem<T, Variable>, Error> {
     let result = Solver::new(constraint_system.clone())
         .with_bus_interaction_handler(Box::new(bus_interaction_handler))
-        .solve()
-        .map_err(|e| {
-            println!("Solver failed: {e:?}");
-        })
-        .unwrap();
+        .solve()?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in result.assignments.iter() {
         log::trace!("  {var} = {value}");
     }
-    apply_substitutions(constraint_system, result.assignments)
+    Ok(apply_substitutions(constraint_system, result.assignments))
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),

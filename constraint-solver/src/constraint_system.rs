@@ -135,7 +135,6 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
         bus_interaction_handler: &dyn BusInteractionHandler<T>,
         range_constraint_provider: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
-        println!("solve bus_interaction: {}", self);
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
@@ -203,10 +202,7 @@ pub trait BusInteractionHandler<T: FieldElement> {
             .fields()
             .zip_eq(new_constraints.fields())
         {
-            
-            println!("  bus interaction field prev rc: {}, field new rc {}", previous_rc, new_rc);
             if previous_rc.is_disjoint(new_rc) {
-                println!("  bad_interaction: {}, {}", previous_rc, new_rc);
                 return Err(ViolatesBusRules {});
             }
         }

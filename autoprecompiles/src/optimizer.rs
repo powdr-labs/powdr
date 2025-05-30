@@ -17,14 +17,14 @@ pub fn optimize<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
     opcode: u32,
     degree_bound: usize,
-) -> SymbolicMachine<T> {
+) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let machine = optimize_pc_lookup(machine, opcode);
     let machine = optimize_exec_bus(machine);
     assert!(check_register_operation_consistency(&machine));
 
     // We need to remove memory bus interactions with inlined multiplicity zero before
     // doing register memory optimizations.
-    let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
+    let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound)?;
     assert!(check_register_operation_consistency(&machine));
 
     let machine = optimize_register_operations(machine);
@@ -32,9 +32,9 @@ pub fn optimize<T: FieldElement>(
 
     // Fixpoint style re-attempt.
     // TODO we probably need proper fixpoint here at some point.
-    let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound);
+    let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound)?;
     assert!(check_register_operation_consistency(&machine));
-    machine
+    Ok(machine)
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(

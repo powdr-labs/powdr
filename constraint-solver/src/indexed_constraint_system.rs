@@ -218,7 +218,7 @@ mod tests {
                 .iter()
                 .map(
                     |BusInteraction {
-                        original_index,
+                         original_index,
                          bus_id,
                          payload,
                          multiplicity,

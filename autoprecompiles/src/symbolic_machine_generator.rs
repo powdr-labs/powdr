@@ -28,12 +28,12 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
                 let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
-                println!("symbolic instruction {:?} has {} bus interactions", instr.name, machine.bus_interactions.len());
-                machine.bus_interactions.iter_mut().for_each(|bus_int: &mut SymbolicBusInteraction<T>| {
-                    bus_int.set_original_index(bus_interaction_original_idx as usize);
-                    bus_interaction_original_idx += 1;
-                    println!("  original bus interaction: {bus_int}");
-                });
+                machine.bus_interactions.iter_mut().for_each(
+                    |bus_int: &mut SymbolicBusInteraction<T>| {
+                        bus_int.set_original_index(bus_interaction_original_idx as usize);
+                        bus_interaction_original_idx += 1;
+                    },
+                );
 
                 let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
                 global_idx = next_global_idx;
@@ -149,12 +149,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             _ => {}
         }
     }
-
-    // print final bus interactions
-    println!("pushed bus interactions:");
-    bus_interactions.iter().for_each(|bus_int| {
-        println!("  pushed bus interaction: {bus_int}");
-    });
 
     (
         SymbolicMachine {
