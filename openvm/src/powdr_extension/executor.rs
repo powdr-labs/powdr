@@ -96,17 +96,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .iter()
             .enumerate()
             .try_fold(from_state, |execution_state, (idx, instruction)| {
-                let from_record = memory.get_memory_logs().len();
                 let executor = self
                     .inventory
                     .get_mut_executor(&instruction.opcode())
                     .unwrap();
-                let out = executor.execute(memory, instruction.as_ref(), execution_state);
-                let to_record = memory.get_memory_logs().len();
-                println!("Executing instruction {} from record {} to {}",
-                    idx, from_record, to_record - 1
-                );
-                out
+                executor.execute(memory, instruction.as_ref(), execution_state)
             });
 
         self.number_of_calls += 1;
@@ -215,7 +209,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         }
                     }
                 }
-                println!("instruction index {} instruction {:?} map {:?}", 
                     idx, instruction.instruction, map);
                 map
             })
@@ -260,8 +253,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 for (instruction_id, (instruction, dummy_row)) in
                     self.instructions.iter().zip_eq(dummy_values).enumerate()
                 {
-                    println!("instruction {} dummy row {:?}", 
-                        instruction_id, dummy_row);
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
                     // first remove the side effects of this row on the main periphery
@@ -311,9 +302,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .iter()
                         .map(|arg| evaluator.eval_expr(arg).as_canonical_u32())
                         .collect_vec();
-
-                    println!("Applying mult: {}, args: {:?}, bus interaction: {:?}", 
-                        mult, args, bus_interaction);
 
                     self.periphery.apply(bus_interaction.id, mult, &args);
                 }
