@@ -40,7 +40,8 @@ pub fn handle_bitwise_lookup<T: FieldElement>(
                 ]
             } else {
                 // The result of an XOR can only be a byte and have bits set that are set in either x or y
-                let z_constraint = x.disjunction(y).conjunction(&byte_constraint());
+                let z_constraint = RangeConstraint::from_mask(*x.mask() | *y.mask())
+                    .conjunction(&byte_constraint());
                 vec![
                     byte_constraint(),
                     byte_constraint(),
