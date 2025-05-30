@@ -1,8 +1,11 @@
 use itertools::Itertools;
+use powdr_constraint_solver::constraint_system::ConstraintRef;
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -12,46 +15,48 @@ pub fn replace_constrained_witness_columns<
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    mut constraint_system: ConstraintSystem<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
-    loop {
-        if !try_apply_substitution(&mut constraint_system, max_degree) {
-            break;
-        }
-    }
+    let mut to_remove_idx = HashSet::new();
+    let mut inlined_vars = HashSet::new();
 
-    constraint_system
-}
+    let mut constraint_system = IndexedConstraintSystem::from(constraint_system);
 
-/// Attempts to apply one valid variable substitution across the constraint system.
-///
-/// Skips substitutions that would increase the degree beyond `max_degree`
-/// or affect variables in the `keep` set. Returns true if a substitution was applied.
-fn try_apply_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    constraint_system: &mut ConstraintSystem<T, V>,
-    max_degree: usize,
-) -> bool {
-    let indices: Vec<usize> = (0..constraint_system.algebraic_constraints.len()).collect();
-
-    for idx in indices.into_iter().rev() {
-        let constraint = &constraint_system.algebraic_constraints[idx];
+    for curr_idx in (0..constraint_system.algebraic_constraints().len()).rev() {
+        let constraint = &constraint_system.algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(&var, &expr, constraint_system, max_degree) {
+            if is_valid_substitution(&var, &expr, &constraint_system, max_degree) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
-                constraint_system.expressions_mut().for_each(|identity| {
-                    identity.substitute_by_unknown(&var, &expr);
-                });
 
-                constraint_system.algebraic_constraints.remove(idx);
-                return true;
+                constraint_system.substitute_by_unknown(&var, &expr);
+                to_remove_idx.insert(curr_idx);
+                inlined_vars.insert(var);
+
+                break;
             }
         }
     }
 
-    false
+    let mut constraint_system = ConstraintSystem::from(constraint_system);
+
+    // remove inlined constraints from system
+    constraint_system.algebraic_constraints = constraint_system
+        .algebraic_constraints
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, qse)| (!to_remove_idx.contains(&idx)).then_some(qse))
+        .collect();
+
+    // sanity check
+    assert!(constraint_system.expressions().all(|expr| {
+        expr.referenced_unknown_variables()
+            .all(|var| !inlined_vars.contains(var))
+    }));
+
+    constraint_system
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
@@ -79,15 +84,23 @@ fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Displa
 fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &QuadraticSymbolicExpression<T, V>,
-    constraint_system: &ConstraintSystem<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
     max_degree: usize,
 ) -> bool {
     let replacement_deg = qse_degree(expr);
 
-    !constraint_system
-        .expressions()
-        .map(|constraint| qse_degree_with_virtual_substitution(constraint, var, replacement_deg))
-        .any(|deg| deg > max_degree)
+    constraint_system
+        .constraints_referencing_variables(std::iter::once(var.clone()))
+        .all(|cref| match cref {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
+                degree <= max_degree
+            }
+            ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
+                let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
+                degree <= max_degree
+            }),
+        })
 }
 
 /// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
