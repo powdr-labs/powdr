@@ -3,19 +3,20 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::FieldElement;
 
-pub fn build_circuit<T>(
-    algebraic_expr: &[AlgebraicExpression<T>],
-) -> PlonkCircuit<T, AlgebraicReference>
+pub fn build_circuit<T>(machine: &SymbolicMachine<T>) -> PlonkCircuit<T, AlgebraicReference>
 where
     T: FieldElement,
 {
     let mut circuit = PlonkCircuit::new();
     let mut temp_id_offset = 0;
-    for expr in algebraic_expr {
-        air_to_plonkish(expr, &mut circuit, &mut temp_id_offset, true);
+    for constraint in &machine.constraints {
+        air_to_plonkish(&constraint.expr, &mut circuit, &mut temp_id_offset, true);
     }
+
+    // TODO: Add bus interactions
 
     circuit
 }
@@ -174,6 +175,7 @@ where
 #[cfg(test)]
 mod tests {
     use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
@@ -198,10 +200,15 @@ mod tests {
     fn test_air_to_plonkish() {
         let x = var("x", 0);
         let y = var("y", 1);
+
         let expr = -(x.clone() * y.clone() - (-x.clone() * (x.clone() + y.clone())));
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr }],
+            bus_interactions: vec![],
+        };
 
         assert_eq!(
-            format!("{}", build_circuit(&[expr])),
+            format!("{}", build_circuit(&machine)),
             "x * y = tmp_1
 -x = tmp_3
 x + y = tmp_4
@@ -215,9 +222,13 @@ tmp_1 + -tmp_2 = tmp_0
     #[test]
     fn only_constants() {
         let expr = c(4) + c(2) * (c(3) - c(5));
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr }],
+            bus_interactions: vec![],
+        };
 
         assert_eq!(
-            format!("{}", build_circuit(&[expr])),
+            format!("{}", build_circuit(&machine)),
             "-2 = tmp_1
 2 * tmp_1 = tmp_0
 tmp_0 + 4 = 0
@@ -227,11 +238,14 @@ tmp_0 + 4 = 0
 
     #[test]
     fn single_variable() {
-        let x = var("x", 0);
-        let expr = x.clone();
+        let expr = var("x", 0);
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr }],
+            bus_interactions: vec![],
+        };
 
         assert_eq!(
-            format!("{}", build_circuit(&[expr])),
+            format!("{}", build_circuit(&machine)),
             "x = 0
 "
         )
@@ -242,9 +256,13 @@ tmp_0 + 4 = 0
         let x = var("x", 0);
         let y = var("y", 1);
         let expr = -(c(3) - c(2) * x.clone() * y.clone()) + c(1);
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr }],
+            bus_interactions: vec![],
+        };
 
         assert_eq!(
-            format!("{}", build_circuit(&[expr])),
+            format!("{}", build_circuit(&machine)),
             "2 * x = tmp_3
 tmp_3 * y = tmp_2
 -tmp_2 + 3 = tmp_1
@@ -257,9 +275,13 @@ tmp_0 + 1 = 0
     #[test]
     fn negative_number() {
         let expr = -c(3);
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr }],
+            bus_interactions: vec![],
+        };
 
         assert_eq!(
-            format!("{}", build_circuit(&[expr])),
+            format!("{}", build_circuit(&machine)),
             "3 = tmp_0
 -tmp_0 = 0
 "
@@ -271,9 +293,13 @@ tmp_0 + 1 = 0
         let x = var("x", 0);
         let y = var("y", 1);
         let expr = x.clone() - (-y.clone());
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr }],
+            bus_interactions: vec![],
+        };
 
         assert_eq!(
-            format!("{}", build_circuit(&[expr])),
+            format!("{}", build_circuit(&machine)),
             "-y = tmp_0
 x + -tmp_0 = 0
 "
