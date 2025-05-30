@@ -171,6 +171,21 @@ where
     }
 }
 
+pub fn plonk_circuit_remove_pure_neg_gates<T>(
+    plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
+) where
+    T: FieldElement,
+{
+   let mut substitutable_neg_gates: Vec<Gate<T, AlgebraicReference>> = Vec::new();
+    for gate in plonk_circuit.gates.iter_mut() { 
+        if (-T::ONE == gate.q_l && T::ZERO == gate.q_r && T::ZERO == gate.q_mul && T::ZERO == gate.q_const)
+        {
+            substitutable_neg_gates.push(gate.clone());
+            
+        } 
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
