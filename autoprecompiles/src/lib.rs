@@ -290,6 +290,11 @@ pub fn build<T: FieldElement>(
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
+    if let Ok(machine_path) = std::env::var("APC_EXPORT_MACHINE") {
+        let file_name = format!("{machine_path}_{opcode}.cbor");
+        serde_cbor::to_writer(std::fs::File::create(file_name).unwrap(), &machine).unwrap();
+    }
+
     let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
 
     // add guards to constraints that are not satisfied by zeroes
