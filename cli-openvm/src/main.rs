@@ -2,7 +2,7 @@ use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PowdrConfig};
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrConfig};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::io;
@@ -104,13 +104,10 @@ fn run_command(command: Commands) {
             pgo,
             input,
         } => {
-            let pc_idx_count = pgo.then(|| {
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
-            });
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pc_idx_count)
-                    .unwrap();
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -122,21 +119,7 @@ fn run_command(command: Commands) {
             input,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_data = match pgo {
-                CliPgoType::Cell | CliPgoType::Instruction => {
-                    let pc_idx_count = powdr_openvm::get_pc_idx_count(
-                        &guest,
-                        guest_opts.clone(),
-                        stdin_from(input),
-                    );
-                    Some(pc_idx_count)
-                }
-                CliPgoType::None => None,
-            };
-            let pgo_config = PgoConfig {
-                pgo_type: pgo.into(),
-                pgo_data,
-            };
+            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
@@ -151,13 +134,10 @@ fn run_command(command: Commands) {
             pgo,
             input,
         } => {
-            let pc_idx_count = pgo.then(|| {
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
-            });
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pc_idx_count)
-                    .unwrap();
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             powdr_openvm::prove(&program, mock, recursion, stdin_from(input)).unwrap();
         }
 
@@ -200,12 +180,30 @@ pub enum CliPgoType {
     None,
 }
 
-impl Into<powdr_openvm::PgoType> for CliPgoType {
-    fn into(self) -> powdr_openvm::PgoType {
-        match self {
-            CliPgoType::Cell => powdr_openvm::PgoType::Cell,
-            CliPgoType::Instruction => powdr_openvm::PgoType::Instruction,
-            CliPgoType::None => powdr_openvm::PgoType::None,
+impl From<CliPgoType> for PgoType {
+    fn from(value: CliPgoType) -> Self {
+        match value {
+            CliPgoType::Cell => PgoType::Cell,
+            CliPgoType::Instruction => PgoType::Instruction,
+            CliPgoType::None => PgoType::None,
         }
     }
+}
+
+fn get_pgo_config(
+    guest: String,
+    guest_opts: GuestOptions,
+    pgo: CliPgoType,
+    input: Option<u32>,
+) -> PgoConfig {
+    let pc_idx_count = match pgo {
+        CliPgoType::Cell | CliPgoType::Instruction => {
+            let pc_idx_count =
+                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
+            Some(pc_idx_count)
+        }
+        CliPgoType::None => None,
+    };
+
+    PgoConfig::new(pgo.into(), pc_idx_count)
 }

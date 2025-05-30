@@ -97,6 +97,24 @@ pub struct PgoConfig {
     pub pc_idx_count: Option<HashMap<u32, u32>>,
 }
 
+impl Default for PgoConfig {
+    fn default() -> Self {
+        Self {
+            pgo_type: PgoType::None,
+            pc_idx_count: None,
+        }
+    }
+}
+
+impl PgoConfig {
+    pub fn new(pgo_type: PgoType, pc_idx_count: Option<HashMap<u32, u32>>) -> Self {
+        Self {
+            pgo_type,
+            pc_idx_count,
+        }
+    }
+}
+
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "F: Field")]
@@ -668,7 +686,8 @@ mod tests {
         stdin: StdIn,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let config = PowdrConfig::new(apc as u64, skip as u64);
-        let program = compile_guest(guest, GuestOptions::default(), config, None).unwrap();
+        let program =
+            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).unwrap();
         prove(&program, mock, recursion, stdin)
     }
 
