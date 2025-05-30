@@ -1,14 +1,22 @@
 use crate::plonk::air_to_plonkish::air_to_plonkish;
 use crate::plonk::Gate;
-use crate::plonk::{PlonkCircuit, Variable};
+use crate::plonk::PlonkCircuit;
 use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
 };
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
 
+/// Allocates a bus interaction to the PLONK circuit.
+/// The bus interaction is expected to be in the form:
+/// bus_interaction(bus_type, [args0, args1, ...], mult)
+/// witness allocation:
+///        a         b         c
+/// row 0: args0     args1     args2     
+/// row 1: args3     ...       ...         
+/// ...
 fn add_bus_to_plonk_circuit<T>(
     bus_interaction: SymbolicBusInteraction<T>,
     temp_id_offset: &mut usize,
@@ -17,121 +25,50 @@ fn add_bus_to_plonk_circuit<T>(
 ) where
     T: FieldElement,
 {
+    let number_of_gates = ((bus_interaction.args.len() + 1) as f64 / 3.0).ceil() as usize;
+    let mut gates: Vec<Gate<T, AlgebraicReference>> =
+        (0..number_of_gates).map(|_| Gate::default()).collect();
     match bus_map.bus_type(bus_interaction.id) {
         Memory => {
-            // Memory bus interaction:
-            // bus_interaction(MEMORY, [address_space, addr, val0, val1, val2, val3, timestamp], mult));
-            // witness allocation:
-            //        a         b        c
-            // row 0: addr      val0     val1
-            // row 1: val2      val3     timestamp
-            // row 2: mult      temp
-            // row 3: temp = address_space (const)
-
-            let mut bus_gate_0 = Gate::<T, AlgebraicReference> {
-                q_memory: T::ONE,
-                ..Default::default()
-            };
-
-            let mut bus_gate_1 = Gate::default();
-
-            let mut bus_gate_2 = Gate::default();
-
-            let [address_space, addr, val0, val1, val2, val3, timestamp]: [AlgebraicExpression<T>;
-                7] = bus_interaction
-                .args
-                .try_into()
-                .expect("Expected 7 arguments for Memory lookup");
-
-            [addr, val0, val1, val2, val3, timestamp]
-                .iter()
-                .zip([
-                    &mut bus_gate_0.a,
-                    &mut bus_gate_0.b,
-                    &mut bus_gate_0.c,
-                    &mut bus_gate_1.a,
-                    &mut bus_gate_1.b,
-                    &mut bus_gate_1.c,
-                ])
-                .for_each(|(arg, payload)| {
-                    match arg {
-                        AlgebraicExpression::Reference(r) => {
-                            *payload = Variable::Witness(r.clone());
-                        }
-                        AlgebraicExpression::Number(n) => {
-                            panic!(
-                                "Expected argument to be a polynomial reference, got number: {n}",
-                            );
-                        }
-                        expr => {
-                            // If the argument is not a polynomial reference, add plonk gates based on the arg expression,
-                            // put the temp of the last gate into the payload.
-                            air_to_plonkish(expr, plonk_circuit, temp_id_offset);
-                            *payload = plonk_circuit.gates.last_mut().unwrap().c.clone();
-                        }
-                    }
-                });
-
-            match bus_interaction.mult {
-                AlgebraicExpression::Number(n) => {
-                    let gate = Gate::<T, AlgebraicReference> {
-                        q_const: n,
-                        q_o: -T::ONE,
-                        c: Variable::Tmp(*temp_id_offset),
-                        ..Default::default()
-                    };
-
-                    *temp_id_offset += 1;
-
-                    bus_gate_2.a = gate.c.clone();
-                    plonk_circuit.add_gate(gate);
-                }
-                AlgebraicExpression::Reference(r) => {
-                    bus_gate_2.a = Variable::Witness(r.clone());
-                }
-                _ => {
-                    air_to_plonkish(&bus_interaction.mult, plonk_circuit, temp_id_offset);
-                    bus_gate_2.a = plonk_circuit.gates.last_mut().unwrap().c.clone();
-                }
-            }
-
-            // add gate for address_space
-            let mut bus_gate_3 = Gate::default();
-            if let AlgebraicExpression::Number(n) = address_space {
-                bus_gate_3.q_const = n;
-                bus_gate_3.q_o = -T::ONE;
-                bus_gate_3.c = Variable::Tmp(*temp_id_offset);
-                *temp_id_offset += 1;
-                bus_gate_2.b = bus_gate_3.c.clone();
-            } else {
-                panic!("Expected address_space to be a number");
-            }
-
-            // gates added in sequence to be consistant with next, next next reference
-            plonk_circuit.add_gate(bus_gate_0);
-            plonk_circuit.add_gate(bus_gate_1);
-            plonk_circuit.add_gate(bus_gate_2);
-            plonk_circuit.add_gate(bus_gate_3);
+            gates[0].q_memory = T::ONE;
         }
         BitwiseLookup => {
-            todo!();
+            gates[0].q_bitwise = T::ONE;
         }
         ExecutionBridge => {
-            todo!();
+            gates[0].q_execution = T::ONE;
         }
         PcLookup => {
-            todo!();
+            gates[0].q_pc = T::ONE;
         }
         VariableRangeChecker => {
-            todo!();
+            gates[0].q_range_check = T::ONE;
         }
         TupleRangeChecker => {
-            todo!();
+            gates[0].q_rang_tuple = T::ONE;
         }
 
         _ => {
             unimplemented!("bus interaction type is not implemented");
         }
+    }
+
+    bus_interaction
+        .args
+        .iter()
+        .chain([bus_interaction.mult].iter())
+        .zip(
+            gates
+                .iter_mut()
+                .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
+        )
+        .for_each(|(arg, payload)| {
+            *payload = air_to_plonkish(arg, plonk_circuit, temp_id_offset);
+        });
+
+    // Add the gates to the circuit.
+    for gate in gates {
+        plonk_circuit.add_gate(gate);
     }
 }
 
@@ -139,27 +76,12 @@ fn add_bus_to_plonk_circuit<T>(
 mod tests {
     use super::*;
     use crate::bus_interaction_handler::DEFAULT_MEMORY;
+    use crate::plonk::test_utils::{c, var};
     use powdr_ast::analyzed::AlgebraicExpression;
     use powdr_ast::analyzed::AlgebraicReference;
-    use powdr_ast::analyzed::PolyID;
-    use powdr_ast::analyzed::PolynomialType;
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
-
-    fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Reference(AlgebraicReference {
-            name: name.into(),
-            poly_id: PolyID {
-                id,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
-        })
-    }
-
-    fn c(value: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Number(BabyBearField::from(value))
-    }
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_add_memory_bus_to_plonk_circuit() {

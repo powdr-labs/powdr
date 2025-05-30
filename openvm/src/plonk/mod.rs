@@ -58,7 +58,6 @@ pub struct Gate<T, V> {
     pub c: Variable<V>,
 }
 
-// Implemented manually so that we don't have to require V: Default
 impl<T: FieldElement, V> Default for Gate<T, V> {
     fn default() -> Self {
         Gate {
@@ -207,5 +206,27 @@ impl<T, V> PlonkCircuit<T, V> {
             .max()
             .map(|max_id| max_id + 1)
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+pub mod test_utils {
+    use super::*;
+    use powdr_ast::analyzed::AlgebraicExpression;
+    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_number::BabyBearField;
+    pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            name: name.into(),
+            poly_id: PolyID {
+                id,
+                ptype: PolynomialType::Committed,
+            },
+            next: false,
+        })
+    }
+
+    pub fn c(value: u64) -> AlgebraicExpression<BabyBearField> {
+        AlgebraicExpression::Number(BabyBearField::from(value))
     }
 }

@@ -191,26 +191,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
-    use powdr_number::BabyBearField;
-    use pretty_assertions::assert_eq;
-
     use crate::plonk::air_to_plonkish::build_plonk_expr;
-
-    fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Reference(AlgebraicReference {
-            name: name.into(),
-            poly_id: PolyID {
-                id,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
-        })
-    }
-
-    fn c(value: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Number(BabyBearField::from(value))
-    }
+    use crate::plonk::test_utils::{c, var};
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_air_to_plonkish() {
