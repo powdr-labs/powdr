@@ -91,22 +91,23 @@ impl<T: FieldElement, V> Gate<T, V> {
             (BusType::TupleRangeChecker, &self.q_rang_tuple),
         ];
 
-        let active: Vec<_> = selectors
-            .iter()
-            .filter(|(_, val)| *val == &T::ONE)
-            .collect();
-
-        // Assert that exactly one is active
-        assert!(
-            active.len() <= 1,
-            "Active more than one bus gate selector {:?}",
-            active.iter().map(|(name, _)| *name).collect::<Vec<_>>()
-        );
-        if active.is_empty() {
-            None
-        } else {
-            Some(active[0].0)
+        let mut active_selector = None;
+        for (name, val) in selectors.iter() {
+            if *val == &T::ONE {
+                if active_selector.is_some() {
+                    panic!(
+                        "Active more than one bus gate selector: {:?}",
+                        selectors
+                            .iter()
+                            .filter(|(_, val)| *val == &T::ONE)
+                            .map(|(name, _)| *name)
+                            .collect::<Vec<_>>()
+                    );
+                }
+                active_selector = Some(name);
+            }
         }
+        active_selector.copied()
     }
 }
 
