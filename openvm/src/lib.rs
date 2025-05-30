@@ -62,6 +62,7 @@ use tracing_subscriber::{
 
 type SC = BabyBearPoseidon2Config;
 pub type F = BabyBear;
+pub type P = powdr_number::BabyBearField;
 
 pub use bus_interaction_handler::{BusMap, BusType};
 pub use openvm_build::GuestOptions;
@@ -83,9 +84,9 @@ mod plonk;
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "F: Field")]
-pub struct SpecializedConfig<F: PrimeField32> {
+pub struct SpecializedConfig<F: PrimeField32, P: FieldElement> {
     sdk_config: SdkVmConfig,
-    powdr: PowdrExtension<F>,
+    powdr: PowdrExtension<F, P>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -105,7 +106,7 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl<F: PrimeField32> VmConfig<F> for SpecializedConfig<F> {
+impl<F: PrimeField32, P: FieldElement> VmConfig<F> for SpecializedConfig<F, P> {
     type Executor = SpecializedExecutor<F>;
     type Periphery = MyPeriphery<F>;
 
@@ -127,8 +128,8 @@ impl<F: PrimeField32> VmConfig<F> for SpecializedConfig<F> {
     }
 }
 
-impl<F: Default + PrimeField32> SpecializedConfig<F> {
-    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F>) -> Self {
+impl<F: Default + PrimeField32, P: FieldElement> SpecializedConfig<F, P> {
+    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F, P>) -> Self {
         Self { sdk_config, powdr }
     }
 }
@@ -235,7 +236,7 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_data: Option<HashMap<u32, u32>>,
-) -> Result<CompiledProgram<F>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<F, P>, Box<dyn std::error::Error>> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
     compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_data)
 }
@@ -247,7 +248,7 @@ pub fn compile_exe(
     sdk_vm_config: SdkVmConfig,
     config: PowdrConfig,
     pgo_data: Option<HashMap<u32, u32>>,
-) -> Result<CompiledProgram<F>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<F, P>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -281,9 +282,9 @@ pub fn compile_exe(
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "F: Field")]
-pub struct CompiledProgram<F: PrimeField32> {
+pub struct CompiledProgram<F: PrimeField32, P: FieldElement> {
     pub exe: VmExe<F>,
-    pub vm_config: SpecializedConfig<F>,
+    pub vm_config: SpecializedConfig<F, P>,
 }
 
 // the original openvm program and config without powdr extension
@@ -299,7 +300,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram<F> {
+impl CompiledProgram<F, P> {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
@@ -332,7 +333,7 @@ impl CompiledProgram<F> {
 }
 
 pub fn execute(
-    program: CompiledProgram<F>,
+    program: CompiledProgram<F, P>,
     inputs: StdIn,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
@@ -401,7 +402,7 @@ pub fn pgo(
 }
 
 pub fn prove(
-    program: &CompiledProgram<F>,
+    program: &CompiledProgram<F, P>,
     mock: bool,
     recursion: bool,
     inputs: StdIn,

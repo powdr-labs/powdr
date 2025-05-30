@@ -23,7 +23,9 @@ use openvm_circuit::{
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_stark_backend::{p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator};
+use openvm_stark_backend::{
+    p3_field::Field, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
+};
 
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
@@ -38,23 +40,24 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
+use powdr_number::FieldElement;
 
 type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<F: PrimeField32> {
+pub struct PowdrExecutor<F: PrimeField32, P: FieldElement> {
     instructions: Vec<OriginalInstruction<F>>,
-    air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
+    air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
     is_valid_poly_id: u64,
     inventory: SdkVmInventory<F>,
     number_of_calls: usize,
     periphery: SharedChips,
 }
 
-impl<F: PrimeField32> PowdrExecutor<F> {
+impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
     pub fn new(
         instructions: Vec<OriginalInstruction<F>>,
-        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<F>>,
+        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,

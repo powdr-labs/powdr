@@ -16,7 +16,7 @@ use powdr_autoprecompiles::{
     InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
     SymbolicMachine,
 };
-use powdr_number::FieldElement;
+use powdr_number::{BabyBearField, FieldElement};
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -39,7 +39,7 @@ pub fn customize<F: PrimeField32>(
     airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
-) -> (VmExe<F>, PowdrExtension<F>) {
+) -> (VmExe<F>, PowdrExtension<F, BabyBearField>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -226,14 +226,14 @@ pub fn customize<F: PrimeField32>(
             PowdrOpcode {
                 class_offset: apc_opcode,
             },
-            transpose_symbolic_machine(autoprecompile),
+            autoprecompile,
             acc.into_iter()
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
             airs.iter()
                 .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, transpose_symbolic_machine(air.clone())))
+                .map(|(i, air)| (*i, air.clone()))
                 .collect(),
             is_valid_column,
         ));

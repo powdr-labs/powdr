@@ -21,6 +21,7 @@ use openvm_sdk::config::{SdkVmConfig, SdkVmConfigPeriphery};
 use openvm_stark_backend::p3_field::{Field, PrimeField32};
 use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use super::chip::SharedChips;
@@ -29,8 +30,8 @@ use super::{chip::PowdrChip, PowdrOpcode};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
-pub struct PowdrExtension<F: PrimeField32> {
-    pub precompiles: Vec<PowdrPrecompile<F>>,
+pub struct PowdrExtension<F: PrimeField32, P: FieldElement> {
+    pub precompiles: Vec<PowdrPrecompile<F, P>>,
     pub base_config: SdkVmConfig,
 }
 
@@ -59,22 +60,22 @@ impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
-pub struct PowdrPrecompile<F> {
+pub struct PowdrPrecompile<F, P: FieldElement> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub machine: SymbolicMachine<F>,
+    pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<F>>,
-    pub original_airs: BTreeMap<usize, SymbolicMachine<F>>,
+    pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: Column,
 }
 
-impl<F> PowdrPrecompile<F> {
+impl<F, P: FieldElement> PowdrPrecompile<F, P> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        machine: SymbolicMachine<F>,
+        machine: SymbolicMachine<P>,
         original_instructions: Vec<OriginalInstruction<F>>,
-        original_airs: BTreeMap<usize, SymbolicMachine<F>>,
+        original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
     ) -> Self {
         Self {
@@ -88,8 +89,8 @@ impl<F> PowdrPrecompile<F> {
     }
 }
 
-impl<F: PrimeField32> PowdrExtension<F> {
-    pub fn new(precompiles: Vec<PowdrPrecompile<F>>, base_config: SdkVmConfig) -> Self {
+impl<F: PrimeField32, P: FieldElement> PowdrExtension<F, P> {
+    pub fn new(precompiles: Vec<PowdrPrecompile<F, P>>, base_config: SdkVmConfig) -> Self {
         Self {
             precompiles,
             base_config,
@@ -110,7 +111,7 @@ pub enum PowdrPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
+impl<F: PrimeField32, P: FieldElement> VmExtension<F> for PowdrExtension<F, P> {
     type Executor = PowdrExecutor<F>;
 
     type Periphery = PowdrPeriphery<F>;

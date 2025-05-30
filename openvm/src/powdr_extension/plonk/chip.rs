@@ -36,18 +36,18 @@ use powdr_number::{BabyBearField, FieldElement};
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<F: PrimeField32> {
+pub struct PlonkChip<F: PrimeField32, P: FieldElement> {
     name: String,
     opcode: PowdrOpcode,
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
-    machine: SymbolicMachine<F>,
+    machine: SymbolicMachine<P>,
 }
 
-impl<F: PrimeField32> PlonkChip<F> {
+impl<F: PrimeField32, P: FieldElement> PlonkChip<F, P> {
     #[allow(dead_code)]
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
+        precompile: PowdrPrecompile<F, P>,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
