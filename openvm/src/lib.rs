@@ -673,7 +673,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: usize = 1;
-    const GUEST_SKIP: usize = 56;
+    const GUEST_SKIP: usize = 64;
     const GUEST_SKIP_PGO: usize = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
