@@ -1,16 +1,13 @@
-use std::collections::BTreeMap;
-
-use crate::plonk::air_to_plonkish::air_to_plonkish;
-use crate::plonk::{Gate, PlonkCircuit};
+use crate::plonk::Gate;
 use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
 };
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
 
-use super::Variable;
+use super::air_to_plonkish::CircuitBuilder;
 
 /// Allocates a bus interaction to the PLONK circuit.
 /// The bus interaction is expected to be in the form:
@@ -22,10 +19,8 @@ use super::Variable;
 /// ...
 pub fn add_bus_to_plonk_circuit<T>(
     bus_interaction: SymbolicBusInteraction<T>,
-    temp_id_offset: &mut usize,
-    plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
+    circuit_builder: &mut CircuitBuilder<T>,
     bus_map: &BusMap,
-    cache: &mut BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
 ) where
     T: FieldElement,
 {
@@ -67,12 +62,12 @@ pub fn add_bus_to_plonk_circuit<T>(
                 .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
         )
         .for_each(|(arg, payload)| {
-            *payload = air_to_plonkish(arg, plonk_circuit, temp_id_offset, false, cache);
+            *payload = circuit_builder.evaluate_expression(arg, false);
         });
 
     // Add the gates to the circuit.
     for gate in gates {
-        plonk_circuit.add_gate(gate);
+        circuit_builder.add_gate(gate);
     }
 }
 
@@ -81,15 +76,13 @@ mod tests {
     use super::*;
     use crate::bus_interaction_handler::DEFAULT_MEMORY;
     use crate::plonk::test_utils::{c, var};
-    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
+    use powdr_ast::analyzed::AlgebraicExpression;
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
     #[test]
     fn test_add_memory_bus_to_plonk_circuit() {
-        let mut temp_id_offset = 0;
-        let mut plonk_circuit = PlonkCircuit::<BabyBearField, AlgebraicReference>::new();
         let bus_map = BusMap::openvm_base();
 
         let x = var("x", 0);
@@ -109,14 +102,9 @@ mod tests {
             mult: AlgebraicExpression::Number(BabyBearField::from(1)),
         };
 
-        let mut cache = BTreeMap::new();
-        add_bus_to_plonk_circuit(
-            bus_interaction,
-            &mut temp_id_offset,
-            &mut plonk_circuit,
-            &bus_map,
-            &mut cache,
-        );
+        let mut circuit_builder = CircuitBuilder::new();
+        add_bus_to_plonk_circuit(bus_interaction, &mut circuit_builder, &bus_map);
+        let plonk_circuit = circuit_builder.build();
 
         assert_eq!(
             format!("{plonk_circuit}"),

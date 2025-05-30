@@ -14,186 +14,198 @@ pub fn build_circuit<T>(machine: &SymbolicMachine<T>) -> PlonkCircuit<T, Algebra
 where
     T: FieldElement,
 {
-    let mut circuit = PlonkCircuit::new();
-    let mut temp_id_offset = 0;
-    let mut cache = BTreeMap::new();
+    let mut circuit_builder = CircuitBuilder::<T>::new();
     for constraint in &machine.constraints {
-        air_to_plonkish(
-            &constraint.expr,
-            &mut circuit,
-            &mut temp_id_offset,
-            true,
-            &mut cache,
-        );
+        circuit_builder.evaluate_expression(&constraint.expr, true);
     }
 
     for bus_interaction in &machine.bus_interactions {
         add_bus_to_plonk_circuit(
             bus_interaction.clone(),
-            &mut temp_id_offset,
-            &mut circuit,
+            &mut circuit_builder,
             &BusMap::openvm_base(),
-            &mut cache,
         );
     }
 
-    circuit
+    circuit_builder.build()
 }
 
-pub fn air_to_plonkish<T>(
-    algebraic_expr: &AlgebraicExpression<T>,
-    plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
-    temp_id_offset: &mut usize,
-    assert_zero: bool,
-    cache: &mut BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
-) -> Variable<AlgebraicReference>
+pub struct CircuitBuilder<T> {
+    plonk_circuit: PlonkCircuit<T, AlgebraicReference>,
+    temp_id_offset: usize,
+    cache: BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
+}
+
+impl<T> CircuitBuilder<T>
 where
     T: FieldElement,
 {
-    if let Some(var) = cache.get(algebraic_expr) {
-        return var.clone();
+    pub fn new() -> Self {
+        Self {
+            plonk_circuit: PlonkCircuit::new(),
+            temp_id_offset: 0,
+            cache: BTreeMap::new(),
+        }
     }
 
-    // Returns (q_o, c), where:
-    // - If `assert_zero` is true, `q_o` is always zero and `c` is unused.
-    // - If `assert_zero` is false, `q_o` is -1 and `c` is a new temporary variable.
-    let mut make_output = || -> (T, Variable<AlgebraicReference>) {
+    /// Returns (q_o, c), where:
+    /// - If `assert_zero` is true, `q_o` is always zero and `c` is unused.
+    /// - If `assert_zero` is false, `q_o` is -1 and `c` is a new temporary variable.
+    fn make_output(&mut self, assert_zero: bool) -> (T, Variable<AlgebraicReference>) {
         if assert_zero {
             (T::ZERO, Variable::Unused)
         } else {
-            let c = Variable::Tmp(*temp_id_offset);
-            *temp_id_offset += 1;
+            let c = Variable::Tmp(self.temp_id_offset);
+            self.temp_id_offset += 1;
             (-T::ONE, c)
         }
-    };
+    }
 
-    let result = match algebraic_expr {
-        AlgebraicExpression::Reference(r) => {
-            if assert_zero {
-                // Constraint of the form `w = 0`
-                plonk_circuit.add_gate(Gate {
-                    q_l: T::ONE,
+    /// Adds a gate to the PlonK circuit.
+    pub fn add_gate(&mut self, gate: Gate<T, AlgebraicReference>) {
+        self.plonk_circuit.add_gate(gate);
+    }
 
-                    a: Variable::Witness(r.clone()),
-                    ..Default::default()
-                });
-                Variable::Unused
-            } else {
-                Variable::Witness(r.clone())
+    /// Adds gates to the PlonK circuit to evaluate a given expression.
+    /// If the expression has been computed before, it retrieves the result from the cache.
+    /// If `assert_zero` is true, it adds a constraint that the result must be zero.
+    /// Returns a variable representing the result of the expression IF `assert_zero` is false
+    /// (otherwise, it returns `Variable::Unused`).
+    pub fn evaluate_expression(
+        &mut self,
+        algebraic_expr: &AlgebraicExpression<T>,
+        assert_zero: bool,
+    ) -> Variable<AlgebraicReference> {
+        if let Some(var) = self.cache.get(algebraic_expr) {
+            return var.clone();
+        }
+
+        let result = match algebraic_expr {
+            AlgebraicExpression::Reference(r) => {
+                if assert_zero {
+                    // Constraint of the form `w = 0`
+                    self.plonk_circuit.add_gate(Gate {
+                        q_l: T::ONE,
+
+                        a: Variable::Witness(r.clone()),
+                        ..Default::default()
+                    });
+                    Variable::Unused
+                } else {
+                    Variable::Witness(r.clone())
+                }
             }
-        }
-        // Ideally, we would never hit this case, because allocating a new gate just to
-        // "compute" a constant is wasteful.
-        // The implementations of the binary operations below already handle one of their
-        // operands being a number directly. The only way to reach this path is by passing
-        // a number to `build_circuit` directly, or by having a `-<number>` expression.
-        AlgebraicExpression::Number(value) => {
-            let (q_o, c) = make_output();
-            plonk_circuit.add_gate(Gate {
-                q_o,
-                q_const: *value,
-                c: c.clone(),
-                ..Default::default()
-            });
-            c
-        }
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let mut q_l = T::ZERO;
-            let mut q_r = T::ZERO;
-            let mut q_mul = T::ZERO;
-            let mut q_const = T::ZERO;
-            let mut a = Variable::Unused;
-            let mut b = Variable::Unused;
-            let (q_o, c) = make_output();
-            match op {
-                AlgebraicBinaryOperator::Add => {
-                    if let AlgebraicExpression::Number(n) = left.as_ref() {
-                        q_const += *n;
-                    } else {
-                        q_l = T::ONE;
-                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false, cache);
-                    }
-
-                    if let AlgebraicExpression::Number(n) = right.as_ref() {
-                        q_const += *n;
-                    } else {
-                        q_r = T::ONE;
-                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false, cache);
-                    }
-                }
-                AlgebraicBinaryOperator::Sub => {
-                    if let AlgebraicExpression::Number(n) = left.as_ref() {
-                        q_const += *n;
-                    } else {
-                        q_l = T::ONE;
-                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false, cache);
-                    }
-
-                    if let AlgebraicExpression::Number(n) = right.as_ref() {
-                        q_const -= *n;
-                    } else {
-                        q_r = -T::ONE;
-                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false, cache);
-                    }
-                }
-                AlgebraicBinaryOperator::Mul => match (left.as_ref(), right.as_ref()) {
-                    (AlgebraicExpression::Number(n), AlgebraicExpression::Number(m)) => {
-                        q_const += *n * *m;
-                    }
-                    (AlgebraicExpression::Number(n), non_constant)
-                    | (non_constant, AlgebraicExpression::Number(n)) => {
-                        q_l = *n;
-                        a = air_to_plonkish(
-                            non_constant,
-                            plonk_circuit,
-                            temp_id_offset,
-                            false,
-                            cache,
-                        );
-                    }
-                    _ => {
-                        q_mul = T::ONE;
-                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false, cache);
-                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false, cache);
-                    }
-                },
-                AlgebraicBinaryOperator::Pow => unimplemented!(),
-            };
-            plonk_circuit.add_gate(Gate {
-                q_l,
-                q_r,
-                q_o,
-                q_mul,
-                q_const,
-
-                a,
-                b,
-                c: c.clone(),
-                ..Default::default()
-            });
-            c
-        }
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
-            AlgebraicUnaryOperator::Minus => {
-                let (q_o, c) = make_output();
-                let a = air_to_plonkish(expr, plonk_circuit, temp_id_offset, false, cache);
-                plonk_circuit.add_gate(Gate {
-                    q_l: -T::ONE,
+            // Ideally, we would never hit this case, because allocating a new gate just to
+            // "compute" a constant is wasteful.
+            // The implementations of the binary operations below already handle one of their
+            // operands being a number directly. The only way to reach this path is by passing
+            // a number to `build_circuit` directly, or by having a `-<number>` expression.
+            AlgebraicExpression::Number(value) => {
+                let (q_o, c) = self.make_output(assert_zero);
+                self.plonk_circuit.add_gate(Gate {
                     q_o,
-                    a,
+                    q_const: *value,
                     c: c.clone(),
                     ..Default::default()
                 });
                 c
             }
-        },
-        _ => {
-            panic!("Unsupported algebraic expression: {algebraic_expr:?}");
-        }
-    };
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let mut q_l = T::ZERO;
+                let mut q_r = T::ZERO;
+                let mut q_mul = T::ZERO;
+                let mut q_const = T::ZERO;
+                let mut a = Variable::Unused;
+                let mut b = Variable::Unused;
+                let (q_o, c) = self.make_output(assert_zero);
+                match op {
+                    AlgebraicBinaryOperator::Add => {
+                        if let AlgebraicExpression::Number(n) = left.as_ref() {
+                            q_const += *n;
+                        } else {
+                            q_l = T::ONE;
+                            a = self.evaluate_expression(left, false);
+                        }
 
-    cache.insert(algebraic_expr.clone(), result.clone());
-    result
+                        if let AlgebraicExpression::Number(n) = right.as_ref() {
+                            q_const += *n;
+                        } else {
+                            q_r = T::ONE;
+                            b = self.evaluate_expression(right, false);
+                        }
+                    }
+                    AlgebraicBinaryOperator::Sub => {
+                        if let AlgebraicExpression::Number(n) = left.as_ref() {
+                            q_const += *n;
+                        } else {
+                            q_l = T::ONE;
+                            a = self.evaluate_expression(left, false);
+                        }
+
+                        if let AlgebraicExpression::Number(n) = right.as_ref() {
+                            q_const -= *n;
+                        } else {
+                            q_r = -T::ONE;
+                            b = self.evaluate_expression(right, false);
+                        }
+                    }
+                    AlgebraicBinaryOperator::Mul => match (left.as_ref(), right.as_ref()) {
+                        (AlgebraicExpression::Number(n), AlgebraicExpression::Number(m)) => {
+                            q_const += *n * *m;
+                        }
+                        (AlgebraicExpression::Number(n), non_constant)
+                        | (non_constant, AlgebraicExpression::Number(n)) => {
+                            q_l = *n;
+                            a = self.evaluate_expression(non_constant, false);
+                        }
+                        _ => {
+                            q_mul = T::ONE;
+                            a = self.evaluate_expression(left, false);
+                            b = self.evaluate_expression(right, false);
+                        }
+                    },
+                    AlgebraicBinaryOperator::Pow => unimplemented!(),
+                };
+                self.plonk_circuit.add_gate(Gate {
+                    q_l,
+                    q_r,
+                    q_o,
+                    q_mul,
+                    q_const,
+
+                    a,
+                    b,
+                    c: c.clone(),
+                    ..Default::default()
+                });
+                c
+            }
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
+                AlgebraicUnaryOperator::Minus => {
+                    let (q_o, c) = self.make_output(assert_zero);
+                    let a = self.evaluate_expression(expr, false);
+                    self.plonk_circuit.add_gate(Gate {
+                        q_l: -T::ONE,
+                        q_o,
+                        a,
+                        c: c.clone(),
+                        ..Default::default()
+                    });
+                    c
+                }
+            },
+            _ => {
+                panic!("Unsupported algebraic expression: {algebraic_expr:?}");
+            }
+        };
+
+        self.cache.insert(algebraic_expr.clone(), result.clone());
+        result
+    }
+
+    pub fn build(self) -> PlonkCircuit<T, AlgebraicReference> {
+        self.plonk_circuit
+    }
 }
 
 #[cfg(test)]
