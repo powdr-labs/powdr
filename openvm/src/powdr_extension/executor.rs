@@ -85,11 +85,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
+        // save the next available `RecordId`
+        let from_record_id = memory.get_memory_logs().len();
+
         // execute the original instructions one by one
         let res = self
             .instructions
             .iter()
-            .try_fold(from_state, |execution_state, instruction| {
+            .enumerate()
+            .try_fold(from_state, |execution_state, (idx, instruction)| {
                 let executor = self
                     .inventory
                     .get_mut_executor(&instruction.opcode())
@@ -98,6 +102,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             });
 
         self.number_of_calls += 1;
+        let to_record_id = memory.get_memory_logs().len() - 1;
+
+        memory
+            .memory
+            .apc_ranges
+            .push((from_record_id, to_record_id));
 
         res
     }
@@ -139,11 +149,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .into_iter()
             .map(|executor| {
                 (
-                    executor.air_name(),
-                    Chip::<SC>::generate_air_proof_input(executor)
+                    executor.air_name().clone(),
+                    tracing::info_span!("dummy trace", air_name = executor.air_name()).in_scope(|| Chip::<SC>::generate_air_proof_input(executor)
                         .raw
                         .common_main
-                        .unwrap(),
+                        .unwrap()),
                 )
             })
             .collect();
@@ -174,7 +184,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
             .instructions
             .iter()
-            .map(|instruction| {
+            .enumerate()
+            .map(|(idx, instruction)| {
                 // look up how many dummy‐cells this AIR produces:
                 let air_width = dummy_trace_by_air_name
                     .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
