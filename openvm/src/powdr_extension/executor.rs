@@ -139,11 +139,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .into_iter()
             .map(|executor| {
                 (
-                    executor.air_name(),
-                    Chip::<SC>::generate_air_proof_input(executor)
+                    executor.air_name().clone(),
+                    tracing::info_span!("dummy trace", air_name = executor.air_name()).in_scope(|| Chip::<SC>::generate_air_proof_input(executor)
                         .raw
                         .common_main
-                        .unwrap(),
+                        .unwrap()),
                 )
             })
             .collect();
