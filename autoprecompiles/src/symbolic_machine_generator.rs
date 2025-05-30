@@ -20,19 +20,13 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 3;
-    let mut bus_interaction_original_idx = 0;
 
     for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
-                machine.bus_interactions.iter_mut().for_each(
-                    |bus_int: &mut SymbolicBusInteraction<T>| {
-                        bus_interaction_original_idx += 1;
-                    },
-                );
+                let machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
                 global_idx = next_global_idx;
@@ -107,7 +101,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
                             powdr::substitute_algebraic(e, &sub_map_loadstore);
                             *e = simplify_expression(e.clone());
                         });
-                    // println!("pushing bus interaction: {link}");
                     bus_interactions.push(link);
                 }
 

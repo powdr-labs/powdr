@@ -191,7 +191,7 @@ pub trait BusInteractionHandler<T: FieldElement> {
         bus_interaction: BusInteraction<RangeConstraint<T>>,
     ) -> Result<BusInteraction<RangeConstraint<T>>, ViolatesBusRules> {
         let previous_constraints = bus_interaction.clone();
-        let new_constraints = self.handle_bus_interaction(bus_interaction.clone());
+        let new_constraints = self.handle_bus_interaction(bus_interaction);
 
         // Intersect the old and new range constraints. If they don't overlap,
         // there is a contradiction.
