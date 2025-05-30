@@ -1,4 +1,6 @@
 use super::{Gate, PlonkCircuit, Variable};
+use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
+use crate::BusMap;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
@@ -16,12 +18,19 @@ where
         air_to_plonkish(&constraint.expr, &mut circuit, &mut temp_id_offset, true);
     }
 
-    // TODO: Add bus interactions
+    for bus_interaction in &machine.bus_interactions {
+        add_bus_to_plonk_circuit(
+            bus_interaction.clone(),
+            &mut temp_id_offset,
+            &mut circuit,
+            &BusMap::openvm_base(),
+        );
+    }
 
     circuit
 }
 
-fn air_to_plonkish<T>(
+pub fn air_to_plonkish<T>(
     algebraic_expr: &AlgebraicExpression<T>,
     plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
     temp_id_offset: &mut usize,
@@ -49,13 +58,9 @@ where
                 // Constraint of the form `w = 0`
                 plonk_circuit.add_gate(Gate {
                     q_l: T::ONE,
-                    q_r: T::ZERO,
-                    q_o: T::ZERO,
-                    q_mul: T::ZERO,
-                    q_const: T::ZERO,
+
                     a: Variable::Witness(r.clone()),
-                    b: Variable::Unused,
-                    c: Variable::Unused,
+                    ..Default::default()
                 });
                 Variable::Unused
             } else {
@@ -70,14 +75,10 @@ where
         AlgebraicExpression::Number(value) => {
             let (q_o, c) = make_output();
             plonk_circuit.add_gate(Gate {
-                q_l: T::ZERO,
-                q_r: T::ZERO,
                 q_o,
-                q_mul: T::ZERO,
                 q_const: *value,
-                a: Variable::Unused,
-                b: Variable::Unused,
                 c: c.clone(),
+                ..Default::default()
             });
             c
         }
@@ -143,9 +144,11 @@ where
                 q_o,
                 q_mul,
                 q_const,
+
                 a,
                 b,
                 c: c.clone(),
+                ..Default::default()
             });
             c
         }
@@ -155,13 +158,10 @@ where
                 let a = air_to_plonkish(expr, plonk_circuit, temp_id_offset, false);
                 plonk_circuit.add_gate(Gate {
                     q_l: -T::ONE,
-                    q_r: T::ZERO,
                     q_o,
-                    q_mul: T::ZERO,
-                    q_const: T::ZERO,
                     a,
-                    b: Variable::Unused,
                     c: c.clone(),
+                    ..Default::default()
                 });
                 c
             }
@@ -174,27 +174,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
-    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
-    use powdr_number::BabyBearField;
-    use pretty_assertions::assert_eq;
-
     use crate::plonk::air_to_plonkish::build_circuit;
-
-    fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Reference(AlgebraicReference {
-            name: name.into(),
-            poly_id: PolyID {
-                id,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
-        })
-    }
-
-    fn c(value: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Number(BabyBearField::from(value))
-    }
+    use crate::plonk::test_utils::{c, var};
+    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_air_to_plonkish() {
@@ -209,12 +192,12 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "x * y = tmp_1
--x = tmp_3
-x + y = tmp_4
-tmp_3 * tmp_4 = tmp_2
-tmp_1 + -tmp_2 = tmp_0
--tmp_0 = 0
+            "bus: none, x * y = tmp_1
+bus: none, -x = tmp_3
+bus: none, x + y = tmp_4
+bus: none, tmp_3 * tmp_4 = tmp_2
+bus: none, tmp_1 + -tmp_2 = tmp_0
+bus: none, -tmp_0 = 0
 "
         );
     }
@@ -229,9 +212,9 @@ tmp_1 + -tmp_2 = tmp_0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "-2 = tmp_1
-2 * tmp_1 = tmp_0
-tmp_0 + 4 = 0
+            "bus: none, -2 = tmp_1
+bus: none, 2 * tmp_1 = tmp_0
+bus: none, tmp_0 + 4 = 0
 "
         )
     }
@@ -246,7 +229,7 @@ tmp_0 + 4 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "x = 0
+            "bus: none, x = 0
 "
         )
     }
@@ -263,11 +246,11 @@ tmp_0 + 4 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "2 * x = tmp_3
-tmp_3 * y = tmp_2
--tmp_2 + 3 = tmp_1
--tmp_1 = tmp_0
-tmp_0 + 1 = 0
+            "bus: none, 2 * x = tmp_3
+bus: none, tmp_3 * y = tmp_2
+bus: none, -tmp_2 + 3 = tmp_1
+bus: none, -tmp_1 = tmp_0
+bus: none, tmp_0 + 1 = 0
 "
         );
     }
@@ -282,8 +265,8 @@ tmp_0 + 1 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "3 = tmp_0
--tmp_0 = 0
+            "bus: none, 3 = tmp_0
+bus: none, -tmp_0 = 0
 "
         );
     }
@@ -300,8 +283,8 @@ tmp_0 + 1 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "-y = tmp_0
-x + -tmp_0 = 0
+            "bus: none, -y = tmp_0
+bus: none, x + -tmp_0 = 0
 "
         );
     }
