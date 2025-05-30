@@ -1,12 +1,16 @@
+use std::collections::BTreeMap;
+
 use crate::plonk::air_to_plonkish::air_to_plonkish;
 use crate::plonk::{Gate, PlonkCircuit};
 use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
 };
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
+
+use super::Variable;
 
 /// Allocates a bus interaction to the PLONK circuit.
 /// The bus interaction is expected to be in the form:
@@ -21,6 +25,7 @@ pub fn add_bus_to_plonk_circuit<T>(
     temp_id_offset: &mut usize,
     plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
     bus_map: &BusMap,
+    cache: &mut BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
 ) where
     T: FieldElement,
 {
@@ -62,7 +67,7 @@ pub fn add_bus_to_plonk_circuit<T>(
                 .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
         )
         .for_each(|(arg, payload)| {
-            *payload = air_to_plonkish(arg, plonk_circuit, temp_id_offset, false);
+            *payload = air_to_plonkish(arg, plonk_circuit, temp_id_offset, false, cache);
         });
 
     // Add the gates to the circuit.
@@ -104,11 +109,13 @@ mod tests {
             mult: AlgebraicExpression::Number(BabyBearField::from(1)),
         };
 
+        let mut cache = BTreeMap::new();
         add_bus_to_plonk_circuit(
             bus_interaction,
             &mut temp_id_offset,
             &mut plonk_circuit,
             &bus_map,
+            &mut cache,
         );
 
         assert_eq!(

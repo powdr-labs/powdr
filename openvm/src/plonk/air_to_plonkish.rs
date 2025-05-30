@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
@@ -14,8 +16,15 @@ where
 {
     let mut circuit = PlonkCircuit::new();
     let mut temp_id_offset = 0;
+    let mut cache = BTreeMap::new();
     for constraint in &machine.constraints {
-        air_to_plonkish(&constraint.expr, &mut circuit, &mut temp_id_offset, true);
+        air_to_plonkish(
+            &constraint.expr,
+            &mut circuit,
+            &mut temp_id_offset,
+            true,
+            &mut cache,
+        );
     }
 
     for bus_interaction in &machine.bus_interactions {
@@ -24,6 +33,7 @@ where
             &mut temp_id_offset,
             &mut circuit,
             &BusMap::openvm_base(),
+            &mut cache,
         );
     }
 
@@ -35,10 +45,15 @@ pub fn air_to_plonkish<T>(
     plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,
     temp_id_offset: &mut usize,
     assert_zero: bool,
+    cache: &mut BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
 ) -> Variable<AlgebraicReference>
 where
     T: FieldElement,
 {
+    if let Some(var) = cache.get(algebraic_expr) {
+        return var.clone();
+    }
+
     // Returns (q_o, c), where:
     // - If `assert_zero` is true, `q_o` is always zero and `c` is unused.
     // - If `assert_zero` is false, `q_o` is -1 and `c` is a new temporary variable.
@@ -52,7 +67,7 @@ where
         }
     };
 
-    match algebraic_expr {
+    let result = match algebraic_expr {
         AlgebraicExpression::Reference(r) => {
             if assert_zero {
                 // Constraint of the form `w = 0`
@@ -96,14 +111,14 @@ where
                         q_const += *n;
                     } else {
                         q_l = T::ONE;
-                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false);
+                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false, cache);
                     }
 
                     if let AlgebraicExpression::Number(n) = right.as_ref() {
                         q_const += *n;
                     } else {
                         q_r = T::ONE;
-                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false);
+                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false, cache);
                     }
                 }
                 AlgebraicBinaryOperator::Sub => {
@@ -111,14 +126,14 @@ where
                         q_const += *n;
                     } else {
                         q_l = T::ONE;
-                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false);
+                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false, cache);
                     }
 
                     if let AlgebraicExpression::Number(n) = right.as_ref() {
                         q_const -= *n;
                     } else {
                         q_r = -T::ONE;
-                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false);
+                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false, cache);
                     }
                 }
                 AlgebraicBinaryOperator::Mul => match (left.as_ref(), right.as_ref()) {
@@ -128,12 +143,18 @@ where
                     (AlgebraicExpression::Number(n), non_constant)
                     | (non_constant, AlgebraicExpression::Number(n)) => {
                         q_l = *n;
-                        a = air_to_plonkish(non_constant, plonk_circuit, temp_id_offset, false);
+                        a = air_to_plonkish(
+                            non_constant,
+                            plonk_circuit,
+                            temp_id_offset,
+                            false,
+                            cache,
+                        );
                     }
                     _ => {
                         q_mul = T::ONE;
-                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false);
-                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false);
+                        a = air_to_plonkish(left, plonk_circuit, temp_id_offset, false, cache);
+                        b = air_to_plonkish(right, plonk_circuit, temp_id_offset, false, cache);
                     }
                 },
                 AlgebraicBinaryOperator::Pow => unimplemented!(),
@@ -155,7 +176,7 @@ where
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
             AlgebraicUnaryOperator::Minus => {
                 let (q_o, c) = make_output();
-                let a = air_to_plonkish(expr, plonk_circuit, temp_id_offset, false);
+                let a = air_to_plonkish(expr, plonk_circuit, temp_id_offset, false, cache);
                 plonk_circuit.add_gate(Gate {
                     q_l: -T::ONE,
                     q_o,
@@ -169,7 +190,10 @@ where
         _ => {
             panic!("Unsupported algebraic expression: {algebraic_expr:?}");
         }
-    }
+    };
+
+    cache.insert(algebraic_expr.clone(), result.clone());
+    result
 }
 
 #[cfg(test)]
