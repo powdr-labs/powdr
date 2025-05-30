@@ -4,6 +4,7 @@ use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -16,8 +17,8 @@ pub fn replace_constrained_witness_columns<
     constraint_system: ConstraintSystem<T, V>,
     max_degree: usize,
 ) -> ConstraintSystem<T, V> {
-    let mut to_remove_idx = vec![];
-    let mut inlined_vars = vec![];
+    let mut to_remove_idx = HashSet::new();
+    let mut inlined_vars = HashSet::new();
 
     let mut constraint_system = IndexedConstraintSystem::from(constraint_system);
 
@@ -29,9 +30,9 @@ pub fn replace_constrained_witness_columns<
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
-                to_remove_idx.push(curr_idx);
                 constraint_system.substitute_by_unknown(&var, &expr);
-                inlined_vars.push(var);
+                to_remove_idx.insert(curr_idx);
+                inlined_vars.insert(var);
 
                 break;
             }
