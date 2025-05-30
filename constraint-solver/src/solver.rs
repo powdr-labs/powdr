@@ -1,8 +1,7 @@
-use exhaustive_search::ExhaustiveSearch;
 use powdr_number::FieldElement;
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintRef, ConstraintSystem, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
@@ -11,8 +10,7 @@ use crate::utils::known_variables;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error as QseError, RangeConstraintProvider};
-use super::symbolic_expression::SymbolicExpression;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -179,7 +177,11 @@ impl<
     /// If there is exactly one assignment that does not lead to a contradiction,
     /// apply it. This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
-        let assignments = ExhaustiveSearch::new(self).get_unique_assignments()?;
+        let assignments = exhaustive_search::get_unique_assignments(
+            &self.constraint_system,
+            &self.range_constraints,
+            &self.bus_interaction_handler,
+        )?;
 
         let mut progress = false;
         for (variable, value) in &assignments {
@@ -231,36 +233,11 @@ impl<
         // but usually it should not be in the system once it has been assigned.
         true
     }
+}
 
-    /// Given a set of variable assignments, checks if they violate any constraint.
-    /// Note that this might return false negatives, because it does not propagate any values.
-    fn is_assignment_conflicting(&self, assignments: &BTreeMap<V, T>) -> bool {
-        self.constraint_system
-            .constraints_referencing_variables(assignments.keys().cloned())
-            .any(|constraint| match constraint {
-                ConstraintRef::AlgebraicConstraint(identity) => {
-                    let mut identity = identity.clone();
-                    for (variable, value) in assignments.iter() {
-                        identity
-                            .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
-                    }
-                    identity.solve(&self.range_constraints).is_err()
-                }
-                ConstraintRef::BusInteraction(bus_interaction) => {
-                    let mut bus_interaction = bus_interaction.clone();
-                    for (variable, value) in assignments.iter() {
-                        bus_interaction.fields_mut().for_each(|expr| {
-                            expr.substitute_by_known(
-                                variable,
-                                &SymbolicExpression::Concrete(*value),
-                            )
-                        })
-                    }
-                    bus_interaction
-                        .solve(&self.bus_interaction_handler, &self.range_constraints)
-                        .is_err()
-                }
-            })
+impl<T: FieldElement, V: Clone + Hash + Eq, B> RangeConstraintProvider<T, V> for &Solver<T, V, B> {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var)
     }
 }
 
