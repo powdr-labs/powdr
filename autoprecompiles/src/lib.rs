@@ -20,6 +20,8 @@ pub mod powdr;
 pub mod register_optimizer;
 pub mod symbolic_machine_generator;
 
+pub use powdr_pilopt::inliner::DegreeBound;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
     pub name: String,
@@ -284,7 +286,7 @@ pub fn build<T: FieldElement>(
     instruction_kind: BTreeMap<String, InstructionKind>,
     instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
     opcode: u32,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let (machine, subs) =

@@ -9,7 +9,7 @@ use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
 use openvm_stark_sdk::{config::fri_params::SecurityParameters, engine::StarkFriEngine};
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{DegreeBound, SymbolicMachine};
 use powdr_number::FieldElement;
 use std::{
     collections::HashMap,
@@ -197,8 +197,8 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
-    /// The max degree of constraints.
-    pub degree_bound: usize,
+    /// Max degree of constraints.
+    pub degree_bound: DegreeBound,
 }
 
 impl PowdrConfig {
@@ -207,7 +207,10 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
-            degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
+            degree_bound: DegreeBound {
+                identities: customize_exe::OPENVM_DEGREE_BOUND,
+                bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
+            },
         }
     }
 
@@ -222,7 +225,7 @@ impl PowdrConfig {
         Self { bus_map, ..self }
     }
 
-    pub fn with_degree_bound(self, degree_bound: usize) -> Self {
+    pub fn with_degree_bound(self, degree_bound: DegreeBound) -> Self {
         Self {
             degree_bound,
             ..self

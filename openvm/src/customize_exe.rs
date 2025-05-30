@@ -18,7 +18,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::FieldElement;
 
-use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
+use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
@@ -206,8 +206,7 @@ pub fn customize<F: PrimeField32>(
             acc_block,
             airs,
             apc_opcode,
-            config.bus_map.clone(),
-            config.degree_bound,
+            config.clone(),
         );
 
         let is_valid_column = autoprecompile
@@ -343,8 +342,11 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     block: &BasicBlock<F>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
-    bus_map: BusMap,
-    degree_bound: usize,
+    PowdrConfig {
+        bus_map,
+        degree_bound,
+        ..
+    }: PowdrConfig,
 ) -> (SymbolicMachine<P>, Vec<Vec<u64>>) {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
