@@ -532,13 +532,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 } else {
                     T::from(candidate_constant)
                 };
-                parts.push(
-                    candidate + &QuadraticSymbolicExpression::from(T::from(candidate_constant)),
-                );
+                parts.push(candidate + &QuadraticSymbolicExpression::from(candidate_constant));
                 components[index] = (0.into(), T::from(0).into());
 
                 // But now we have to modify the constant in the remaining constraint.
-                constant -= T::from(candidate_constant) * candidate_coeff;
+                constant -= candidate_constant * candidate_coeff;
             }
         }
         if parts.is_empty() {
