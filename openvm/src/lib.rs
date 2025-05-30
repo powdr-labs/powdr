@@ -80,6 +80,23 @@ mod instruction_formatter;
 #[allow(dead_code)]
 mod plonk;
 
+#[derive(Copy, Clone, Debug)]
+pub enum PgoType {
+    /// cost = cells saved per apc * times executed
+    Cell,
+    /// cost = instruction per apc * times executed
+    Instruction,
+    /// disable PGO
+    None,
+}
+
+pub struct PgoConfig {
+    /// The type of PGO to use.
+    pub pgo_type: PgoType,
+    /// Number of time a pc is executed, Some for PgoType::Cell or PgoType::Instruction, None for PgoType::None.
+    pub pc_idx_count: Option<HashMap<u32, u32>>,
+}
+
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "F: Field")]
@@ -234,10 +251,10 @@ pub fn compile_guest(
     guest: &str,
     guest_opts: GuestOptions,
     config: PowdrConfig,
-    pgo_data: Option<HashMap<u32, u32>>,
+    pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<F>, Box<dyn std::error::Error>> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
-    compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_data)
+    compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_config)
 }
 
 pub fn compile_exe(
@@ -246,7 +263,7 @@ pub fn compile_exe(
     exe: VmExe<F>,
     sdk_vm_config: SdkVmConfig,
     config: PowdrConfig,
-    pgo_data: Option<HashMap<u32, u32>>,
+    pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<F>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -270,7 +287,7 @@ pub fn compile_exe(
         &elf_powdr.text_labels,
         &airs,
         config.clone(),
-        pgo_data,
+        pgo_config,
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);

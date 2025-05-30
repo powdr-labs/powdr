@@ -2,9 +2,9 @@ use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions, PowdrConfig};
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PowdrConfig};
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::io;
 use tracing::Level;
 
@@ -26,8 +26,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, default_value_t = false)]
-        pgo: bool,
+        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
+        pgo: CliPgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -42,8 +42,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, default_value_t = false)]
-        pgo: bool,
+        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
+        pgo: CliPgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -73,8 +73,8 @@ enum Commands {
         #[arg(default_value_t = false)]
         recursion: bool,
 
-        #[arg(long, default_value_t = false)]
-        pgo: bool,
+        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
+        pgo: CliPgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -121,13 +121,24 @@ fn run_command(command: Commands) {
             pgo,
             input,
         } => {
-            let pc_idx_count = pgo.then(|| {
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input))
-            });
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let pgo_data = match pgo {
+                CliPgoType::Cell | CliPgoType::Instruction => {
+                    let pc_idx_count = powdr_openvm::get_pc_idx_count(
+                        &guest,
+                        guest_opts.clone(),
+                        stdin_from(input),
+                    );
+                    Some(pc_idx_count)
+                }
+                CliPgoType::None => None,
+            };
+            let pgo_config = PgoConfig {
+                pgo_type: pgo.into(),
+                pgo_data,
+            };
             let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pc_idx_count)
-                    .unwrap();
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
         }
 
@@ -177,4 +188,24 @@ fn stdin_from(input: Option<u32>) -> StdIn {
         s.write(&i)
     }
     s
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum CliPgoType {
+    /// cost = cells saved per apc * times executed
+    Cell,
+    /// cost = instruction per apc * times executed
+    Instruction,
+    /// disable PGO
+    None,
+}
+
+impl Into<powdr_openvm::PgoType> for CliPgoType {
+    fn into(self) -> powdr_openvm::PgoType {
+        match self {
+            CliPgoType::Cell => powdr_openvm::PgoType::Cell,
+            CliPgoType::Instruction => powdr_openvm::PgoType::Instruction,
+            CliPgoType::None => powdr_openvm::PgoType::None,
+        }
+    }
 }
