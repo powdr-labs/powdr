@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use crate::BusMap;
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -14,7 +15,15 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
+
+pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
+    f.as_canonical_u32().into()
+}
+
+pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
+    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
+}
 
 pub fn algebraic_to_symbolic<T: PrimeField32>(
     expr: &AlgebraicExpression<T>,
@@ -185,6 +194,7 @@ pub fn get_pil<F: PrimeField32>(
     constraints: &SymbolicConstraints<F>,
     columns: &Vec<String>,
     public_values: Vec<String>,
+    bus_map: &BusMap,
 ) -> String {
     let mut pil = format!(
         "
@@ -197,21 +207,11 @@ namespace {name};
 "
     );
 
-    let bus_id_to_name = [
-        (0, "EXECUTION_BRIDGE"),
-        (1, "MEMORY"),
-        (2, "PC_LOOKUP"),
-        (3, "VARIABLE_RANGE_CHECKER"),
-        (6, "BITWISE_LOOKUP"),
-        (7, "TUPLE_RANGE_CHECKER"),
-    ]
-    .into_iter()
-    .collect::<BTreeMap<_, _>>();
-
     pil.push_str(
-        &bus_id_to_name
+        &bus_map
+            .inner()
             .iter()
-            .map(|(id, name)| format!("    let {name} = {id};"))
+            .map(|(id, bus_type)| format!("    let {bus_type} = {id};"))
             .join("\n"),
     );
 
@@ -242,12 +242,10 @@ namespace {name};
     );
 
     for (bus_index, interactions) in bus_interactions_by_bus {
-        let bus_name = bus_id_to_name
-            .get(&bus_index)
-            .unwrap_or_else(|| panic!("Bus index {bus_index} not found in bus_id_to_name"));
+        let bus_name = bus_map.bus_type(bus_index as u64).to_string();
 
         for interaction in interactions {
-            format_bus_interaction(&mut pil, interaction, columns, &public_values, bus_name);
+            format_bus_interaction(&mut pil, interaction, columns, &public_values, &bus_name);
         }
         pil.push('\n');
     }

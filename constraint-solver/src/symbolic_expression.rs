@@ -17,7 +17,7 @@ use super::range_constraint::RangeConstraint;
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
@@ -28,7 +28,7 @@ pub enum SymbolicExpression<T: FieldElement, S> {
     UnaryOperation(UnaryOperator, Arc<Self>, RangeConstraint<T>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -37,7 +37,7 @@ pub enum BinaryOperator {
     Div,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum UnaryOperator {
     Neg,
 }
