@@ -783,9 +783,9 @@ mod tests {
     // }
 
     // The following are compilation tests only
-    fn test_keccak_machine(pc_idx_count: Option<HashMap<u32, u32>>) {
+    fn test_keccak_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_KECCAK_APC as u64, GUEST_KECCAK_SKIP as u64);
-        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pc_idx_count)
+        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -798,7 +798,7 @@ mod tests {
     #[test]
     fn guest_machine() {
         let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP as u64);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, None)
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::default())
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -820,7 +820,8 @@ mod tests {
         let pc_idx_count = get_pc_idx_count(GUEST, guest_opts.clone(), stdin);
         // We don't skip any sorted basic block here to accelerate the "costliest" block.
         let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP_PGO as u64);
-        let machines = compile_guest(GUEST, guest_opts, config, Some(pc_idx_count))
+        let pgo_config = PgoConfig::new(PgoType::Cell, Some(pc_idx_count));
+        let machines = compile_guest(GUEST, guest_opts, config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -832,7 +833,7 @@ mod tests {
 
     #[test]
     fn keccak_machine() {
-        test_keccak_machine(None);
+        test_keccak_machine(PgoConfig::default());
     }
 
     #[test]
@@ -842,6 +843,7 @@ mod tests {
         // Keccak machine should have the same results with pgo
         // because we already accelerate the "costliest" block with the non-pgo version.
         let pc_idx_count = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
-        test_keccak_machine(Some(pc_idx_count));
+        let pgo_config = PgoConfig::new(PgoType::Cell, Some(pc_idx_count));
+        test_keccak_machine(pgo_config);
     }
 }
