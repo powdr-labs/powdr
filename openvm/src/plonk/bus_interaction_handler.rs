@@ -16,7 +16,7 @@ use powdr_number::FieldElement;
 /// row 0: args0     args1     args2     
 /// row 1: args3     ...       ...         
 /// ...
-fn add_bus_to_plonk_circuit<T>(
+pub fn add_bus_to_plonk_circuit<T>(
     bus_interaction: SymbolicBusInteraction<T>,
     temp_id_offset: &mut usize,
     plonk_circuit: &mut PlonkCircuit<T, AlgebraicReference>,

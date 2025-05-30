@@ -1,4 +1,6 @@
 use super::{Gate, PlonkCircuit, Variable};
+use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
+use crate::BusMap;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
@@ -16,7 +18,14 @@ where
         air_to_plonkish(&constraint.expr, &mut circuit, &mut temp_id_offset, true);
     }
 
-    // TODO: Add bus interactions
+    for bus_interaction in &machine.bus_interactions {
+        add_bus_to_plonk_circuit(
+            bus_interaction.clone(),
+            &mut temp_id_offset,
+            &mut circuit,
+            &BusMap::openvm_base(),
+        );
+    }
 
     circuit
 }
