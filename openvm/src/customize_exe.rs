@@ -14,19 +14,20 @@ use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeFiel
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    BusInteractionKind, InstructionKind, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicInstructionStatement, SymbolicMachine,
+    InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
+    SymbolicMachine,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
 
-const OPENVM_DEGREE_BOUND: usize = 5;
+pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
@@ -396,7 +397,11 @@ pub fn collect_basic_blocks<F: PrimeField32>(
         } else {
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
+            // as is if not empty and start a new block from this instruction.
             if is_target {
+                if !curr_block.statements.is_empty() {
+                    blocks.push(curr_block);
+                }
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
@@ -438,6 +443,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
+    degree_bound: usize,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -481,7 +487,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         instruction_kind,
         instruction_machines,
         OpenVmBusInteractionHandler::new(bus_map),
-        OPENVM_DEGREE_BOUND,
+        degree_bound,
         apc_opcode as u32,
     )?;
 
@@ -500,12 +506,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
     columns: &[String],
 ) -> SymbolicBusInteraction<P> {
-    // TODO
-    let kind = BusInteractionKind::Send;
-    // let kind = match interaction.interaction_type {
-    //     InteractionType::Send => BusInteractionKind::Send,
-    //     InteractionType::Receive => BusInteractionKind::Receive,
-    // };
     let id = interaction.bus_index as u64;
 
     let mult = symbolic_to_algebraic(&interaction.count, columns);
@@ -515,20 +515,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .map(|e| symbolic_to_algebraic(e, columns))
         .collect();
 
-    SymbolicBusInteraction {
-        kind,
-        id,
-        mult,
-        args,
-    }
-}
-
-fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
-    f.as_canonical_u32().into()
-}
-
-fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
+    SymbolicBusInteraction { id, mult, args }
 }
 
 // Transpose an algebraic expression from the powdr field to openvm field
@@ -577,7 +564,6 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
         .bus_interactions
         .into_iter()
         .map(|interaction| SymbolicBusInteraction {
-            kind: interaction.kind,
             id: interaction.id,
             mult: transpose_algebraic_expression(interaction.mult.clone()),
             args: interaction

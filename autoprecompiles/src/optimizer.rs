@@ -7,26 +7,40 @@ use powdr_pilopt::simplify_expression;
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    powdr,
+    powdr::{self, UniqueColumns},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     SymbolicMachine, EXECUTION_BUS_ID, PC_LOOKUP_BUS_ID,
 };
 
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
-    opcode: u32,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    opcode: Option<u32>,
     degree_bound: usize,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
-    let machine = optimize_pc_lookup(machine, opcode);
-    let machine = optimize_exec_bus(machine);
-    assert!(check_register_operation_consistency(&machine));
+    let machine = if let Some(opcode) = opcode {
+        optimize_pc_lookup(machine, opcode)
+    } else {
+        machine
+    };
+    let mut machine = optimize_exec_bus(machine);
 
-    // We need to remove memory bus interactions with inlined multiplicity zero before
-    // doing register memory optimizations.
+    loop {
+        let size = machine_size(&machine);
+        machine =
+            optimization_loop_iteration(machine, bus_interaction_handler.clone(), degree_bound);
+        if machine_size(&machine) == size {
+            return machine;
+        }
+    }
+}
+
+fn optimization_loop_iteration<T: FieldElement>(
+    machine: SymbolicMachine<T>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    degree_bound: usize,
+) -> SymbolicMachine<T> {
     let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound)?;
-    assert!(check_register_operation_consistency(&machine));
-
     let machine = optimize_register_operations(machine);
     assert!(check_register_operation_consistency(&machine));
 
@@ -35,6 +49,14 @@ pub fn optimize<T: FieldElement>(
     let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound)?;
     assert!(check_register_operation_consistency(&machine));
     Ok(machine)
+}
+
+fn machine_size<T: FieldElement>(machine: &SymbolicMachine<T>) -> [usize; 3] {
+    [
+        machine.constraints.len(),
+        machine.bus_interactions.len(),
+        machine.unique_columns().count(),
+    ]
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(

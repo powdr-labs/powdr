@@ -15,7 +15,15 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
+
+pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
+    f.as_canonical_u32().into()
+}
+
+pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
+    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
+}
 
 pub fn algebraic_to_symbolic<T: PrimeField32>(
     expr: &AlgebraicExpression<T>,

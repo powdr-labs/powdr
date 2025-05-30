@@ -4,7 +4,7 @@ use std::iter::from_fn;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin,
-    AlgebraicUnaryOperation, BusInteractionIdentity, PolyID, PolynomialType,
+    AlgebraicUnaryOperation, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::visitor::AllChildren;
@@ -14,7 +14,7 @@ use powdr_ast::parsed::{
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicMachine};
+use crate::SymbolicMachine;
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
@@ -210,45 +210,6 @@ pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
         }
         _ => (),
     });
-}
-
-pub fn powdr_interaction_to_symbolic<T: FieldElement>(
-    powdr_interaction: BusInteractionIdentity<T>,
-    intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-) -> SymbolicBusInteraction<T> {
-    let kind = match powdr_interaction.latch {
-        AlgebraicExpression::Number(n) => {
-            let n: u64 = n.to_arbitrary_integer().try_into().unwrap();
-            if n == 0 {
-                BusInteractionKind::Receive
-            } else if n == 1 {
-                BusInteractionKind::Send
-            } else {
-                panic!("Expected latch = 0 or 1 for interaction kind")
-            }
-        }
-        //AlgebraicExpression::UnaryOperation(_) => BusInteractionKind::Receive,
-        // TODO complex expressions are handled as Sends for now
-        //_ => BusInteractionKind::Send,
-        _ => panic!("Expected latch = 0 or 1 for interaction kind"),
-    };
-
-    let id: u64 = match powdr_interaction.bus_id {
-        AlgebraicExpression::Number(n) => n.to_arbitrary_integer().try_into().unwrap(),
-        _ => panic!("Bus ID must be a Number"),
-    };
-
-    SymbolicBusInteraction {
-        kind,
-        id,
-        mult: inline_intermediates(powdr_interaction.multiplicity, intermediates),
-        args: powdr_interaction
-            .payload
-            .0
-            .into_iter()
-            .map(|e| inline_intermediates(e, intermediates))
-            .collect(),
-    }
 }
 
 /// Replaces any reference of intermediates with their definitions.

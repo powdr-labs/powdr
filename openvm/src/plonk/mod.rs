@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
@@ -44,16 +45,61 @@ pub struct Gate<T, V> {
     pub c: Variable<V>,
 }
 
+impl<T: FieldElement, V: Display> Display for Gate<T, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut lhs = [
+            format_product(self.q_l, &self.a),
+            format_product(self.q_r, &self.b),
+            format_product(self.q_mul, format!("{a} * {b}", a = self.a, b = self.b)),
+            if self.q_const.is_zero() {
+                None
+            } else {
+                Some(format_fe(self.q_const))
+            },
+        ]
+        .into_iter()
+        .flatten()
+        .peekable();
+
+        let lhs = if lhs.peek().is_none() {
+            "0".to_string()
+        } else {
+            lhs.join(" + ")
+        };
+        let rhs = format_product(-self.q_o, &self.c).unwrap_or_else(|| "0".to_string());
+
+        write!(f, "{lhs} = {rhs}",)
+    }
+}
+
+fn format_fe<T: FieldElement>(v: T) -> String {
+    if v.is_in_lower_half() {
+        format!("{v}")
+    } else {
+        format!("-{}", -v)
+    }
+}
+
+/// Pretty-prints a product <scalar> * <factor>, returning `None` if the scalar is zero.
+fn format_product<T: FieldElement>(scalar: T, factor: impl Display) -> Option<String> {
+    if scalar.is_zero() {
+        None
+    } else if scalar.is_one() {
+        Some(factor.to_string())
+    } else if scalar == -T::ONE {
+        Some(format!("-{factor}"))
+    } else {
+        Some(format!("{} * {factor}", format_fe(scalar)))
+    }
+}
+
 /// The PlonK circuit, which is just a collection of gates.
 #[derive(Clone, Debug, Default)]
 pub struct PlonkCircuit<T, V> {
     pub gates: Vec<Gate<T, V>>,
 }
 
-impl<T, V> PlonkCircuit<T, V>
-where
-    T: FieldElement,
-{
+impl<T, V> PlonkCircuit<T, V> {
     fn new() -> Self {
         PlonkCircuit { gates: Vec::new() }
     }
@@ -65,28 +111,8 @@ where
 
 impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let fmt_fe = |v: &T| {
-            if v.is_in_lower_half() {
-                format!("{v}")
-            } else {
-                format!("-{}", -*v)
-            }
-        };
         for gate in &self.gates {
-            writeln!(
-                f,
-                "{} * {} + {} * {} + {} * {} + {} * {} * {} + {} = 0",
-                fmt_fe(&gate.q_l),
-                gate.a,
-                fmt_fe(&gate.q_r),
-                gate.b,
-                fmt_fe(&gate.q_o),
-                gate.c,
-                fmt_fe(&gate.q_mul),
-                gate.a,
-                gate.b,
-                fmt_fe(&gate.q_const),
-            )?;
+            writeln!(f, "{gate}",)?;
         }
         Ok(())
     }

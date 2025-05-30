@@ -53,7 +53,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 }
 
 /// A bus interaction.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
     pub bus_id: V,

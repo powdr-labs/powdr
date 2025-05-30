@@ -58,7 +58,6 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SymbolicBusInteraction<T> {
-    pub kind: BusInteractionKind,
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
@@ -73,6 +72,15 @@ impl<T: Display> Display for SymbolicBusInteraction<T> {
             self.mult,
             self.args.iter().join(", ")
         )
+    }
+}
+
+impl<T: Copy> SymbolicBusInteraction<T> {
+    pub fn try_multiplicity_to_number(&self) -> Option<T> {
+        match self.mult {
+            AlgebraicExpression::Number(n) => Some(n),
+            _ => None,
+        }
     }
 }
 
@@ -144,7 +152,7 @@ pub enum InstructionKind {
     Terminal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryType {
     Constant,
     Register,
@@ -183,26 +191,8 @@ impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
 
 #[derive(Clone, Debug)]
 pub enum MemoryOp {
-    Read,
-    Write,
-}
-
-impl From<BusInteractionKind> for MemoryOp {
-    fn from(kind: BusInteractionKind) -> Self {
-        match kind {
-            BusInteractionKind::Receive => MemoryOp::Read,
-            BusInteractionKind::Send => MemoryOp::Write,
-        }
-    }
-}
-
-impl From<MemoryOp> for BusInteractionKind {
-    fn from(op: MemoryOp) -> Self {
-        match op {
-            MemoryOp::Read => BusInteractionKind::Receive,
-            MemoryOp::Write => BusInteractionKind::Send,
-        }
-    }
+    Send,
+    Receive,
 }
 
 #[derive(Clone, Debug)]
@@ -211,7 +201,6 @@ pub struct MemoryBusInteraction<T> {
     pub op: MemoryOp,
     pub addr: AlgebraicExpression<T>,
     pub data: Vec<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
 impl<T: FieldElement> MemoryBusInteraction<T> {
@@ -223,27 +212,34 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
-    type Error = ();
-
-    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
-        (bus_interaction.id == MEMORY_BUS_ID)
-            .then(|| {
-                // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
-                // are in the right order.
-                let ty = bus_interaction.args[0].clone().into();
-                let op = bus_interaction.kind.clone().into();
-                let addr = bus_interaction.args[1].clone();
-                let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
-                MemoryBusInteraction {
-                    ty,
-                    op,
-                    addr,
-                    data,
-                    bus_interaction,
-                }
-            })
-            .ok_or(())
+impl<T: FieldElement> MemoryBusInteraction<T> {
+    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction` of the given memory type.
+    ///
+    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction of the given type.
+    /// Returns `Err(_)` if the bus interaction is a memory bus interaction of the given type but could not be converted properly
+    /// (usually because the multiplicity is not -1 or 1).
+    /// Otherwise returns `Ok(Some(memory_bus_interaction))`
+    fn try_from_symbolic_bus_interaction_with_memory_kind(
+        bus_interaction: &SymbolicBusInteraction<T>,
+        memory_type: MemoryType,
+    ) -> Result<Option<Self>, ()> {
+        if bus_interaction.id != MEMORY_BUS_ID {
+            return Ok(None);
+        }
+        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
+        // are in the right order.
+        let ty = bus_interaction.args[0].clone().into();
+        if ty != memory_type {
+            return Ok(None);
+        }
+        let op = match bus_interaction.try_multiplicity_to_number() {
+            Some(n) if n == 1.into() => MemoryOp::Send,
+            Some(n) if n == (-1).into() => MemoryOp::Receive,
+            _ => return Err(()),
+        };
+        let addr = bus_interaction.args[1].clone();
+        let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
+        Ok(Some(MemoryBusInteraction { ty, op, addr, data }))
     }
 }
 
@@ -287,14 +283,14 @@ pub fn build<T: FieldElement>(
     program: Vec<SymbolicInstructionStatement<T>>,
     instruction_kind: BTreeMap<String, InstructionKind>,
     instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-    let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
+    let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
