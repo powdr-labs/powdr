@@ -152,17 +152,19 @@ pub fn customize<F: PrimeField32>(
         .enumerate()
         .filter_map(|(i, acc_block)| {
             let apc_opcode = POWDR_OPCODE + i;
-            let (autoprecompile, subs) = match generate_autoprecompile::<
-                F,
-                powdr_number::BabyBearField,
-            >(
-                acc_block, airs, apc_opcode, config.bus_map.clone(), config.degree_bound,
-            ) {
-                Err(_) => {
-                    return None;
-                }
-                Ok((autoprecompile, subs)) => (autoprecompile, subs),
-            };
+            let (autoprecompile, subs) =
+                match generate_autoprecompile::<F, powdr_number::BabyBearField>(
+                    acc_block,
+                    airs,
+                    apc_opcode,
+                    config.bus_map.clone(),
+                    config.degree_bound,
+                ) {
+                    Err(_) => {
+                        return None;
+                    }
+                    Ok((autoprecompile, subs)) => (autoprecompile, subs),
+                };
             // calculate cells saved per row
             let apc_cells_per_row = autoprecompile.unique_columns().count();
             let original_cells_per_row: usize = acc_block

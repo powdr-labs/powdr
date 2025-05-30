@@ -673,7 +673,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: usize = 1;
-    const GUEST_SKIP: usize = 56;
+    const GUEST_SKIP: usize = 64;
     const GUEST_SKIP_PGO: usize = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
@@ -767,8 +767,11 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        println!("m.width: {}, m.constraints: {}, m.bus_interactions: {}", m.width, m.constraints, m.bus_interactions);
-        assert_eq!(m.width, 59);
+        println!(
+            "m.width: {}, m.constraints: {}, m.bus_interactions: {}",
+            m.width, m.constraints, m.bus_interactions
+        );
+        assert_eq!(m.width, 70);
         assert_eq!(m.constraints, 37);
         assert_eq!(m.bus_interactions, 55);
     }
