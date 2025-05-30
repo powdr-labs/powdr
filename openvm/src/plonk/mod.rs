@@ -51,7 +51,7 @@ pub struct Gate<T, V> {
     pub q_range_check: T,
     pub q_execution: T,
     pub q_pc: T,
-    pub q_rang_tuple: T,
+    pub q_range_tuple: T,
 
     pub a: Variable<V>,
     pub b: Variable<V>,
@@ -71,7 +71,7 @@ impl<T: FieldElement, V> Default for Gate<T, V> {
             q_range_check: T::ZERO,
             q_execution: T::ZERO,
             q_pc: T::ZERO,
-            q_rang_tuple: T::ZERO,
+            q_range_tuple: T::ZERO,
 
             a: Variable::Unused,
             b: Variable::Unused,
@@ -88,7 +88,7 @@ impl<T: FieldElement, V> Gate<T, V> {
             (BusType::VariableRangeChecker, &self.q_range_check),
             (BusType::ExecutionBridge, &self.q_execution),
             (BusType::PcLookup, &self.q_pc),
-            (BusType::TupleRangeChecker, &self.q_rang_tuple),
+            (BusType::TupleRangeChecker, &self.q_range_tuple),
         ];
 
         let mut active_selector = None;

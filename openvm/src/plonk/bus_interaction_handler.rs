@@ -44,7 +44,7 @@ fn add_bus_to_plonk_circuit<T>(
             gates[0].q_range_check = T::ONE;
         }
         TupleRangeChecker => {
-            gates[0].q_rang_tuple = T::ONE;
+            gates[0].q_range_tuple = T::ONE;
         }
 
         _ => {

@@ -171,7 +171,7 @@ where
                     q_memory: to_ovm_field(gate.q_memory),
                     q_execution: to_ovm_field(gate.q_execution),
                     q_pc: to_ovm_field(gate.q_pc),
-                    q_rang_tuple: to_ovm_field(gate.q_rang_tuple),
+                    q_range_tuple: to_ovm_field(gate.q_range_tuple),
                     q_range_check: to_ovm_field(gate.q_range_check),
 
                     q_l: to_ovm_field(gate.q_l),

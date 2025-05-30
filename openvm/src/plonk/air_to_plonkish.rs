@@ -49,21 +49,9 @@ where
                 // Constraint of the form `w = 0`
                 plonk_circuit.add_gate(Gate {
                     q_l: T::ONE,
-                    q_r: T::ZERO,
-                    q_o: T::ZERO,
-                    q_mul: T::ZERO,
-                    q_const: T::ZERO,
-
-                    q_bitwise: T::ZERO,
-                    q_memory: T::ZERO,
-                    q_execution: T::ZERO,
-                    q_pc: T::ZERO,
-                    q_rang_tuple: T::ZERO,
-                    q_range_check: T::ZERO,
 
                     a: Variable::Witness(r.clone()),
-                    b: Variable::Unused,
-                    c: Variable::Unused,
+                    ..Default::default()
                 });
                 Variable::Unused
             } else {
@@ -78,22 +66,10 @@ where
         AlgebraicExpression::Number(value) => {
             let (q_o, c) = make_output();
             plonk_circuit.add_gate(Gate {
-                q_l: T::ZERO,
-                q_r: T::ZERO,
                 q_o,
-                q_mul: T::ZERO,
                 q_const: *value,
-
-                q_bitwise: T::ZERO,
-                q_memory: T::ZERO,
-                q_execution: T::ZERO,
-                q_pc: T::ZERO,
-                q_rang_tuple: T::ZERO,
-                q_range_check: T::ZERO,
-
-                a: Variable::Unused,
-                b: Variable::Unused,
                 c: c.clone(),
+                ..Default::default()
             });
             c
         }
@@ -160,16 +136,10 @@ where
                 q_mul,
                 q_const,
 
-                q_bitwise: T::ZERO,
-                q_memory: T::ZERO,
-                q_execution: T::ZERO,
-                q_pc: T::ZERO,
-                q_rang_tuple: T::ZERO,
-                q_range_check: T::ZERO,
-
                 a,
                 b,
                 c: c.clone(),
+                ..Default::default()
             });
             c
         }
@@ -179,21 +149,10 @@ where
                 let a = air_to_plonkish(expr, plonk_circuit, temp_id_offset, false);
                 plonk_circuit.add_gate(Gate {
                     q_l: -T::ONE,
-                    q_r: T::ZERO,
                     q_o,
-                    q_mul: T::ZERO,
-                    q_const: T::ZERO,
-
-                    q_bitwise: T::ZERO,
-                    q_memory: T::ZERO,
-                    q_execution: T::ZERO,
-                    q_pc: T::ZERO,
-                    q_rang_tuple: T::ZERO,
-                    q_range_check: T::ZERO,
-
                     a,
-                    b: Variable::Unused,
                     c: c.clone(),
+                    ..Default::default()
                 });
                 c
             }
@@ -208,7 +167,7 @@ where
 mod tests {
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::{c, var};
-     use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
+    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -223,7 +182,7 @@ mod tests {
         };
 
         assert_eq!(
-             format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine)),
             "bus: none, x * y = tmp_1
 bus: none, -x = tmp_3
 bus: none, x + y = tmp_4
