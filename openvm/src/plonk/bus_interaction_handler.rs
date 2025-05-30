@@ -115,11 +115,6 @@ mod tests {
 
         assert_eq!(
             format!("{plonk_circuit}"),
-            //           a          b       c
-            // memory 0: x + y      y       -x * y
-            //        1: y * 5      x       y
-            //        2: temp_4(1)  tmp_5(42)
-            //        3: tmp_0 = 42
             "bus: none, 42 = tmp_0
 bus: none, x + y = tmp_1
 bus: none, x * y = tmp_3
