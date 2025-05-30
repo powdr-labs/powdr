@@ -217,12 +217,12 @@ mod tests {
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "x * y = tmp_1
--x = tmp_3
-x + y = tmp_4
-tmp_3 * tmp_4 = tmp_2
-tmp_1 + -tmp_2 = tmp_0
--tmp_0 = 0
+            "bus: none, x * y = tmp_1
+bus: none, -x = tmp_3
+bus: none, x + y = tmp_4
+bus: none, tmp_3 * tmp_4 = tmp_2
+bus: none, tmp_1 + -tmp_2 = tmp_0
+bus: none, -tmp_0 = 0
 "
         );
     }
@@ -233,9 +233,9 @@ tmp_1 + -tmp_2 = tmp_0
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "-2 = tmp_1
-2 * tmp_1 = tmp_0
-tmp_0 + 4 = 0
+            "bus: none, -2 = tmp_1
+bus: none, 2 * tmp_1 = tmp_0
+bus: none, tmp_0 + 4 = 0
 "
         )
     }
@@ -247,7 +247,7 @@ tmp_0 + 4 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "x = 0
+            "bus: none, x = 0
 "
         )
     }
@@ -260,11 +260,11 @@ tmp_0 + 4 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "2 * x = tmp_3
-tmp_3 * y = tmp_2
--tmp_2 + 3 = tmp_1
--tmp_1 = tmp_0
-tmp_0 + 1 = 0
+            "bus: none, 2 * x = tmp_3
+bus: none, tmp_3 * y = tmp_2
+bus: none, -tmp_2 + 3 = tmp_1
+bus: none, -tmp_1 = tmp_0
+bus: none, tmp_0 + 1 = 0
 "
         );
     }
@@ -275,8 +275,8 @@ tmp_0 + 1 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "3 = tmp_0
--tmp_0 = 0
+            "bus: none, 3 = tmp_0
+bus: none, -tmp_0 = 0
 "
         );
     }
@@ -289,8 +289,8 @@ tmp_0 + 1 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&[expr])),
-            "-y = tmp_0
-x + -tmp_0 = 0
+            "bus: none, -y = tmp_0
+bus: none, x + -tmp_0 = 0
 "
         );
     }
