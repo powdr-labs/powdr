@@ -209,7 +209,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         }
                     }
                 }
-                    idx, instruction.instruction, map);
                 map
             })
             .collect();
