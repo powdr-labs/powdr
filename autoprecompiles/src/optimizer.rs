@@ -28,9 +28,9 @@ pub fn optimize<T: FieldElement>(
     loop {
         let size = machine_size(&machine);
         machine =
-            optimization_loop_iteration(machine, bus_interaction_handler.clone(), degree_bound);
+            optimization_loop_iteration(machine, bus_interaction_handler.clone(), degree_bound)?;
         if machine_size(&machine) == size {
-            return machine;
+            return Ok(machine);
         }
     }
 }
@@ -39,15 +39,11 @@ fn optimization_loop_iteration<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
-) -> SymbolicMachine<T> {
+) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound)?;
     let machine = optimize_register_operations(machine);
     assert!(check_register_operation_consistency(&machine));
 
-    // Fixpoint style re-attempt.
-    // TODO we probably need proper fixpoint here at some point.
-    let machine = optimize_constraints(machine, bus_interaction_handler, degree_bound)?;
-    assert!(check_register_operation_consistency(&machine));
     Ok(machine)
 }
 

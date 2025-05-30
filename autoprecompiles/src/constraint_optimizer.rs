@@ -19,14 +19,14 @@ use powdr_pilopt::{
     simplify_expression,
 };
 
-use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 pub enum Error {
     ConstraintSolverError,
 }
 
 impl From<powdr_constraint_solver::solver::Error> for Error {
-    fn from(err: powdr_constraint_solver::solver::Error) -> Self {
+    fn from(_err: powdr_constraint_solver::solver::Error) -> Self {
         Error::ConstraintSolverError
     }
 }
@@ -62,10 +62,6 @@ pub fn optimize_constraints<P: FieldElement>(
 
     let constraint_system = remove_equal_constraints(constraint_system);
     stats_logger.log("After removing equal constraints", &constraint_system);
-
-    let constraint_system =
-        remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
-    stats_logger.log("After removing equal bus interactions", &constraint_system);
 
     let constraint_system =
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
@@ -112,10 +108,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<ConstraintSystem<T, Variable>, Error> {
     let result = Solver::new(constraint_system.clone())
-        .with_bus_interaction_handler(Box::new(bus_interaction_handler))
+        .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in result.assignments.iter() {

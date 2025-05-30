@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use itertools::Itertools;
-use openvm::platform::print;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
 use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program, VmOpcode};
@@ -38,7 +37,7 @@ pub enum Error {
 }
 
 impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
-    fn from(e: powdr_autoprecompiles::constraint_optimizer::Error) -> Self {
+    fn from(_e: powdr_autoprecompiles::constraint_optimizer::Error) -> Self {
         Error::AutoPrecompileError
     }
 }
@@ -157,7 +156,7 @@ pub fn customize<F: PrimeField32>(
                 F,
                 powdr_number::BabyBearField,
             >(
-                acc_block, airs, apc_opcode, config.bus_map.clone()
+                acc_block, airs, apc_opcode, config.bus_map.clone(), config.degree_bound,
             ) {
                 Err(_) => {
                     return None;
@@ -397,11 +396,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
         } else {
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
-            // as is if not empty and start a new block from this instruction.
             if is_target {
-                if !curr_block.statements.is_empty() {
-                    blocks.push(curr_block);
-                }
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
