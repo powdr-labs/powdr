@@ -52,6 +52,14 @@ where
                     q_o: T::ZERO,
                     q_mul: T::ZERO,
                     q_const: T::ZERO,
+
+                    q_bitwise: T::ZERO,
+                    q_memory: T::ZERO,
+                    q_execution: T::ZERO,
+                    q_pc: T::ZERO,
+                    q_rang_tuple: T::ZERO,
+                    q_range_check: T::ZERO,
+
                     a: Variable::Witness(r.clone()),
                     b: Variable::Unused,
                     c: Variable::Unused,
@@ -197,7 +205,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::plonk::air_to_plonkish::build_plonk_expr;
+    use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::{c, var};
     use pretty_assertions::assert_eq;
 

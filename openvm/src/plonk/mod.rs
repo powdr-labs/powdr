@@ -149,8 +149,13 @@ impl<T: FieldElement, V: Display> Display for Gate<T, V> {
             lhs.join(" + ")
         };
         let rhs = format_product(-self.q_o, &self.c).unwrap_or_else(|| "0".to_string());
+        let gate_info = if rhs == "0" && lhs == "0" {
+            format!("{}, {}, {}", self.a, self.b, self.c)
+        } else {
+            format!("{lhs} = {rhs}")
+        };
 
-        write!(f, "{lhs} = {rhs}",)
+        write!(f, "bus: {}, {}", format_bus_type(self), gate_info)
     }
 }
 
@@ -228,8 +233,7 @@ impl<T, V> PlonkCircuit<T, V> {
 
 #[cfg(test)]
 pub mod test_utils {
-    use super::*;
-    use powdr_ast::analyzed::AlgebraicExpression;
+    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
     use powdr_ast::analyzed::{PolyID, PolynomialType};
     use powdr_number::BabyBearField;
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {

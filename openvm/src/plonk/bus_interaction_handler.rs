@@ -63,7 +63,7 @@ fn add_bus_to_plonk_circuit<T>(
                 .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
         )
         .for_each(|(arg, payload)| {
-            *payload = air_to_plonkish(arg, plonk_circuit, temp_id_offset);
+            *payload = air_to_plonkish(arg, plonk_circuit, temp_id_offset, false);
         });
 
     // Add the gates to the circuit.
@@ -120,15 +120,15 @@ mod tests {
             //        1: y * 5      x       y
             //        2: temp_4(1)  tmp_5(42)
             //        3: tmp_0 = 42
-            "bus: none, 1 * x + 1 * y + -1 * tmp_0 + 0 * x * y + 0 = 0
-bus: none, 0 * x + 0 * y + -1 * tmp_1 + 1 * x * y + 0 = 0
-bus: none, -1 * tmp_1 + 0 * Unused + -1 * tmp_2 + 0 * tmp_1 * Unused + 0 = 0
-bus: none, 5 * y + 0 * Unused + -1 * tmp_3 + 0 * y * Unused + 0 = 0
-bus: none, 0 * Unused + 0 * Unused + -1 * tmp_4 + 0 * Unused * Unused + 1 = 0
-bus: memory, 0 * tmp_0 + 0 * y + 0 * tmp_2 + 0 * tmp_0 * y + 0 = 0
-bus: none, 0 * tmp_3 + 0 * x + 0 * y + 0 * tmp_3 * x + 0 = 0
-bus: none, 0 * tmp_4 + 0 * tmp_5 + 0 * Unused + 0 * tmp_4 * tmp_5 + 0 = 0
-bus: none, 0 * Unused + 0 * Unused + -1 * tmp_5 + 0 * Unused * Unused + 42 = 0
+            "bus: none, 42 = tmp_0
+bus: none, x + y = tmp_1
+bus: none, x * y = tmp_3
+bus: none, -tmp_3 = tmp_2
+bus: none, 5 * y = tmp_4
+bus: none, 1 = tmp_5
+bus: memory, tmp_0, tmp_1, y
+bus: none, tmp_2, tmp_4, x
+bus: none, y, tmp_5, Unused
 "
         )
     }
