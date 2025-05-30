@@ -50,7 +50,7 @@ pub fn replace_constrained_witness_columns<
         .collect();
 
     // sanity check
-    assert!(constraint_system.expressions_mut().all(|expr| {
+    assert!(constraint_system.expressions().all(|expr| {
         expr.referenced_unknown_variables()
             .all(|var| !inlined_vars.contains(var))
     }));
