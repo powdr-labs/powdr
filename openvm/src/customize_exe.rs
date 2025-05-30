@@ -516,7 +516,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect();
 
     SymbolicBusInteraction {
-        original_index: 0,
         kind,
         id,
         mult,
@@ -578,7 +577,6 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
         .bus_interactions
         .into_iter()
         .map(|interaction| SymbolicBusInteraction {
-            original_index: interaction.original_index,
             kind: interaction.kind,
             id: interaction.id,
             mult: transpose_algebraic_expression(interaction.mult.clone()),

@@ -68,7 +68,6 @@ mod tests {
         let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(BusMap::openvm_base());
 
         let bus_interaction = BusInteraction {
-            original_index: 0,
             bus_id: RangeConstraint::from_value(DEFAULT_MEMORY.into()),
             multiplicity: value(multiplicity),
             payload: std::iter::once(address_space)

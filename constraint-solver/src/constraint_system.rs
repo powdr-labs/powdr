@@ -55,7 +55,6 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 /// A bus interaction.
 #[derive(Clone, Debug)]
 pub struct BusInteraction<V> {
-    pub original_index: usize,
     /// The ID of the bus.
     pub bus_id: V,
     /// The payload of the bus interaction.
@@ -87,8 +86,7 @@ impl<V: Display> Display for BusInteraction<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "BusInteraction {{ idx: {}, bus_id: {}, multiplicity: {}, payload: {} }}",
-            self.original_index,
+            "BusInteraction {{ bus_id: {}, multiplicity: {}, payload: {} }}",
             self.bus_id,
             self.multiplicity,
             self.payload.iter().format(", ")
@@ -103,7 +101,6 @@ impl<V> FromIterator<V> for BusInteraction<V> {
         let multiplicity = iter.next().unwrap();
         let payload = iter.collect();
         BusInteraction {
-            original_index: 0, // This can be set later if needed
             bus_id,
             payload,
             multiplicity,

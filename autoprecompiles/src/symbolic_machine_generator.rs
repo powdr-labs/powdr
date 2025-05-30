@@ -30,7 +30,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
                 let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
                 machine.bus_interactions.iter_mut().for_each(
                     |bus_int: &mut SymbolicBusInteraction<T>| {
-                        bus_int.set_original_index(bus_interaction_original_idx as usize);
                         bus_interaction_original_idx += 1;
                     },
                 );

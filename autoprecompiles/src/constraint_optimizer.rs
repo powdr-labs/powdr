@@ -209,7 +209,6 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<QuadraticSymbolicExpression<P, Variable>> {
     BusInteraction {
-        original_index: bus_interaction.original_index,
         bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
         payload: bus_interaction
             .args
@@ -233,7 +232,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         .try_into()
         .unwrap();
     SymbolicBusInteraction {
-        original_index: bus_interaction.original_index,
         id,
         // TODO: The kind of SymbolicBusInteraction is ignored, this field should be removed
         kind: BusInteractionKind::Send,

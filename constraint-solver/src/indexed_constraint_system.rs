@@ -218,7 +218,6 @@ mod tests {
                 .iter()
                 .map(
                     |BusInteraction {
-                         original_index,
                          bus_id,
                          payload,
                          multiplicity,
@@ -244,7 +243,6 @@ mod tests {
                 y.clone() - z.clone(),
             ],
             bus_interactions: vec![BusInteraction {
-                original_index: 0,
                 bus_id: x,
                 payload: vec![y.clone(), z],
                 multiplicity: y,
