@@ -10,7 +10,7 @@ use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
 use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeField32};
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
@@ -256,7 +256,7 @@ pub fn customize<F: PrimeField32>(
         ));
     }
 
-    let extensions = air_stacking(extensions);
+    let extensions = air_stacking(extensions, config.bus_map.clone());
 
     (exe, PowdrExtension::new(extensions, base_config))
 }
@@ -350,13 +350,37 @@ fn merge_bus_interactions<F: PrimeField32>(interactions_by_machine: Vec<Vec<Symb
     }).collect_vec()
 }
 
+/// assumes ALL constraints are of the form `is_valid_expr * Y`
+fn join_constraints<T: PrimeField32>(mut constraints: Vec<SymbolicConstraint<T>>) -> Vec<SymbolicConstraint<T>> {
+    constraints.sort();
+    let mut result: Vec<SymbolicConstraint<T>> = vec![];
+    'outer: for c1 in constraints {
+        for c2 in result.iter_mut() {
+            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {left: is_valid1, op: AlgebraicBinaryOperator::Mul, right: r1}) = &c1.expr {
+                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {left: is_valid2, op: AlgebraicBinaryOperator::Mul, right: r2}) = &mut c2.expr {
+                    if r1 == r2 {
+                        *is_valid2 = Box::new(*is_valid1.clone() + *is_valid2.clone());
+                        continue 'outer;
+                    }
+                }
+            }
+        }
+        result.push(c1);
+    }
+    result
+}
+
 // perform air stacking of multiple precompiles into stacked precompiles.
 fn air_stacking<F: PrimeField32>(
     mut extensions: Vec<PowdrPrecompile<F>>,
+    bus_map: BusMap,
 ) -> Vec<PowdrStackedPrecompile<F>> {
     assert!(!extensions.is_empty());
 
-    extensions.iter_mut().for_each(compact_ids);
+    extensions.iter_mut().for_each(|pcp| {
+        pcp.machine.constraints.sort();
+        compact_ids(pcp);
+    });
 
     // create apc groups by number of columns
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<F>>> = Default::default();
@@ -450,6 +474,10 @@ fn air_stacking<F: PrimeField32>(
             interactions_by_machine.push(remapped.bus_interactions);
         }
 
+        println!("before joining constraints: {}", stacked_constraints.len());
+        let mut stacked_constraints = join_constraints(stacked_constraints);
+        println!("after joining constraints: {}", stacked_constraints.len());
+
         // enforce only one is_valid is active
         let one = AlgebraicExpression::Number(F::ONE);
         let one_hot_is_valid = (one - is_valid_sum.clone().unwrap()) * is_valid_sum.unwrap();
@@ -460,13 +488,24 @@ fn air_stacking<F: PrimeField32>(
         // let stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
         let stacked_interactions = merge_bus_interactions(interactions_by_machine);
 
+
         let machine = SymbolicMachine {
             constraints: stacked_constraints,
             bus_interactions: stacked_interactions,
         };
 
+        // transpose back to FieldElement so we can use the optimizer
+        println!("constraint count before opt: {}", machine.constraints.len());
+        println!("interaction count before opt: {}", machine.bus_interactions.len());
+        println!("stacked width before opt: {}", machine.unique_columns().count());
+        let machine = reverse_transpose_symbolic_machine::<F,powdr_number::BabyBearField>(machine);
+        // call the optimizer again
+        let machine = powdr_autoprecompiles::constraint_optimizer::optimize_constraints(machine,
+                                                                                        OpenVmBusInteractionHandler::new(bus_map.clone()),
+                                                                                        OPENVM_DEGREE_BOUND);
+        let machine = transpose_symbolic_machine::<F, powdr_number::BabyBearField>(machine);
+        println!("constraint count: {}", machine.constraints.len());
         println!("interaction count: {}", machine.bus_interactions.len());
-
         println!("stacked width: {}", machine.unique_columns().count());
 
         result.push(PowdrStackedPrecompile {
@@ -712,6 +751,37 @@ fn transpose_algebraic_expression<F: PrimeField32, P: FieldElement>(
     }
 }
 
+// Transpose an algebraic expression from the powdr field to openvm field
+fn reverse_transpose_algebraic_expression<F: PrimeField32, P: FieldElement>(
+    expr: AlgebraicExpression<F>,
+) -> AlgebraicExpression<P> {
+    match expr {
+        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(to_powdr_field(n)),
+        AlgebraicExpression::Reference(reference) => AlgebraicExpression::Reference(reference),
+        AlgebraicExpression::PublicReference(reference) => {
+            AlgebraicExpression::PublicReference(reference)
+        }
+        AlgebraicExpression::Challenge(challenge) => AlgebraicExpression::Challenge(challenge),
+        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
+            let left = reverse_transpose_algebraic_expression(*algebraic_binary_operation.left);
+            let right = reverse_transpose_algebraic_expression(*algebraic_binary_operation.right);
+            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
+                left: Box::new(left),
+                right: Box::new(right),
+                op: algebraic_binary_operation.op,
+            })
+        }
+        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
+            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
+                op: algebraic_unary_operation.op,
+                expr: Box::new(reverse_transpose_algebraic_expression(
+                    *algebraic_unary_operation.expr,
+                )),
+            })
+        }
+    }
+}
+
 // Transpose a symbolic machine from the powdr field to openvm field
 fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
     machine: SymbolicMachine<P>,
@@ -734,6 +804,38 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
                 .args
                 .iter()
                 .map(|arg| transpose_algebraic_expression(arg.clone()))
+                .collect(),
+        })
+        .collect();
+
+    SymbolicMachine {
+        constraints,
+        bus_interactions,
+    }
+}
+
+// Transpose a symbolic machine from the powdr field to openvm field
+fn reverse_transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
+    machine: SymbolicMachine<F>,
+) -> SymbolicMachine<P> {
+    let constraints = machine
+        .constraints
+        .into_iter()
+        .map(|constraint| SymbolicConstraint {
+            expr: reverse_transpose_algebraic_expression(constraint.expr),
+        })
+        .collect();
+    let bus_interactions = machine
+        .bus_interactions
+        .into_iter()
+        .map(|interaction| SymbolicBusInteraction {
+            kind: interaction.kind,
+            id: interaction.id,
+            mult: reverse_transpose_algebraic_expression(interaction.mult.clone()),
+            args: interaction
+                .args
+                .iter()
+                .map(|arg| reverse_transpose_algebraic_expression(arg.clone()))
                 .collect(),
         })
         .collect();
