@@ -16,7 +16,7 @@ where
 {
     let mut circuit_builder = CircuitBuilder::<T>::new();
     for constraint in &machine.constraints {
-        circuit_builder.evaluate_expression(&constraint.expr, true);
+        circuit_builder.evaluate_expression(&constraint.expr, true, &mut false);
     }
 
     for bus_interaction in &machine.bus_interactions {
@@ -75,6 +75,7 @@ where
         &mut self,
         algebraic_expr: &AlgebraicExpression<T>,
         assert_zero: bool,
+        neg: &mut bool,
     ) -> Variable<AlgebraicReference> {
         if let Some(var) = self.cache.get(algebraic_expr) {
             return var.clone();
@@ -118,80 +119,119 @@ where
                 let mut a = Variable::Unused;
                 let mut b = Variable::Unused;
                 let (q_o, c) = self.make_output(assert_zero);
+                let mut current_neg_left = *neg;
+                let mut current_neg_right = *neg;
                 match op {
                     AlgebraicBinaryOperator::Add => {
+                        println!("expression: {algebraic_expr:?}");
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            q_l = T::ONE;
-                            a = self.evaluate_expression(left, false);
+                            a = self.evaluate_expression(left, false,&mut current_neg_left);
+                            q_l = if *neg==current_neg_left { T::ONE } else { -T::ONE };
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
                             q_const += *n;
                         } else {
-                            q_r = T::ONE;
-                            b = self.evaluate_expression(right, false);
+                            b = self.evaluate_expression(right, false,&mut current_neg_right);
+                            q_r = if *neg==current_neg_right { T::ONE } else { -T::ONE };
                         }
+                        self.plonk_circuit.add_gate(Gate {
+                            q_l,
+                            q_r,
+                            q_o,
+                            q_mul,
+                            q_const,
+
+                            a,
+                            b,
+                            c: c.clone(),
+                            ..Default::default()
+                        });
+                        c
                     }
                     AlgebraicBinaryOperator::Sub => {
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            q_l = T::ONE;
-                            a = self.evaluate_expression(left, false);
+                            a = self.evaluate_expression(left, false,&mut current_neg_left);
+                            q_l = if *neg==current_neg_left { T::ONE } else { -T::ONE };
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
                             q_const -= *n;
                         } else {
-                            q_r = -T::ONE;
-                            b = self.evaluate_expression(right, false);
+                            b = self.evaluate_expression(right, false,&mut current_neg_right);
+                            q_r = if *neg==current_neg_right { -T::ONE } else { T::ONE };
                         }
-                    }
-                    AlgebraicBinaryOperator::Mul => match (left.as_ref(), right.as_ref()) {
-                        (AlgebraicExpression::Number(n), AlgebraicExpression::Number(m)) => {
-                            q_const += *n * *m;
-                        }
-                        (AlgebraicExpression::Number(n), non_constant)
-                        | (non_constant, AlgebraicExpression::Number(n)) => {
-                            q_l = *n;
-                            a = self.evaluate_expression(non_constant, false);
-                        }
-                        _ => {
-                            q_mul = T::ONE;
-                            a = self.evaluate_expression(left, false);
-                            b = self.evaluate_expression(right, false);
-                        }
-                    },
-                    AlgebraicBinaryOperator::Pow => unimplemented!(),
-                };
-                self.plonk_circuit.add_gate(Gate {
-                    q_l,
-                    q_r,
-                    q_o,
-                    q_mul,
-                    q_const,
+                        self.plonk_circuit.add_gate(Gate {
+                            q_l,
+                            q_r,
+                            q_o,
+                            q_mul,
+                            q_const,
 
-                    a,
-                    b,
-                    c: c.clone(),
-                    ..Default::default()
-                });
-                c
+                            a,
+                            b,
+                            c: c.clone(),
+                            ..Default::default()
+                        });
+                        c
+                    }
+                    AlgebraicBinaryOperator::Mul => {
+                        match (left.as_ref(), right.as_ref()) {
+                            (AlgebraicExpression::Number(n), AlgebraicExpression::Number(m)) => {
+                                q_const += *n * *m;
+                            }
+                            (AlgebraicExpression::Number(n), non_constant)
+                            | (non_constant, AlgebraicExpression::Number(n)) => {
+                                q_l = *n;
+                                a = self.evaluate_expression(non_constant, false,neg);
+                            }
+                            _ => {
+                                a = self.evaluate_expression(left, false,&mut current_neg_left);
+                                b = self.evaluate_expression(right, false,&mut current_neg_right);
+                                q_mul=if *neg ^ current_neg_left ^ current_neg_right { T::ONE } else { -T::ONE }; 
+                            }
+                        }
+
+                        println!("left: {left:?}, right: {right:?}, q_l: {q_l}, q_r: {q_r}, q_mul: {q_mul}, q_const: {q_const}");
+                        self.plonk_circuit.add_gate(Gate {
+                            q_l,
+                            q_r,
+                            q_o,
+                            q_mul,
+                            q_const,
+
+                            a,
+                            b,
+                            c: c.clone(),
+                            ..Default::default()
+                        });
+                        c
+                    }
+                    AlgebraicBinaryOperator::Pow => unimplemented!(),
+                }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => {
-                    let (q_o, c) = self.make_output(assert_zero);
-                    let a = self.evaluate_expression(expr, false);
-                    self.plonk_circuit.add_gate(Gate {
-                        q_l: -T::ONE,
-                        q_o,
-                        a,
-                        c: c.clone(),
-                        ..Default::default()
-                    });
-                    c
+                    *neg = !*neg; // Toggle negation
+                    let expr= self.evaluate_expression(expr, false, neg);
+
+                    if assert_zero {
+                       self.plonk_circuit.add_gate(Gate {
+                            q_l: T::ONE,
+                            q_o: T::ZERO,
+                            a: expr.clone(),
+                            ..Default::default()
+                        });
+                        Variable::Unused
+                        
+                    }else {
+                        expr
+                    }
+                    
                 }
             },
             _ => {
@@ -225,6 +265,8 @@ mod tests {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
+
+        println!("{}", build_circuit(&machine.clone()));
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),

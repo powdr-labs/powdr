@@ -62,7 +62,7 @@ pub fn add_bus_to_plonk_circuit<T>(
                 .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
         )
         .for_each(|(arg, payload)| {
-            *payload = circuit_builder.evaluate_expression(arg, false);
+            *payload = circuit_builder.evaluate_expression(arg, false, &mut false);
         });
 
     // Add the gates to the circuit.
