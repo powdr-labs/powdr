@@ -20,20 +20,27 @@ use powdr_number::FieldElement;
 
 use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
 
+/// Optimizes bus sends that correspond to general-purpose memory read and write operations.
+/// It works best if all read-write-operation addresses are fixed offsets relative to some
+/// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let to_remove = redundant_memory_interactions_indices(&machine).collect::<HashSet<_>>();
+    let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine);
+    let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
         .enumerate()
         .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
         .collect();
+    machine.constraints.extend(new_constraints);
     machine
 }
 
+/// Tries to find indices of bus interactions that can be removed in the given machine
+/// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement>(
     machine: &SymbolicMachine<T>,
-) -> impl Iterator<Item = usize> {
+) -> (Vec<usize>, Vec<SymbolicConstraint<T>>) {
     let address_by_index = machine
         .bus_interactions
         .iter()
@@ -115,8 +122,13 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
         }
     }
 
-    log::debug!("Removing {} memory interactions", to_remove.len(),);
-    to_remove.into_iter()
+    log::debug!(
+        "Removing {} memory interactions and adding {} new constraints",
+        to_remove.len(),
+        new_constraints.len()
+    );
+
+    (to_remove, new_constraints)
 }
 
 /// Converts from SymbolicConstraint to QuadraticSymbolicExpressio and
