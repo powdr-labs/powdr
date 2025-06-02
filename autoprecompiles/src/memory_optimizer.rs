@@ -249,8 +249,8 @@ fn is_value_known_to_be_different_by_word<T: FieldElement>(
 ) -> bool {
     let diff = a - b;
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
-    if count_possible_assignments(variables.iter().cloned(), range_constraints)
-        .is_some_and(|count| count > 20)
+    if !count_possible_assignments(variables.iter().cloned(), range_constraints)
+        .is_some_and(|count| count < 20)
     {
         // If there are too many possible assignments, we cannot prove anything.
         return false;
