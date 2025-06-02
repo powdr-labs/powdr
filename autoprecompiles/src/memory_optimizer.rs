@@ -307,7 +307,8 @@ mod tests {
     use super::*;
 
     use powdr_constraint_solver::{
-        quadratic_symbolic_expression::NoRangeConstraints, test_utils::constant,
+        quadratic_symbolic_expression::NoRangeConstraints,
+        test_utils::{constant, var},
     };
 
     #[test]
@@ -320,6 +321,40 @@ mod tests {
         assert!(!is_value_known_to_be_different_by_word(
             &constant(5),
             &constant(7),
+            &NoRangeConstraints
+        ));
+        assert!(is_value_known_to_be_different_by_word(
+            &constant(4),
+            &constant(0),
+            &NoRangeConstraints
+        ));
+        assert!(is_value_known_to_be_different_by_word(
+            &constant(0),
+            &constant(4),
+            &NoRangeConstraints
+        ));
+    }
+
+    #[test]
+    fn difference_for_vars() {
+        assert!(!is_value_known_to_be_different_by_word(
+            &(constant(7) + var("a")),
+            &(constant(5) + var("a")),
+            &NoRangeConstraints
+        ));
+        assert!(is_value_known_to_be_different_by_word(
+            &(constant(7) + var("a")),
+            &(constant(2) + var("a")),
+            &NoRangeConstraints
+        ));
+        assert!(!is_value_known_to_be_different_by_word(
+            &(constant(7) - var("a")),
+            &(constant(2) + var("a")),
+            &NoRangeConstraints
+        ));
+        assert!(!is_value_known_to_be_different_by_word(
+            &var("a"),
+            &var("b"),
             &NoRangeConstraints
         ));
     }
