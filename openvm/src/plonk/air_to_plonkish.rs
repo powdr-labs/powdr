@@ -16,7 +16,7 @@ where
 {
     let mut circuit_builder = CircuitBuilder::<T>::new();
     for constraint in &machine.constraints {
-        circuit_builder.evaluate_expression(&constraint.expr, true, &mut false);
+        circuit_builder.evaluate_expression(&constraint.expr, true, &mut false, true);
     }
 
     for bus_interaction in &machine.bus_interactions {
@@ -76,6 +76,7 @@ where
         algebraic_expr: &AlgebraicExpression<T>,
         assert_zero: bool,
         neg: &mut bool,
+        is_last: bool,
     ) -> Variable<AlgebraicReference> {
         if let Some(var) = self.cache.get(algebraic_expr) {
             return var.clone();
@@ -126,14 +127,14 @@ where
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            a = self.evaluate_expression(left, false, &mut next_neg_left);
+                            a = self.evaluate_expression(left, false, &mut next_neg_left, false);
                             q_l = if next_neg_left { -T::ONE } else { T::ONE };
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
                             q_const += *n
                         } else {
-                            b = self.evaluate_expression(right, false, &mut next_neg_right);
+                            b = self.evaluate_expression(right, false, &mut next_neg_right, false);
                             q_r = if next_neg_right { -T::ONE } else { T::ONE };
                         }
                         self.plonk_circuit.add_gate(Gate {
@@ -154,7 +155,7 @@ where
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            a = self.evaluate_expression(left, false, &mut next_neg_left);
+                            a = self.evaluate_expression(left, false, &mut next_neg_left, false);
                             q_l = if *neg == next_neg_left {
                                 T::ONE
                             } else {
@@ -169,7 +170,7 @@ where
                                 q_const -= *n
                             };
                         } else {
-                            b = self.evaluate_expression(right, false, &mut next_neg_right);
+                            b = self.evaluate_expression(right, false, &mut next_neg_right, false);
                             q_r = if *neg == next_neg_right {
                                 -T::ONE
                             } else {
@@ -201,6 +202,7 @@ where
                                     non_constant,
                                     false,
                                     &mut next_neg_left,
+                                    false,
                                 ); // use current_neg_left for both case
                                 if next_neg_left {
                                     q_l = -*n;
@@ -209,8 +211,18 @@ where
                                 }
                             }
                             _ => {
-                                a = self.evaluate_expression(left, false, &mut next_neg_left);
-                                b = self.evaluate_expression(right, false, &mut next_neg_right);
+                                a = self.evaluate_expression(
+                                    left,
+                                    false,
+                                    &mut next_neg_left,
+                                    false,
+                                );
+                                b = self.evaluate_expression(
+                                    right,
+                                    false,
+                                    &mut next_neg_right,
+                                    false,
+                                );
 
                                 q_mul = if next_neg_left ^ next_neg_right {
                                     -T::ONE
@@ -240,19 +252,27 @@ where
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => {
                     let mut current_neg = false;
-                    *neg = !*neg; // Toggle negation
-                    let expr = self.evaluate_expression(expr, false, &mut current_neg);
+                    *neg = !*neg;
+                    let expr = self.evaluate_expression(expr, false, &mut current_neg, false);
 
                     if assert_zero {
                         self.plonk_circuit.add_gate(Gate {
-                            // current_neg
-                            // true => neg and another neg in recursive call, positive
                             q_l: if current_neg { T::ONE } else { -T::ONE },
                             q_o: T::ZERO,
                             a: expr.clone(),
                             ..Default::default()
                         });
                         Variable::Unused
+                    } else if is_last {
+                        self.plonk_circuit.add_gate(Gate {
+                            q_l: if current_neg { T::ONE } else { -T::ONE },
+                            q_o: -T::ONE,
+                            a: expr.clone(),
+                            c: Variable::Tmp(self.temp_id_offset),
+                            ..Default::default()
+                        });
+                        self.temp_id_offset += 1;
+                        Variable::Tmp(self.temp_id_offset - 1)
                     } else {
                         expr
                     }
@@ -289,7 +309,7 @@ mod tests {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
-        println!("{}", build_circuit(&machine));
+
         assert_eq!(
             format!("{}", build_circuit(&machine)),
             "bus: none, x * y = tmp_1
@@ -309,8 +329,6 @@ bus: none, -tmp_0 = 0
             bus_interactions: vec![],
         };
 
-        println!("{}", build_circuit(&machine));
-
         assert_eq!(
             format!("{}", build_circuit(&machine)),
             "bus: none, -2 = tmp_1
@@ -327,8 +345,6 @@ bus: none, tmp_0 + 4 = 0
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
-
-        println!("{}", build_circuit(&machine));
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
@@ -347,7 +363,6 @@ bus: none, tmp_0 + 4 = 0
             bus_interactions: vec![],
         };
 
-        println!("{}", build_circuit(&machine));
         assert_eq!(
             format!("{}", build_circuit(&machine)),
             "bus: none, 2 * x = tmp_2
