@@ -157,7 +157,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
                 is_value_known_to_be_different_by_word(
                     a_exprs,
                     b_exprs,
-                    &RangeConstraintsForBoleans,
+                    &RangeConstraintsForBooleans,
                 )
             })
     }
@@ -200,9 +200,9 @@ impl Display for Variable {
 }
 
 #[derive(Default)]
-struct RangeConstraintsForBoleans;
+struct RangeConstraintsForBooleans;
 
-impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsForBoleans {
+impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsForBooleans {
     fn get(&self, variable: &Variable) -> RangeConstraint<T> {
         match variable {
             Variable::Boolean(_) => RangeConstraint::from_mask(1),
