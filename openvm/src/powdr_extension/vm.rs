@@ -18,7 +18,8 @@ use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigPeriphery};
-use openvm_stark_backend::config::StarkGenericConfig;
+use openvm_stark_backend::config::{StarkGenericConfig, Val};
+use openvm_stark_backend::prover::types::AirProofInput;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     Chip,
@@ -118,13 +119,22 @@ pub enum PowdrExecutor<P: OpenVmField> {
     Plonk(PlonkChip<P>),
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField> Chip<SC> for PowdrExecutor<P> {
-    fn generate_air_proof_input(self) -> openvm_stark_backend::prover::types::AirProofInput<SC> {
-        unimplemented!("PowdrExecutor does not support generating air proof input")
+impl<SC: StarkGenericConfig, P: OpenVmField<OpenVmField = Val<SC>>> Chip<SC> for PowdrExecutor<P>
+where
+    Val<SC>: PrimeField32,
+{
+    fn generate_air_proof_input(self) -> AirProofInput<SC> {
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.generate_air_proof_input(),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.generate_air_proof_input(),
+        }
     }
 
     fn air(&self) -> std::sync::Arc<dyn openvm_stark_backend::rap::AnyRap<SC>> {
-        unimplemented!("PowdrExecutor does not support air generation")
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.air(),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.air(),
+        }
     }
 }
 
