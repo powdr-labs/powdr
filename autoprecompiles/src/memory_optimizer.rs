@@ -41,29 +41,7 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
 fn redundant_memory_interactions_indices<T: FieldElement>(
     machine: &SymbolicMachine<T>,
 ) -> (Vec<usize>, Vec<SymbolicConstraint<T>>) {
-    let address_by_index = machine
-        .bus_interactions
-        .iter()
-        .enumerate()
-        .filter_map(|(index, bus)| {
-            MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
-                bus,
-                MemoryType::Memory,
-            )
-            .ok()
-            .flatten()
-            .map(|bus| (index, bus))
-        })
-        .map(|(index, bus)| (index, algebraic_to_quadratic_symbolic_expression(&bus.addr)))
-        .collect::<HashMap<_, _>>();
-
-    let constraints = symbolic_to_simplified_contraints(&machine.constraints);
-    // Gather constraints concerning memory addresses.
-    // For every address `a`, `memory_address_facts[a]` is a vector of expresions `v`
-    // such that `a = v` is true in the constraint system.
-    let memory_address_facts =
-        compile_facts_about_addresses(address_by_index.values().cloned(), &constraints);
-
+    let address_comparator = MemoryAddressComparator::new(machine);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
     // Go through the memory interactions and try to optimize them.
@@ -85,11 +63,11 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 continue;
             }
         };
-        let addr = &address_by_index[&index];
+        let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
 
         match mem_int.op {
             MemoryOp::Receive => {
-                if let Some((previous_send, existing_values)) = memory_contents.get(addr) {
+                if let Some((previous_send, existing_values)) = memory_contents.get(&addr) {
                     for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
                         if existing != new {
                             new_constraints.push(
@@ -116,12 +94,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
-                    are_addrs_known_to_be_different_by_word(
-                        addr,
-                        other_addr,
-                        &memory_address_facts,
-                        &RangeConstraintsForBoleans,
-                    )
+                    address_comparator.are_addrs_known_to_be_different_by_word(&addr, other_addr)
                 });
                 memory_contents.insert(addr.clone(), (Some(index), mem_int.data.clone()));
             }
@@ -135,6 +108,65 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     );
 
     (to_remove, new_constraints)
+}
+
+trait AddressComparator<A> {
+    /// Returns true if we can prove that for two addresses `a` and `b`,
+    /// `a - b` never falls into the range `0..=3`.
+    fn are_addrs_known_to_be_different_by_word(&self, a: A, b: A) -> bool;
+}
+
+struct MemoryAddressComparator<T: FieldElement> {
+    memory_addresses: HashMap<
+        QuadraticSymbolicExpression<T, Variable>,
+        Vec<QuadraticSymbolicExpression<T, Variable>>,
+    >,
+}
+
+impl<T: FieldElement> MemoryAddressComparator<T> {
+    fn new(machine: &SymbolicMachine<T>) -> Self {
+        let addresses = machine
+            .bus_interactions
+            .iter()
+            .flat_map(|bus| {
+                MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
+                    bus,
+                    MemoryType::Memory,
+                )
+                .ok()
+                .flatten()
+            })
+            .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
+
+        let constraints = symbolic_to_simplified_contraints(&machine.constraints);
+
+        Self {
+            memory_addresses: compile_facts_about_addresses(addresses, &constraints),
+        }
+    }
+}
+
+impl<T: FieldElement> AddressComparator<&QuadraticSymbolicExpression<T, Variable>>
+    for MemoryAddressComparator<T>
+{
+    fn are_addrs_known_to_be_different_by_word(
+        &self,
+        a: &QuadraticSymbolicExpression<T, Variable>,
+        b: &QuadraticSymbolicExpression<T, Variable>,
+    ) -> bool {
+        let a_exprs = &self.memory_addresses[a];
+        let b_exprs = &self.memory_addresses[b];
+        a_exprs
+            .iter()
+            .cartesian_product(b_exprs)
+            .any(|(a_exprs, b_exprs)| {
+                is_value_known_to_be_different_by_word(
+                    a_exprs,
+                    b_exprs,
+                    &RangeConstraintsForBoleans,
+                )
+            })
+    }
 }
 
 /// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
@@ -228,30 +260,6 @@ fn compile_facts_about_addresses<T: FieldElement, V: Clone + Ord + Hash + Eq + D
         .collect()
 }
 
-/// Returns true if we can prove that for two addresses `a` and `b`,
-/// `a - b` never falls into the range `0..=3`.
-fn are_addrs_known_to_be_different_by_word<
-    T: FieldElement,
-    V: Clone + Ord + Hash + Eq + Display,
->(
-    a: &QuadraticSymbolicExpression<T, V>,
-    b: &QuadraticSymbolicExpression<T, V>,
-    memory_addresses: &HashMap<
-        QuadraticSymbolicExpression<T, V>,
-        Vec<QuadraticSymbolicExpression<T, V>>,
-    >,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
-) -> bool {
-    let a_exprs = &memory_addresses[a];
-    let b_exprs = &memory_addresses[b];
-    a_exprs
-        .iter()
-        .cartesian_product(b_exprs)
-        .any(|(a_exprs, b_exprs)| {
-            is_value_known_to_be_different_by_word(a_exprs, b_exprs, range_constraints)
-        })
-}
-
 /// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
 fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     a: &QuadraticSymbolicExpression<T, V>,
@@ -260,8 +268,8 @@ fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash
 ) -> bool {
     let diff = a - b;
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
-    if !count_possible_assignments(variables.iter().cloned(), range_constraints)
-        .is_some_and(|count| count < 20)
+    if count_possible_assignments(variables.iter().cloned(), range_constraints)
+        .is_none_or(|count| count >= 20)
     {
         // If there are too many possible assignments, we do not try to perform exhaustive search.
         return false;
