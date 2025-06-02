@@ -716,7 +716,7 @@ mod tests {
     const GUEST_KECCAK_ITER: u32 = 1000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
     const GUEST_KECCAK_APC: u64 = 1;
-    const GUEST_KECCAK_APC_PGO: u64 = 10;
+    const GUEST_KECCAK_APC_PGO: u64 = 25;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
@@ -802,28 +802,17 @@ mod tests {
         prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None);
     }
 
-    // Create 10 APC for 10 Keccak iterations to test different PGO modes
+    // Create multiple APC for 10 Keccak iterations to test different PGO modes
     #[test]
     fn keccak_prove_multiple_pgo_modes() {
         use std::time::Instant;
         // Config
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
         let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
-
-        // Pgo Instruction mode
-        let start = Instant::now();
-        prove_simple(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data.clone()),
-        );
-        let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
 
         // Pgo Cell mode
         let start = Instant::now();
@@ -831,7 +820,18 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin.clone(),
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data.clone()),
+        );
+        let elapsed = start.elapsed();
+        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
+
+        // Pgo Instruction mode
+        let start = Instant::now();
+        prove_simple(
+            GUEST_KECCAK,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
         );
         let elapsed = start.elapsed();
         tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
