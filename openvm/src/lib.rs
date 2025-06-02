@@ -716,7 +716,7 @@ mod tests {
     const GUEST_KECCAK_ITER: u32 = 1000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
     const GUEST_KECCAK_APC: u64 = 1;
-    const GUEST_KECCAK_APC_PGO: u64 = 2;
+    const GUEST_KECCAK_APC_PGO: u64 = 10;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
@@ -802,19 +802,19 @@ mod tests {
         prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None);
     }
 
-    // Create 2 APC for 10 Keccak iterations to test different PGO modes
+    // Create 10 APC for 10 Keccak iterations to test different PGO modes
     #[test]
     fn keccak_prove_multiple_pgo_modes() {
         use std::time::Instant;
         // Config
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL); // 10
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP); // 2, 0
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
         let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
-        // Pgo instruction mode
+        // Pgo Instruction mode
         let start = Instant::now();
         prove_simple(
             GUEST_KECCAK,
@@ -823,13 +823,18 @@ mod tests {
             PgoConfig::Instruction(pgo_data.clone()),
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving without PGO took {:?}", elapsed);
+        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
 
-        // Pgo cell mode
+        // Pgo Cell mode
         let start = Instant::now();
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::Cell(pgo_data));
+        prove_simple(
+            GUEST_KECCAK,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data),
+        );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PGO took {:?}", elapsed);
+        tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
     }
 
     // #[test]
@@ -900,6 +905,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
+        test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
         test_keccak_machine(PgoConfig::Cell(pgo_data));
     }
 }
