@@ -810,11 +810,12 @@ mod tests {
         use std::time::Instant;
         // Config
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL); // 10
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP); // 2, 0
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         let start = Instant::now();
-        prove_simple(GUEST_KECCAK, config.clone(), stdin.clone(), None);
+        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        prove_simple(GUEST_KECCAK, config.clone(), stdin.clone(), Some(pgo_data));
         let elapsed = start.elapsed();
         tracing::info!("Proving with PGO took {:?}", elapsed);
 
