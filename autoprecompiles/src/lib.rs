@@ -443,5 +443,7 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
 
     machine.constraints.extend(is_valid_mults);
 
+    machine.constraints.push(powdr::make_bool(is_valid).into());
+
     machine
 }
