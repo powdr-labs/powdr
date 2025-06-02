@@ -4,7 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::BusInteractionHandler;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
-use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
+use crate::utils::{count_possible_assignments, get_all_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -122,6 +122,7 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
         .unique()
         .filter(|variables| !variables.is_empty())
         .filter(move |variables| {
-            has_few_possible_assignments(variables.iter().cloned(), MAX_SEARCH_WIDTH, &rc)
+            count_possible_assignments(variables.iter().cloned(), &rc)
+                .is_some_and(|count| count <= MAX_SEARCH_WIDTH)
         })
 }

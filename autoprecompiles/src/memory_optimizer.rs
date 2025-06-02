@@ -11,7 +11,7 @@ use powdr_ast::analyzed::{
 use powdr_constraint_solver::boolean_extractor;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::utils::{get_all_possible_assignments, has_few_possible_assignments};
+use powdr_constraint_solver::utils::{count_possible_assignments, get_all_possible_assignments};
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
@@ -237,7 +237,10 @@ fn is_value_known_to_be_different_by_word<T: FieldElement>(
 ) -> bool {
     let diff = a - b;
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
-    if !has_few_possible_assignments(variables.iter().cloned(), 20, range_constraints) {
+    if count_possible_assignments(variables.iter().cloned(), range_constraints)
+        .is_some_and(|count| count > 20)
+    {
+        // If there are too many possible assignments, we cannot prove anything.
         return false;
     }
     let disallowed_range = RangeConstraint::from_range(T::from(0), T::from(3));
