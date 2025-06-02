@@ -20,6 +20,7 @@ use crate::{
     powdr::{self, UniqueColumns},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     stats_logger::StatsLogger,
+    stats_logger::StatsLogger,
     SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
     PC_LOOKUP_BUS_ID,
 };
@@ -30,12 +31,16 @@ pub fn optimize<T: FieldElement>(
     opcode: Option<u32>,
     degree_bound: usize,
 ) -> SymbolicMachine<T> {
+    let mut stats_logger = StatsLogger::start(&machine);
     let machine = if let Some(opcode) = opcode {
-        optimize_pc_lookup(machine, opcode)
+        let machine = optimize_pc_lookup(machine, opcode);
+        stats_logger.log("PC lookup optimization", &machine);
+        machine
     } else {
         machine
     };
     let mut machine = optimize_exec_bus(machine);
+    stats_logger.log("exec bus optimization", &machine);
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
     let mut stats_logger = StatsLogger::start(&constraint_system);
@@ -58,10 +63,17 @@ fn optimization_loop_iteration<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
+    stats_logger: &mut StatsLogger,
 ) -> ConstraintSystem<P, Variable> {
-    let machine = optimize_constraints(machine, bus_interaction_handler.clone(), degree_bound);
+    let machine = optimize_constraints(
+        machine,
+        bus_interaction_handler.clone(),
+        degree_bound,
+        stats_logger,
+    );
     let machine = optimize_register_operations(machine);
     assert!(check_register_operation_consistency(&machine));
+    stats_logger.log("register optimization", &machine);
     machine
 }
 
