@@ -58,6 +58,9 @@ fn test_optimize() {
 
 #[test]
 fn test_conflicting_constraints_in_bus_interaction() {
+    // Tests a file where a previous version of the optimizer reported conflicting
+    // constraints in a bus interaction. Now that this is fixed, this test is
+    // not very specific any more, but could still increase the test surface.
     let file =
         std::fs::File::open("tests/conflicting_constraints_in_bus_interaction.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
