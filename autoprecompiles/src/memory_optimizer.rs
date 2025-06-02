@@ -5,10 +5,12 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicBinaryOperator, AlgebraicExpression,
+    algebraic_expression_conversion, AlgebraicExpression,
     AlgebraicReference, Challenge,
 };
 use powdr_constraint_solver::boolean_extractor;
+use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::{count_possible_assignments, get_all_possible_assignments};
@@ -131,10 +133,21 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
 
         let constraints = symbolic_to_simplified_constraints(&machine.constraints);
-
-        Self {
-            memory_addresses: compile_facts_about_addresses(addresses, &constraints),
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
+            algebraic_constraints: constraints,
+            bus_interactions: vec![],
         }
+        .into();
+
+        let memory_addresses = addresses
+            .map(|addr| {
+                (
+                    addr.clone(),
+                    find_equivalent_expressions(&addr, &constraint_system),
+                )
+            })
+            .collect();
+        Self { memory_addresses }
     }
 
     /// Returns true if we can prove that for two addresses `a` and `b`,
@@ -207,47 +220,32 @@ impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsF
     }
 }
 
-/// Takes an iterator over all expressions used as addresses and tries to
-/// compile facts about them based on the constraints provided.
-/// For each address `a`, the hash map contains values `v` such that `a = v`
-/// is true in the constraint system.
-fn compile_facts_about_addresses<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
-    addresses: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
-    constraints: &[QuadraticSymbolicExpression<T, V>],
-) -> HashMap<QuadraticSymbolicExpression<T, V>, Vec<QuadraticSymbolicExpression<T, V>>> {
-    let constraints_by_variable = constraints
-        .iter()
+/// Tries to find equivalent expressions for the given expression
+/// according to the given constraint system.
+/// Returns at least one equivalent expression (in the worst case, the expression itself).
+fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
+    expression: &QuadraticSymbolicExpression<T, V>,
+    constraints: &IndexedConstraintSystem<T, V>,
+) -> Vec<QuadraticSymbolicExpression<T, V>> {
+    // Go through the constraints related to this address
+    // and try to solve for the expression
+    let mut exprs = constraints
+        .constraints_referencing_variables(expression.referenced_unknown_variables().cloned())
         .flat_map(|constr| {
-            let vars = constr.referenced_unknown_variables();
-            vars.map(move |var| (var.clone(), constr))
-        })
-        .into_group_map();
-
-    // Collect the expressions that are used as addresses and try to solve
-    // a constraint about them in the constraint system.
-    // The result is a list of constraints for each address that are
-    // related to that address and can be used to reason difference-ness for addresses.
-    addresses
-        .into_iter()
-        .flat_map(|addr| {
-            // Go through the constraints related to this address
-            // and try to solve for the address.
-            let mut exprs = addr
-                .referenced_unknown_variables()
-                .flat_map(|v| constraints_by_variable.get(v))
-                .flatten()
-                // Comparing by pointer is faster, we do not care about equal constraints that
-                // appear multiple times in `constraints`.
-                .unique_by(|constr| constr as *const _)
-                .flat_map(|constr| constr.try_solve_for_expr(&addr))
-                .collect_vec();
-            if exprs.is_empty() {
-                // If we cannot solve for the address, we just take the address unmodified.
-                exprs.push(addr.clone());
+            match constr {
+                ConstraintRef::AlgebraicConstraint(constr) => {
+                    Some(constr.try_solve_for_expr(expression))
+                }
+                ConstraintRef::BusInteraction(_) => None,
             }
-            Some((addr.clone(), exprs))
+            .flatten()
         })
-        .collect()
+        .collect_vec();
+    if exprs.is_empty() {
+        // If we cannot solve for the expression, we just take the expression unmodified.
+        exprs.push(expression.clone());
+    }
+    exprs
 }
 
 /// Returns true if we can prove that `a - b` never falls into the range `-3..=3`.
