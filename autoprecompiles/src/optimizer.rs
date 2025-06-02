@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
@@ -17,9 +18,8 @@ use powdr_pilopt::{
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    powdr::{self, UniqueColumns},
+    powdr::{self},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
-    stats_logger::StatsLogger,
     stats_logger::StatsLogger,
     SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
     PC_LOOKUP_BUS_ID,
@@ -39,19 +39,19 @@ pub fn optimize<T: FieldElement>(
     } else {
         machine
     };
-    let mut machine = optimize_exec_bus(machine);
+    let machine = optimize_exec_bus(machine);
     stats_logger.log("exec bus optimization", &machine);
 
-    let constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
     let mut stats_logger = StatsLogger::start(&constraint_system);
 
     loop {
         let size = system_size(&constraint_system);
-        constraint_systeme = optimization_loop_iteration(
+        constraint_system = optimization_loop_iteration(
             constraint_system,
             bus_interaction_handler.clone(),
-            &mut stats_logger,
             degree_bound,
+            &mut stats_logger,
         );
         if system_size(&constraint_system) == size {
             return constraint_system_to_symbolic_machine(constraint_system);
@@ -64,35 +64,31 @@ fn optimization_loop_iteration<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
-) -> ConstraintSystem<P, Variable> {
-    let machine = optimize_constraints(
-        machine,
+) -> ConstraintSystem<T, Variable> {
+    let constraint_system = optimize_constraints(
+        constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     );
-    let machine = optimize_register_operations(machine);
+    // TODO avoid this conversion.
+    let machine =
+        optimize_register_operations(constraint_system_to_symbolic_machine(constraint_system));
     assert!(check_register_operation_consistency(&machine));
-    stats_logger.log("register optimization", &machine);
-    machine
+    let constraint_system = symbolic_machine_to_constraint_system(machine);
+    stats_logger.log("register optimization", &constraint_system);
+    constraint_system
 }
 
-fn system_size<T: FieldElement>(constraint_system: ConstraintSystem<T, Variable>) -> [usize; 3] {
+fn system_size<T: FieldElement>(constraint_system: &ConstraintSystem<T, Variable>) -> [usize; 3] {
     [
         constraint_system.algebraic_constraints.len(),
         constraint_system.bus_interactions.len(),
         constraint_system
-            .algebraic_constraints
-            .iter()
-            .flat_map(|constraint| constraint.referenced_variables())
-            .chain(
-                constraint_system
-                    .bus_interactions
-                    .iter()
-                    .flat_map(|bus_interaction| bus_interaction.referenced_variables()),
-            )
-            .collect::<UniqueColumns<T>>()
-            .len(),
+            .expressions()
+            .flat_map(|expr| expr.referenced_variables())
+            .unique()
+            .count(),
     ]
 }
 

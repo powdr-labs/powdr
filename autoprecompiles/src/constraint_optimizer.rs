@@ -2,25 +2,15 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    constraint_system::{BusInteractionHandler, ConstraintSystem},
     indexed_constraint_system::apply_substitutions,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::Solver,
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::{
-    inliner::replace_constrained_witness_columns,
-    qse_opt::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-        Variable,
-    },
-    simplify_expression,
-};
+use powdr_pilopt::{inliner::replace_constrained_witness_columns, qse_opt::Variable};
 
-use crate::{
-    stats_logger::StatsLogger, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
-};
+use crate::stats_logger::StatsLogger;
 
 /// Simplifies the constraints as much as possible.
 /// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
@@ -32,7 +22,6 @@ use crate::{
 pub fn optimize_constraints<P: FieldElement>(
     constraint_system: ConstraintSystem<P, Variable>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    stats_logger: &mut StatsLogger,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
 ) -> ConstraintSystem<P, Variable> {
