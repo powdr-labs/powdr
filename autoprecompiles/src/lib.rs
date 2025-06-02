@@ -326,6 +326,8 @@ fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> boo
 }
 
 /// Adds `is_valid` guards to constraints without increasing its degree.
+/// This implementation always guards the LHS of multiplications.
+/// In the future this could be changed to minimize the number of guards added.
 /// Assumption:
 /// - `expr` is already simplified, i.e., expressions like (3 + 4) and (x * 1) do not appear.
 fn add_guards_constraint<T: FieldElement>(
