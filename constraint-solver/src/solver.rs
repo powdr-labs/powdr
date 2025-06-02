@@ -165,6 +165,7 @@ impl<
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
+            let (x, y) = if x < y { (x, y) } else { (y, x) };
             self.apply_assignment(
                 y,
                 &QuadraticSymbolicExpression::from_unknown_variable(x.clone()),
