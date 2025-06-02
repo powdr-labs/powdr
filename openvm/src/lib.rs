@@ -701,6 +701,7 @@ mod tests {
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: u64 = 1;
     const GUEST_SKIP: u64 = 56;
+    const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
     const GUEST_KECCAK_ITER: u32 = 1000;
@@ -812,11 +813,6 @@ mod tests {
         tracing::info!("Proving without PGO took {:?}", elapsed);
     }
 
-    // let mut stdin = StdIn::default();
-    // stdin.write(&GUEST_KECCAK_ITER_SMALL);
-    // let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-    // prove_simple(GUEST_KECCAK, config, stdin, false);
-
     // #[test]
     // #[ignore = "Too much RAM"]
     // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
@@ -830,15 +826,18 @@ mod tests {
     // The following are compilation tests only
     #[test]
     fn guest_machine() {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, None)
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
+        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin);
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, Some(pgo_data))
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 70);
-        assert_eq!(m.constraints, 37);
-        assert_eq!(m.bus_interactions, 55);
+        assert_eq!(m.width, 53);
+        assert_eq!(m.constraints, 21);
+        assert_eq!(m.bus_interactions, 39);
     }
 
     #[test]
