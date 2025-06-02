@@ -700,7 +700,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: u64 = 1;
-    const GUEST_SKIP: u64 = 0;
+    const GUEST_SKIP: u64 = 56;
 
     const GUEST_KECCAK: &str = "guest-keccak";
     const GUEST_KECCAK_ITER: u32 = 1000;
@@ -836,9 +836,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 21);
-        assert_eq!(m.bus_interactions, 39);
+        assert_eq!(m.width, 70);
+        assert_eq!(m.constraints, 37);
+        assert_eq!(m.bus_interactions, 55);
     }
 
     #[test]
