@@ -44,11 +44,14 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     let address_comparator = MemoryAddressComparator::new(machine);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-    // Go through the memory interactions and try to optimize them.
+    // Track memory contents while we go through bus interactions.
+    // This maps an address to the index of the previous send on that address and the
+    // data currently stored there.
     let mut memory_contents: HashMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
         Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
+    // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
         let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
             bus_int,
@@ -70,14 +73,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 if let Some((previous_send, existing_values)) = memory_contents.get(&addr) {
                     for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
                         if existing != new {
-                            new_constraints.push(
-                                AlgebraicExpression::new_binary(
-                                    existing.clone(),
-                                    AlgebraicBinaryOperator::Sub,
-                                    new.clone(),
-                                )
-                                .into(),
-                            );
+                            new_constraints.push((existing.clone() - new.clone()).into());
                         }
                     }
 
@@ -111,8 +107,8 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
 }
 
 struct MemoryAddressComparator<T: FieldElement> {
-    // For each address `a` contains a list of expressions `v` such that
-    // `a = v` is true in the constraint system.
+    /// For each address `a` contains a list of expressions `v` such that
+    /// `a = v` is true in the constraint system.
     memory_addresses: HashMap<
         QuadraticSymbolicExpression<T, Variable>,
         Vec<QuadraticSymbolicExpression<T, Variable>>,
