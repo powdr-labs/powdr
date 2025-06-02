@@ -58,7 +58,10 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
         .collect::<HashMap<_, _>>();
 
     let constraints = symbolic_to_simplified_contraints(&machine.constraints);
-    let memory_addresses =
+    // Gather constraints concerning memory addresses.
+    // For every address `a`, `memory_address_facts[a]` is a vector of expresions `v`
+    // such that `a = v` is true in the constraint system.
+    let memory_address_facts =
         compile_facts_about_addresses(address_by_index.values().cloned(), &constraints);
 
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
@@ -76,7 +79,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
             Err(_) => {
-                // This interaction might be going to register memory, but we do not know
+                // This interaction might be going to memory, but we do not know
                 // the multiplicity. Delete all knowledge.
                 memory_contents.clear();
                 continue;
@@ -109,11 +112,14 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 }
             }
             MemoryOp::Send => {
+                // We can only retain knowledge about addresses where we can prove
+                // that this send operation does not interfere with it, i.e.
+                // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
-                    is_addr_known_to_be_different_by_word(
+                    are_addrs_known_to_be_different_by_word(
                         addr,
                         other_addr,
-                        &memory_addresses,
+                        &memory_address_facts,
                         &RangeConstraintsForBoleans,
                     )
                 });
@@ -131,7 +137,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     (to_remove, new_constraints)
 }
 
-/// Converts from SymbolicConstraint to QuadraticSymbolicExpressio and
+/// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
 /// simplifies constraints by introducing boolean variables.
 fn symbolic_to_simplified_contraints<T: FieldElement>(
     constraints: &[SymbolicConstraint<T>],
@@ -179,9 +185,10 @@ impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsF
     }
 }
 
-/// Takes at iterator over all expressions used as addresses and tries to
+/// Takes an iterator over all expressions used as addresses and tries to
 /// compile facts about them based on the constraints provided.
-/// The facts are just constraints that are related to the addresses.
+/// For each address `a`, the hash map contains values `v` such that `a = v`
+/// is true in the constraint system.
 fn compile_facts_about_addresses<T: FieldElement>(
     addresses: impl IntoIterator<Item = QuadraticSymbolicExpression<T, Variable>>,
     constraints: &[QuadraticSymbolicExpression<T, Variable>],
@@ -208,6 +215,8 @@ fn compile_facts_about_addresses<T: FieldElement>(
                 .referenced_unknown_variables()
                 .flat_map(|v| constraints_by_variable.get(v))
                 .flatten()
+                // Comparing by pointer is faster, we do not care about equal constraints that
+                // appear multiple times in `constraints`.
                 .unique_by(|constr| constr as *const _)
                 .flat_map(|constr| constr.try_solve_for_expr(&addr))
                 .collect_vec();
@@ -222,7 +231,7 @@ fn compile_facts_about_addresses<T: FieldElement>(
 
 /// Returns true if we can prove that for two addresses `a` and `b`,
 /// `a - b` never falls into the range `0..=3`.
-fn is_addr_known_to_be_different_by_word<T: FieldElement>(
+fn are_addrs_known_to_be_different_by_word<T: FieldElement>(
     a: &QuadraticSymbolicExpression<T, Variable>,
     b: &QuadraticSymbolicExpression<T, Variable>,
     memory_addresses: &HashMap<
@@ -242,17 +251,17 @@ fn is_addr_known_to_be_different_by_word<T: FieldElement>(
 }
 
 /// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
-fn is_value_known_to_be_different_by_word<T: FieldElement>(
-    a: &QuadraticSymbolicExpression<T, Variable>,
-    b: &QuadraticSymbolicExpression<T, Variable>,
-    range_constraints: &impl RangeConstraintProvider<T, Variable>,
+fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
+    a: &QuadraticSymbolicExpression<T, V>,
+    b: &QuadraticSymbolicExpression<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     let diff = a - b;
     let variables = diff.referenced_unknown_variables().cloned().collect_vec();
     if !count_possible_assignments(variables.iter().cloned(), range_constraints)
         .is_some_and(|count| count < 20)
     {
-        // If there are too many possible assignments, we cannot prove anything.
+        // If there are too many possible assignments, we do not try to perform exhaustive search.
         return false;
     }
     let disallowed_range = RangeConstraint::from_range(-T::from(3), T::from(3));
@@ -291,4 +300,27 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     }
 
     algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use powdr_constraint_solver::{
+        quadratic_symbolic_expression::NoRangeConstraints, test_utils::constant,
+    };
+
+    #[test]
+    fn difference_for_constants() {
+        assert!(!is_value_known_to_be_different_by_word(
+            &constant(7),
+            &constant(5),
+            &NoRangeConstraints
+        ));
+        assert!(!is_value_known_to_be_different_by_word(
+            &constant(5),
+            &constant(7),
+            &NoRangeConstraints
+        ));
+    }
 }

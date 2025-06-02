@@ -44,6 +44,7 @@ fn test_optimize() {
         machine.bus_interactions.len(),
         machine.constraints.len()
     );
+
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     assert_eq!(
