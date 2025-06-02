@@ -16,7 +16,7 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_ast::analyzed::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperation, PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicConstraint;
@@ -418,6 +418,22 @@ fn join_constraints<P: IntoOpenVm>(mut constraints: Vec<SymbolicConstraint<P>>) 
     result
 }
 
+fn has_same_structure<T: PrimeField32>(expr1: &AlgebraicExpression<T>, expr2: &AlgebraicExpression<T>) -> bool {
+    match (expr1, expr2) {
+        (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation{ left: left1, op: op1, right: right1 }),
+         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation{ left: left2, op: op2, right: right2 })) => {
+            op1 == op2 && has_same_structure(left1, left2) && has_same_structure(right1, right2)
+        }
+        (AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op1, expr: expr1 }),
+         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op2, expr: expr2 })) => {
+            op1 == op2 && has_same_structure(expr1, expr2)
+        }
+        (AlgebraicExpression::Reference(_), AlgebraicExpression::Reference(_)) => true,
+        (AlgebraicExpression::Number(n1), AlgebraicExpression::Number(n2)) => n1 == n2,
+        _ => false
+    }
+}
+
 
 // perform air stacking of multiple precompiles into stacked precompiles.
 fn air_stacking<P: IntoOpenVm>(
@@ -525,6 +541,7 @@ fn air_stacking<P: IntoOpenVm>(
 
         println!("before joining constraints: {}", stacked_constraints.len());
         let mut stacked_constraints = join_constraints(stacked_constraints);
+        stacked_constraints.sort();
         println!("after joining constraints: {}", stacked_constraints.len());
 
         // enforce only one is_valid is active
@@ -534,7 +551,8 @@ fn air_stacking<P: IntoOpenVm>(
         stacked_constraints.push(one_hot_is_valid.into());
 
         println!("interaction count before: {}", interactions_by_machine.iter().flatten().count());
-        let stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
+        let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
+        stacked_interactions.sort();
         // let stacked_interactions = merge_bus_interactions(interactions_by_machine);
 
         let machine = SymbolicMachine {
