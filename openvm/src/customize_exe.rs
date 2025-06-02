@@ -418,16 +418,19 @@ fn add_extra_targets<F: PrimeField32>(
     mut labels: BTreeSet<u32>,
 ) -> BTreeSet<u32> {
     let branch_opcodes_bigint = branch_opcodes_bigint_set();
-    for (i, instr) in program.instructions_and_debug_infos.iter().enumerate() {
-        let instr = instr.as_ref().unwrap().0.clone();
-        // Program address are given as multiples of 4 bytes.
-        let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
-        let op = instr.opcode.as_usize();
-        if branch_opcodes_bigint.contains(&op) {
-            let target: u32 = adjusted_pc + instr.c.as_canonical_u32();
-            labels.insert(target);
-        }
-    }
+    let new_labels = program
+        .instructions_and_debug_infos
+        .iter()
+        .enumerate()
+        .filter_map(|(i, instr)| {
+            let instr = instr.as_ref().unwrap().0.clone();
+            let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
+            let op = instr.opcode.as_usize();
+            branch_opcodes_bigint
+                .contains(&op)
+                .then_some(adjusted_pc + instr.c.as_canonical_u32())
+        });
+    labels.extend(new_labels);
 
     labels
 }
