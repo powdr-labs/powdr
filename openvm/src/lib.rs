@@ -685,24 +685,28 @@ mod tests {
         mock: bool,
         recursion: bool,
         stdin: StdIn,
+        pgo: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program =
-            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).unwrap();
+        let pgo_data = pgo.then(|| {
+            let guest_opts = GuestOptions::default();
+            get_pc_idx_count(guest, guest_opts, stdin.clone())
+        });
+        let program = compile_guest(guest, GuestOptions::default(), config, pgo_data).unwrap();
         prove(&program, mock, recursion, stdin)
     }
 
-    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn) {
-        let result = compile_and_prove(guest, config, false, false, stdin);
+    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn, pgo: bool) {
+        let result = compile_and_prove(guest, config, false, false, stdin, pgo);
         assert!(result.is_ok());
     }
 
-    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn) {
-        let result = compile_and_prove(guest, config, true, false, stdin);
+    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn, pgo: bool) {
+        let result = compile_and_prove(guest, config, true, false, stdin, pgo);
         assert!(result.is_ok());
     }
 
-    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn) {
-        let result = compile_and_prove(guest, config, false, true, stdin);
+    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo: bool) {
+        let result = compile_and_prove(guest, config, false, true, stdin, pgo);
         assert!(result.is_ok());
     }
 
@@ -716,6 +720,7 @@ mod tests {
     const GUEST_KECCAK_ITER: u32 = 1000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
     const GUEST_KECCAK_APC: u64 = 1;
+    const GUEST_KECCAK_APC_PGO: u64 = 2;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
@@ -723,7 +728,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_simple(GUEST, config, stdin);
+        prove_simple(GUEST, config, stdin, false);
     }
 
     #[test]
@@ -731,7 +736,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_mock(GUEST, config, stdin);
+        prove_mock(GUEST, config, stdin, false);
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
@@ -742,7 +747,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST, config, stdin);
+        prove_mock(GUEST, config, stdin, false);
     }
 
     // #[test]
@@ -760,7 +765,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin);
+        prove_simple(GUEST_KECCAK, config, stdin, false);
     }
 
     #[test]
@@ -769,7 +774,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin);
+        prove_simple(GUEST_KECCAK, config, stdin, false);
     }
 
     #[test]
@@ -778,7 +783,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin);
+        prove_mock(GUEST_KECCAK, config, stdin, false);
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
@@ -789,7 +794,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST_KECCAK, config, stdin);
+        prove_mock(GUEST_KECCAK, config, stdin, false);
     }
 
     #[test]
@@ -798,7 +803,27 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin);
+        prove_mock(GUEST_KECCAK, config, stdin, false);
+    }
+
+    // Create 2 APC for 10 Keccak iterations to test different PGO modes
+    #[test]
+    fn keccak_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+        // Config
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL); // 10
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP); // 2, 0
+
+        let start = Instant::now();
+        prove_simple(GUEST_KECCAK, config.clone(), stdin.clone(), true);
+        let elapsed = start.elapsed();
+        tracing::info!("Proving with PGO took {:?}", elapsed);
+
+        let start = Instant::now();
+        prove_simple(GUEST_KECCAK, config, stdin, false);
+        let elapsed = start.elapsed();
+        tracing::info!("Proving without PGO took {:?}", elapsed);
     }
 
     // #[test]
@@ -812,29 +837,20 @@ mod tests {
     // }
 
     // The following are compilation tests only
-    fn test_keccak_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
-            .unwrap()
-            .powdr_airs_metrics();
-        assert_eq!(machines.len(), 1);
-        let m = &machines[0];
-        assert_eq!(m.width, 3195);
-        assert_eq!(m.constraints, 160);
-        assert_eq!(m.bus_interactions, 2861);
-    }
-
     #[test]
     fn guest_machine() {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::default())
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
+        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin);
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, Some(pgo_data))
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 70);
-        assert_eq!(m.constraints, 37);
-        assert_eq!(m.bus_interactions, 55);
+        assert_eq!(m.width, 53);
+        assert_eq!(m.constraints, 21);
+        assert_eq!(m.bus_interactions, 39);
     }
 
     #[test]
@@ -852,41 +868,15 @@ mod tests {
     }
 
     #[test]
-    fn guest_machine_pgo() {
-        // Input via StdIn
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ITER);
-
-        let guest_opts = GuestOptions::default();
-        // Guest machine should have more optimized results with pgo
-        // because we didn't accelerate the "costliest block" in the non-pgo version.
-        let pc_idx_count = get_pc_idx_count(GUEST, guest_opts.clone(), stdin);
-        // We don't skip any sorted basic block here to accelerate the "costliest" block.
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let pgo_config = PgoConfig::Cell(pc_idx_count);
-        let machines = compile_guest(GUEST, guest_opts, config, pgo_config)
+    fn keccak_machine() {
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, None)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 21);
-        assert_eq!(m.bus_interactions, 39);
-    }
-
-    #[test]
-    fn keccak_machine() {
-        test_keccak_machine(PgoConfig::default());
-    }
-
-    #[test]
-    fn keccak_machine_pgo() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER);
-        // Keccak machine should have the same results with pgo
-        // because we already accelerate the "costliest" block with the non-pgo version.
-        let pc_idx_count = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
-        let pgo_config = PgoConfig::Cell(pc_idx_count);
-        test_keccak_machine(pgo_config);
+        assert_eq!(m.width, 3195);
+        assert_eq!(m.constraints, 160);
+        assert_eq!(m.bus_interactions, 2861);
     }
 }
