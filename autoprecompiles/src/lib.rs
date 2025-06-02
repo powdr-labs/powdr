@@ -424,12 +424,8 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
                 // already handled
             }
             _ => {
-                // We check the value of the multiplicity when all variables are set to zero
-                let mut zeroed_expr = b.mult.clone();
-                powdr::make_refs_zero(&mut zeroed_expr);
-                let zeroed_expr = simplify_expression(zeroed_expr);
-                if !powdr::is_zero(&zeroed_expr) {
-                    // if it's not zero, then we guard the multiplicity by `is_valid`
+                if !satisfies_zero_witness(&b.mult) {
+                    // guard the multiplicity by `is_valid`
                     b.mult = is_valid.clone() * b.mult.clone();
                     // TODO this would not have to be cloned if we had *=
                     //c.expr *= guard.clone();
