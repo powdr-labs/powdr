@@ -15,13 +15,13 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement, OpenVmField};
+use powdr_number::{BabyBearField, FieldElement, OpenVmField as OpenVmFieldTrait};
 
-pub(crate) type F<P> = <P as OpenVmField>::OpenVmField;
+pub(crate) type OvmField<PowdrField> = <PowdrField as OpenVmFieldTrait>::Field;
 
-pub fn algebraic_to_symbolic<P: OpenVmField>(
+pub fn algebraic_to_symbolic<P: OpenVmFieldTrait>(
     expr: &AlgebraicExpression<P>,
-) -> SymbolicExpression<F<P>> {
+) -> SymbolicExpression<OvmField<P>> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
@@ -49,7 +49,7 @@ pub fn algebraic_to_symbolic<P: OpenVmField>(
                 };
 
                 if exp == P::ZERO {
-                    SymbolicExpression::Constant(F::<P>::ONE)
+                    SymbolicExpression::Constant(OvmField::<P>::ONE)
                 } else {
                     let mut result = base.clone();
                     let mut remaining = exp - P::ONE;

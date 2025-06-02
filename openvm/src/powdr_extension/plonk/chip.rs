@@ -8,7 +8,7 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
-use crate::utils::F;
+use crate::utils::OvmField;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -39,7 +39,7 @@ use super::air::PlonkAir;
 pub struct PlonkChip<P: OpenVmField> {
     name: String,
     opcode: PowdrOpcode,
-    air: Arc<PlonkAir<F<P>>>,
+    air: Arc<PlonkAir<OvmField<P>>>,
     executor: PowdrExecutor<P>,
     machine: SymbolicMachine<P>,
 }
@@ -48,7 +48,7 @@ impl<P: OpenVmField> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
-        memory: Arc<Mutex<OfflineMemory<F<P>>>>,
+        memory: Arc<Mutex<OfflineMemory<OvmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -82,11 +82,11 @@ impl<P: OpenVmField> PlonkChip<P> {
     }
 }
 
-impl<P: OpenVmField> InstructionExecutor<F<P>> for PlonkChip<P> {
+impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for PlonkChip<P> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<F<P>>,
-        instruction: &Instruction<F<P>>,
+        memory: &mut MemoryController<OvmField<P>>,
+        instruction: &Instruction<OvmField<P>>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -115,7 +115,7 @@ impl<P: OpenVmField> ChipUsageGetter for PlonkChip<P> {
     }
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField<OpenVmField = Val<SC>>> Chip<SC> for PlonkChip<P>
+impl<SC: StarkGenericConfig, P: OpenVmField<Field = Val<SC>>> Chip<SC> for PlonkChip<P>
 where
     Val<SC>: PrimeField32,
 {

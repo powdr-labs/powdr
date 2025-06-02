@@ -218,9 +218,9 @@ pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
 
 #[cfg(feature = "openvm")]
 pub trait OpenVmField: FieldElement {
-    type OpenVmField: openvm_stark_backend::p3_field::PrimeField32;
+    type Field: openvm_stark_backend::p3_field::PrimeField32;
 
-    fn into_openvm_field(self) -> Self::OpenVmField;
+    fn into_openvm_field(self) -> Self::Field;
 
-    fn from_openvm_field(field: Self::OpenVmField) -> Self;
+    fn from_openvm_field(field: Self::Field) -> Self;
 }

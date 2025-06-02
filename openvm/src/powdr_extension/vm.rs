@@ -29,15 +29,14 @@ use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::OpenVmField;
 use serde::{Deserialize, Serialize};
 
-use crate::PrecompileImplementation;
-use crate::F;
+use crate::{OvmField, PrecompileImplementation};
 
 use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(bound = "P::OpenVmField: Field")]
+#[serde(bound = "P::Field: Field")]
 pub struct PowdrExtension<P: OpenVmField> {
     pub precompiles: Vec<PowdrPrecompile<P>>,
     pub base_config: SdkVmConfig,
@@ -68,12 +67,12 @@ impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "P::OpenVmField: Field")]
+#[serde(bound = "P::Field: Field")]
 pub struct PowdrPrecompile<P: OpenVmField> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub machine: SymbolicMachine<P>,
-    pub original_instructions: Vec<OriginalInstruction<F<P>>>,
+    pub original_instructions: Vec<OriginalInstruction<OvmField<P>>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: Column,
 }
@@ -83,7 +82,7 @@ impl<P: OpenVmField> PowdrPrecompile<P> {
         name: String,
         opcode: PowdrOpcode,
         machine: SymbolicMachine<P>,
-        original_instructions: Vec<OriginalInstruction<F<P>>>,
+        original_instructions: Vec<OriginalInstruction<OvmField<P>>>,
         original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
     ) -> Self {
@@ -119,7 +118,7 @@ pub enum PowdrExecutor<P: OpenVmField> {
     Plonk(PlonkChip<P>),
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField<OpenVmField = Val<SC>>> Chip<SC> for PowdrExecutor<P>
+impl<SC: StarkGenericConfig, P: OpenVmField<Field = Val<SC>>> Chip<SC> for PowdrExecutor<P>
 where
     Val<SC>: PrimeField32,
 {
@@ -138,11 +137,11 @@ where
     }
 }
 
-impl<P: OpenVmField> InstructionExecutor<F<P>> for PowdrExecutor<P> {
+impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for PowdrExecutor<P> {
     fn execute(
         &mut self,
-        memory: &mut openvm_circuit::system::memory::MemoryController<F<P>>,
-        instruction: &Instruction<F<P>>,
+        memory: &mut openvm_circuit::system::memory::MemoryController<OvmField<P>>,
+        instruction: &Instruction<OvmField<P>>,
         from_state: openvm_circuit::arch::ExecutionState<u32>,
     ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
         match self {
@@ -165,14 +164,14 @@ pub enum PowdrPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl<P: OpenVmField> VmExtension<F<P>> for PowdrExtension<P> {
+impl<P: OpenVmField> VmExtension<OvmField<P>> for PowdrExtension<P> {
     type Executor = PowdrExecutor<P>;
 
-    type Periphery = PowdrPeriphery<F<P>>;
+    type Periphery = PowdrPeriphery<OvmField<P>>;
 
     fn build(
         &self,
-        builder: &mut openvm_circuit::arch::VmInventoryBuilder<F<P>>,
+        builder: &mut openvm_circuit::arch::VmInventoryBuilder<OvmField<P>>,
     ) -> Result<VmInventory<Self::Executor, Self::Periphery>, VmInventoryError> {
         let mut inventory = VmInventory::new();
 

@@ -21,7 +21,7 @@ use std::{
 use utils::get_pil;
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
-use crate::utils::{symbolic_to_algebraic, F};
+use crate::utils::{symbolic_to_algebraic, OvmField};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
@@ -61,8 +61,8 @@ use tracing_subscriber::{
     Layer,
 };
 
-type SC = BabyBearPoseidon2Config;
-pub type P = powdr_number::BabyBearField;
+type BabyBearSC = BabyBearPoseidon2Config;
+pub type PowdrBB = powdr_number::BabyBearField;
 
 pub use bus_interaction_handler::{BusMap, BusType};
 pub use openvm_build::GuestOptions;
@@ -83,7 +83,7 @@ mod plonk;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "P::OpenVmField: Field")]
+#[serde(bound = "P::Field: Field")]
 pub struct SpecializedConfig<P: OpenVmField> {
     sdk_config: SdkVmConfig,
     powdr: PowdrExtension<P>,
@@ -93,13 +93,12 @@ pub struct SpecializedConfig<P: OpenVmField> {
 #[derive(ChipUsageGetter, From, AnyEnum)]
 pub enum SpecializedExecutor<P: OpenVmField> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<F<P>>),
+    SdkExecutor(SdkVmConfigExecutor<OvmField<P>>),
     #[any_enum]
     PowdrExecutor(PowdrExecutor<P>),
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField<OpenVmField = Val<SC>>> Chip<SC>
-    for SpecializedExecutor<P>
+impl<SC: StarkGenericConfig, P: OpenVmField<Field = Val<SC>>> Chip<SC> for SpecializedExecutor<P>
 where
     Val<SC>: PrimeField32,
 {
@@ -118,11 +117,11 @@ where
     }
 }
 
-impl<P: OpenVmField> InstructionExecutor<F<P>> for SpecializedExecutor<P> {
+impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for SpecializedExecutor<P> {
     fn execute(
         &mut self,
-        memory: &mut openvm_circuit::system::memory::MemoryController<F<P>>,
-        instruction: &openvm_instructions::instruction::Instruction<F<P>>,
+        memory: &mut openvm_circuit::system::memory::MemoryController<OvmField<P>>,
+        instruction: &openvm_instructions::instruction::Instruction<OvmField<P>>,
         from_state: openvm_circuit::arch::ExecutionState<u32>,
     ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
         match self {
@@ -151,21 +150,21 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl<P: OpenVmField> VmConfig<F<P>> for SpecializedConfig<P> {
+impl<P: OpenVmField> VmConfig<OvmField<P>> for SpecializedConfig<P> {
     type Executor = SpecializedExecutor<P>;
-    type Periphery = MyPeriphery<F<P>>;
+    type Periphery = MyPeriphery<OvmField<P>>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<F<P>>::system(&self.sdk_config)
+        VmConfig::<OvmField<P>>::system(&self.sdk_config)
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<F<P>>::system_mut(&mut self.sdk_config)
+        VmConfig::<OvmField<P>>::system_mut(&mut self.sdk_config)
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<VmChipComplex<F<P>, Self::Executor, Self::Periphery>, VmInventoryError> {
+    ) -> Result<VmChipComplex<OvmField<P>, Self::Executor, Self::Periphery>, VmInventoryError> {
         let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
@@ -349,15 +348,15 @@ pub fn compile_exe(
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "P::OpenVmField: Field")]
+#[serde(bound = "P::Field: Field")]
 pub struct CompiledProgram<P: OpenVmField> {
-    pub exe: VmExe<F<P>>,
+    pub exe: VmExe<OvmField<P>>,
     pub vm_config: SpecializedConfig<P>,
 }
 
 // the original openvm program and config without powdr extension
 pub struct OriginalCompiledProgram<P: OpenVmField> {
-    pub exe: VmExe<F<P>>,
+    pub exe: VmExe<OvmField<P>>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -368,7 +367,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram<P> {
+impl CompiledProgram<PowdrBB> {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
@@ -401,7 +400,7 @@ impl CompiledProgram<P> {
 }
 
 pub fn execute(
-    program: CompiledProgram<P>,
+    program: CompiledProgram<PowdrBB>,
     inputs: StdIn,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
@@ -470,7 +469,7 @@ pub fn pgo(
 }
 
 pub fn prove(
-    program: &CompiledProgram<P>,
+    program: &CompiledProgram<PowdrBB>,
     mock: bool,
     recursion: bool,
     inputs: StdIn,
@@ -564,13 +563,13 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn instructions_to_airs<P: OpenVmField, VC: VmConfig<F<P>>>(
-    exe: VmExe<F<P>>,
+pub fn instructions_to_airs<P: OpenVmField, VC: VmConfig<OvmField<P>>>(
+    exe: VmExe<OvmField<P>>,
     vm_config: VC,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
-    VC::Executor: Chip<SC>,
-    VC::Periphery: Chip<SC>,
+    VC::Executor: Chip<BabyBearSC>,
+    VC::Periphery: Chip<BabyBearSC>,
 {
     let mut chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
     exe.program
@@ -618,8 +617,8 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     max_width: usize,
     bus_map: &BusMap,
 ) where
-    VC::Executor: Chip<SC>,
-    VC::Periphery: Chip<SC>,
+    VC::Executor: Chip<BabyBearSC>,
+    VC::Periphery: Chip<BabyBearSC>,
 {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
 
@@ -650,7 +649,7 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     println!("Exported PIL to {path}");
 }
 
-fn get_columns(air: Arc<dyn AnyRap<SC>>) -> Vec<String> {
+fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
     let width = air.width();
     air.columns()
         .inspect(|columns| {
@@ -659,7 +658,7 @@ fn get_columns(air: Arc<dyn AnyRap<SC>>) -> Vec<String> {
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
 }
 
-fn get_constraints(air: Arc<dyn AnyRap<SC>>) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
+fn get_constraints(air: Arc<dyn AnyRap<BabyBearSC>>) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);
