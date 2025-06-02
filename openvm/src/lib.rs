@@ -686,7 +686,6 @@ mod tests {
         recursion: bool,
         stdin: StdIn,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let config = PowdrConfig::new(apc as u64, skip as u64);
         let program =
             compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).unwrap();
         prove(&program, mock, recursion, stdin)
@@ -709,9 +708,9 @@ mod tests {
 
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
-    const GUEST_APC: usize = 1;
-    const GUEST_SKIP: usize = 64;
-    const GUEST_SKIP_PGO: usize = 0;
+    const GUEST_APC: u64 = 1;
+    const GUEST_SKIP: u64 = 64;
+    const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
     const GUEST_KECCAK_ITER: u32 = 1000;
@@ -814,7 +813,7 @@ mod tests {
 
     // The following are compilation tests only
     fn test_keccak_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_KECCAK_APC as u64, GUEST_KECCAK_SKIP as u64);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
@@ -827,7 +826,7 @@ mod tests {
 
     #[test]
     fn guest_machine() {
-        let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP as u64);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
         let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::default())
             .unwrap()
             .powdr_airs_metrics();
@@ -842,7 +841,7 @@ mod tests {
     fn guest_machine_plonk() {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, None)
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::default())
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -863,7 +862,7 @@ mod tests {
         // because we didn't accelerate the "costliest block" in the non-pgo version.
         let pc_idx_count = get_pc_idx_count(GUEST, guest_opts.clone(), stdin);
         // We don't skip any sorted basic block here to accelerate the "costliest" block.
-        let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP_PGO as u64);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_config = PgoConfig::Cell(pc_idx_count);
         let machines = compile_guest(GUEST, guest_opts, config, pgo_config)
             .unwrap()
