@@ -325,6 +325,9 @@ fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> boo
     powdr::is_zero(&zeroed_expr)
 }
 
+/// Adds `is_valid` guards to constraints without increasing its degree.
+/// Assumption:
+/// - `expr` is already simplified, i.e., expressions like (3 + 4) and (x * 1) do not appear.
 fn add_guards_constraint<T: FieldElement>(
     expr: AlgebraicExpression<T>,
     is_valid: &AlgebraicExpression<T>,
@@ -340,7 +343,8 @@ fn add_guards_constraint<T: FieldElement>(
                 AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
                     Box::new(add_guards_constraint(*right, is_valid))
                 }
-                _ => right,
+                AlgebraicBinaryOperator::Mul => right,
+                AlgebraicBinaryOperator::Pow => unimplemented!(),
             };
             AlgebraicExpression::new_binary(left, op, *right)
         }
