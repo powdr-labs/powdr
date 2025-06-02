@@ -37,7 +37,7 @@ pub struct SymbolicInstructionStatement<T> {
     pub args: Vec<T>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -277,7 +277,7 @@ fn add_guards_constraint<T: FieldElement>(
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
 fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let pre_degree = machine.degree();
+    // let pre_degree = machine.degree();
 
     let max_id = machine
         .unique_columns()

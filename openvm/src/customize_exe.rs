@@ -16,6 +16,9 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
+use powdr_autoprecompiles::SymbolicConstraint;
+use powdr_expression::AlgebraicBinaryOperation;
+use powdr_expression::AlgebraicBinaryOperator;
 use powdr_expression::{AlgebraicExpression, visitors::ExpressionVisitable};
 use powdr_autoprecompiles::legacy_expression::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_autoprecompiles::powdr::UniqueColumns;
@@ -386,13 +389,48 @@ fn merge_bus_interactions<P: IntoOpenVm>(interactions_by_machine: Vec<Vec<Symbol
     }).collect_vec()
 }
 
+fn canonicalize_expression<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P, AlgebraicReference>) {
+    expr.pre_visit_expressions_mut(&mut |expr| {
+        if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) = expr {
+            if *op == AlgebraicBinaryOperator::Mul || *op == AlgebraicBinaryOperator::Add && left > right {
+                std::mem::swap(left, right);
+            }
+        }
+    });
+}
+
+/// assumes ALL constraints are of the form `Y * is_valid_expr`
+fn join_constraints<P: IntoOpenVm>(mut constraints: Vec<SymbolicConstraint<P>>) -> Vec<SymbolicConstraint<P>> {
+    constraints.sort();
+    let mut result: Vec<SymbolicConstraint<P>> = vec![];
+    'outer: for c1 in constraints {
+        for c2 in result.iter_mut() {
+            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {left: l1, op: AlgebraicBinaryOperator::Mul, right: is_valid1}) = &c1.expr {
+                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {left: l2, op: AlgebraicBinaryOperator::Mul, right: is_valid2}) = &mut c2.expr {
+                    if l1 == l2 {
+                        *is_valid2 = Box::new(*is_valid1.clone() + *is_valid2.clone());
+                        continue 'outer;
+                    }
+                }
+            }
+        }
+        result.push(c1);
+    }
+    result
+}
+
+
 // perform air stacking of multiple precompiles into stacked precompiles.
 fn air_stacking<P: IntoOpenVm>(
     mut extensions: Vec<PowdrPrecompile<P>>,
 ) -> Vec<PowdrStackedPrecompile<P>> {
     assert!(!extensions.is_empty());
 
-    extensions.iter_mut().for_each(compact_ids);
+    extensions.iter_mut().for_each(|ext| {
+        ext.machine.constraints.sort();
+        ext.machine.constraints.iter_mut().for_each(|c| canonicalize_expression(&mut c.expr));
+        compact_ids(ext)
+    });
 
     // create apc groups by number of columns
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<P>>> = Default::default();
@@ -486,6 +524,10 @@ fn air_stacking<P: IntoOpenVm>(
             interactions_by_machine.push(remapped.bus_interactions);
         }
 
+        println!("before joining constraints: {}", stacked_constraints.len());
+        let mut stacked_constraints = join_constraints(stacked_constraints);
+        println!("after joining constraints: {}", stacked_constraints.len());
+
         // enforce only one is_valid is active
         let one = AlgebraicExpression::Number(P::ONE);
         let one_hot_is_valid = (one - is_valid_sum.clone().unwrap()) * is_valid_sum.unwrap();
@@ -493,8 +535,8 @@ fn air_stacking<P: IntoOpenVm>(
         stacked_constraints.push(one_hot_is_valid.into());
 
         println!("interaction count before: {}", interactions_by_machine.iter().flatten().count());
-        // let stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
-        let stacked_interactions = merge_bus_interactions(interactions_by_machine);
+        let stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
+        // let stacked_interactions = merge_bus_interactions(interactions_by_machine);
 
         let machine = SymbolicMachine {
             constraints: stacked_constraints,
