@@ -9,29 +9,21 @@ use openvm_stark_backend::{
         SymbolicConstraints,
     },
     interaction::Interaction,
-    p3_field::PrimeField32,
+    p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement, LargeInt, OpenVmField};
+use powdr_number::{BabyBearField, FieldElement, OpenVmField};
 
 pub(crate) type F<P> = <P as OpenVmField>::OpenVmField;
-
-pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
-    f.as_canonical_u32().into()
-}
-
-pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
-}
 
 pub fn algebraic_to_symbolic<P: OpenVmField>(
     expr: &AlgebraicExpression<P>,
 ) -> SymbolicExpression<F<P>> {
     match expr {
-        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(to_ovm_field(*n)),
+        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
                 x: Arc::new(algebraic_to_symbolic(&binary.left)),
@@ -57,7 +49,7 @@ pub fn algebraic_to_symbolic<P: OpenVmField>(
                 };
 
                 if exp == P::ZERO {
-                    SymbolicExpression::Constant(to_ovm_field(P::ONE))
+                    SymbolicExpression::Constant(F::<P>::ONE)
                 } else {
                     let mut result = base.clone();
                     let mut remaining = exp - P::ONE;

@@ -8,7 +8,6 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
-use crate::utils::to_ovm_field;
 use crate::utils::F;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
@@ -166,18 +165,18 @@ where
                     b: gate.b.clone(),
                     c: gate.c.clone(),
 
-                    q_bitwise: to_ovm_field(gate.q_bitwise),
-                    q_memory: to_ovm_field(gate.q_memory),
-                    q_execution: to_ovm_field(gate.q_execution),
-                    q_pc: to_ovm_field(gate.q_pc),
-                    q_range_tuple: to_ovm_field(gate.q_range_tuple),
-                    q_range_check: to_ovm_field(gate.q_range_check),
+                    q_bitwise: gate.q_bitwise.into_openvm_field(),
+                    q_memory: gate.q_memory.into_openvm_field(),
+                    q_execution: gate.q_execution.into_openvm_field(),
+                    q_pc: gate.q_pc.into_openvm_field(),
+                    q_range_tuple: gate.q_range_tuple.into_openvm_field(),
+                    q_range_check: gate.q_range_check.into_openvm_field(),
 
-                    q_l: to_ovm_field(gate.q_l),
-                    q_r: to_ovm_field(gate.q_r),
-                    q_o: to_ovm_field(gate.q_o),
-                    q_mul: to_ovm_field(gate.q_mul),
-                    q_const: to_ovm_field(gate.q_const),
+                    q_l: gate.q_l.into_openvm_field(),
+                    q_r: gate.q_r.into_openvm_field(),
+                    q_o: gate.q_o.into_openvm_field(),
+                    q_mul: gate.q_mul.into_openvm_field(),
+                    q_const: gate.q_const.into_openvm_field(),
                 };
 
                 // TODO: These should be pre-processed columns (for soundness and efficiency).

@@ -21,7 +21,6 @@ use powdr_number::{FieldElement, OpenVmField};
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::utils::to_powdr_field;
 use crate::F;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
@@ -344,8 +343,8 @@ pub fn collect_basic_blocks<F: PrimeField32>(
 // 5: bitwise xor ->
 //    [a, b, 0, 0] byte range checks for a and b
 //    [a, b, c, 1] c = xor(a, b)
-fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
-    block: &BasicBlock<F>,
+fn generate_autoprecompile<P: OpenVmField>(
+    block: &BasicBlock<F<P>>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
@@ -372,7 +371,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
                     instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
                 ]
                 .iter()
-                .map(|f| to_powdr_field::<F, P>(*f))
+                .map(|f| P::from_openvm_field(*f))
                 .collect(),
             };
 
