@@ -475,11 +475,14 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         for index in 0..components.len() {
             let (candidate_coeff, candidate) = &components[index];
             let candidate_coeff = *candidate_coeff;
+            // Get all other components with non-zero coefficients.
             let rest = components
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| *i != index && components[*i].0 != 0.into())
-                .map(|(_, (coeff, expr))| (*coeff / candidate_coeff, expr.clone()))
+                .filter(|(i, _)| *i != index)
+                .map(|(_, component)| component)
+                .filter(|(coeff, _)| *coeff != 0.into())
+                .map(|(coeff, expr)| (*coeff / candidate_coeff, expr.clone()))
                 .collect_vec();
             if rest.is_empty() {
                 // We are done anyway.
@@ -487,57 +490,70 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             }
             // The original constraint is equivalent to `candidate + rest + constant / candidate_coeff = 0`.
             // Now we try to extract the smallest coefficient in rest.
+            // Maybe something like smallest common divisor would be better, but this is
+            // good enough for now.
             let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
 
             let candidate_rc = candidate.range_constraint(range_constraints);
-            if !candidate_rc.is_disjoint(
-                &candidate_rc.combine_sum(&RangeConstraint::from_value(smallest_coeff)),
-            ) {
+            if candidate_rc.range_width() > smallest_coeff.to_integer() {
+                continue;
+            }
+            // Now compute the range constraint of `rest / smallest_coeff`.
+            let remaining_rc = rest
+                .into_iter()
+                .map(|(coeff, expr)| expr * &SymbolicExpression::from(coeff / smallest_coeff))
+                .sum::<QuadraticSymbolicExpression<_, _>>()
+                .range_constraint(range_constraints);
+            if remaining_rc.range_width() >= RangeConstraint::<T>::default().range_width() {
                 continue;
             }
 
-            // If `rest` change by one, the result will "step over" the range constraint of
-            // the candidate. Now what remains is to check that the others do not wrap.
+            // At this point, we have a constraint of the form
+            // `candidate + smallest_coeff * y + constant / candidate_coeff = 0`,
+            // let us write it as `x + k * y + c = 0`.
+            // Furthermore,
+            //   `RC[x] = [s..t]` where `t - s <= k` and
+            //   `RC[y] = [u..v]` where `(v - u) * k` (integer multiplication) is less than the field modulus.
+            //
+            // Let us start with the easy case `s = 0`, `u = 0` and `0 <= c < k`.
 
-            let rest: QuadraticSymbolicExpression<_, _> = rest
-                .into_iter()
-                .map(|(coeff, expr)| expr * &SymbolicExpression::from(coeff / smallest_coeff))
-                .sum();
-            // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`.
+            // Assume `0 <= x < k`, `0 <= y < v` and `v * k` (integer multiplication) is less than the field modulus.
+            // Furthermore, `0 <= c < k`.
+            // Then `x = k * y + c` is equivalent to `x = c` and y = 0`.
+            // The direction `<=` is obvious, so let's focus on `=>` and assume `y != 0`.
+            // This means `x < k + c <= k * y + c` and the multiplication does not wrap
+            // because `k * y + c < k * (y + 1) <= k * v` which is less than the field modulus.
+            // So since `x < k * y + c`, we must have `y = 0`. From this, `x = c` follows
+            // directly.
 
-            let rest_rc = rest
-                .range_constraint(range_constraints)
-                .multiple(smallest_coeff)
-                .combine_sum(&RangeConstraint::from_value(constant / candidate_coeff));
+            // Now we show how to transform the generic case into the specific.
+            // `x + k * y + c = 0`
+            // `(x - s) + k * (y - u) + (c + s + k * u) = 0`
 
-            if !rest_rc.is_unconstrained() {
-                // `candidate` is independent from `rest`, in the sense that for any value
-                // of `rest` (inside its range constraints), the value for `candidate` is the same.
-                // But there still is an offset we have to compute, which is the remainder
-                // of `constant`.
-                // `candidate + smallest_coeff * [a..b] + constant / candidate_coeff = 0`
-                // i.e. we can split off `candidate + (constant / candidate_coeff) % smallest_coeff`.
+            // For `x = k * y + c`, we need to find `r` such that we have
+            // `x = k * (y - r) + (c + k * r)`, such that `c + k * r` is in the range of `RC[x]`
+            // and `r` is in the range of `RC[y]`. The problem is that we could try the whole field
+            // since both expressions are allowed to wrap.
 
-                let scaled_constant = constant / candidate_coeff;
-                let (scaled_constant, scaled_constant_is_negative) =
-                    if scaled_constant.is_in_lower_half() {
-                        (scaled_constant, false)
-                    } else {
-                        (-scaled_constant, true)
-                    };
-                let candidate_constant = scaled_constant.to_integer().try_into_u64()?
-                    % smallest_coeff.to_integer().try_into_u64()?;
-                let candidate_constant = if scaled_constant_is_negative {
-                    -T::from(candidate_constant)
+            let scaled_constant = constant / candidate_coeff;
+            let (scaled_constant, scaled_constant_is_negative) =
+                if scaled_constant.is_in_lower_half() {
+                    (scaled_constant, false)
                 } else {
-                    T::from(candidate_constant)
+                    (-scaled_constant, true)
                 };
-                parts.push(candidate + &QuadraticSymbolicExpression::from(candidate_constant));
-                components[index] = (0.into(), T::from(0).into());
+            let candidate_constant = scaled_constant.to_integer().try_into_u64()?
+                % smallest_coeff.to_integer().try_into_u64()?;
+            let candidate_constant = if scaled_constant_is_negative {
+                -T::from(candidate_constant)
+            } else {
+                T::from(candidate_constant)
+            };
+            parts.push(candidate + &QuadraticSymbolicExpression::from(candidate_constant));
+            components[index] = (0.into(), T::from(0).into());
 
-                // But now we have to modify the constant in the remaining constraint.
-                constant -= candidate_constant * candidate_coeff;
-            }
+            // But now we have to modify the constant in the remaining constraint.
+            constant -= candidate_constant * candidate_coeff;
         }
         if parts.is_empty() {
             None
