@@ -61,8 +61,8 @@ use tracing_subscriber::{
 };
 
 type SC = BabyBearPoseidon2Config;
-pub type F = BabyBear;
-pub type P = powdr_number::BabyBearField;
+pub type OpenVmField = BabyBear;
+pub type PowdrField = powdr_number::BabyBearField;
 
 pub use bus_interaction_handler::{BusMap, BusType};
 pub use openvm_build::GuestOptions;
@@ -159,7 +159,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-) -> Result<OriginalCompiledProgram<F>, Box<dyn std::error::Error>> {
+) -> Result<OriginalCompiledProgram<OpenVmField>, Box<dyn std::error::Error>> {
     // wrap the sdk config (with the standard extensions) in our custom config (with our custom extension)
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
@@ -260,7 +260,7 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_data: Option<HashMap<u32, u32>>,
-) -> Result<CompiledProgram<F, P>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<OpenVmField, PowdrField>, Box<dyn std::error::Error>> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
     compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_data)
 }
@@ -268,11 +268,11 @@ pub fn compile_guest(
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    exe: VmExe<F>,
+    exe: VmExe<OpenVmField>,
     sdk_vm_config: SdkVmConfig,
     config: PowdrConfig,
     pgo_data: Option<HashMap<u32, u32>>,
-) -> Result<CompiledProgram<F, P>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<OpenVmField, PowdrField>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -324,7 +324,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram<F, P> {
+impl CompiledProgram<OpenVmField, PowdrField> {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
@@ -357,7 +357,7 @@ impl CompiledProgram<F, P> {
 }
 
 pub fn execute(
-    program: CompiledProgram<F, P>,
+    program: CompiledProgram<OpenVmField, PowdrField>,
     inputs: StdIn,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
@@ -371,7 +371,7 @@ pub fn execute(
 }
 
 pub fn pgo(
-    program: OriginalCompiledProgram<F>,
+    program: OriginalCompiledProgram<OpenVmField>,
     inputs: StdIn,
 ) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>> {
     // in memory collector storage
@@ -426,7 +426,7 @@ pub fn pgo(
 }
 
 pub fn prove(
-    program: &CompiledProgram<F, P>,
+    program: &CompiledProgram<OpenVmField, PowdrField>,
     mock: bool,
     recursion: bool,
     inputs: StdIn,
@@ -520,8 +520,8 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn instructions_to_airs<VC: VmConfig<F>, P: FieldElement>(
-    exe: VmExe<F>,
+pub fn instructions_to_airs<VC: VmConfig<OpenVmField>, P: FieldElement>(
+    exe: VmExe<OpenVmField>,
     vm_config: VC,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
@@ -548,7 +548,7 @@ where
                     let powdr_exprs = constraints
                         .constraints
                         .iter()
-                        .map(|expr| symbolic_to_algebraic::<F, P>(expr, &columns).into())
+                        .map(|expr| symbolic_to_algebraic::<OpenVmField, P>(expr, &columns).into())
                         .collect::<Vec<_>>();
 
                     let powdr_bus_interactions = constraints
@@ -568,8 +568,12 @@ where
         .collect()
 }
 
-pub fn export_pil<VC: VmConfig<F>>(vm_config: VC, path: &str, max_width: usize, bus_map: &BusMap)
-where
+pub fn export_pil<VC: VmConfig<OpenVmField>>(
+    vm_config: VC,
+    path: &str,
+    max_width: usize,
+    bus_map: &BusMap,
+) where
     VC::Executor: Chip<SC>,
     VC::Periphery: Chip<SC>,
 {
@@ -611,7 +615,7 @@ fn get_columns(air: Arc<dyn AnyRap<SC>>) -> Vec<String> {
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
 }
 
-fn get_constraints(air: Arc<dyn AnyRap<SC>>) -> SymbolicConstraints<F> {
+fn get_constraints(air: Arc<dyn AnyRap<SC>>) -> SymbolicConstraints<OpenVmField> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);
