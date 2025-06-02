@@ -19,7 +19,7 @@ use powdr_pilopt::{
     simplify_expression,
 };
 
-use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// Simplifies the constraints as much as possible.
 /// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
@@ -30,7 +30,7 @@ use crate::{BusInteractionKind, SymbolicBusInteraction, SymbolicConstraint, Symb
 /// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
@@ -40,7 +40,8 @@ pub fn optimize_constraints<P: FieldElement>(
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After solver-based optimization", &constraint_system);
 
-    let constraint_system = remove_disconnected_columns(constraint_system, bus_interaction_handler);
+    let constraint_system =
+        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("After removing disconnected columns", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
@@ -51,6 +52,10 @@ pub fn optimize_constraints<P: FieldElement>(
 
     let constraint_system = remove_equal_constraints(constraint_system);
     stats_logger.log("After removing equal constraints", &constraint_system);
+
+    let constraint_system =
+        remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
+    stats_logger.log("After removing equal bus interactions", &constraint_system);
 
     constraint_system_to_symbolic_machine(constraint_system)
 }
@@ -93,10 +98,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn solver_based_optimization<T: FieldElement>(
     constraint_system: ConstraintSystem<T, Variable>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> ConstraintSystem<T, Variable> {
     let result = Solver::new(constraint_system.clone())
-        .with_bus_interaction_handler(Box::new(bus_interaction_handler))
+        .with_bus_interaction_handler(bus_interaction_handler)
         .solve()
         .map_err(|e| {
             panic!("Solver failed: {e:?}");
@@ -199,6 +204,28 @@ fn remove_equal_constraints<P: FieldElement>(
     symbolic_machine
 }
 
+fn remove_equal_bus_interactions<P: FieldElement>(
+    mut symbolic_machine: ConstraintSystem<P, Variable>,
+    bus_interaction_handler: impl IsBusStateful<P>,
+) -> ConstraintSystem<P, Variable> {
+    let mut seen = HashSet::new();
+    symbolic_machine.bus_interactions = symbolic_machine
+        .bus_interactions
+        .into_iter()
+        .filter_map(|interaction| {
+            // We only touch interactions with non-stateful buses.
+            if let Some(bus_id) = interaction.bus_id.try_to_number() {
+                if !bus_interaction_handler.is_stateful(bus_id) && !seen.insert(interaction.clone())
+                {
+                    return None;
+                }
+            }
+            Some(interaction)
+        })
+        .collect();
+    symbolic_machine
+}
+
 fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<QuadraticSymbolicExpression<P, Variable>> {
@@ -227,8 +254,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         .unwrap();
     SymbolicBusInteraction {
         id,
-        // TODO: The kind of SymbolicBusInteraction is ignored, this field should be removed
-        kind: BusInteractionKind::Send,
         args: bus_interaction
             .payload
             .into_iter()

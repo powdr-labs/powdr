@@ -14,19 +14,20 @@ use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, Polyn
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    BusInteractionKind, InstructionKind, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicInstructionStatement, SymbolicMachine,
+    InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
+    SymbolicMachine,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile, PowdrStackedPrecompile},
     utils::symbolic_to_algebraic,
 };
 
-const OPENVM_DEGREE_BOUND: usize = 5;
+pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
@@ -105,36 +106,18 @@ pub fn customize<F: PrimeField32>(
     tracing::info!("Got {} basic blocks", blocks.len());
 
     if let Some(pgo_program_idx_count) = pc_idx_count {
-        // sort the blocks by block_len * frequency (the count of start_idx in pgo_program_idx_count)
+        // first, drop any block whose start index cannot be found in pc_idx_count,
+        // because a basic block might not be executed at all.
+        // Also only keep basic blocks with more than one original instruction.
+        blocks.retain(|b| {
+            pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
+        });
+
+        // then, sort the blocks by block_len * execution frequency (the count of start_idx in pgo_program_idx_count)
         blocks.sort_by(|a, b| {
-            // not all start index of a basic block can be found in pc_idx_count, because a basic block might not be executed at all
-            // in this case, they will just default to 0
-            let a_count = pgo_program_idx_count
-                .get(&(a.start_idx as u32))
-                .unwrap_or(&0);
-            let b_count = pgo_program_idx_count
-                .get(&(b.start_idx as u32))
-                .unwrap_or(&0);
-
-            let a_opcode_no_apc = if !a.statements.is_empty() {
-                opcodes_no_apc.contains(&a.statements[0].opcode.as_usize())
-            } else {
-                true
-            };
-            let b_opcode_no_apc = if !b.statements.is_empty() {
-                opcodes_no_apc.contains(&b.statements[0].opcode.as_usize())
-            } else {
-                true
-            };
-
-            // if a basic block starts with an opcode that is in opcodes_no_apc, put it at the bottom of the list of blocks to order
-            // otherwise, order by descending cost = instruction count * execution frequency
-            match (a_opcode_no_apc, b_opcode_no_apc) {
-                (true, false) => std::cmp::Ordering::Greater,
-                (false, true) => std::cmp::Ordering::Less,
-                _ => (b_count * (b.statements.len() as u32))
-                    .cmp(&(a_count * (a.statements.len() as u32))),
-            }
+            let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
+            let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
+            (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
         });
 
         // print block start_idx, cost = block_len * frequency, block_len, and frequency, sorted by descending cost
@@ -225,6 +208,7 @@ pub fn customize<F: PrimeField32>(
             airs,
             apc_opcode,
             config.bus_map.clone(),
+            config.degree_bound,
         );
 
         let is_valid_column = autoprecompile
@@ -257,8 +241,10 @@ pub fn customize<F: PrimeField32>(
     }
 
     let extensions = air_stacking(extensions);
-
-    (exe, PowdrExtension::new(extensions, base_config))
+    (
+        exe,
+        PowdrExtension::new(extensions, base_config, config.implementation),
+    )
 }
 
 /// make PolyIDs start from zero, sequential and compact
@@ -327,7 +313,7 @@ fn merge_bus_interactions<F: PrimeField32>(interactions_by_machine: Vec<Vec<Symb
     }
 
     to_merge.into_iter().map(|interactions| {
-        assert_eq!(interactions.iter().map(|i| &i.kind).unique().count(), 1);
+        // assert_eq!(interactions.iter().map(|i| &i.kind).unique().count(), 1);
 
         // add multiplicities together
         let mut mult = interactions[0].mult.clone();
@@ -342,7 +328,6 @@ fn merge_bus_interactions<F: PrimeField32>(interactions_by_machine: Vec<Vec<Symb
         }
 
         SymbolicBusInteraction {
-            kind: interactions[0].kind.clone(),
             id: interactions[0].id,
             mult,
             args,
@@ -530,25 +515,22 @@ pub fn collect_basic_blocks<F: PrimeField32>(
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if opcodes_no_apc.contains(&instr.opcode.as_usize()) {
-            // Push the current block and start a new one from this instruction.
-            blocks.push(curr_block);
-            curr_block = BasicBlock {
-                start_idx: i as u64,
-                statements: Vec::new(),
-            };
-            // Add the instruction and push the block
-            curr_block.statements.push(instr.clone());
-            blocks.push(curr_block);
-            // Start a new block from the next instruction.
+            // If not empty, push the current block.
+            if !curr_block.statements.is_empty() {
+                blocks.push(curr_block);
+            }
+            // Skip the instrucion and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_idx: (i + 1) as u64,
                 statements: Vec::new(),
             };
         } else {
             // If the instruction is a target, we need to close the previous block
-            // as is and start a new block from this instruction.
+            // as is if not empty and start a new block from this instruction.
             if is_target {
-                blocks.push(curr_block);
+                if !curr_block.statements.is_empty() {
+                    blocks.push(curr_block);
+                }
                 curr_block = BasicBlock {
                     start_idx: i as u64,
                     statements: Vec::new(),
@@ -558,7 +540,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             // If the instruction is a branch, we need to close this block
             // with this instruction and start a new block from the next one.
             if is_branch {
-                blocks.push(curr_block);
+                blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
                 curr_block = BasicBlock {
                     start_idx: (i + 1) as u64,
                     statements: Vec::new(),
@@ -587,6 +569,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
+    degree_bound: usize,
 ) -> (SymbolicMachine<P>, Vec<Vec<u64>>) {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -631,7 +614,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
         instruction_machines,
         OpenVmBusInteractionHandler::new(bus_map),
         // chip stacking needs to add guards to bus arguments also, so we restrict the optimizer by 1 degree here.
-        OPENVM_DEGREE_BOUND - 1,
+        degree_bound - 1,
         apc_opcode as u32,
     );
 
@@ -650,12 +633,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
     columns: &[String],
 ) -> SymbolicBusInteraction<P> {
-    // TODO
-    let kind = BusInteractionKind::Send;
-    // let kind = match interaction.interaction_type {
-    //     InteractionType::Send => BusInteractionKind::Send,
-    //     InteractionType::Receive => BusInteractionKind::Receive,
-    // };
     let id = interaction.bus_index as u64;
 
     let mult = symbolic_to_algebraic(&interaction.count, columns);
@@ -665,20 +642,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .map(|e| symbolic_to_algebraic(e, columns))
         .collect();
 
-    SymbolicBusInteraction {
-        kind,
-        id,
-        mult,
-        args,
-    }
-}
-
-fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
-    f.as_canonical_u32().into()
-}
-
-fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
+    SymbolicBusInteraction { id, mult, args }
 }
 
 // Transpose an algebraic expression from the powdr field to openvm field
@@ -727,7 +691,6 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
         .bus_interactions
         .into_iter()
         .map(|interaction| SymbolicBusInteraction {
-            kind: interaction.kind,
             id: interaction.id,
             mult: transpose_algebraic_expression(interaction.mult.clone()),
             args: interaction

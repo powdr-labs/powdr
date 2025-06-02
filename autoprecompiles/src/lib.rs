@@ -1,7 +1,10 @@
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
 use powdr::UniqueColumns;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator};
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator,
+};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -58,7 +61,6 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SymbolicBusInteraction<T> {
-    pub kind: BusInteractionKind,
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
@@ -73,6 +75,15 @@ impl<T: Display> Display for SymbolicBusInteraction<T> {
             self.mult,
             self.args.iter().join(", ")
         )
+    }
+}
+
+impl<T: Copy> SymbolicBusInteraction<T> {
+    pub fn try_multiplicity_to_number(&self) -> Option<T> {
+        match self.mult {
+            AlgebraicExpression::Number(n) => Some(n),
+            _ => None,
+        }
     }
 }
 
@@ -112,6 +123,17 @@ impl<T: Display> Display for SymbolicMachine<T> {
     }
 }
 
+impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+    pub fn degree(&self) -> usize {
+        let mut cache = Default::default();
+        let ints = Default::default();
+        self.children()
+            .map(|e| e.degree_with_cache(&ints, &mut cache))
+            .max()
+            .unwrap_or(0)
+    }
+}
+
 impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
@@ -144,7 +166,7 @@ pub enum InstructionKind {
     Terminal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryType {
     Constant,
     Register,
@@ -183,26 +205,8 @@ impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
 
 #[derive(Clone, Debug)]
 pub enum MemoryOp {
-    Read,
-    Write,
-}
-
-impl From<BusInteractionKind> for MemoryOp {
-    fn from(kind: BusInteractionKind) -> Self {
-        match kind {
-            BusInteractionKind::Receive => MemoryOp::Read,
-            BusInteractionKind::Send => MemoryOp::Write,
-        }
-    }
-}
-
-impl From<MemoryOp> for BusInteractionKind {
-    fn from(op: MemoryOp) -> Self {
-        match op {
-            MemoryOp::Read => BusInteractionKind::Receive,
-            MemoryOp::Write => BusInteractionKind::Send,
-        }
-    }
+    Send,
+    Receive,
 }
 
 #[derive(Clone, Debug)]
@@ -211,7 +215,6 @@ pub struct MemoryBusInteraction<T> {
     pub op: MemoryOp,
     pub addr: AlgebraicExpression<T>,
     pub data: Vec<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
 impl<T: FieldElement> MemoryBusInteraction<T> {
@@ -223,27 +226,34 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
-    type Error = ();
-
-    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
-        (bus_interaction.id == MEMORY_BUS_ID)
-            .then(|| {
-                // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
-                // are in the right order.
-                let ty = bus_interaction.args[0].clone().into();
-                let op = bus_interaction.kind.clone().into();
-                let addr = bus_interaction.args[1].clone();
-                let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
-                MemoryBusInteraction {
-                    ty,
-                    op,
-                    addr,
-                    data,
-                    bus_interaction,
-                }
-            })
-            .ok_or(())
+impl<T: FieldElement> MemoryBusInteraction<T> {
+    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction` of the given memory type.
+    ///
+    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction of the given type.
+    /// Returns `Err(_)` if the bus interaction is a memory bus interaction of the given type but could not be converted properly
+    /// (usually because the multiplicity is not -1 or 1).
+    /// Otherwise returns `Ok(Some(memory_bus_interaction))`
+    fn try_from_symbolic_bus_interaction_with_memory_kind(
+        bus_interaction: &SymbolicBusInteraction<T>,
+        memory_type: MemoryType,
+    ) -> Result<Option<Self>, ()> {
+        if bus_interaction.id != MEMORY_BUS_ID {
+            return Ok(None);
+        }
+        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
+        // are in the right order.
+        let ty = bus_interaction.args[0].clone().into();
+        if ty != memory_type {
+            return Ok(None);
+        }
+        let op = match bus_interaction.try_multiplicity_to_number() {
+            Some(n) if n == 1.into() => MemoryOp::Send,
+            Some(n) if n == (-1).into() => MemoryOp::Receive,
+            _ => return Err(()),
+        };
+        let addr = bus_interaction.args[1].clone();
+        let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
+        Ok(Some(MemoryBusInteraction { ty, op, addr, data }))
     }
 }
 
@@ -287,19 +297,66 @@ pub fn build<T: FieldElement>(
     program: Vec<SymbolicInstructionStatement<T>>,
     instruction_kind: BTreeMap<String, InstructionKind>,
     instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + 'static + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     opcode: u32,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-    let machine = optimizer::optimize(machine, bus_interaction_handler, opcode, degree_bound);
+    let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
 
     // add guards to constraints that are not satisfied by zeroes
+    let pre_degree = machine.degree();
     let machine = add_guards(machine);
+    // assert_eq!(
+    //     pre_degree,
+    //     machine.degree(),
+    //     "Degree should not change after adding guards"
+    // );
 
     (machine, subs)
+}
+
+fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
+    let mut zeroed_expr = expr.clone();
+    powdr::make_refs_zero(&mut zeroed_expr);
+    let zeroed_expr = simplify_expression(zeroed_expr);
+    powdr::is_zero(&zeroed_expr)
+}
+
+/// Adds `is_valid` guards to constraints without increasing its degree.
+/// This implementation always guards the LHS of multiplications.
+/// In the future this could be changed to minimize the number of guards added.
+/// Assumption:
+/// - `expr` is already simplified, i.e., expressions like (3 + 4) and (x * 1) do not appear.
+fn add_guards_constraint<T: FieldElement>(
+    expr: AlgebraicExpression<T>,
+    is_valid: &AlgebraicExpression<T>,
+) -> AlgebraicExpression<T> {
+    if satisfies_zero_witness(&expr) {
+        return expr;
+    }
+
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = add_guards_constraint(*left, is_valid);
+            let right = match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
+                    Box::new(add_guards_constraint(*right, is_valid))
+                }
+                AlgebraicBinaryOperator::Mul => right,
+                AlgebraicBinaryOperator::Pow => unimplemented!(),
+            };
+            AlgebraicExpression::new_binary(left, op, *right)
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let inner = add_guards_constraint(*expr, is_valid);
+            AlgebraicExpression::new_unary(op, inner)
+        }
+        AlgebraicExpression::Number(..) => expr * is_valid.clone(),
+        _ => expr,
+    }
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
@@ -329,6 +386,11 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     for c in &mut machine.constraints {
         c.expr = is_valid.clone() * c.expr.clone();
     }
+    // machine.constraints = machine
+    //     .constraints
+    //     .into_iter()
+    //     .map(|c| add_guards_constraint(c.expr, &is_valid).into())
+    //     .collect();
 
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
@@ -367,6 +429,17 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
             }
             _ => {
                 b.mult = is_valid.clone() * b.mult.clone();
+                // if !satisfies_zero_witness(&b.mult) {
+                //     // guard the multiplicity by `is_valid`
+                //     b.mult = is_valid.clone() * b.mult.clone();
+                //     // TODO this would not have to be cloned if we had *=
+                //     //c.expr *= guard.clone();
+                // } else {
+                //     // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                //     let one = AlgebraicExpression::Number(1u64.into());
+                //     let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                //     is_valid_mults.push(e);
+                // }
             }
         }
     }
