@@ -886,7 +886,7 @@ mod tests {
     #[test]
     fn keccak_machine_pgo() {
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        stdin.write(&GUEST_KECCAK_ITER);
         let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_keccak_machine(Some(pgo_data));
     }
