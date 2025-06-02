@@ -1,14 +1,17 @@
-use openvm_stark_backend::p3_field::FieldAlgebra;
 use p3_baby_bear::BabyBear;
 
-use crate::{powdr_field_plonky3, OpenVmField};
+use crate::powdr_field_plonky3;
+#[cfg(feature = "openvm")]
+use crate::traits::OpenVmField;
 
 powdr_field_plonky3!(BabyBearField, BabyBear);
 
+#[cfg(feature = "openvm")]
 impl OpenVmField for BabyBearField {
     type OpenVmField = openvm_stark_sdk::p3_baby_bear::BabyBear;
 
     fn into_openvm_field(self) -> Self::OpenVmField {
+        use openvm_stark_backend::p3_field::FieldAlgebra;
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(self.0.as_canonical_u32())
     }
 

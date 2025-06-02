@@ -7,7 +7,6 @@ use std::{
 
 use ibig::IBig;
 use num_traits::{ConstOne, ConstZero, One, Zero};
-use openvm_stark_sdk::openvm_stark_backend;
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -217,6 +216,7 @@ pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
     T::Integer::from_hex(s)
 }
 
+#[cfg(feature = "openvm")]
 pub trait OpenVmField: FieldElement {
     type OpenVmField: openvm_stark_backend::p3_field::PrimeField32;
 

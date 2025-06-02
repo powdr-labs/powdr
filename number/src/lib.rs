@@ -23,7 +23,9 @@ pub use mersenne31::Mersenne31Field;
 pub use traits::{FieldSize, KnownField};
 
 pub use ibig::{IBig as BigInt, UBig as BigUint};
-pub use traits::{FieldElement, LargeInt, OpenVmField};
+#[cfg(feature = "openvm")]
+pub use traits::OpenVmField;
+pub use traits::{FieldElement, LargeInt};
 /// An arbitrary precision big integer, to be used as a last recourse
 /// The type of polynomial degrees and indices into columns.
 pub type DegreeType = u64;
