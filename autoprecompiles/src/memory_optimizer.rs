@@ -110,13 +110,9 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     (to_remove, new_constraints)
 }
 
-trait AddressComparator<A> {
-    /// Returns true if we can prove that for two addresses `a` and `b`,
-    /// `a - b` never falls into the range `0..=3`.
-    fn are_addrs_known_to_be_different_by_word(&self, a: A, b: A) -> bool;
-}
-
 struct MemoryAddressComparator<T: FieldElement> {
+    // For each address `a` contains a list of expressions `v` such that
+    // `a = v` is true in the constraint system.
     memory_addresses: HashMap<
         QuadraticSymbolicExpression<T, Variable>,
         Vec<QuadraticSymbolicExpression<T, Variable>>,
@@ -144,12 +140,10 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             memory_addresses: compile_facts_about_addresses(addresses, &constraints),
         }
     }
-}
 
-impl<T: FieldElement> AddressComparator<&QuadraticSymbolicExpression<T, Variable>>
-    for MemoryAddressComparator<T>
-{
-    fn are_addrs_known_to_be_different_by_word(
+    /// Returns true if we can prove that for two addresses `a` and `b`,
+    /// `a - b` never falls into the range `-3..=3`.
+    pub fn are_addrs_known_to_be_different_by_word(
         &self,
         a: &QuadraticSymbolicExpression<T, Variable>,
         b: &QuadraticSymbolicExpression<T, Variable>,
@@ -260,7 +254,7 @@ fn compile_facts_about_addresses<T: FieldElement, V: Clone + Ord + Hash + Eq + D
         .collect()
 }
 
-/// Returns true if we can prove that `a - b` never falls into the range `0..=3`.
+/// Returns true if we can prove that `a - b` never falls into the range `-3..=3`.
 fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     a: &QuadraticSymbolicExpression<T, V>,
     b: &QuadraticSymbolicExpression<T, V>,
