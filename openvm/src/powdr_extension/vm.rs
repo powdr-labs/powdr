@@ -5,11 +5,11 @@ use std::iter::once;
 
 use derive_more::From;
 
-use openvm_circuit::arch::VmInventoryError;
+use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
     arch::{VmExtension, VmInventory},
     circuit_derive::{Chip, ChipUsageGetter},
-    derive::{AnyEnum, InstructionExecutor},
+    derive::AnyEnum,
     system::phantom::PhantomChip,
 };
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
@@ -18,10 +18,14 @@ use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigPeriphery};
-use openvm_stark_backend::p3_field::{Field, PrimeField32};
+use openvm_stark_backend::config::StarkGenericConfig;
+use openvm_stark_backend::{
+    p3_field::{Field, PrimeField32},
+    Chip,
+};
 use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::FieldElement;
+use powdr_number::OpenVmField;
 use serde::{Deserialize, Serialize};
 
 use crate::PrecompileImplementation;
@@ -31,9 +35,9 @@ use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(bound = "F: Field")]
-pub struct PowdrExtension<F: PrimeField32, P: FieldElement> {
-    pub precompiles: Vec<PowdrPrecompile<F, P>>,
+#[serde(bound = "P::OpenVmField: Field")]
+pub struct PowdrExtension<P: OpenVmField> {
+    pub precompiles: Vec<PowdrPrecompile<P>>,
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
 }
@@ -62,22 +66,22 @@ impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "F: Field")]
-pub struct PowdrPrecompile<F, P: FieldElement> {
+#[serde(bound = "P::OpenVmField: Field")]
+pub struct PowdrPrecompile<P: OpenVmField> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub machine: SymbolicMachine<P>,
-    pub original_instructions: Vec<OriginalInstruction<F>>,
+    pub original_instructions: Vec<OriginalInstruction<P::OpenVmField>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: Column,
 }
 
-impl<F, P: FieldElement> PowdrPrecompile<F, P> {
+impl<P: OpenVmField> PowdrPrecompile<P> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
         machine: SymbolicMachine<P>,
-        original_instructions: Vec<OriginalInstruction<F>>,
+        original_instructions: Vec<OriginalInstruction<P::OpenVmField>>,
         original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
     ) -> Self {
@@ -92,9 +96,9 @@ impl<F, P: FieldElement> PowdrPrecompile<F, P> {
     }
 }
 
-impl<F: PrimeField32, P: FieldElement> PowdrExtension<F, P> {
+impl<P: OpenVmField> PowdrExtension<P> {
     pub fn new(
-        precompiles: Vec<PowdrPrecompile<F, P>>,
+        precompiles: Vec<PowdrPrecompile<P>>,
         base_config: SdkVmConfig,
         implementation: PrecompileImplementation,
     ) -> Self {
@@ -106,11 +110,42 @@ impl<F: PrimeField32, P: FieldElement> PowdrExtension<F, P> {
     }
 }
 
-#[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+#[derive(ChipUsageGetter, From, AnyEnum)]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExecutor<F: PrimeField32, P: FieldElement> {
-    Powdr(PowdrChip<F, P>),
-    Plonk(PlonkChip<F, P>),
+pub enum PowdrExecutor<P: OpenVmField> {
+    Powdr(PowdrChip<P>),
+    Plonk(PlonkChip<P>),
+}
+
+impl<SC: StarkGenericConfig, P: OpenVmField> Chip<SC> for PowdrExecutor<P> {
+    fn generate_air_proof_input(self) -> openvm_stark_backend::prover::types::AirProofInput<SC> {
+        unimplemented!("PowdrExecutor does not support generating air proof input")
+    }
+
+    fn air(&self) -> std::sync::Arc<dyn openvm_stark_backend::rap::AnyRap<SC>> {
+        unimplemented!("PowdrExecutor does not support air generation")
+    }
+}
+
+impl<P: OpenVmField> InstructionExecutor<P::OpenVmField> for PowdrExecutor<P> {
+    fn execute(
+        &mut self,
+        memory: &mut openvm_circuit::system::memory::MemoryController<P::OpenVmField>,
+        instruction: &Instruction<P::OpenVmField>,
+        from_state: openvm_circuit::arch::ExecutionState<u32>,
+    ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.execute(memory, instruction, from_state),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.execute(memory, instruction, from_state),
+        }
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.get_opcode_name(opcode),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.get_opcode_name(opcode),
+        }
+    }
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -119,14 +154,14 @@ pub enum PowdrPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl<F: PrimeField32, P: FieldElement> VmExtension<F> for PowdrExtension<F, P> {
-    type Executor = PowdrExecutor<F, P>;
+impl<P: OpenVmField> VmExtension<P::OpenVmField> for PowdrExtension<P> {
+    type Executor = PowdrExecutor<P>;
 
-    type Periphery = PowdrPeriphery<F>;
+    type Periphery = PowdrPeriphery<P::OpenVmField>;
 
     fn build(
         &self,
-        builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
+        builder: &mut openvm_circuit::arch::VmInventoryBuilder<P::OpenVmField>,
     ) -> Result<VmInventory<Self::Executor, Self::Periphery>, VmInventoryError> {
         let mut inventory = VmInventory::new();
 
@@ -147,7 +182,7 @@ impl<F: PrimeField32, P: FieldElement> VmExtension<F> for PowdrExtension<F, P> {
             .cloned();
 
         for precompile in &self.precompiles {
-            let powdr_chip: PowdrExecutor<F, P> = match self.implementation {
+            let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     offline_memory.clone(),

@@ -1,8 +1,25 @@
+use openvm_stark_backend::p3_field::FieldAlgebra;
 use p3_baby_bear::BabyBear;
 
-use crate::powdr_field_plonky3;
+use crate::{powdr_field_plonky3, OpenVmField};
 
 powdr_field_plonky3!(BabyBearField, BabyBear);
+
+impl OpenVmField for BabyBearField {
+    type OpenVmField = openvm_stark_sdk::p3_baby_bear::BabyBear;
+
+    fn into_openvm_field(self) -> Self::OpenVmField {
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(self.0.as_canonical_u32())
+    }
+
+    fn from_openvm_field(field: Self::OpenVmField) -> Self {
+        BabyBearField::from_canonical_u32(
+            <Self::OpenVmField as openvm_stark_backend::p3_field::PrimeField32>::as_canonical_u32(
+                &field,
+            ),
+        )
+    }
+}
 
 #[cfg(test)]
 mod test {

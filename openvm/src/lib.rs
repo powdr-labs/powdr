@@ -2,15 +2,17 @@ use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::{
-    instructions::exe::VmExe, Streams, SystemConfig, VirtualMachine, VmChipComplex, VmConfig,
-    VmInventoryError,
+    instructions::exe::VmExe, InstructionExecutor, Streams, SystemConfig, VirtualMachine,
+    VmChipComplex, VmConfig, VmInventoryError,
 };
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
-use openvm_stark_sdk::{config::fri_params::SecurityParameters, engine::StarkFriEngine};
+use openvm_stark_sdk::{
+    config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
+};
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::FieldElement;
+use powdr_number::{BabyBearField, OpenVmField};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -34,8 +36,10 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::{
     config::baby_bear_poseidon2::BabyBearPoseidon2Config,
-    openvm_stark_backend::p3_field::{Field, PrimeField32},
-    p3_baby_bear::BabyBear,
+    openvm_stark_backend::{
+        config::Val,
+        p3_field::{Field, PrimeField32},
+    },
 };
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use serde::{Deserialize, Serialize};
@@ -44,10 +48,7 @@ use std::collections::BTreeMap;
 mod air_builder;
 use air_builder::AirKeygenBuilder;
 use derive_more::From;
-use openvm_circuit::{
-    circuit_derive::Chip,
-    derive::{AnyEnum, InstructionExecutor as InstructionExecutorDerive},
-};
+use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 mod utils;
 
 use tracing::dispatcher::Dispatch;
@@ -61,7 +62,6 @@ use tracing_subscriber::{
 };
 
 type SC = BabyBearPoseidon2Config;
-pub type F = BabyBear;
 pub type P = powdr_number::BabyBearField;
 
 pub use bus_interaction_handler::{BusMap, BusType};
@@ -83,19 +83,64 @@ mod plonk;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "F: Field")]
-pub struct SpecializedConfig<F: PrimeField32, P: FieldElement> {
+#[serde(bound = "P::OpenVmField: Field")]
+pub struct SpecializedConfig<P: OpenVmField> {
     sdk_config: SdkVmConfig,
-    powdr: PowdrExtension<F, P>,
+    powdr: PowdrExtension<P>,
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(ChipUsageGetter, Chip, InstructionExecutorDerive, From, AnyEnum)]
-pub enum SpecializedExecutor<F: PrimeField32, P: FieldElement> {
+#[derive(ChipUsageGetter, From, AnyEnum)]
+pub enum SpecializedExecutor<P: OpenVmField> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<F>),
+    SdkExecutor(SdkVmConfigExecutor<P::OpenVmField>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor<F, P>),
+    PowdrExecutor(PowdrExecutor<P>),
+}
+
+impl<SC: StarkGenericConfig, P: OpenVmField<OpenVmField = Val<SC>>> Chip<SC>
+    for SpecializedExecutor<P>
+where
+    Val<SC>: PrimeField32,
+{
+    fn generate_air_proof_input(self) -> openvm_stark_backend::prover::types::AirProofInput<SC> {
+        match self {
+            SpecializedExecutor::SdkExecutor(executor) => executor.generate_air_proof_input(),
+            SpecializedExecutor::PowdrExecutor(executor) => executor.generate_air_proof_input(),
+        }
+    }
+
+    fn air(&self) -> std::sync::Arc<dyn AnyRap<SC>> {
+        match self {
+            SpecializedExecutor::SdkExecutor(executor) => executor.air(),
+            SpecializedExecutor::PowdrExecutor(executor) => executor.air(),
+        }
+    }
+}
+
+impl<P: OpenVmField> InstructionExecutor<P::OpenVmField> for SpecializedExecutor<P> {
+    fn execute(
+        &mut self,
+        memory: &mut openvm_circuit::system::memory::MemoryController<P::OpenVmField>,
+        instruction: &openvm_instructions::instruction::Instruction<P::OpenVmField>,
+        from_state: openvm_circuit::arch::ExecutionState<u32>,
+    ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
+        match self {
+            SpecializedExecutor::SdkExecutor(executor) => {
+                executor.execute(memory, instruction, from_state)
+            }
+            SpecializedExecutor::PowdrExecutor(executor) => {
+                executor.execute(memory, instruction, from_state)
+            }
+        }
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        match self {
+            SpecializedExecutor::SdkExecutor(executor) => executor.get_opcode_name(opcode),
+            SpecializedExecutor::PowdrExecutor(executor) => executor.get_opcode_name(opcode),
+        }
+    }
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -106,21 +151,22 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl<F: PrimeField32, P: FieldElement> VmConfig<F> for SpecializedConfig<F, P> {
-    type Executor = SpecializedExecutor<F, P>;
-    type Periphery = MyPeriphery<F>;
+impl<P: OpenVmField> VmConfig<P::OpenVmField> for SpecializedConfig<P> {
+    type Executor = SpecializedExecutor<P>;
+    type Periphery = MyPeriphery<P::OpenVmField>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<F>::system(&self.sdk_config)
+        VmConfig::<P::OpenVmField>::system(&self.sdk_config)
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<F>::system_mut(&mut self.sdk_config)
+        VmConfig::<P::OpenVmField>::system_mut(&mut self.sdk_config)
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<VmChipComplex<F, Self::Executor, Self::Periphery>, VmInventoryError> {
+    ) -> Result<VmChipComplex<P::OpenVmField, Self::Executor, Self::Periphery>, VmInventoryError>
+    {
         let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
@@ -128,8 +174,8 @@ impl<F: PrimeField32, P: FieldElement> VmConfig<F> for SpecializedConfig<F, P> {
     }
 }
 
-impl<F: Default + PrimeField32, P: FieldElement> SpecializedConfig<F, P> {
-    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<F, P>) -> Self {
+impl<P: OpenVmField> SpecializedConfig<P> {
+    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<P>) -> Self {
         Self { sdk_config, powdr }
     }
 }
@@ -159,7 +205,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-) -> Result<OriginalCompiledProgram<F>, Box<dyn std::error::Error>> {
+) -> Result<OriginalCompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     // wrap the sdk config (with the standard extensions) in our custom config (with our custom extension)
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
@@ -260,7 +306,7 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_data: Option<HashMap<u32, u32>>,
-) -> Result<CompiledProgram<F, P>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
     compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_data)
 }
@@ -268,11 +314,11 @@ pub fn compile_guest(
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    exe: VmExe<F>,
+    exe: VmExe<p3_baby_bear::BabyBear>,
     sdk_vm_config: SdkVmConfig,
     config: PowdrConfig,
     pgo_data: Option<HashMap<u32, u32>>,
-) -> Result<CompiledProgram<F, P>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -286,8 +332,7 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let airs =
-        instructions_to_airs::<_, powdr_number::BabyBearField>(exe.clone(), sdk_vm_config.clone());
+    let airs = instructions_to_airs(exe.clone(), sdk_vm_config.clone());
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -305,15 +350,15 @@ pub fn compile_exe(
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "F: Field")]
-pub struct CompiledProgram<F: PrimeField32, P: FieldElement> {
-    pub exe: VmExe<F>,
-    pub vm_config: SpecializedConfig<F, P>,
+#[serde(bound = "P::OpenVmField: Field")]
+pub struct CompiledProgram<P: OpenVmField> {
+    pub exe: VmExe<P::OpenVmField>,
+    pub vm_config: SpecializedConfig<P>,
 }
 
 // the original openvm program and config without powdr extension
-pub struct OriginalCompiledProgram<F: PrimeField32> {
-    pub exe: VmExe<F>,
+pub struct OriginalCompiledProgram<P: OpenVmField> {
+    pub exe: VmExe<P::OpenVmField>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -324,7 +369,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram<F, P> {
+impl CompiledProgram<P> {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
@@ -357,7 +402,7 @@ impl CompiledProgram<F, P> {
 }
 
 pub fn execute(
-    program: CompiledProgram<F, P>,
+    program: CompiledProgram<P>,
     inputs: StdIn,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
@@ -371,7 +416,7 @@ pub fn execute(
 }
 
 pub fn pgo(
-    program: OriginalCompiledProgram<F>,
+    program: OriginalCompiledProgram<BabyBearField>,
     inputs: StdIn,
 ) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>> {
     // in memory collector storage
@@ -426,7 +471,7 @@ pub fn pgo(
 }
 
 pub fn prove(
-    program: &CompiledProgram<F, P>,
+    program: &CompiledProgram<P>,
     mock: bool,
     recursion: bool,
     inputs: StdIn,
@@ -520,8 +565,8 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn instructions_to_airs<VC: VmConfig<F>, P: FieldElement>(
-    exe: VmExe<F>,
+pub fn instructions_to_airs<P: OpenVmField, VC: VmConfig<P::OpenVmField>>(
+    exe: VmExe<P::OpenVmField>,
     vm_config: VC,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
@@ -548,7 +593,7 @@ where
                     let powdr_exprs = constraints
                         .constraints
                         .iter()
-                        .map(|expr| symbolic_to_algebraic::<F, P>(expr, &columns).into())
+                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
                         .collect::<Vec<_>>();
 
                     let powdr_bus_interactions = constraints
@@ -568,8 +613,12 @@ where
         .collect()
 }
 
-pub fn export_pil<VC: VmConfig<F>>(vm_config: VC, path: &str, max_width: usize, bus_map: &BusMap)
-where
+pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
+    vm_config: VC,
+    path: &str,
+    max_width: usize,
+    bus_map: &BusMap,
+) where
     VC::Executor: Chip<SC>,
     VC::Periphery: Chip<SC>,
 {
@@ -611,7 +660,7 @@ fn get_columns(air: Arc<dyn AnyRap<SC>>) -> Vec<String> {
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
 }
 
-fn get_constraints(air: Arc<dyn AnyRap<SC>>) -> SymbolicConstraints<F> {
+fn get_constraints(air: Arc<dyn AnyRap<SC>>) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);

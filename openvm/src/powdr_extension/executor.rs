@@ -23,7 +23,9 @@ use openvm_circuit::{
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_stark_backend::{p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator};
+use openvm_stark_backend::{
+    p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
+};
 
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
@@ -38,26 +40,26 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
-use powdr_number::FieldElement;
+use powdr_number::OpenVmField;
 
 type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<F: PrimeField32, P: FieldElement> {
-    instructions: Vec<OriginalInstruction<F>>,
+pub struct PowdrExecutor<P: OpenVmField> {
+    instructions: Vec<OriginalInstruction<P::OpenVmField>>,
     air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
     is_valid_poly_id: u64,
-    inventory: SdkVmInventory<F>,
+    inventory: SdkVmInventory<P::OpenVmField>,
     number_of_calls: usize,
     periphery: SharedChips,
 }
 
-impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
+impl<P: OpenVmField> PowdrExecutor<P> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
+        instructions: Vec<OriginalInstruction<P::OpenVmField>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        memory: Arc<Mutex<OfflineMemory<P::OpenVmField>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -83,7 +85,7 @@ impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
 
     pub fn execute(
         &mut self,
-        memory: &mut MemoryController<F>,
+        memory: &mut MemoryController<P::OpenVmField>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // execute the original instructions one by one
@@ -110,15 +112,16 @@ impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
         bus_interactions: &[SymbolicBusInteraction<P>],
-    ) -> RowMajorMatrix<F>
+    ) -> RowMajorMatrix<P::OpenVmField>
     where
         SC: StarkGenericConfig,
-        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
+        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain:
+            PolynomialSpace<Val = P::OpenVmField>,
     {
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = F::zero_vec(height * width);
+        let mut values = <P::OpenVmField as FieldAlgebra>::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
         let air_name_by_opcode = self
@@ -231,7 +234,7 @@ impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
             });
 
         // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<F>>> = self
+        let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
             .instructions
             .iter()
             .map(|instruction| {
@@ -247,7 +250,7 @@ impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
             .collect_vec();
 
         // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<F>> =
+        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
             bus_interactions
                 .iter()
                 .map(|interaction| interaction.clone().into())
@@ -292,7 +295,7 @@ impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
                 }
 
                 // Set the is_valid column to 1
-                row_slice[is_valid_index] = F::ONE;
+                row_slice[is_valid_index] = P::OpenVmField::ONE;
 
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 

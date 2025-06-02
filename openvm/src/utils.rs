@@ -15,7 +15,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{BabyBearField, FieldElement, LargeInt, OpenVmField};
 
 pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
     f.as_canonical_u32().into()
@@ -25,9 +25,9 @@ pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
     F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
 }
 
-pub fn algebraic_to_symbolic<P: FieldElement, F: PrimeField32>(
+pub fn algebraic_to_symbolic<P: OpenVmField>(
     expr: &AlgebraicExpression<P>,
-) -> SymbolicExpression<F> {
+) -> SymbolicExpression<P::OpenVmField> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(to_ovm_field(*n)),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {

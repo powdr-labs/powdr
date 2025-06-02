@@ -9,12 +9,15 @@ use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
-use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeField32};
+use openvm_stark_backend::{
+    interaction::SymbolicInteraction,
+    p3_field::{FieldAlgebra, PrimeField32},
+};
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
     InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::{FieldElement, OpenVmField};
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -24,20 +27,22 @@ use crate::{
     utils::symbolic_to_algebraic,
 };
 
+pub type F<P> = <P as OpenVmField>::OpenVmField;
+
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
 use crate::PowdrConfig;
 
-pub fn customize<F: PrimeField32>(
-    mut exe: VmExe<F>,
+pub fn customize<P: OpenVmField>(
+    mut exe: VmExe<P::OpenVmField>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
+    airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
-) -> (VmExe<F>, PowdrExtension<F, BabyBearField>) {
+) -> (VmExe<P::OpenVmField>, PowdrExtension<P>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -140,13 +145,13 @@ pub fn customize<F: PrimeField32>(
 
     let noop = Instruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
-        a: F::ZERO,
-        b: F::ZERO,
-        c: F::ZERO,
-        d: F::ZERO,
-        e: F::ZERO,
-        f: F::ZERO,
-        g: F::ZERO,
+        a: F::<P>::ZERO,
+        b: F::<P>::ZERO,
+        c: F::<P>::ZERO,
+        d: F::<P>::ZERO,
+        e: F::<P>::ZERO,
+        f: F::<P>::ZERO,
+        g: F::<P>::ZERO,
     };
 
     let mut extensions = Vec::new();
@@ -169,13 +174,13 @@ pub fn customize<F: PrimeField32>(
         let apc_opcode = POWDR_OPCODE + i;
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
-            a: F::ZERO,
-            b: F::ZERO,
-            c: F::ZERO,
-            d: F::ZERO,
-            e: F::ZERO,
-            f: F::ZERO,
-            g: F::ZERO,
+            a: F::<P>::ZERO,
+            b: F::<P>::ZERO,
+            c: F::<P>::ZERO,
+            d: F::<P>::ZERO,
+            e: F::<P>::ZERO,
+            f: F::<P>::ZERO,
+            g: F::<P>::ZERO,
         };
 
         let pc = acc_block.start_idx as usize;
@@ -200,7 +205,7 @@ pub fn customize<F: PrimeField32>(
         program.splice(pc..pc + n_acc, new_instrs);
         assert_eq!(program.len(), len_before);
 
-        let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
+        let (autoprecompile, subs) = generate_autoprecompile(
             acc_block,
             airs,
             apc_opcode,

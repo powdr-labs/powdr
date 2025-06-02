@@ -32,23 +32,23 @@ use openvm_stark_backend::{
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::FieldElement;
+use powdr_number::OpenVmField;
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<F: PrimeField32, P: FieldElement> {
+pub struct PlonkChip<P: OpenVmField> {
     name: String,
     opcode: PowdrOpcode,
-    air: Arc<PlonkAir<F>>,
-    executor: PowdrExecutor<F, P>,
+    air: Arc<PlonkAir<P::OpenVmField>>,
+    executor: PowdrExecutor<P>,
     machine: SymbolicMachine<P>,
 }
 
-impl<F: PrimeField32, P: FieldElement> PlonkChip<F, P> {
+impl<P: OpenVmField> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F, P>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        precompile: PowdrPrecompile<P>,
+        memory: Arc<Mutex<OfflineMemory<P::OpenVmField>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -82,11 +82,11 @@ impl<F: PrimeField32, P: FieldElement> PlonkChip<F, P> {
     }
 }
 
-impl<F: PrimeField32, P: FieldElement> InstructionExecutor<F> for PlonkChip<F, P> {
+impl<P: OpenVmField> InstructionExecutor<P::OpenVmField> for PlonkChip<P> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
+        memory: &mut MemoryController<P::OpenVmField>,
+        instruction: &Instruction<P::OpenVmField>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -102,7 +102,7 @@ impl<F: PrimeField32, P: FieldElement> InstructionExecutor<F> for PlonkChip<F, P
     }
 }
 
-impl<F: PrimeField32, P: FieldElement> ChipUsageGetter for PlonkChip<F, P> {
+impl<P: OpenVmField> ChipUsageGetter for PlonkChip<P> {
     fn air_name(&self) -> String {
         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -115,7 +115,7 @@ impl<F: PrimeField32, P: FieldElement> ChipUsageGetter for PlonkChip<F, P> {
     }
 }
 
-impl<SC: StarkGenericConfig, P: FieldElement> Chip<SC> for PlonkChip<Val<SC>, P>
+impl<SC: StarkGenericConfig, P: OpenVmField<OpenVmField = Val<SC>>> Chip<SC> for PlonkChip<P>
 where
     Val<SC>: PrimeField32,
 {
