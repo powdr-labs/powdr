@@ -189,11 +189,10 @@ impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsF
 /// compile facts about them based on the constraints provided.
 /// For each address `a`, the hash map contains values `v` such that `a = v`
 /// is true in the constraint system.
-fn compile_facts_about_addresses<T: FieldElement>(
-    addresses: impl IntoIterator<Item = QuadraticSymbolicExpression<T, Variable>>,
-    constraints: &[QuadraticSymbolicExpression<T, Variable>],
-) -> HashMap<QuadraticSymbolicExpression<T, Variable>, Vec<QuadraticSymbolicExpression<T, Variable>>>
-{
+fn compile_facts_about_addresses<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
+    addresses: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
+    constraints: &[QuadraticSymbolicExpression<T, V>],
+) -> HashMap<QuadraticSymbolicExpression<T, V>, Vec<QuadraticSymbolicExpression<T, V>>> {
     let constraints_by_variable = constraints
         .iter()
         .flat_map(|constr| {
@@ -231,14 +230,17 @@ fn compile_facts_about_addresses<T: FieldElement>(
 
 /// Returns true if we can prove that for two addresses `a` and `b`,
 /// `a - b` never falls into the range `0..=3`.
-fn are_addrs_known_to_be_different_by_word<T: FieldElement>(
-    a: &QuadraticSymbolicExpression<T, Variable>,
-    b: &QuadraticSymbolicExpression<T, Variable>,
+fn are_addrs_known_to_be_different_by_word<
+    T: FieldElement,
+    V: Clone + Ord + Hash + Eq + Display,
+>(
+    a: &QuadraticSymbolicExpression<T, V>,
+    b: &QuadraticSymbolicExpression<T, V>,
     memory_addresses: &HashMap<
-        QuadraticSymbolicExpression<T, Variable>,
-        Vec<QuadraticSymbolicExpression<T, Variable>>,
+        QuadraticSymbolicExpression<T, V>,
+        Vec<QuadraticSymbolicExpression<T, V>>,
     >,
-    range_constraints: &impl RangeConstraintProvider<T, Variable>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     let a_exprs = &memory_addresses[a];
     let b_exprs = &memory_addresses[b];
