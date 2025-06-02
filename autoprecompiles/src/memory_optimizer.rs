@@ -5,19 +5,15 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression,
-    AlgebraicReference, Challenge,
+    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
 };
 use powdr_constraint_solver::boolean_extractor;
 use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::utils::{count_possible_assignments, get_all_possible_assignments};
-use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    symbolic_expression::SymbolicExpression,
-};
+use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
 use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
@@ -254,23 +250,9 @@ fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash
     b: &QuadraticSymbolicExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
-    let diff = a - b;
-    let variables = diff.referenced_unknown_variables().cloned().collect_vec();
-    if count_possible_assignments(variables.iter().cloned(), range_constraints)
-        .is_none_or(|count| count >= 20)
-    {
-        // If there are too many possible assignments, we do not try to perform exhaustive search.
-        return false;
-    }
     let disallowed_range = RangeConstraint::from_range(-T::from(3), T::from(3));
-    get_all_possible_assignments(variables, range_constraints).all(|assignment| {
-        let mut diff = diff.clone();
-        for (variable, value) in assignment.iter() {
-            diff.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
-        }
-        diff.range_constraint(range_constraints)
-            .is_disjoint(&disallowed_range)
-    })
+    possible_concrete_values(&(a - b), range_constraints, 20)
+        .is_some_and(|mut values| !values.any(|value| disallowed_range.allows_value(value)))
 }
 
 /// Turns an algebraic expression into a quadratic symbolic expression,

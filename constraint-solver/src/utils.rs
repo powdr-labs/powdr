@@ -6,6 +6,7 @@ use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider};
+use crate::symbolic_expression::SymbolicExpression;
 
 /// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
@@ -75,4 +76,31 @@ pub fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
         })
         .multi_cartesian_product()
         .map(|assignment| assignment.into_iter().collect::<BTreeMap<_, _>>())
+}
+
+/// Returns all possible concrete values for `expr` using exhaustive search.
+/// Returns None if the number of possible assignments exceeds `max_elements`.
+pub fn possible_concrete_values<'a, T: FieldElement, V: Clone + Ord + Hash>(
+    expr: &'a QuadraticSymbolicExpression<T, V>,
+    rc: &'a impl RangeConstraintProvider<T, V>,
+    max_elements: u64,
+) -> Option<impl Iterator<Item = T> + 'a> {
+    let variables = expr.referenced_unknown_variables().cloned().collect_vec();
+    if count_possible_assignments(variables.iter().cloned(), rc)
+        .is_none_or(|count| count > max_elements)
+    {
+        // If there are too many possible assignments, we do not try to perform exhaustive search.
+        None
+    } else {
+        Some(
+            get_all_possible_assignments(variables, rc).map(|assignment| {
+                let mut expr = expr.clone();
+                for (variable, value) in assignment.iter() {
+                    expr.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                }
+                // We substitute all variables, so this has to be a number.
+                expr.try_to_number().unwrap()
+            }),
+        )
+    }
 }
