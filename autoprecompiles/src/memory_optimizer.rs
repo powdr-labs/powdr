@@ -134,7 +134,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             })
             .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
 
-        let constraints = symbolic_to_simplified_contraints(&machine.constraints);
+        let constraints = symbolic_to_simplified_constraints(&machine.constraints);
 
         Self {
             memory_addresses: compile_facts_about_addresses(addresses, &constraints),
@@ -165,7 +165,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
 
 /// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
 /// simplifies constraints by introducing boolean variables.
-fn symbolic_to_simplified_contraints<T: FieldElement>(
+fn symbolic_to_simplified_constraints<T: FieldElement>(
     constraints: &[SymbolicConstraint<T>],
 ) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
     let mut counter = 0..;
