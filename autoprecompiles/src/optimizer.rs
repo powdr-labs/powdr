@@ -43,7 +43,6 @@ pub fn optimize<T: FieldElement>(
     stats_logger.log("exec bus optimization", &machine);
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
-    let mut stats_logger = StatsLogger::start(&constraint_system);
 
     loop {
         let size = system_size(&constraint_system);
