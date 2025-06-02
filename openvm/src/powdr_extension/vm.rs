@@ -100,9 +100,9 @@ impl<F: PrimeField32, P: FieldElement> PowdrExtension<F, P> {
 
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExecutor<F: PrimeField32> {
-    Powdr(PowdrChip<F>),
-    Plonk(PlonkChip<F>),
+pub enum PowdrExecutor<F: PrimeField32, P: FieldElement> {
+    Powdr(PowdrChip<F, P>),
+    Plonk(PlonkChip<F, P>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -112,7 +112,7 @@ pub enum PowdrPeriphery<F: PrimeField32> {
 }
 
 impl<F: PrimeField32, P: FieldElement> VmExtension<F> for PowdrExtension<F, P> {
-    type Executor = PowdrExecutor<F>;
+    type Executor = PowdrExecutor<F, P>;
 
     type Periphery = PowdrPeriphery<F>;
 
@@ -139,7 +139,7 @@ impl<F: PrimeField32, P: FieldElement> VmExtension<F> for PowdrExtension<F, P> {
             .cloned();
 
         for precompile in &self.precompiles {
-            let powdr_chip: PowdrChip<F> = PowdrChip::new(
+            let powdr_chip = PowdrChip::new(
                 precompile.clone(),
                 offline_memory.clone(),
                 self.base_config.clone(),

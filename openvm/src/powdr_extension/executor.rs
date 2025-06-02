@@ -23,9 +23,7 @@ use openvm_circuit::{
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_stark_backend::{
-    p3_field::Field, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
-};
+use openvm_stark_backend::{p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator};
 
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
@@ -111,7 +109,7 @@ impl<F: PrimeField32, P: FieldElement> PowdrExecutor<F, P> {
     pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<F>],
+        bus_interactions: &[SymbolicBusInteraction<P>],
     ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,

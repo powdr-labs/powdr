@@ -91,11 +91,11 @@ pub struct SpecializedConfig<F: PrimeField32, P: FieldElement> {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(ChipUsageGetter, Chip, InstructionExecutorDerive, From, AnyEnum)]
-pub enum SpecializedExecutor<F: PrimeField32> {
+pub enum SpecializedExecutor<F: PrimeField32, P: FieldElement> {
     #[any_enum]
     SdkExecutor(SdkVmConfigExecutor<F>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor<F>),
+    PowdrExecutor(PowdrExecutor<F, P>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -107,7 +107,7 @@ pub enum MyPeriphery<F: PrimeField32> {
 }
 
 impl<F: PrimeField32, P: FieldElement> VmConfig<F> for SpecializedConfig<F, P> {
-    type Executor = SpecializedExecutor<F>;
+    type Executor = SpecializedExecutor<F, P>;
     type Periphery = MyPeriphery<F>;
 
     fn system(&self) -> &SystemConfig {

@@ -25,11 +25,11 @@ pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
     F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
 }
 
-pub fn algebraic_to_symbolic<T: PrimeField32>(
-    expr: &AlgebraicExpression<T>,
-) -> SymbolicExpression<T> {
+pub fn algebraic_to_symbolic<P: FieldElement, F: PrimeField32>(
+    expr: &AlgebraicExpression<P>,
+) -> SymbolicExpression<F> {
     match expr {
-        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
+        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(to_ovm_field(*n)),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
                 x: Arc::new(algebraic_to_symbolic(&binary.left)),
@@ -54,19 +54,19 @@ pub fn algebraic_to_symbolic<T: PrimeField32>(
                     _ => unimplemented!(),
                 };
 
-                if exp == T::ZERO {
-                    SymbolicExpression::Constant(T::ONE)
+                if exp == P::ZERO {
+                    SymbolicExpression::Constant(to_ovm_field(P::ONE))
                 } else {
                     let mut result = base.clone();
-                    let mut remaining = exp - T::ONE;
+                    let mut remaining = exp - P::ONE;
 
-                    while remaining != T::ZERO {
+                    while remaining != P::ZERO {
                         result = SymbolicExpression::Mul {
                             x: Arc::new(result),
                             y: Arc::new(base.clone()),
                             degree_multiple: 0,
                         };
-                        remaining -= T::ONE;
+                        remaining -= P::ONE;
                     }
                     result
                 }

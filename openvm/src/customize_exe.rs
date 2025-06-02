@@ -10,17 +10,15 @@ use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
 use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeField32};
-use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
-    SymbolicMachine,
+    InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::{BabyBearField, FieldElement};
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::utils::{to_ovm_field, to_powdr_field};
+use crate::utils::to_powdr_field;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
@@ -417,66 +415,4 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect();
 
     SymbolicBusInteraction { id, mult, args }
-}
-
-// Transpose an algebraic expression from the powdr field to openvm field
-fn transpose_algebraic_expression<F: PrimeField32, P: FieldElement>(
-    expr: AlgebraicExpression<P>,
-) -> AlgebraicExpression<F> {
-    match expr {
-        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(to_ovm_field(n)),
-        AlgebraicExpression::Reference(reference) => AlgebraicExpression::Reference(reference),
-        AlgebraicExpression::PublicReference(reference) => {
-            AlgebraicExpression::PublicReference(reference)
-        }
-        AlgebraicExpression::Challenge(challenge) => AlgebraicExpression::Challenge(challenge),
-        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
-            let left = transpose_algebraic_expression(*algebraic_binary_operation.left);
-            let right = transpose_algebraic_expression(*algebraic_binary_operation.right);
-            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
-                left: Box::new(left),
-                right: Box::new(right),
-                op: algebraic_binary_operation.op,
-            })
-        }
-        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
-            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
-                op: algebraic_unary_operation.op,
-                expr: Box::new(transpose_algebraic_expression(
-                    *algebraic_unary_operation.expr,
-                )),
-            })
-        }
-    }
-}
-
-// Transpose a symbolic machine from the powdr field to openvm field
-fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
-    machine: SymbolicMachine<P>,
-) -> SymbolicMachine<F> {
-    let constraints = machine
-        .constraints
-        .into_iter()
-        .map(|constraint| SymbolicConstraint {
-            expr: transpose_algebraic_expression(constraint.expr),
-        })
-        .collect();
-    let bus_interactions = machine
-        .bus_interactions
-        .into_iter()
-        .map(|interaction| SymbolicBusInteraction {
-            id: interaction.id,
-            mult: transpose_algebraic_expression(interaction.mult.clone()),
-            args: interaction
-                .args
-                .iter()
-                .map(|arg| transpose_algebraic_expression(arg.clone()))
-                .collect(),
-        })
-        .collect();
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
-    }
 }

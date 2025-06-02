@@ -16,6 +16,7 @@ openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "b09c25c"
 openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
 openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false }
 
+powdr-number.workspace = true
 powdr-openvm.workspace = true
 
 eyre = "0.6.12"

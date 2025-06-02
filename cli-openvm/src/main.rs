@@ -2,6 +2,7 @@ use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
+use powdr_number::FieldElement;
 use powdr_openvm::{CompiledProgram, GuestOptions, PowdrConfig};
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -160,8 +161,8 @@ fn run_command(command: Commands) {
     }
 }
 
-fn write_program_to_file<F: PrimeField32>(
-    program: CompiledProgram<F>,
+fn write_program_to_file<F: PrimeField32, P: FieldElement>(
+    program: CompiledProgram<F, P>,
     filename: &str,
 ) -> Result<(), io::Error> {
     use std::fs::File;
