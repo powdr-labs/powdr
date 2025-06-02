@@ -17,6 +17,8 @@ use powdr_ast::analyzed::{
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt, OpenVmField};
 
+pub(crate) type F<P> = <P as OpenVmField>::OpenVmField;
+
 pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
     f.as_canonical_u32().into()
 }
@@ -27,7 +29,7 @@ pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
 
 pub fn algebraic_to_symbolic<P: OpenVmField>(
     expr: &AlgebraicExpression<P>,
-) -> SymbolicExpression<P::OpenVmField> {
+) -> SymbolicExpression<F<P>> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(to_ovm_field(*n)),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {

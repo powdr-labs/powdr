@@ -22,12 +22,11 @@ use powdr_number::{FieldElement, OpenVmField};
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::utils::to_powdr_field;
+use crate::F;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
-
-pub type F<P> = <P as OpenVmField>::OpenVmField;
 
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
@@ -36,13 +35,13 @@ const POWDR_OPCODE: usize = 0x10ff;
 use crate::PowdrConfig;
 
 pub fn customize<P: OpenVmField>(
-    mut exe: VmExe<P::OpenVmField>,
+    mut exe: VmExe<F<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
-) -> (VmExe<P::OpenVmField>, PowdrExtension<P>) {
+) -> (VmExe<F<P>>, PowdrExtension<P>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
