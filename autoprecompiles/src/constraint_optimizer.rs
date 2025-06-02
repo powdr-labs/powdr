@@ -33,30 +33,30 @@ pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
+    stats_logger: &mut StatsLogger,
 ) -> SymbolicMachine<P> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
-    let mut stats_logger = StatsLogger::start(&constraint_system);
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log("After solver-based optimization", &constraint_system);
+    stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
         remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log("After removing disconnected columns", &constraint_system);
+    stats_logger.log("removing disconnected columns", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
-    stats_logger.log("After in-lining witness columns", &constraint_system);
+    stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
-    stats_logger.log("After removing trivial constraints", &constraint_system);
+    stats_logger.log("removing trivial constraints", &constraint_system);
 
     let constraint_system = remove_equal_constraints(constraint_system);
-    stats_logger.log("After removing equal constraints", &constraint_system);
+    stats_logger.log("removing equal constraints", &constraint_system);
 
     let constraint_system =
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
-    stats_logger.log("After removing equal bus interactions", &constraint_system);
+    stats_logger.log("removing equal bus interactions", &constraint_system);
 
     constraint_system_to_symbolic_machine(constraint_system)
 }
