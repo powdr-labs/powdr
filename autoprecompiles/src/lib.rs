@@ -66,11 +66,11 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct SymbolicBusInteraction<T> {
     pub id: u64,
-    pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+    pub mult: AlgebraicExpression<T>,
 }
 
 impl<T: Display> Display for SymbolicBusInteraction<T> {
