@@ -255,16 +255,15 @@ fn is_value_known_to_be_different_by_word<T: FieldElement>(
         // If there are too many possible assignments, we cannot prove anything.
         return false;
     }
-    let disallowed_range = RangeConstraint::from_range(T::from(0), T::from(3));
-    let r = get_all_possible_assignments(variables, range_constraints).all(|assignment| {
+    let disallowed_range = RangeConstraint::from_range(-T::from(3), T::from(3));
+    get_all_possible_assignments(variables, range_constraints).all(|assignment| {
         let mut diff = diff.clone();
         for (variable, value) in assignment.iter() {
             diff.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
         }
         diff.range_constraint(range_constraints)
             .is_disjoint(&disallowed_range)
-    });
-    r
+    })
 }
 
 /// Turns an algebraic expression into a quadratic symbolic expression,
