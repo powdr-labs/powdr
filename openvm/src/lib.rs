@@ -80,39 +80,17 @@ mod instruction_formatter;
 #[allow(dead_code)]
 mod plonk;
 
-#[derive(Copy, Clone, Debug)]
-pub enum PgoType {
+/// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
+/// The inner HashMap contains number of time a pc is executed.
+#[derive(Default)]
+pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
-    Cell,
+    Cell(HashMap<u32, u32>),
     /// cost = instruction per apc * times executed
-    Instruction,
+    Instruction(HashMap<u32, u32>),
     /// disable PGO
+    #[default]
     None,
-}
-
-pub struct PgoConfig {
-    /// The type of PGO to use.
-    pub pgo_type: PgoType,
-    /// Number of time a pc is executed, Some for PgoType::Cell or PgoType::Instruction, None for PgoType::None.
-    pub pc_idx_count: Option<HashMap<u32, u32>>,
-}
-
-impl Default for PgoConfig {
-    fn default() -> Self {
-        Self {
-            pgo_type: PgoType::None,
-            pc_idx_count: None,
-        }
-    }
-}
-
-impl PgoConfig {
-    pub fn new(pgo_type: PgoType, pc_idx_count: Option<HashMap<u32, u32>>) -> Self {
-        Self {
-            pgo_type,
-            pc_idx_count,
-        }
-    }
 }
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
@@ -820,7 +798,7 @@ mod tests {
         let pc_idx_count = get_pc_idx_count(GUEST, guest_opts.clone(), stdin);
         // We don't skip any sorted basic block here to accelerate the "costliest" block.
         let config = PowdrConfig::new(GUEST_APC as u64, GUEST_SKIP_PGO as u64);
-        let pgo_config = PgoConfig::new(PgoType::Cell, Some(pc_idx_count));
+        let pgo_config = PgoConfig::Cell(pc_idx_count);
         let machines = compile_guest(GUEST, guest_opts, config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
@@ -843,7 +821,7 @@ mod tests {
         // Keccak machine should have the same results with pgo
         // because we already accelerate the "costliest" block with the non-pgo version.
         let pc_idx_count = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
-        let pgo_config = PgoConfig::new(PgoType::Cell, Some(pc_idx_count));
+        let pgo_config = PgoConfig::Cell(pc_idx_count);
         test_keccak_machine(pgo_config);
     }
 }

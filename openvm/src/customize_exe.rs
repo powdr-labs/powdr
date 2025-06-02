@@ -24,12 +24,17 @@ use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
-    PgoType,
 };
 
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 const POWDR_OPCODE: usize = 0x10ff;
+
+type CachedAutoPrecompile<F> = (
+    usize,              // powdr opcode
+    SymbolicMachine<F>, // autoprecompile
+    Vec<Vec<u64>>,      // poly id substitution of original columns
+);
 
 use crate::{PgoConfig, PowdrConfig};
 
@@ -52,11 +57,6 @@ pub fn customize<F: PrimeField32>(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> (VmExe<F>, PowdrExtension<F>) {
-    let PgoConfig {
-        pgo_type,
-        pc_idx_count,
-    } = pgo_config;
-
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -119,19 +119,8 @@ pub fn customize<F: PrimeField32>(
     ];
 
     let mut blocks = collect_basic_blocks(&exe.program, labels, &opcodes_no_apc);
-    tracing::info!("Got {} basic blocks", blocks.len());
-
-    if let Some(pgo_program_idx_count) = pc_idx_count.clone() {
-        // first, drop any block whose start index cannot be found in pc_idx_count,
-        // because a basic block might not be executed at all.
-        // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| {
-            pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
-        });
-    }
-
     tracing::info!(
-        "Retained {} basic blocks after filtering by pc_idx_count",
+        "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
 
@@ -140,141 +129,29 @@ pub fn customize<F: PrimeField32>(
         tracing::info!("Block {}: start_idx {}", i, block.start_idx);
     });
 
-    // store air width by opcode, so that we don't repetitively calculate them later
-    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs
-        .iter()
-        .filter(|&(i, _)| (!opcodes_no_apc.contains(i)))
-        .map(|(i, air)| (*i, air.unique_columns().count()))
-        .collect::<HashMap<_, _>>();
-
     // sort basic blocks by:
-    // 1. if PgoType::Cell, cost = frequency * cells_saved_per_row
-    // 2. if PgoType::Instruction, cost = frequency * number_of_instructions
-    // 3. if PgoType::None, cost = number_of_instructions
-    let mut apcs: Option<_> = match pgo_type {
-        PgoType::Cell => {
-            // generate apc and cache it for all basic blocks
-            // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-            let (cells_saved_per_row_by_bb, apcs): (HashMap<_, _>, HashMap<_, (_, _, _)>) = blocks
-                .iter()
-                .enumerate()
-                .filter_map(|(i, acc_block)| {
-                    let apc_opcode = POWDR_OPCODE + i;
-                    let (autoprecompile, subs) =
-                        match generate_autoprecompile::<F, powdr_number::BabyBearField>(
-                            acc_block,
-                            airs,
-                            apc_opcode,
-                            config.bus_map.clone(),
-                            config.degree_bound,
-                        ) {
-                            Err(_) => {
-                                return None;
-                            }
-                            Ok((autoprecompile, subs)) => (autoprecompile, subs),
-                        };
-                    // calculate cells saved per row
-                    let apc_cells_per_row = autoprecompile.unique_columns().count();
-                    let original_cells_per_row: usize = acc_block
-                        .statements
-                        .iter()
-                        .map(|instruction| {
-                            air_width_by_opcode
-                                .get(&instruction.opcode.as_usize())
-                                .unwrap()
-                        })
-                        .sum();
-                    let cells_saved_per_row = original_cells_per_row - apc_cells_per_row;
-                    tracing::info!(
-                        "Basic block start_idx: {}, cells saved per row: {}",
-                        acc_block.start_idx,
-                        cells_saved_per_row
-                    );
-                    assert!(cells_saved_per_row > 0);
-                    Some((
-                        (acc_block.start_idx, cells_saved_per_row),
-                        (acc_block.start_idx, (apc_opcode, autoprecompile, subs)),
-                    ))
-                })
-                .unzip();
-
-            // filter out the basic blocks where the apc generation errored out
-            blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
-
-            let pgo_program_idx_count = pc_idx_count.unwrap(); // guaranteed to be Some
-
-            // cost = frequency * cells_saved_per_row
-            blocks.sort_by(|a, b| {
-                let a_cells_saved = cells_saved_per_row_by_bb[&a.start_idx];
-                let b_cells_saved = cells_saved_per_row_by_bb[&b.start_idx];
-
-                let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
-                let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
-
-                (b_cells_saved * b_cnt as usize).cmp(&(a_cells_saved * a_cnt as usize))
-            });
-
-            // Debug print blocks by descending cost
-            for block in &blocks {
-                let start_idx = block.start_idx;
-                let cells_saved = cells_saved_per_row_by_bb[&start_idx];
-                let count = pgo_program_idx_count[&(start_idx as u32)];
-                let cost = count * cells_saved as u32;
-
-                tracing::info!(
-                    "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
-                    start_idx,
-                    cost,
-                    count,
-                    cells_saved,
-                );
-            }
+    // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
+    // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
+    // 3. if PgoConfig::None, cost = number_of_instructions
+    let mut apcs: Option<_> = match pgo_config {
+        PgoConfig::Cell(pgo_program_idx_count) => {
+            let apcs = sort_blocks_by_pgo_cell_cost(
+                &mut blocks,
+                pgo_program_idx_count,
+                airs,
+                config.clone(),
+                &opcodes_no_apc,
+            );
 
             Some(apcs)
         }
-
-        PgoType::Instruction => {
-            let pgo_program_idx_count = pc_idx_count.unwrap(); // guaranteed to be Some
-
-            // cost = cells_saved_per_row
-            blocks.sort_by(|a, b| {
-                let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
-                let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
-                (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
-            });
-
-            // Debug print blocks by decsending cost
-            for block in &blocks {
-                let start_idx = block.start_idx;
-                let count = pgo_program_idx_count[&(start_idx as u32)];
-                let cost = count * (block.statements.len() as u32);
-
-                tracing::info!(
-                    "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
-                    start_idx,
-                    cost,
-                    count,
-                    block.statements.len(),
-                );
-            }
+        PgoConfig::Instruction(pgo_program_idx_count) => {
+            sort_blocks_by_pgo_instruction_cost(&mut blocks, pgo_program_idx_count);
 
             None
         }
-
-        PgoType::None => {
-            // cost = number_of_original_instructions
-            blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
-
-            // Debug print blocks by descending cost
-            for block in &blocks {
-                let start_idx = block.start_idx;
-                tracing::info!(
-                    "Basic block start_idx: {}, number_of_instructions: {}",
-                    start_idx,
-                    block.statements.len(),
-                );
-            }
+        PgoConfig::None => {
+            sort_blocks_by_length(&mut blocks);
 
             None
         }
@@ -628,5 +505,164 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
     SymbolicMachine {
         constraints,
         bus_interactions,
+    }
+}
+
+fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
+    blocks: &mut Vec<BasicBlock<F>>,
+    pgo_program_idx_count: HashMap<u32, u32>,
+    airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
+    config: PowdrConfig,
+    opcodes_no_apc: &[usize],
+) -> HashMap<usize, CachedAutoPrecompile<powdr_number::BabyBearField>> {
+    // drop any block whose start index cannot be found in pc_idx_count,
+    // because a basic block might not be executed at all.
+    // Also only keep basic blocks with more than one original instruction.
+    blocks.retain(|b| {
+        pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
+    });
+
+    tracing::info!(
+        "Retained {} basic blocks after filtering by pc_idx_count",
+        blocks.len()
+    );
+
+    // store air width by opcode, so that we don't repetitively calculate them later
+    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
+    let air_width_by_opcode = airs
+        .iter()
+        .filter(|&(i, _)| (!opcodes_no_apc.contains(i)))
+        .map(|(i, air)| (*i, air.unique_columns().count()))
+        .collect::<HashMap<_, _>>();
+
+    // generate apc and cache it for all basic blocks
+    // calculate number of trace cells saved per row for each basic block to sort them by descending cost
+    let (cells_saved_per_row_by_bb, apcs): (HashMap<_, _>, HashMap<_, (_, _, _)>) = blocks
+        .iter()
+        .enumerate()
+        .filter_map(|(i, acc_block)| {
+            let apc_opcode = POWDR_OPCODE + i;
+            let (autoprecompile, subs) =
+                match generate_autoprecompile::<F, powdr_number::BabyBearField>(
+                    acc_block,
+                    airs,
+                    apc_opcode,
+                    config.bus_map.clone(),
+                    config.degree_bound,
+                ) {
+                    Err(_) => {
+                        return None;
+                    }
+                    Ok((autoprecompile, subs)) => (autoprecompile, subs),
+                };
+            // calculate cells saved per row
+            let apc_cells_per_row = autoprecompile.unique_columns().count();
+            let original_cells_per_row: usize = acc_block
+                .statements
+                .iter()
+                .map(|instruction| {
+                    air_width_by_opcode
+                        .get(&instruction.opcode.as_usize())
+                        .unwrap()
+                })
+                .sum();
+            let cells_saved_per_row = original_cells_per_row - apc_cells_per_row;
+            tracing::info!(
+                "Basic block start_idx: {}, cells saved per row: {}",
+                acc_block.start_idx,
+                cells_saved_per_row
+            );
+            assert!(cells_saved_per_row > 0);
+            Some((
+                (acc_block.start_idx, cells_saved_per_row),
+                (acc_block.start_idx, (apc_opcode, autoprecompile, subs)),
+            ))
+        })
+        .unzip();
+
+    // filter out the basic blocks where the apc generation errored out
+    blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
+
+    // cost = frequency * cells_saved_per_row
+    blocks.sort_by(|a, b| {
+        let a_cells_saved = cells_saved_per_row_by_bb[&a.start_idx];
+        let b_cells_saved = cells_saved_per_row_by_bb[&b.start_idx];
+
+        let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
+        let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
+
+        (b_cells_saved * b_cnt as usize).cmp(&(a_cells_saved * a_cnt as usize))
+    });
+
+    // Debug print blocks by descending cost
+    for block in blocks {
+        let start_idx = block.start_idx;
+        let cells_saved = cells_saved_per_row_by_bb[&start_idx];
+        let count = pgo_program_idx_count[&(start_idx as u32)];
+        let cost = count * cells_saved as u32;
+
+        tracing::info!(
+            "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
+            start_idx,
+            cost,
+            count,
+            cells_saved,
+        );
+    }
+
+    apcs
+}
+
+fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
+    blocks: &mut Vec<BasicBlock<F>>,
+    pgo_program_idx_count: HashMap<u32, u32>,
+) {
+    // drop any block whose start index cannot be found in pc_idx_count,
+    // because a basic block might not be executed at all.
+    // Also only keep basic blocks with more than one original instruction.
+    blocks.retain(|b| {
+        pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
+    });
+
+    tracing::info!(
+        "Retained {} basic blocks after filtering by pc_idx_count",
+        blocks.len()
+    );
+
+    // cost = cells_saved_per_row
+    blocks.sort_by(|a, b| {
+        let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
+        let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
+        (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
+    });
+
+    // Debug print blocks by decsending cost
+    for block in blocks {
+        let start_idx = block.start_idx;
+        let count = pgo_program_idx_count[&(start_idx as u32)];
+        let cost = count * (block.statements.len() as u32);
+
+        tracing::info!(
+            "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
+            start_idx,
+            cost,
+            count,
+            block.statements.len(),
+        );
+    }
+}
+
+fn sort_blocks_by_length<F: PrimeField32>(blocks: &mut Vec<BasicBlock<F>>) {
+    // cost = number_of_original_instructions
+    blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
+
+    // Debug print blocks by descending cost
+    for block in blocks {
+        let start_idx = block.start_idx;
+        tracing::info!(
+            "Basic block start_idx: {}, number_of_instructions: {}",
+            start_idx,
+            block.statements.len(),
+        );
     }
 }

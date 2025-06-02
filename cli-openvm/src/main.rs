@@ -2,7 +2,7 @@ use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrConfig};
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PowdrConfig};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::io;
@@ -180,30 +180,23 @@ pub enum CliPgoType {
     None,
 }
 
-impl From<CliPgoType> for PgoType {
-    fn from(value: CliPgoType) -> Self {
-        match value {
-            CliPgoType::Cell => PgoType::Cell,
-            CliPgoType::Instruction => PgoType::Instruction,
-            CliPgoType::None => PgoType::None,
-        }
-    }
-}
-
 fn get_pgo_config(
     guest: String,
     guest_opts: GuestOptions,
     pgo: CliPgoType,
     input: Option<u32>,
 ) -> PgoConfig {
-    let pc_idx_count = match pgo {
-        CliPgoType::Cell | CliPgoType::Instruction => {
+    match pgo {
+        CliPgoType::Cell => {
             let pc_idx_count =
                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
-            Some(pc_idx_count)
+            PgoConfig::Cell(pc_idx_count)
         }
-        CliPgoType::None => None,
-    };
-
-    PgoConfig::new(pgo.into(), pc_idx_count)
+        CliPgoType::Instruction => {
+            let pc_idx_count =
+                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
+            PgoConfig::Instruction(pc_idx_count)
+        }
+        CliPgoType::None => PgoConfig::None,
+    }
 }
