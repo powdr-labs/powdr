@@ -119,23 +119,22 @@ where
                 let mut a = Variable::Unused;
                 let mut b = Variable::Unused;
                 let (q_o, c) = self.make_output(assert_zero);
-                let mut current_neg_left = *neg;
-                let mut current_neg_right = *neg;
+                let mut next_neg_left = false;
+                let mut next_neg_right = false;
                 match op {
                     AlgebraicBinaryOperator::Add => {
-                        println!("expression: {algebraic_expr:?}");
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            a = self.evaluate_expression(left, false,&mut current_neg_left);
-                            q_l = if *neg==current_neg_left { T::ONE } else { -T::ONE };
+                            a = self.evaluate_expression(left, false, &mut next_neg_left);
+                            q_l = if next_neg_left { -T::ONE } else { T::ONE };
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
-                            q_const += *n;
+                            q_const += *n
                         } else {
-                            b = self.evaluate_expression(right, false,&mut current_neg_right);
-                            q_r = if *neg==current_neg_right { T::ONE } else { -T::ONE };
+                            b = self.evaluate_expression(right, false, &mut next_neg_right);
+                            q_r = if next_neg_right { -T::ONE } else { T::ONE };
                         }
                         self.plonk_circuit.add_gate(Gate {
                             q_l,
@@ -155,15 +154,27 @@ where
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            a = self.evaluate_expression(left, false,&mut current_neg_left);
-                            q_l = if *neg==current_neg_left { T::ONE } else { -T::ONE };
+                            a = self.evaluate_expression(left, false, &mut next_neg_left);
+                            q_l = if *neg == next_neg_left {
+                                T::ONE
+                            } else {
+                                -T::ONE
+                            };
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
-                            q_const -= *n;
+                            if *neg {
+                                q_const += *n
+                            } else {
+                                q_const -= *n
+                            };
                         } else {
-                            b = self.evaluate_expression(right, false,&mut current_neg_right);
-                            q_r = if *neg==current_neg_right { -T::ONE } else { T::ONE };
+                            b = self.evaluate_expression(right, false, &mut next_neg_right);
+                            q_r = if *neg == next_neg_right {
+                                -T::ONE
+                            } else {
+                                T::ONE
+                            };
                         }
                         self.plonk_circuit.add_gate(Gate {
                             q_l,
@@ -186,17 +197,29 @@ where
                             }
                             (AlgebraicExpression::Number(n), non_constant)
                             | (non_constant, AlgebraicExpression::Number(n)) => {
-                                q_l = *n;
-                                a = self.evaluate_expression(non_constant, false,neg);
+                                a = self.evaluate_expression(
+                                    non_constant,
+                                    false,
+                                    &mut next_neg_left,
+                                ); // use current_neg_left for both case
+                                if next_neg_left {
+                                    q_l = -*n;
+                                } else {
+                                    q_l = *n;
+                                }
                             }
                             _ => {
-                                a = self.evaluate_expression(left, false,&mut current_neg_left);
-                                b = self.evaluate_expression(right, false,&mut current_neg_right);
-                                q_mul=if *neg ^ current_neg_left ^ current_neg_right { T::ONE } else { -T::ONE }; 
+                                a = self.evaluate_expression(left, false, &mut next_neg_left);
+                                b = self.evaluate_expression(right, false, &mut next_neg_right);
+
+                                q_mul = if next_neg_left ^ next_neg_right {
+                                    -T::ONE
+                                } else {
+                                    T::ONE
+                                };
                             }
                         }
 
-                        println!("left: {left:?}, right: {right:?}, q_l: {q_l}, q_r: {q_r}, q_mul: {q_mul}, q_const: {q_const}");
                         self.plonk_circuit.add_gate(Gate {
                             q_l,
                             q_r,
@@ -216,22 +239,23 @@ where
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => {
+                    let mut current_neg = false;
                     *neg = !*neg; // Toggle negation
-                    let expr= self.evaluate_expression(expr, false, neg);
+                    let expr = self.evaluate_expression(expr, false, &mut current_neg);
 
                     if assert_zero {
-                       self.plonk_circuit.add_gate(Gate {
-                            q_l: T::ONE,
+                        self.plonk_circuit.add_gate(Gate {
+                            // current_neg
+                            // true => neg and another neg in recursive call, positive
+                            q_l: if current_neg { T::ONE } else { -T::ONE },
                             q_o: T::ZERO,
                             a: expr.clone(),
                             ..Default::default()
                         });
                         Variable::Unused
-                        
-                    }else {
+                    } else {
                         expr
                     }
-                    
                 }
             },
             _ => {
@@ -265,15 +289,12 @@ mod tests {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
-
-        println!("{}", build_circuit(&machine.clone()));
-
+        println!("{}", build_circuit(&machine));
         assert_eq!(
             format!("{}", build_circuit(&machine)),
             "bus: none, x * y = tmp_1
-bus: none, -x = tmp_3
-bus: none, x + y = tmp_4
-bus: none, tmp_3 * tmp_4 = tmp_2
+bus: none, x + y = tmp_3
+bus: none, -x * tmp_3 = tmp_2
 bus: none, tmp_1 + -tmp_2 = tmp_0
 bus: none, -tmp_0 = 0
 "
@@ -288,6 +309,8 @@ bus: none, -tmp_0 = 0
             bus_interactions: vec![],
         };
 
+        println!("{}", build_circuit(&machine));
+
         assert_eq!(
             format!("{}", build_circuit(&machine)),
             "bus: none, -2 = tmp_1
@@ -299,15 +322,17 @@ bus: none, tmp_0 + 4 = 0
 
     #[test]
     fn single_variable() {
-        let expr = var("x", 0);
+        let expr = -var("x", 0);
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
 
+        println!("{}", build_circuit(&machine));
+
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "bus: none, x = 0
+            "bus: none, -x = 0
 "
         )
     }
@@ -322,13 +347,13 @@ bus: none, tmp_0 + 4 = 0
             bus_interactions: vec![],
         };
 
+        println!("{}", build_circuit(&machine));
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "bus: none, 2 * x = tmp_3
-bus: none, tmp_3 * y = tmp_2
-bus: none, -tmp_2 + 3 = tmp_1
-bus: none, -tmp_1 = tmp_0
-bus: none, tmp_0 + 1 = 0
+            "bus: none, 2 * x = tmp_2
+bus: none, tmp_2 * y = tmp_1
+bus: none, -tmp_1 + 3 = tmp_0
+bus: none, -tmp_0 + 1 = 0
 "
         );
     }
@@ -361,8 +386,7 @@ bus: none, -tmp_0 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "bus: none, -y = tmp_0
-bus: none, x + -tmp_0 = 0
+            "bus: none, x + y = 0
 "
         );
     }

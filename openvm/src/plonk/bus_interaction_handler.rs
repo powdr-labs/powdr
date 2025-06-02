@@ -95,7 +95,7 @@ mod tests {
                 x.clone() + y.clone(),
                 y.clone(),
                 -(x.clone() * y.clone()),
-                y.clone() * c(5),
+                -y.clone() * c(5),
                 x.clone(),
                 y.clone(),
             ],
@@ -106,6 +106,7 @@ mod tests {
         add_bus_to_plonk_circuit(bus_interaction, &mut circuit_builder, &bus_map);
         let plonk_circuit = circuit_builder.build();
 
+        println!("{plonk_circuit}");
         assert_eq!(
             format!("{plonk_circuit}"),
             "bus: none, 42 = tmp_0
