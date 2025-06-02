@@ -93,7 +93,7 @@ impl ReferencedSymbols for FunctionValueDefinition {
                 "Should have called .symbols() on a specific trait impl, not on the trait itself."
             ),
             // TODO check that e.g. an enum referenced in a trait declaration is also included.
-            // TODO this is probably not the case as we need to call .symbols() on the types not only the exressions
+            // TODO this is probably not the case as we need to call .symbols() on the types not only the expressions
             FunctionValueDefinition::TraitDeclaration(..)
             | FunctionValueDefinition::Array(..)
             | FunctionValueDefinition::Expression(TypedExpression {
