@@ -814,7 +814,7 @@ mod tests {
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         let start = Instant::now();
-        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
         prove_simple(GUEST_KECCAK, config.clone(), stdin.clone(), Some(pgo_data));
         let elapsed = start.elapsed();
         tracing::info!("Proving with PGO took {:?}", elapsed);
