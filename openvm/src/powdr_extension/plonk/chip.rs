@@ -164,6 +164,14 @@ where
                     a: gate.a.clone(),
                     b: gate.b.clone(),
                     c: gate.c.clone(),
+
+                    q_bitwise: to_ovm_field(gate.q_bitwise),
+                    q_memory: to_ovm_field(gate.q_memory),
+                    q_execution: to_ovm_field(gate.q_execution),
+                    q_pc: to_ovm_field(gate.q_pc),
+                    q_range_tuple: to_ovm_field(gate.q_range_tuple),
+                    q_range_check: to_ovm_field(gate.q_range_check),
+
                     q_l: to_ovm_field(gate.q_l),
                     q_r: to_ovm_field(gate.q_r),
                     q_o: to_ovm_field(gate.q_o),
