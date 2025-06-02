@@ -16,12 +16,12 @@ mod memory;
 mod tuple_range_checker;
 mod variable_range_checker;
 
-const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
-const DEFAULT_MEMORY: u64 = 1;
-const DEFAULT_PC_LOOKUP: u64 = 2;
-const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
-const DEFAULT_BITWISE_LOOKUP: u64 = 6;
-const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
+pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
+pub const DEFAULT_MEMORY: u64 = 1;
+pub const DEFAULT_PC_LOOKUP: u64 = 2;
+pub const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
+pub const DEFAULT_BITWISE_LOOKUP: u64 = 6;
+pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BusType {

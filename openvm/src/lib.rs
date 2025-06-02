@@ -201,6 +201,17 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram { exe, sdk_vm_config })
 }
 
+/// Determines how the precompile (a circuit with algebraic gates and bus interactions)
+/// is implemented as a RAP.
+#[derive(Default, Clone, Deserialize, Serialize)]
+pub enum PrecompileImplementation {
+    /// Allocate a column for each variable and process a call in a single row.
+    #[default]
+    SingleRowChip,
+    /// Compile the circuit to a PlonK circuit.
+    PlonkChip,
+}
+
 #[derive(Clone)]
 pub struct PowdrConfig {
     /// Number of autoprecompiles to generate.
@@ -212,6 +223,8 @@ pub struct PowdrConfig {
     pub bus_map: BusMap,
     /// The max degree of constraints.
     pub degree_bound: usize,
+    /// Implementation of the precompile, i.e., how to compile it to a RAP.
+    pub implementation: PrecompileImplementation,
 }
 
 impl PowdrConfig {
@@ -221,6 +234,7 @@ impl PowdrConfig {
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
             degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
+            implementation: PrecompileImplementation::default(),
         }
     }
 
@@ -238,6 +252,16 @@ impl PowdrConfig {
     pub fn with_degree_bound(self, degree_bound: usize) -> Self {
         Self {
             degree_bound,
+            ..self
+        }
+    }
+
+    pub fn with_precompile_implementation(
+        self,
+        precompile_implementation: PrecompileImplementation,
+    ) -> Self {
+        Self {
+            implementation: precompile_implementation,
             ..self
         }
     }
@@ -328,7 +352,7 @@ impl CompiledProgram<F> {
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
-                if name.starts_with("PowdrAir") {
+                if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                     let constraints = get_constraints(air);
                     Some(AirMetrics {
                         name: name.to_string(),
@@ -657,8 +681,7 @@ mod tests {
 
     fn compile_and_prove(
         guest: &str,
-        apc: usize,
-        skip: usize,
+        config: PowdrConfig,
         mock: bool,
         recursion: bool,
         stdin: StdIn,
@@ -669,18 +692,18 @@ mod tests {
         prove(&program, mock, recursion, stdin)
     }
 
-    fn prove_simple(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
-        let result = compile_and_prove(guest, apc, skip, false, false, stdin);
+    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, false, false, stdin);
         assert!(result.is_ok());
     }
 
-    fn prove_mock(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
-        let result = compile_and_prove(guest, apc, skip, true, false, stdin);
+    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, true, false, stdin);
         assert!(result.is_ok());
     }
 
-    fn _prove_recursion(guest: &str, apc: usize, skip: usize, stdin: StdIn) {
-        let result = compile_and_prove(guest, apc, skip, false, true, stdin);
+    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, false, true, stdin);
         assert!(result.is_ok());
     }
 
@@ -693,21 +716,34 @@ mod tests {
     const GUEST_KECCAK: &str = "guest-keccak";
     const GUEST_KECCAK_ITER: u32 = 1000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
-    const GUEST_KECCAK_APC: usize = 1;
-    const GUEST_KECCAK_SKIP: usize = 0;
+    const GUEST_KECCAK_APC: u64 = 1;
+    const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        prove_simple(GUEST, GUEST_APC, GUEST_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        prove_simple(GUEST, config, stdin);
     }
 
     #[test]
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        prove_mock(GUEST, GUEST_APC, GUEST_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        prove_mock(GUEST, config, stdin);
+    }
+
+    // All gate constraints should be satisfied, but bus interactions are not implemented yet.
+    #[test]
+    #[should_panic = "LogUp multiset equality check failed."]
+    fn guest_plonk_prove_mock() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
+            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
+        prove_mock(GUEST, config, stdin);
     }
 
     // #[test]
@@ -724,7 +760,8 @@ mod tests {
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        prove_simple(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, config, stdin);
     }
 
     #[test]
@@ -732,14 +769,28 @@ mod tests {
     fn keccak_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        prove_simple(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, config, stdin);
     }
 
     #[test]
     fn keccak_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        prove_mock(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(GUEST_KECCAK, config, stdin);
+    }
+
+    // All gate constraints should be satisfied, but bus interactions are not implemented yet.
+    #[test]
+    #[should_panic = "LogUp multiset equality check failed."]
+    fn keccak_plonk_small_prove_mock() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP)
+            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
+        prove_mock(GUEST_KECCAK, config, stdin);
     }
 
     #[test]
@@ -747,7 +798,8 @@ mod tests {
     fn keccak_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        prove_mock(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(GUEST_KECCAK, config, stdin);
     }
 
     // #[test]
@@ -784,6 +836,20 @@ mod tests {
         assert_eq!(m.width, 70);
         assert_eq!(m.constraints, 37);
         assert_eq!(m.bus_interactions, 55);
+    }
+
+    #[test]
+    fn guest_machine_plonk() {
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
+            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, None)
+            .unwrap()
+            .powdr_airs_metrics();
+        assert_eq!(machines.len(), 1);
+        let m = &machines[0];
+        assert_eq!(m.width, 8);
+        assert_eq!(m.constraints, 1);
+        assert_eq!(m.bus_interactions, 0);
     }
 
     #[test]

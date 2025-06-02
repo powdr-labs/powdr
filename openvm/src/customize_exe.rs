@@ -266,7 +266,10 @@ pub fn customize<F: PrimeField32>(
         ));
     }
 
-    (exe, PowdrExtension::new(extensions, base_config))
+    (
+        exe,
+        PowdrExtension::new(extensions, base_config, config.implementation),
+    )
 }
 
 // TODO collect properly from opcode enums
