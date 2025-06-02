@@ -1,7 +1,10 @@
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
 use powdr::UniqueColumns;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator};
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator,
+};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -117,6 +120,17 @@ impl<T: Display> Display for SymbolicMachine<T> {
             writeln!(f, "{bus_interaction}")?;
         }
         Ok(())
+    }
+}
+
+impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+    pub fn degree(&self) -> usize {
+        let mut cache = Default::default();
+        let ints = Default::default();
+        self.children()
+            .map(|e| e.degree_with_cache(&ints, &mut cache))
+            .max()
+            .unwrap_or(0)
     }
 }
 
@@ -293,9 +307,56 @@ pub fn build<T: FieldElement>(
     let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
 
     // add guards to constraints that are not satisfied by zeroes
+    let pre_degree = machine.degree();
     let machine = add_guards(machine);
+    assert_eq!(
+        pre_degree,
+        machine.degree(),
+        "Degree should not change after adding guards"
+    );
 
     (machine, subs)
+}
+
+fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
+    let mut zeroed_expr = expr.clone();
+    powdr::make_refs_zero(&mut zeroed_expr);
+    let zeroed_expr = simplify_expression(zeroed_expr);
+    powdr::is_zero(&zeroed_expr)
+}
+
+/// Adds `is_valid` guards to constraints without increasing its degree.
+/// This implementation always guards the LHS of multiplications.
+/// In the future this could be changed to minimize the number of guards added.
+/// Assumption:
+/// - `expr` is already simplified, i.e., expressions like (3 + 4) and (x * 1) do not appear.
+fn add_guards_constraint<T: FieldElement>(
+    expr: AlgebraicExpression<T>,
+    is_valid: &AlgebraicExpression<T>,
+) -> AlgebraicExpression<T> {
+    if satisfies_zero_witness(&expr) {
+        return expr;
+    }
+
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = add_guards_constraint(*left, is_valid);
+            let right = match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
+                    Box::new(add_guards_constraint(*right, is_valid))
+                }
+                AlgebraicBinaryOperator::Mul => right,
+                AlgebraicBinaryOperator::Pow => unimplemented!(),
+            };
+            AlgebraicExpression::new_binary(left, op, *right)
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let inner = add_guards_constraint(*expr, is_valid);
+            AlgebraicExpression::new_unary(op, inner)
+        }
+        AlgebraicExpression::Number(..) => expr * is_valid.clone(),
+        _ => expr,
+    }
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions.
@@ -322,16 +383,11 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
         next: false,
     });
 
-    for c in &mut machine.constraints {
-        let mut zeroed_expr = c.expr.clone();
-        powdr::make_refs_zero(&mut zeroed_expr);
-        let zeroed_expr = simplify_expression(zeroed_expr);
-        if !powdr::is_zero(&zeroed_expr) {
-            c.expr = is_valid.clone() * c.expr.clone();
-            // TODO this would not have to be cloned if we had *=
-            //c.expr *= guard.clone();
-        }
-    }
+    machine.constraints = machine
+        .constraints
+        .into_iter()
+        .map(|c| add_guards_constraint(c.expr, &is_valid).into())
+        .collect();
 
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
@@ -370,12 +426,8 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
                 // already handled
             }
             _ => {
-                // We check the value of the multiplicity when all variables are set to zero
-                let mut zeroed_expr = b.mult.clone();
-                powdr::make_refs_zero(&mut zeroed_expr);
-                let zeroed_expr = simplify_expression(zeroed_expr);
-                if !powdr::is_zero(&zeroed_expr) {
-                    // if it's not zero, then we guard the multiplicity by `is_valid`
+                if !satisfies_zero_witness(&b.mult) {
+                    // guard the multiplicity by `is_valid`
                     b.mult = is_valid.clone() * b.mult.clone();
                     // TODO this would not have to be cloned if we had *=
                     //c.expr *= guard.clone();
