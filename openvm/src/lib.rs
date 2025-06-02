@@ -808,7 +808,7 @@ mod tests {
         use std::time::Instant;
         // Config
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER);
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
