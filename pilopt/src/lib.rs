@@ -297,7 +297,7 @@ fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             })
             .unzip();
 
-    // substitute all occurences in expressions.
+    // substitute all occurrences in expressions.
 
     pil_file.post_visit_expressions_in_identities_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
@@ -308,7 +308,7 @@ fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         };
     });
 
-    // substitute all occurences in definitions.
+    // substitute all occurrences in definitions.
     pil_file.post_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(_, Reference::Poly(reference)) = e {
             if let Some((replacement_name, _)) = replacement_by_name.get(&reference.name) {
