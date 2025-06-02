@@ -16,10 +16,11 @@ use powdr_autoprecompiles::{
     InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
     SymbolicMachine,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
@@ -237,7 +238,10 @@ pub fn customize<F: PrimeField32>(
         ));
     }
 
-    (exe, PowdrExtension::new(extensions, base_config))
+    (
+        exe,
+        PowdrExtension::new(extensions, base_config, config.implementation),
+    )
 }
 
 // TODO collect properly from opcode enums
@@ -418,14 +422,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect();
 
     SymbolicBusInteraction { id, mult, args }
-}
-
-fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
-    f.as_canonical_u32().into()
-}
-
-fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
 }
 
 // Transpose an algebraic expression from the powdr field to openvm field

@@ -1,9 +1,11 @@
+use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ConstraintRef;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -22,8 +24,8 @@ pub fn replace_constrained_witness_columns<
     constraint_system: ConstraintSystem<T, V>,
     degree_bound: DegreeBound,
 ) -> ConstraintSystem<T, V> {
-    let mut to_remove_idx = vec![];
-    let mut inlined_vars = vec![];
+    let mut to_remove_idx = HashSet::new();
+    let mut inlined_vars = HashSet::new();
 
     let mut constraint_system = IndexedConstraintSystem::from(constraint_system);
 
@@ -35,9 +37,9 @@ pub fn replace_constrained_witness_columns<
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
-                to_remove_idx.push(curr_idx);
                 constraint_system.substitute_by_unknown(&var, &expr);
-                inlined_vars.push(var);
+                to_remove_idx.insert(curr_idx);
+                inlined_vars.insert(var);
 
                 break;
             }
@@ -64,32 +66,19 @@ pub fn replace_constrained_witness_columns<
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint: &QuadraticSymbolicExpression<T, V>,
 ) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
     let mut substitutions = vec![];
 
     let (_, linear, _) = constraint.components();
 
-    for (target_var, coeff) in linear {
-        let Some(coeff_const) = coeff.try_to_number() else {
+    for (target_var, _) in linear {
+        let Some(rhs_qse) = constraint.try_solve_for(target_var) else {
             continue;
         };
 
-        assert!(!coeff_const.is_zero());
-
-        // Isolate target_var from the constraint equation.
-        let rhs_qse = -constraint.clone()
-            * QuadraticSymbolicExpression::from(T::one() / coeff_const)
-            + QuadraticSymbolicExpression::from_unknown_variable(target_var.clone());
-
-        // Check if there is any target_var in the substitution .
-        if rhs_qse
-            .referenced_unknown_variables()
-            .any(|v| v == target_var)
-        {
-            continue;
-        }
+        assert!(!rhs_qse.referenced_unknown_variables().contains(target_var));
 
         substitutions.push((target_var.clone(), rhs_qse));
     }

@@ -2,11 +2,13 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use crate::plonk::{Gate, PlonkCircuit, Variable};
+use crate::plonk::air_to_plonkish::build_circuit;
+use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
+use crate::utils::to_ovm_field;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -27,8 +29,10 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::powdr::UniqueColumns;
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use powdr_number::{BabyBearField, FieldElement};
 
 use super::air::PlonkAir;
 
@@ -120,13 +124,18 @@ where
     }
 
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
-        tracing::trace!("Generating air proof input for PlonkChip {}", self.name);
+        tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        // TODO: Compute the actual PlonK circuit from the machine.
-        let plonk_circuit = PlonkCircuit::<Val<SC>, u64>::default();
+        let machine: SymbolicMachine<BabyBearField> =
+            transpose_symbolic_machine_back(self.machine.clone());
+        let plonk_circuit = build_circuit(&machine);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
+        tracing::debug!("   Number of calls: {number_of_calls}");
+        tracing::debug!("   Plonk gates: {}", plonk_circuit.len());
+        tracing::debug!("   Trace width: {width}");
+        tracing::debug!("   Trace height: {height}");
 
         // Get witness in a calls x variables matrix.
         // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
@@ -153,6 +162,25 @@ where
                 let columns: &mut PlonkColumns<_> =
                     values[index * width..(index + 1) * width].borrow_mut();
 
+                let gate = Gate {
+                    a: gate.a.clone(),
+                    b: gate.b.clone(),
+                    c: gate.c.clone(),
+
+                    q_bitwise: to_ovm_field(gate.q_bitwise),
+                    q_memory: to_ovm_field(gate.q_memory),
+                    q_execution: to_ovm_field(gate.q_execution),
+                    q_pc: to_ovm_field(gate.q_pc),
+                    q_range_tuple: to_ovm_field(gate.q_range_tuple),
+                    q_range_check: to_ovm_field(gate.q_range_check),
+
+                    q_l: to_ovm_field(gate.q_l),
+                    q_r: to_ovm_field(gate.q_r),
+                    q_o: to_ovm_field(gate.q_o),
+                    q_mul: to_ovm_field(gate.q_mul),
+                    q_const: to_ovm_field(gate.q_const),
+                };
+
                 // TODO: These should be pre-processed columns (for soundness and efficiency).
                 columns.q_l = gate.q_l;
                 columns.q_r = gate.q_r;
@@ -164,8 +192,8 @@ where
                 // - We can always solve for temporary variables, by processing the gates in order.
                 // - Temporary variables appear in `c` for the first time.
                 // TODO: Solve for tmp variables of other columns too.
-                vars.derive_tmp_values_for_c(gate);
-                vars.assert_all_known_or_unused(gate);
+                vars.derive_tmp_values_for_c(&gate);
+                vars.assert_all_known_or_unused(&gate);
                 if let Some(a) = vars.get(&gate.a) {
                     columns.a = a;
                 }
@@ -206,18 +234,21 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
         }
     }
 
-    /// Get the value of a variable. None if the value is not known yet.
-    fn get(&self, variable: &Variable<u64>) -> Option<F> {
+    /// Get the value of a variable. None if the variable is temporary but still unknown.
+    fn get(&self, variable: &Variable<AlgebraicReference>) -> Option<F> {
         match variable {
-            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[id]]),
+            Variable::Witness(id) => {
+                Some(self.witness[self.column_index_by_poly_id[&id.poly_id.id]])
+            }
             Variable::Tmp(id) => self.tmp_vars[*id],
-            Variable::Unused => None,
+            // The value of unused cells should not matter.
+            Variable::Unused => Some(F::ZERO),
         }
     }
 
     /// If the given gate's `c` value is unknown and `a` and `b` are known,
     /// derives the value of `c`.
-    fn derive_tmp_values_for_c(&mut self, gate: &Gate<F, u64>) {
+    fn derive_tmp_values_for_c(&mut self, gate: &Gate<F, AlgebraicReference>) {
         if self.get(&gate.c).is_some() {
             // Already know the value.
             return;
@@ -235,7 +266,7 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     }
 
     /// Asserts that all variables `a`, `b`, and `c` in the given gate are known or unused.
-    fn assert_all_known_or_unused(&self, gate: &Gate<F, u64>) {
+    fn assert_all_known_or_unused(&self, gate: &Gate<F, AlgebraicReference>) {
         if let Variable::Tmp(id) = gate.a {
             assert!(self.tmp_vars[id].is_some(), "Variable `a` is unknown.",);
         }
@@ -245,5 +276,66 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
         if let Variable::Tmp(id) = gate.c {
             assert!(self.tmp_vars[id].is_some(), "Variable `c` is unknown.",);
         }
+    }
+}
+
+// TODO: We transpose expressions from powdr -> openvm -> powdr, we should fix this...
+fn transpose_algebraic_expression_back<F: PrimeField32, P: FieldElement>(
+    expr: AlgebraicExpression<F>,
+) -> AlgebraicExpression<P> {
+    match expr {
+        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(n.as_canonical_u32().into()),
+        AlgebraicExpression::Reference(reference) => AlgebraicExpression::Reference(reference),
+        AlgebraicExpression::PublicReference(reference) => {
+            AlgebraicExpression::PublicReference(reference)
+        }
+        AlgebraicExpression::Challenge(challenge) => AlgebraicExpression::Challenge(challenge),
+        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
+            let left = transpose_algebraic_expression_back(*algebraic_binary_operation.left);
+            let right = transpose_algebraic_expression_back(*algebraic_binary_operation.right);
+            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
+                left: Box::new(left),
+                right: Box::new(right),
+                op: algebraic_binary_operation.op,
+            })
+        }
+        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
+            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
+                op: algebraic_unary_operation.op,
+                expr: Box::new(transpose_algebraic_expression_back(
+                    *algebraic_unary_operation.expr,
+                )),
+            })
+        }
+    }
+}
+
+fn transpose_symbolic_machine_back<F: PrimeField32, P: FieldElement>(
+    machine: SymbolicMachine<F>,
+) -> SymbolicMachine<P> {
+    let constraints = machine
+        .constraints
+        .into_iter()
+        .map(|constraint| SymbolicConstraint {
+            expr: transpose_algebraic_expression_back(constraint.expr),
+        })
+        .collect();
+    let bus_interactions = machine
+        .bus_interactions
+        .into_iter()
+        .map(|interaction| SymbolicBusInteraction {
+            id: interaction.id,
+            mult: transpose_algebraic_expression_back(interaction.mult.clone()),
+            args: interaction
+                .args
+                .iter()
+                .map(|arg| transpose_algebraic_expression_back(arg.clone()))
+                .collect(),
+        })
+        .collect();
+
+    SymbolicMachine {
+        constraints,
+        bus_interactions,
     }
 }
