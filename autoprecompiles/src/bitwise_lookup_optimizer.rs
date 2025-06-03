@@ -68,7 +68,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement>(
         .map(|(_, bus_int)| bus_int)
         .collect();
     // After we have removed the bus interactions, we check which of the
-    // expressions we still need to byte-constrain are maybe already
+    // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
     let already_byte_constrained = all_byte_constrained_expressions(&machine)
         .cloned()
@@ -89,10 +89,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement>(
     if to_byte_constrain.len() % 2 != 0 {
         to_byte_constrain.push(T::from(0).into());
     }
-    for chunk in to_byte_constrain.chunks(2) {
-        let [x, y] = chunk else {
-            unreachable!();
-        };
+    for (x, y) in to_byte_constrain.into_iter().tuples() {
         machine.bus_interactions.push(SymbolicBusInteraction {
             id: BITWISE_LOOKUP_BUS_ID,
             args: vec![x.clone(), y.clone(), T::from(0).into(), T::from(0).into()],
