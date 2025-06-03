@@ -159,6 +159,7 @@ pub fn customize<F: PrimeField32>(
                 airs,
                 config.clone(),
                 &opcodes_no_apc,
+                &branch_opcodes_set,
             );
 
             Some(apcs)
@@ -217,6 +218,7 @@ pub fn customize<F: PrimeField32>(
                 apc_opcode,
                 config.bus_map.clone(),
                 config.degree_bound,
+                &branch_opcodes_set,
             )
             .expect("Failed to generate autoprecompile");
             (apc_opcode, autoprecompile, subs)
@@ -254,15 +256,6 @@ pub fn customize<F: PrimeField32>(
         let len_before = program.len();
         program.splice(pc..pc + n_acc, new_instrs);
         assert_eq!(program.len(), len_before);
-
-        let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
-            acc_block,
-            airs,
-            apc_opcode,
-            config.bus_map.clone(),
-            config.degree_bound,
-            &branch_opcodes_set,
-        );
 
         let is_valid_column = autoprecompile
             .unique_columns()
@@ -626,6 +619,7 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
     airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
     config: PowdrConfig,
     opcodes_no_apc: &[usize],
+    branch_opcodes_set: &BTreeSet<usize>,
 ) -> HashMap<usize, CachedAutoPrecompile<powdr_number::BabyBearField>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -661,6 +655,7 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
                     apc_opcode,
                     config.bus_map.clone(),
                     config.degree_bound,
+                    branch_opcodes_set,
                 ) {
                     Err(_) => {
                         return None;

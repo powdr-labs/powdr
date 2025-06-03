@@ -110,7 +110,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
-) -> Result<ConstraintSystem<T, Variable>, Error> {
+) -> Result<ConstraintSystem<T, V>, Error> {
     let result = Solver::new(constraint_system.clone())
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
