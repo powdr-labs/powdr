@@ -21,6 +21,7 @@ pub mod constraint_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
+mod stats_logger;
 pub mod symbolic_machine_generator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
