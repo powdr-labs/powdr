@@ -133,20 +133,23 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect::<HashMap<_, _>>();
 
-        let dummy_trace_by_air_name: HashMap<_, _> = self
-            .inventory
-            .executors
-            .into_iter()
-            .map(|executor| {
-                (
-                    executor.air_name().clone(),
-                    tracing::info_span!("dummy trace", air_name = executor.air_name()).in_scope(|| Chip::<SC>::generate_air_proof_input(executor)
-                        .raw
-                        .common_main
-                        .unwrap()),
-                )
-            })
-            .collect();
+        let dummy_trace_by_air_name: HashMap<_, _> =
+            self.inventory
+                .executors
+                .into_iter()
+                .map(|executor| {
+                    (
+                        executor.air_name().clone(),
+                        tracing::info_span!("dummy trace", air_name = executor.air_name())
+                            .in_scope(|| {
+                                Chip::<SC>::generate_air_proof_input(executor)
+                                    .raw
+                                    .common_main
+                                    .unwrap()
+                            }),
+                    )
+                })
+                .collect();
 
         let instruction_index_to_table_offset = self
             .instructions
