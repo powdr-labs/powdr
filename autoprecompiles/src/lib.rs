@@ -301,6 +301,7 @@ pub struct VmConfig<'a, T: FieldElement, B> {
     pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
+    // TODO: Add bus map
 }
 
 pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
