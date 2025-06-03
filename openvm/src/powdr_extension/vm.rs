@@ -118,6 +118,8 @@ pub enum PowdrExecutor<P: IntoOpenVm> {
     Plonk(PlonkChip<P>),
 }
 
+// These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
+// but they don't work with the field types above.
 impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for PowdrExecutor<P>
 where
     Val<SC>: PrimeField32,
