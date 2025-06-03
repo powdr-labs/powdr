@@ -61,6 +61,11 @@ pub fn customize<F: PrimeField32>(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> (VmExe<F>, PowdrExtension<F>) {
+    // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
+    // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
+    // Otherwise, `apc_cache` will remain empty, and we will generate APC on the fly when we select which basic blocks to accelerate.
+    let mut apc_cache = HashMap::new();
+
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -151,28 +156,23 @@ pub fn customize<F: PrimeField32>(
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
-    let mut apcs: Option<_> = match pgo_config {
+    match pgo_config {
         PgoConfig::Cell(pgo_program_idx_count) => {
-            let apcs = sort_blocks_by_pgo_cell_cost(
+            sort_blocks_by_pgo_cell_cost(
                 &mut blocks,
+                &mut apc_cache,
                 pgo_program_idx_count,
                 airs,
                 config.clone(),
                 &opcodes_no_apc,
                 &branch_opcodes_set,
             );
-
-            Some(apcs)
         }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             sort_blocks_by_pgo_instruction_cost(&mut blocks, pgo_program_idx_count);
-
-            None
         }
         PgoConfig::None => {
             sort_blocks_by_length(&mut blocks);
-
-            None
         }
     };
 
@@ -207,22 +207,19 @@ pub fn customize<F: PrimeField32>(
             acc_block.pretty_print(openvm_instruction_formatter)
         );
 
-        // all apcs would have been generated earlier if we had Pgo::Cell
-        let (apc_opcode, autoprecompile, subs) = if let Some(apcs) = &mut apcs {
-            apcs.remove(&acc_block.start_idx).unwrap()
-        } else {
-            let apc_opcode = POWDR_OPCODE + i;
-            let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
-                acc_block,
-                airs,
-                apc_opcode,
-                config.bus_map.clone(),
-                config.degree_bound,
-                &branch_opcodes_set,
-            )
-            .expect("Failed to generate autoprecompile");
-            (apc_opcode, autoprecompile, subs)
-        };
+        // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
+        let (apc_opcode, autoprecompile, subs) =
+            apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
+                generate_apc_cache::<F, powdr_number::BabyBearField>(
+                    acc_block,
+                    airs,
+                    POWDR_OPCODE + i,
+                    config.bus_map.clone(),
+                    config.degree_bound,
+                    &branch_opcodes_set,
+                )
+                .expect("Failed to generate autoprecompile")
+            });
 
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
@@ -462,6 +459,27 @@ fn add_extra_targets<F: PrimeField32>(
 
     labels
 }
+
+fn generate_apc_cache<F: PrimeField32, P: FieldElement>(
+    block: &BasicBlock<F>,
+    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    apc_opcode: usize,
+    bus_map: BusMap,
+    degree_bound: usize,
+    branch_opcodes: &BTreeSet<usize>,
+) -> Result<CachedAutoPrecompile<P>, Error> {
+    let (autoprecompile, subs) = generate_autoprecompile(
+        block,
+        airs,
+        apc_opcode,
+        bus_map,
+        degree_bound,
+        branch_opcodes,
+    )?;
+
+    Ok((apc_opcode, autoprecompile, subs))
+}
+
 // OpenVM relevant bus ids:
 // 0: execution bridge -> [pc, timestamp]
 // 1: memory -> [address space, pointer, data, timestamp, 1]
@@ -613,14 +631,15 @@ fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
     }
 }
 
-fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
+fn sort_blocks_by_pgo_cell_cost<F: PrimeField32, P: FieldElement>(
     blocks: &mut Vec<BasicBlock<F>>,
+    apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
+    airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     opcodes_no_apc: &[usize],
     branch_opcodes_set: &BTreeSet<usize>,
-) -> HashMap<usize, CachedAutoPrecompile<powdr_number::BabyBearField>> {
+) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -643,27 +662,22 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
 
     // generate apc and cache it for all basic blocks
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-    let (cells_saved_per_row_by_bb, apcs): (HashMap<_, _>, HashMap<_, (_, _, _)>) = blocks
+    let cells_saved_per_row_by_bb: HashMap<_, _> = blocks
         .iter()
         .enumerate()
         .filter_map(|(i, acc_block)| {
-            let apc_opcode = POWDR_OPCODE + i;
-            let (autoprecompile, subs) =
-                match generate_autoprecompile::<F, powdr_number::BabyBearField>(
-                    acc_block,
-                    airs,
-                    apc_opcode,
-                    config.bus_map.clone(),
-                    config.degree_bound,
-                    branch_opcodes_set,
-                ) {
-                    Err(_) => {
-                        return None;
-                    }
-                    Ok((autoprecompile, subs)) => (autoprecompile, subs),
-                };
+            let apc_cache_entry = generate_apc_cache::<F, P>(
+                acc_block,
+                airs,
+                POWDR_OPCODE + i,
+                config.bus_map.clone(),
+                config.degree_bound,
+                branch_opcodes_set,
+            )
+            .ok()?;
+            apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());
             // calculate cells saved per row
-            let apc_cells_per_row = autoprecompile.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.1.unique_columns().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()
@@ -680,12 +694,9 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
                 cells_saved_per_row
             );
             assert!(cells_saved_per_row > 0);
-            Some((
-                (acc_block.start_idx, cells_saved_per_row),
-                (acc_block.start_idx, (apc_opcode, autoprecompile, subs)),
-            ))
+            Some((acc_block.start_idx, cells_saved_per_row))
         })
-        .unzip();
+        .collect();
 
     // filter out the basic blocks where the apc generation errored out
     blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
@@ -716,8 +727,6 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32>(
             cells_saved,
         );
     }
-
-    apcs
 }
 
 fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
