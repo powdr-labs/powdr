@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::from_fn;
+use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_expression::visitors::{AllChildren, ExpressionVisitable};
@@ -91,7 +92,7 @@ pub struct Column {
 impl From<&AlgebraicReference> for Column {
     fn from(r: &AlgebraicReference) -> Self {
         Column {
-            name: r.name.clone(),
+            name: (*r.name).clone(),
             id: r.poly_id,
         }
     }
@@ -154,7 +155,7 @@ pub fn reassign_ids<T: FieldElement>(
         if let AlgebraicExpression::Reference(r) = e {
             let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
             r.poly_id.id = new_col.id.id;
-            r.name = new_col.name.clone();
+            r.name = Arc::new(new_col.name.clone());
         }
     });
 
