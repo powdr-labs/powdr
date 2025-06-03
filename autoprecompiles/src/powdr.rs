@@ -41,6 +41,11 @@ pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     });
 }
 
+pub fn make_bool<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    let one = AlgebraicExpression::Number(T::from(1u64));
+    expr.clone() * (expr - one)
+}
+
 pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     match expr {
         AlgebraicExpression::Number(n) => *n == T::zero(),

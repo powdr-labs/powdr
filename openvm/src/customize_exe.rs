@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use itertools::Itertools;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
+use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
 use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program, VmOpcode};
 use openvm_instructions::{LocalOpcode, SystemOpcode};
@@ -27,6 +28,9 @@ use crate::{
 };
 
 pub const OPENVM_DEGREE_BOUND: usize = 5;
+
+// TODO: read this from program
+const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
@@ -93,15 +97,29 @@ pub fn customize<F: PrimeField32>(
         Fp2Opcode::SETUP_MULDIV.global_opcode().as_usize(),
         SystemOpcode::PHANTOM.global_opcode().as_usize(),
         SystemOpcode::TERMINATE.global_opcode().as_usize(),
+        // TODO clean this up
         0x510, // not sure yet what this is
         0x513, // not sure yet what this is
         0x516, // not sure yet what this is
         0x51c, // not sure yet what this is
         0x523, // not sure yet what this is
         0x526, // not sure yet what this is
+        1024,
+        1025,
+        1028,
+        1033,
+        1104,
+        1030,
+        1033,
+        1027,
+        1029,
     ];
 
-    let mut blocks = collect_basic_blocks(&exe.program, labels, &opcodes_no_apc);
+    let labels = add_extra_targets(&exe.program, labels.clone());
+    let branch_opcodes_set = branch_opcodes_set();
+
+    let mut blocks =
+        collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
     tracing::info!("Got {} basic blocks", blocks.len());
 
     if let Some(pgo_program_idx_count) = pc_idx_count {
@@ -208,6 +226,7 @@ pub fn customize<F: PrimeField32>(
             apc_opcode,
             config.bus_map.clone(),
             config.degree_bound,
+            &branch_opcodes_set,
         );
 
         let is_valid_column = autoprecompile
@@ -239,16 +258,73 @@ pub fn customize<F: PrimeField32>(
         ));
     }
 
-    (exe, PowdrExtension::new(extensions, base_config))
+    (
+        exe,
+        PowdrExtension::new(extensions, base_config, config.implementation),
+    )
 }
 
-// TODO collect properly from opcode enums
-const BRANCH_OPCODES: [usize; 9] = [
-    0x220, 0x221, 0x225, 0x226, 0x227, 0x228, 0x230, 0x231, 0x235,
-];
-pub fn is_jump(instruction: &VmOpcode) -> bool {
-    let opcode = instruction.as_usize();
-    BRANCH_OPCODES.contains(&opcode)
+fn branch_opcodes() -> Vec<usize> {
+    let mut opcodes = vec![
+        openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::BranchEqualOpcode::BNE
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::Rv32JalLuiOpcode::LUI
+            .global_opcode()
+            .as_usize(),
+        openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
+            .global_opcode()
+            .as_usize(),
+    ];
+
+    opcodes.extend(branch_opcodes_bigint());
+
+    opcodes
+}
+
+fn branch_opcodes_bigint() -> Vec<usize> {
+    vec![
+        // The instructions below are structs so we cannot call `global_opcode()` on them without
+        // an instnace, so we manually build the global opcodes.
+        Rv32BranchEqual256Opcode::CLASS_OFFSET
+            + openvm_rv32im_transpiler::BranchEqualOpcode::BEQ.local_usize(),
+        Rv32BranchEqual256Opcode::CLASS_OFFSET
+            + openvm_rv32im_transpiler::BranchEqualOpcode::BNE.local_usize(),
+        Rv32BranchLessThan256Opcode::CLASS_OFFSET
+            + openvm_rv32im_transpiler::BranchLessThanOpcode::BLT.local_usize(),
+        Rv32BranchLessThan256Opcode::CLASS_OFFSET
+            + openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU.local_usize(),
+        Rv32BranchLessThan256Opcode::CLASS_OFFSET
+            + openvm_rv32im_transpiler::BranchLessThanOpcode::BGE.local_usize(),
+        Rv32BranchLessThan256Opcode::CLASS_OFFSET
+            + openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU.local_usize(),
+    ]
+}
+
+fn branch_opcodes_set() -> BTreeSet<usize> {
+    branch_opcodes().into_iter().collect()
+}
+
+fn branch_opcodes_bigint_set() -> BTreeSet<usize> {
+    branch_opcodes_bigint().into_iter().collect()
 }
 
 #[derive(Debug, Clone)]
@@ -275,18 +351,18 @@ pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
     opcodes_no_apc: &[usize],
+    branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_idx: 0,
         statements: Vec::new(),
     };
-    let init_pc = 0x0020_0800;
     for (i, instr) in program.instructions_and_debug_infos.iter().enumerate() {
         let instr = instr.as_ref().unwrap().0.clone();
-        let adjusted_pc = init_pc + (i as u32) * 4;
+        let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
         let is_target = labels.contains(&adjusted_pc);
-        let is_branch = is_jump(&instr.opcode);
+        let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if opcodes_no_apc.contains(&instr.opcode.as_usize()) {
@@ -331,6 +407,33 @@ pub fn collect_basic_blocks<F: PrimeField32>(
     blocks
 }
 
+/// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
+/// instruction classes over BranchEqual and BranchLessThan.
+/// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
+/// relative jump we're interested in.
+/// This means that for a given program address A containing the instruction above,
+/// we add A + target_offset as a target as well.
+fn add_extra_targets<F: PrimeField32>(
+    program: &Program<F>,
+    mut labels: BTreeSet<u32>,
+) -> BTreeSet<u32> {
+    let branch_opcodes_bigint = branch_opcodes_bigint_set();
+    let new_labels = program
+        .instructions_and_debug_infos
+        .iter()
+        .enumerate()
+        .filter_map(|(i, instr)| {
+            let instr = instr.as_ref().unwrap().0.clone();
+            let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
+            let op = instr.opcode.as_usize();
+            branch_opcodes_bigint
+                .contains(&op)
+                .then_some(adjusted_pc + instr.c.as_canonical_u32())
+        });
+    labels.extend(new_labels);
+
+    labels
+}
 // OpenVM relevant bus ids:
 // 0: execution bridge -> [pc, timestamp]
 // 1: memory -> [address space, pointer, data, timestamp, 1]
@@ -345,6 +448,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: usize,
+    branch_opcodes: &BTreeSet<usize>,
 ) -> (SymbolicMachine<P>, Vec<Vec<u64>>) {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -371,7 +475,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
                 .collect(),
             };
 
-            if is_jump(&instr.opcode) {
+            if branch_opcodes.contains(&instr.opcode.as_usize()) {
                 instruction_kind.insert(instr_name.clone(), InstructionKind::ConditionalBranch);
             } else {
                 instruction_kind.insert(instr_name.clone(), InstructionKind::Normal);
