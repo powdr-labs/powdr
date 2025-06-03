@@ -17,6 +17,7 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
     InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
@@ -456,47 +457,41 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         "Generating autoprecompile for block at index {}",
         block.start_idx
     );
-    let mut instruction_kind = BTreeMap::new();
-    let mut instruction_machines = BTreeMap::new();
+    let instruction_kind = airs
+        .keys()
+        .map(|opcode| {
+            (
+                *opcode,
+                if branch_opcodes.contains(opcode) {
+                    InstructionKind::ConditionalBranch
+                } else {
+                    InstructionKind::Normal
+                },
+            )
+        })
+        .collect();
     let program = block
         .statements
         .iter()
-        .map(|instr| {
-            let instr_name = format!("{}", instr.opcode);
-
-            let symb_machine = airs.get(&instr.opcode.as_usize()).unwrap();
-
-            let symb_instr = SymbolicInstructionStatement {
-                name: instr_name.clone(),
-                opcode: instr.opcode.as_usize(),
-                args: [
-                    instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
-                ]
-                .iter()
-                .map(|f| P::from_openvm_field(*f))
-                .collect(),
-            };
-
-            if branch_opcodes.contains(&instr.opcode.as_usize()) {
-                instruction_kind.insert(instr_name.clone(), InstructionKind::ConditionalBranch);
-            } else {
-                instruction_kind.insert(instr_name.clone(), InstructionKind::Normal);
-            };
-
-            instruction_machines.insert(instr_name.clone(), symb_machine.clone());
-
-            symb_instr
+        .map(|instr| SymbolicInstructionStatement {
+            opcode: instr.opcode.as_usize(),
+            args: [
+                instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
+            ]
+            .iter()
+            .map(|f| P::from_openvm_field(*f))
+            .collect(),
         })
         .collect();
 
-    let (precompile, subs) = powdr_autoprecompiles::build(
-        program,
+    let vm_config = VmConfig {
         instruction_kind,
-        instruction_machines,
-        OpenVmBusInteractionHandler::new(bus_map),
-        degree_bound,
-        apc_opcode as u32,
-    );
+        instruction_machines: airs.clone(),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map),
+    };
+
+    let (precompile, subs) =
+        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32);
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());

@@ -15,7 +15,7 @@ use openvm_stark_sdk::{
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -353,7 +353,7 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let airs = instructions_to_airs(exe.clone(), sdk_vm_config.clone());
+    let airs = instructions_to_airs(sdk_vm_config.clone());
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -587,7 +587,6 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
 }
 
 pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
-    exe: VmExe<OpenVmField<P>>,
     vm_config: VC,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
@@ -595,11 +594,12 @@ where
     VC::Periphery: Chip<BabyBearSC>,
 {
     let mut chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-    exe.program
-        .instructions_and_debug_infos
+    let opcodes = chip_complex
+        .inventory
+        .available_opcodes()
+        .collect::<HashSet<_>>();
+    opcodes
         .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode)
-        .unique()
         .filter_map(|op| {
             chip_complex
                 .inventory

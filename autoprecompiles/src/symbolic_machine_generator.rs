@@ -13,8 +13,8 @@ use crate::{
 
 pub fn statements_to_symbolic_machine<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
-    instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
+    instruction_kinds: &BTreeMap<usize, InstructionKind>,
+    instruction_machines: &BTreeMap<usize, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
@@ -22,11 +22,11 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
     let mut global_idx: u64 = 3;
 
     for (i, instr) in statements.iter().enumerate() {
-        match instruction_kinds.get(&instr.name).unwrap() {
+        match instruction_kinds.get(&instr.opcode).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let machine = instruction_machines.get(&instr.name).unwrap().clone();
+                let machine = instruction_machines.get(&instr.opcode).unwrap().clone();
 
                 let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
                 global_idx = next_global_idx;

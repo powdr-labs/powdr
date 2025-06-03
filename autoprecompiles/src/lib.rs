@@ -26,7 +26,6 @@ pub mod symbolic_machine_generator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
-    pub name: String,
     pub opcode: usize,
     pub args: Vec<T>,
 }
@@ -294,18 +293,30 @@ pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
-pub fn build<T: FieldElement>(
+pub struct VmConfig<T: FieldElement, B> {
+    pub instruction_kind: BTreeMap<usize, InstructionKind>,
+    pub instruction_machines: BTreeMap<usize, SymbolicMachine<T>>,
+    pub bus_interaction_handler: B,
+}
+
+pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
     program: Vec<SymbolicInstructionStatement<T>>,
-    instruction_kind: BTreeMap<String, InstructionKind>,
-    instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    vm_config: VmConfig<T, B>,
     degree_bound: usize,
     opcode: u32,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-    let (machine, subs) =
-        statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
+    let (machine, subs) = statements_to_symbolic_machine(
+        &program,
+        &vm_config.instruction_kind,
+        &vm_config.instruction_machines,
+    );
 
-    let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
+    let machine = optimizer::optimize(
+        machine,
+        vm_config.bus_interaction_handler.clone(),
+        Some(opcode),
+        degree_bound,
+    );
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
