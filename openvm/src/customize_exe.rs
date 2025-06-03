@@ -440,8 +440,8 @@ fn has_same_structure<T: PrimeField32>(expr1: &AlgebraicExpression<T, AlgebraicR
     }
 }
 
-fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BTreeMap<u64, u64> {
-    fn create_mapping_inner<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BTreeMap<u64, u64> {
+fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BiMap<u64, u64> {
+    fn create_mapping_inner<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BiMap<u64, u64> {
         match (from, to) {
             (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left1, op: op1, right: right1 }),
              AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left2, op: op2, right: right2 })) => {
@@ -458,11 +458,11 @@ fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &Algebraic
                 create_mapping_inner(&expr1, &expr2)
             }
             (AlgebraicExpression::Reference(from), AlgebraicExpression::Reference(to)) => {
-                let mappings = BTreeMap::from([(from.poly_id.id, to.poly_id.id)]);
-                // ref2.poly_id.id = ref1.poly_id.id;
+                let mut mappings = BiMap::new();
+                mappings.insert(from.poly_id.id, to.poly_id.id);
                 mappings
             }
-            _ => BTreeMap::new(),
+            _ => BiMap::new(),
         }
     }
 
@@ -509,12 +509,17 @@ fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &Algebraic
 // }
 
 fn extend_if_no_conflicts(
-    mappings: &mut BTreeMap<u64, u64>,
-    new_mappings: BTreeMap<u64, u64>,
+    mappings: &mut BiMap<u64, u64>,
+    new_mappings: BiMap<u64, u64>,
 ) -> bool {
     for (k, v) in &new_mappings {
-        if let Some(existing_v) = mappings.get(k) {
+        if let Some(existing_v) = mappings.get_by_left(k) {
             if existing_v != v {
+                return false; // conflict found
+            }
+        }
+        if let Some(existing_k) = mappings.get_by_right(v) {
+            if existing_k != k {
                 return false; // conflict found
             }
         }
@@ -569,7 +574,7 @@ impl<F: PrimeField32> ColumnAssigner<F> {
     ) {
         let idx = self.pcps.len();
         println!("Assinging PCP {}", idx);
-        let mut mappings = BTreeMap::new();
+        let mut mappings = BiMap::new();
         // for each constraint, we want to find if there is a constraint in
         // another machine with the same structure that we can assign the same
         // ids.
@@ -585,9 +590,9 @@ impl<F: PrimeField32> ColumnAssigner<F> {
                                  &expr_poly_id_by_order(c.expr.clone()),
                                  &expr_poly_id_by_order(c2.expr.clone()));
 
-                        println!("Found same structure (ids): \n\t{}\n\n\t{}",
-                                 &expr_orig_poly_ids(c.expr.clone()),
-                                 &expr_orig_poly_ids(c2.expr.clone()));
+                        // println!("Found same structure (ids): \n\t{}\n\n\t{}",
+                        //          &expr_orig_poly_ids(c.expr.clone()),
+                        //          &expr_orig_poly_ids(c2.expr.clone()));
 
                         // assign the same ids
                         let new_mappings = create_mapping(&c.expr, &c2.expr);
@@ -595,7 +600,7 @@ impl<F: PrimeField32> ColumnAssigner<F> {
                             &mut mappings,
                             new_mappings,
                         ) {
-                            println!("\tMappings: {:#?}", mappings);
+                            // println!("\tMappings: {:#?}", mappings);
                             continue 'outer;
                         }
                         println!("\tCould not extend due to conflicts!");
@@ -611,16 +616,17 @@ impl<F: PrimeField32> ColumnAssigner<F> {
         // now assign new ids for all references in the PCP
         let mut curr_id = 0;
         let mut new_poly_id = |old_id: u64| {
-            if let Some(id) = mappings.get(&old_id) {
+            if let Some(id) = mappings.get_by_left(&old_id) {
                 return *id;
             }
             // if the new id is a target in the mappings, find a new id not yet in the mapping
-            while mappings.values().any(|id| curr_id == *id) {
+            while mappings.get_by_right(&curr_id).is_some() {
                 curr_id += 1;
             }
-            assert!(mappings.values().all(|id| curr_id != *id), "New id {} already exists in mappings: {:?}", curr_id, mappings);
-            assert!(!mappings.contains_key(&old_id));
-            println!("Assigning new id {} for old id {}", curr_id, old_id);
+            assert!(mappings.get_by_right(&curr_id).is_none(), "New id {} already exists in mappings: {:?}", curr_id, mappings);
+            // assert!(mappings.values().all(|id| curr_id != *id), "New id {} already exists in mappings: {:?}", curr_id, mappings);
+            assert!(!mappings.contains_left(&old_id));
+            // println!("Assigning new id {} for old id {}", curr_id, old_id);
             let id = curr_id;
             mappings.insert(old_id, id);
             curr_id += 1;
@@ -634,14 +640,14 @@ impl<F: PrimeField32> ColumnAssigner<F> {
                 }
             }
         });
-        println!("----- assigning instr subs ------");
+        // println!("----- assigning instr subs ------");
         pcp.original_instructions.iter_mut().for_each(|instr| {
             instr.subs.iter_mut().for_each(|sub| {
                 *sub = new_poly_id(*sub);
             });
         });
 
-        println!("----- assigning is valid ------");
+        // println!("----- assigning is valid ------");
         pcp.is_valid_column.id.id = new_poly_id(pcp.is_valid_column.id.id);
 
         self.pcps.push(pcp.clone());
@@ -676,7 +682,7 @@ fn air_stacking<P: IntoOpenVm>(
         let mut column_assigner = ColumnAssigner::default();
         g.iter_mut().for_each(|ext| {
             column_assigner.assign_pcp(ext);
-            compact_ids(ext); // this should undo the above or sth is very wrong?
+            // compact_ids(ext); // this should undo the above or sth is very wrong?
         });
     });
 
@@ -768,7 +774,7 @@ fn air_stacking<P: IntoOpenVm>(
         }
 
         println!("before joining constraints: {}", stacked_constraints.len());
-        // let mut stacked_constraints = join_constraints(stacked_constraints);
+        let mut stacked_constraints = join_constraints(stacked_constraints);
         stacked_constraints.sort();
         println!("after joining constraints: {}", stacked_constraints.len());
 
