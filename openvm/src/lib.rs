@@ -658,7 +658,9 @@ fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
 }
 
-fn get_constraints(air: Arc<dyn AnyRap<BabyBearSC>>) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
+fn get_constraints(
+    air: Arc<dyn AnyRap<BabyBearSC>>,
+) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);
