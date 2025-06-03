@@ -601,7 +601,7 @@ where
     VC::Periphery: Chip<BabyBearSC>,
 {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-    
+
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
