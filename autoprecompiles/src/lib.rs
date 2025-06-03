@@ -293,9 +293,9 @@ pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
-pub struct VmConfig<T: FieldElement, B> {
+pub struct VmConfig<'a, T: FieldElement, B> {
     pub instruction_kind: BTreeMap<usize, InstructionKind>,
-    pub instruction_machines: BTreeMap<usize, SymbolicMachine<T>>,
+    pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
     pub bus_interaction_handler: B,
 }
 
@@ -308,7 +308,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
         &vm_config.instruction_kind,
-        &vm_config.instruction_machines,
+        vm_config.instruction_machines,
     );
 
     let machine = optimizer::optimize(
