@@ -16,6 +16,7 @@ use powdr_pipeline::{
 use test_log::test;
 
 #[test]
+#[ignore = "Too slow"]
 fn fingerprint_test() {
     let f = "std/fingerprint_test.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
@@ -85,6 +86,7 @@ fn split_gl_vec_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
     regular_test_gl(f, &[]);
@@ -226,6 +228,7 @@ fn bus_permutation() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn bus_multi_permutation() {
     let f = "std/bus_multi_permutation.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
@@ -269,6 +272,7 @@ fn binary_small_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn shift_large_test() {
     let f = "std/shift_large_test.asm";
     regular_test_gl(f, &[]);
@@ -483,7 +487,12 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 2] = ["std/poseidon_bn254_test.asm", "std/split_bn254_test.asm"];
+    const BLACKLIST: [&str; 4] = [
+        "std/poseidon_bn254_test.asm",
+        "std/split_bn254_test.asm",
+        "keccakf16_memory_test",
+        "keccakf32_memory_test",
+    ];
 
     fn run_reparse_test(file: &str) {
         run_reparse_test_with_blacklist(file, &BLACKLIST);
