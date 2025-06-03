@@ -22,6 +22,7 @@ pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
+mod stats_logger;
 pub mod symbolic_machine_generator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -443,6 +444,8 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     }
 
     machine.constraints.extend(is_valid_mults);
+
+    machine.constraints.push(powdr::make_bool(is_valid).into());
 
     machine
 }
