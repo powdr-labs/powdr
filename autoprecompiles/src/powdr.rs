@@ -2,18 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter::from_fn;
 
 use itertools::Itertools;
-use powdr_ast::parsed::asm::SymbolPath;
-use powdr_ast::parsed::{
-    visitor::ExpressionVisitable, NamespacedPolynomialReference, UnaryOperator,
-};
-use powdr_expression::visitors::AllChildren;
+use powdr_expression::visitors::{AllChildren, ExpressionVisitable};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use crate::SymbolicMachine;
-
-type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed
 pub fn substitute_algebraic<T: Clone>(
@@ -188,28 +182,4 @@ pub fn reassign_ids<T: FieldElement>(
         .collect();
 
     (curr_id, subs, machine)
-}
-
-pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
-    expr.pre_visit_expressions_mut(&mut |expr| match expr {
-        Expression::Reference(_, ref mut r) => {
-            if let Some(sub_expr) = sub.get(&r.path.to_string()) {
-                *expr = sub_expr.clone();
-            }
-        }
-        Expression::UnaryOperation(_, ref mut un_op) => {
-            if matches!(un_op.op, UnaryOperator::Next) {
-                if let Expression::Reference(_, ref r) = &*un_op.expr {
-                    let name = r.path.try_last_part().unwrap();
-                    if name == "pc" {
-                        let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());
-                        let pc_next_ref: NamespacedPolynomialReference = pc_next_symbol.into();
-                        let pc_next_ref = Expression::Reference(Default::default(), pc_next_ref);
-                        *expr = pc_next_ref.clone();
-                    }
-                }
-            }
-        }
-        _ => (),
-    });
 }

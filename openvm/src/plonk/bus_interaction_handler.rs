@@ -3,7 +3,7 @@ use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
 };
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
 
@@ -76,7 +76,7 @@ mod tests {
     use super::*;
     use crate::bus_interaction_handler::DEFAULT_MEMORY;
     use crate::plonk::test_utils::{c, var};
-    use powdr_ast::analyzed::AlgebraicExpression;
+    use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;

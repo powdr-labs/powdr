@@ -3,7 +3,6 @@ use std::{fmt::Display, time::Instant};
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_number::FieldElement;
-use powdr_pilopt::qse_opt::Variable;
 
 use crate::{
     legacy_expression::{AlgebraicReference, PolyID, PolynomialType},
@@ -62,8 +61,8 @@ impl<P: FieldElement> From<&SymbolicMachine<P>> for Stats {
     }
 }
 
-impl<P: FieldElement> From<&ConstraintSystem<P, Variable>> for Stats {
-    fn from(constraint_system: &ConstraintSystem<P, Variable>) -> Self {
+impl<P: FieldElement> From<&ConstraintSystem<P, AlgebraicReference>> for Stats {
+    fn from(constraint_system: &ConstraintSystem<P, AlgebraicReference>) -> Self {
         Stats {
             num_constraints: constraint_system.algebraic_constraints.len(),
             num_bus_interactions: constraint_system.bus_interactions.len(),
@@ -71,14 +70,14 @@ impl<P: FieldElement> From<&ConstraintSystem<P, Variable>> for Stats {
                 .expressions()
                 .flat_map(|e| e.referenced_variables())
                 .filter_map(|expr| {
-                    if let Variable::Reference(AlgebraicReference {
+                    if let AlgebraicReference {
                         poly_id:
                             PolyID {
                                 ptype: PolynomialType::Committed,
                                 id,
                             },
                         ..
-                    }) = expr
+                    } = expr
                     {
                         Some(id)
                     } else {

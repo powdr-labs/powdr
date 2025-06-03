@@ -12,14 +12,15 @@ use std::fmt::Display;
 use std::{collections::BTreeMap, iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
+use crate::simplify_expression::simplify_expression;
 use powdr_number::{FieldElement, LargeInt};
-use powdr_pilopt::simplify_expression;
 
 pub mod constraint_optimizer;
-mod legacy_expression;
+pub mod legacy_expression;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
+mod simplify_expression;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 

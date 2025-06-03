@@ -1,8 +1,12 @@
-use std::{iter, ops};
+use std::{
+    fmt::{self, Display, Formatter},
+    iter, ops,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub mod conversion;
 pub mod visitors;
 
 #[derive(
@@ -150,5 +154,116 @@ impl<T, R> ops::Mul for AlgebraicExpression<T, R> {
 impl<T, R> From<T> for AlgebraicExpression<T, R> {
     fn from(value: T) -> Self {
         AlgebraicExpression::Number(value)
+    }
+}
+
+pub type ExpressionPrecedence = u64;
+trait Precedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence>;
+}
+
+impl Precedence for AlgebraicUnaryOperator {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        use AlgebraicUnaryOperator::*;
+        let precedence = match self {
+            Minus => 1,
+        };
+
+        Some(precedence)
+    }
+}
+
+impl Precedence for AlgebraicBinaryOperator {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        let precedence = match self {
+            Self::Mul => 3,
+            Self::Add | Self::Sub => 4,
+        };
+
+        Some(precedence)
+    }
+}
+
+impl<T, R> Precedence for AlgebraicExpression<T, R> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            AlgebraicExpression::UnaryOperation(operation) => operation.op.precedence(),
+            AlgebraicExpression::BinaryOperation(operation) => operation.op.precedence(),
+            _ => None,
+        }
+    }
+}
+
+impl<T: Display, R: Display> Display for AlgebraicExpression<T, R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
+            AlgebraicExpression::Number(value) => write!(f, "{value}"),
+            AlgebraicExpression::BinaryOperation(o) => {
+                write!(f, "{o}")
+            }
+            AlgebraicExpression::UnaryOperation(o) => write!(f, "{o}"),
+        }
+    }
+}
+
+impl<T: Display, R: Display> Display for AlgebraicBinaryOperation<T, R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let op_precedence = self.op.precedence().unwrap();
+        let use_left_parentheses = match self.left.precedence() {
+            Some(left_precedence) => left_precedence > op_precedence,
+            None => false,
+        };
+
+        let use_right_parentheses = match self.right.precedence() {
+            Some(right_precedence) => right_precedence >= op_precedence,
+            None => false,
+        };
+
+        let left_string = if use_left_parentheses {
+            format!("({})", self.left)
+        } else {
+            format!("{}", self.left)
+        };
+        let right_string = if use_right_parentheses {
+            format!("({})", self.right)
+        } else {
+            format!("{}", self.right)
+        };
+
+        write!(f, "{left_string} {} {right_string}", self.op)
+    }
+}
+
+impl<T: Display, R: Display> Display for AlgebraicUnaryOperation<T, R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let exp_string = match (self.op.precedence(), self.expr.precedence()) {
+            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
+                format!("({})", self.expr)
+            }
+            _ => {
+                format!("{}", self.expr)
+            }
+        };
+
+        write!(f, "{}{exp_string}", self.op)
+    }
+}
+
+impl Display for AlgebraicUnaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AlgebraicUnaryOperator::Minus => write!(f, "-"),
+        }
+    }
+}
+
+impl Display for AlgebraicBinaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AlgebraicBinaryOperator::Add => write!(f, "+"),
+            AlgebraicBinaryOperator::Sub => write!(f, "-"),
+            AlgebraicBinaryOperator::Mul => write!(f, "*"),
+        }
     }
 }

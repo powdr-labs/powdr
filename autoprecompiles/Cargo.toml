@@ -7,7 +7,6 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-powdr-ast.workspace = true
 powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-pil-analyzer.workspace = true

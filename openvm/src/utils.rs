@@ -11,12 +11,16 @@ use openvm_stark_backend::{
         SymbolicConstraints,
     },
     interaction::Interaction,
-    p3_field::{FieldAlgebra, PrimeField32},
+    p3_field::PrimeField32,
 };
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
-};
+use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
+use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
+use powdr_autoprecompiles::legacy_expression::PolyID;
+use powdr_autoprecompiles::legacy_expression::PolynomialType;
+use powdr_expression::AlgebraicBinaryOperation;
+use powdr_expression::AlgebraicBinaryOperator;
+use powdr_expression::AlgebraicUnaryOperation;
+use powdr_expression::AlgebraicUnaryOperator;
 use powdr_number::{BabyBearField, FieldElement};
 
 pub fn algebraic_to_symbolic<P: IntoOpenVm>(
@@ -40,31 +44,6 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
                 y: Arc::new(algebraic_to_symbolic(&binary.right)),
                 degree_multiple: 0,
             },
-            AlgebraicBinaryOperator::Pow => {
-                // Assuming the right operand is a constant number
-                let base = algebraic_to_symbolic(&binary.left);
-                let exp = match *binary.right {
-                    AlgebraicExpression::Number(n) => n,
-                    _ => unimplemented!(),
-                };
-
-                if exp == P::ZERO {
-                    SymbolicExpression::Constant(OpenVmField::<P>::ONE)
-                } else {
-                    let mut result = base.clone();
-                    let mut remaining = exp - P::ONE;
-
-                    while remaining != P::ZERO {
-                        result = SymbolicExpression::Mul {
-                            x: Arc::new(result),
-                            y: Arc::new(base.clone()),
-                            degree_multiple: 0,
-                        };
-                        remaining -= P::ONE;
-                    }
-                    result
-                }
-            }
         },
         AlgebraicExpression::UnaryOperation(unary) => match unary.op {
             AlgebraicUnaryOperator::Minus => SymbolicExpression::Neg {
@@ -90,13 +69,6 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
                 PolynomialType::Intermediate => todo!(),
             }
         }
-        AlgebraicExpression::PublicReference(_) => {
-            unimplemented!()
-        }
-        AlgebraicExpression::Challenge(ch) => SymbolicExpression::Variable(SymbolicVariable::new(
-            Entry::Challenge,
-            ch.id.try_into().unwrap(),
-        )),
     }
 }
 pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
