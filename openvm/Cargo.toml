@@ -31,15 +31,16 @@ openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git"
 openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "ovm-executor-bench" }
 openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "ovm-executor-bench" }
 openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "ovm-executor-bench" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "ovm-executor-bench" }
 openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "ovm-executor-bench", default-features = false }
 openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", branch = "ovm-executor-bench", default-features = false }
 
-openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false, features = [
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dc01872", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
 ] }
-openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dacb25f", default-features = false, features = [
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "dc01872", default-features = false, features = [
   "parallel",
   "jemalloc",
 ] }
