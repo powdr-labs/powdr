@@ -11,6 +11,7 @@ members = [
   "cli-rs",
   "constraint-solver",
   "executor",
+  "expression",
   "jit-compiler",
   "riscv",
   "riscv-elf",
