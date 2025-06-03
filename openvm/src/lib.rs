@@ -15,7 +15,7 @@ use openvm_stark_sdk::{
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -593,15 +593,12 @@ where
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
 {
-    let mut chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-    let opcodes = chip_complex
+    let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
+    chip_complex
         .inventory
         .available_opcodes()
-        .collect::<HashSet<_>>();
-    opcodes
-        .iter()
         .filter_map(|op| {
-            chip_complex.inventory.get_mut_executor(op).map(|executor| {
+            chip_complex.inventory.get_executor(op).map(|executor| {
                 let air = executor.air();
 
                 let columns = get_columns(air.clone());
