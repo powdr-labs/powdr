@@ -28,3 +28,7 @@ serde_cbor = "0.11.2"
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "execution_benchmark"
+harness = false
