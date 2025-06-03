@@ -140,7 +140,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 .map(|executor| {
                     (
                         executor.air_name().clone(),
-                        tracing::info_span!("dummy trace", air_name = executor.air_name())
+                        tracing::debug_span!("dummy trace", air_name = executor.air_name())
                             .in_scope(|| {
                                 Chip::<SC>::generate_air_proof_input(executor)
                                     .raw
