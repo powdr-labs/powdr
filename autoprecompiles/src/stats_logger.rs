@@ -1,12 +1,15 @@
 use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_number::FieldElement;
 use powdr_pilopt::qse_opt::Variable;
 
-use crate::{powdr::UniqueColumns, SymbolicMachine};
+use crate::{
+    legacy_expression::{AlgebraicReference, PolyID, PolynomialType},
+    powdr::UniqueColumns,
+    SymbolicMachine,
+};
 
 pub struct StatsLogger {
     start_time: Instant,

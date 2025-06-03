@@ -2,18 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter::from_fn;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin,
-    AlgebraicUnaryOperation, PolyID, PolynomialType,
-};
 use powdr_ast::parsed::asm::SymbolPath;
-use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::{
     visitor::ExpressionVisitable, NamespacedPolynomialReference, UnaryOperator,
 };
+use powdr_expression::visitors::AllChildren;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use crate::SymbolicMachine;
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
@@ -215,44 +212,4 @@ pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
         }
         _ => (),
     });
-}
-
-/// Replaces any reference of intermediates with their definitions.
-/// This is needed because powdr Autoprecompiles currently does not implement
-/// intermediates.
-pub fn inline_intermediates<T: FieldElement>(
-    expr: AlgebraicExpression<T>,
-    intermediates: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-) -> AlgebraicExpression<T> {
-    match expr {
-        AlgebraicExpression::Reference(ref algebraic_reference) => {
-            if algebraic_reference.poly_id.ptype == PolynomialType::Intermediate {
-                inline_intermediates(
-                    intermediates
-                        .get(&algebraic_reference.to_thin())
-                        .expect("Intermediate not found")
-                        .clone(),
-                    intermediates,
-                )
-            } else {
-                expr
-            }
-        }
-        AlgebraicExpression::PublicReference(..)
-        | AlgebraicExpression::Challenge(..)
-        | AlgebraicExpression::Number(..) => expr,
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: Box::new(inline_intermediates(*left, intermediates)),
-                op,
-                right: Box::new(inline_intermediates(*right, intermediates)),
-            })
-        }
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                op,
-                expr: Box::new(inline_intermediates(*expr, intermediates)),
-            })
-        }
-    }
 }

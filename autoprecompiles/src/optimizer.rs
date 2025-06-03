@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -18,6 +17,7 @@ use powdr_pilopt::{
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
+    legacy_expression::AlgebraicExpression,
     powdr::{self},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     stats_logger::StatsLogger,

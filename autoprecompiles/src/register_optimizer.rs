@@ -1,10 +1,10 @@
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicBinaryOperator, AlgebraicExpression};
+use powdr_expression::AlgebraicBinaryOperator;
 use std::collections::{BTreeMap, BTreeSet};
 
 use powdr_number::FieldElement;
 
-use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
+use crate::{legacy_expression::AlgebraicExpression, MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
 
 /// Optimizes bus sends that correspend to register read and write operations.
 pub fn optimize_register_operations<T: FieldElement>(
