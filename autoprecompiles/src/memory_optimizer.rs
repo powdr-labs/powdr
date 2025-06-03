@@ -45,8 +45,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     // Track memory contents while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<_, (Option<usize>, Vec<AlgebraicExpression<_>>)> =
-        Default::default();
+    let mut memory_contents: HashMap<_, (usize, Vec<AlgebraicExpression<_>>)> = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -68,19 +67,16 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
 
         match mem_int.op {
             MemoryOp::Receive => {
-                if let Some((previous_send, existing_values)) = memory_contents.get(&addr) {
+                // If there is an unconsumed send to this address, consume it.
+                // In that case, we can replace both bus interactions with equality constraints
+                // between the data that would have been sent and received.
+                // TODO: This does not check for equivalent expressions of the same address.
+                //       This is not a soundness issue, but we might miss some optimizations.
+                if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
                     for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
-                        if existing != new {
-                            new_constraints.push((existing.clone() - new.clone()).into());
-                        }
+                        new_constraints.push((existing.clone() - new.clone()).into());
                     }
-
-                    // If we got this information from a previous send, we can remove both.
-                    if let Some(previous_send) = previous_send {
-                        to_remove.extend([index, *previous_send]);
-                    }
-                } else {
-                    memory_contents.insert(addr.clone(), (None, mem_int.data.clone()));
+                    to_remove.extend([index, previous_send]);
                 }
             }
             MemoryOp::Send => {
@@ -90,7 +86,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 memory_contents.retain(|other_addr, _| {
                     address_comparator.are_addrs_known_to_be_different_by_word(&addr, other_addr)
                 });
-                memory_contents.insert(addr.clone(), (Some(index), mem_int.data.clone()));
+                memory_contents.insert(addr.clone(), (index, mem_int.data.clone()));
             }
         }
     }
