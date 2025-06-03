@@ -293,9 +293,13 @@ pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
+/// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, T: FieldElement, B> {
+    /// Maps an opcode to its kind.
     pub instruction_kind: BTreeMap<usize, InstructionKind>,
+    /// Maps an opcode to its AIR.
     pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
+    /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
 }
 
