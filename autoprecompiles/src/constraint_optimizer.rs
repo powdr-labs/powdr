@@ -1,7 +1,6 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash, time::Instant};
+use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     indexed_constraint_system::apply_substitutions,
@@ -19,7 +18,9 @@ use powdr_pilopt::{
     simplify_expression,
 };
 
-use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use crate::{
+    stats_logger::StatsLogger, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+};
 
 #[derive(Debug)]
 pub enum Error {
@@ -43,30 +44,30 @@ pub fn optimize_constraints<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
+    stats_logger: &mut StatsLogger,
 ) -> Result<SymbolicMachine<P>, Error> {
     let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
 
-    let mut stats_logger = StatsLogger::start(&constraint_system);
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
-    stats_logger.log("After solver-based optimization", &constraint_system);
+    stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
         remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log("After removing disconnected columns", &constraint_system);
+    stats_logger.log("removing disconnected columns", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
-    stats_logger.log("After in-lining witness columns", &constraint_system);
+    stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
-    stats_logger.log("After removing trivial constraints", &constraint_system);
+    stats_logger.log("removing trivial constraints", &constraint_system);
 
     let constraint_system = remove_equal_constraints(constraint_system);
-    stats_logger.log("After removing equal constraints", &constraint_system);
+    stats_logger.log("removing equal constraints", &constraint_system);
 
     let constraint_system =
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
-    stats_logger.log("After removing equal bus interactions", &constraint_system);
+    stats_logger.log("removing equal bus interactions", &constraint_system);
 
     Ok(constraint_system_to_symbolic_machine(constraint_system))
 }
@@ -270,66 +271,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
             &bus_interaction.multiplicity,
         )),
     }
-}
-
-struct StatsLogger {
-    start_time: Instant,
-}
-
-impl StatsLogger {
-    fn start<P: FieldElement>(constraint_system: &ConstraintSystem<P, Variable>) -> Self {
-        log_constraint_system_stats("Starting optimization", constraint_system);
-        StatsLogger {
-            start_time: Instant::now(),
-        }
-    }
-
-    fn log<P: FieldElement>(
-        &mut self,
-        step: &str,
-        constraint_system: &ConstraintSystem<P, Variable>,
-    ) {
-        let elapsed = self.start_time.elapsed();
-        let step_with_time = format!("{step} (took {elapsed:?})");
-        log_constraint_system_stats(&step_with_time, constraint_system);
-        self.start_time = Instant::now();
-    }
-}
-
-fn log_constraint_system_stats<P: FieldElement>(
-    step: &str,
-    constraint_system: &ConstraintSystem<P, Variable>,
-) {
-    let num_constraints = constraint_system.algebraic_constraints.len();
-    let num_bus_interactions = constraint_system.bus_interactions.len();
-    let num_witness_columns = constraint_system
-        .algebraic_constraints
-        .iter()
-        .flat_map(|constraint| constraint.referenced_variables())
-        .chain(
-            constraint_system
-                .bus_interactions
-                .iter()
-                .flat_map(|bus_interaction| bus_interaction.referenced_variables()),
-        )
-        .filter_map(|expr| {
-            if let Variable::Reference(AlgebraicReference {
-                poly_id:
-                    PolyID {
-                        ptype: PolynomialType::Committed,
-                        id,
-                    },
-                ..
-            }) = expr
-            {
-                Some(id)
-            } else {
-                None
-            }
-        })
-        .unique()
-        .count();
-    log::info!("{step} - Constraints: {num_constraints}, Bus Interactions: {num_bus_interactions}, Witness Columns: {num_witness_columns}");
 }
 
 pub trait IsBusStateful<T: FieldElement> {
