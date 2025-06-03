@@ -6,6 +6,7 @@ use powdr_number::FieldElement;
 use powdr_pilopt::simplify_expression;
 
 use crate::{
+    bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     powdr::{self, UniqueColumns},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
@@ -59,6 +60,10 @@ fn optimization_loop_iteration<T: FieldElement>(
     let machine = optimize_register_operations(machine);
     assert!(check_register_operation_consistency(&machine));
     stats_logger.log("register optimization", &machine);
+
+    let machine = optimize_bitwise_lookup(machine);
+    stats_logger.log("optimizing bitwise lookup", &machine);
+
     machine
 }
 

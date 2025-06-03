@@ -17,6 +17,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+mod bitwise_lookup_optimizer;
 pub mod constraint_optimizer;
 pub mod optimizer;
 pub mod powdr;
@@ -293,6 +294,9 @@ pub enum VMBusInteraction<T> {
 pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
+pub const VARIABLE_RANGE_CHECKER_BUS_ID: u64 = 3;
+pub const BITWISE_LOOKUP_BUS_ID: u64 = 6;
+pub const TUPLE_RANGE_CHECKER_BUS_ID: u64 = 7;
 
 pub fn build<T: FieldElement>(
     program: Vec<SymbolicInstructionStatement<T>>,
