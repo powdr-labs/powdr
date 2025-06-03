@@ -31,6 +31,7 @@ openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git"
 openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "ignore-regmem-aux-cols" }
 openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "ignore-regmem-aux-cols" }
 openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "ignore-regmem-aux-cols" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "ignore-regmem-aux-cols" }
 openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "ignore-regmem-aux-cols", default-features = false }
 openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", branch = "ignore-regmem-aux-cols", default-features = false }
 
