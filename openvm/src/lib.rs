@@ -6,6 +6,7 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe, InstructionExecutor, Streams, SystemConfig, VirtualMachine,
     VmChipComplex, VmConfig, VmInventoryError,
 };
+use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
@@ -353,7 +354,12 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let airs = instructions_to_airs(sdk_vm_config.clone());
+    let used_instructions = exe
+        .program
+        .instructions_and_debug_infos
+        .iter()
+        .map(|instr| instr.as_ref().unwrap().0.opcode);
+    let airs = instructions_to_airs(sdk_vm_config.clone(), used_instructions);
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -588,15 +594,18 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
 
 pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
+    used_instructions: impl Iterator<Item = VmOpcode>,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
 {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-    chip_complex
-        .inventory
-        .available_opcodes()
+    
+    // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
+    // which depends on the program being executed. But this turns out to be heavy on memory, because
+    // it includes large precompiles like Keccak.
+    used_instructions
         .filter_map(|op| {
             chip_complex.inventory.get_executor(op).map(|executor| {
                 let air = executor.air();
