@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Instant};
+use std::{collections::HashSet, fmt::Display, hash::Hash, time::Instant};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
@@ -107,8 +107,8 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
     }
 }
 
-fn solver_based_optimization<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, Variable>,
+fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<ConstraintSystem<T, Variable>, Error> {
     let result = Solver::new(constraint_system.clone())
@@ -129,10 +129,10 @@ fn solver_based_optimization<T: FieldElement>(
 /// them is safe.
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
-fn remove_disconnected_columns<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, Variable>,
+fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T>,
-) -> ConstraintSystem<T, Variable> {
+) -> ConstraintSystem<T, V> {
     // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
     let mut variables_to_keep = constraint_system
         .bus_interactions

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
@@ -51,7 +51,7 @@ impl std::fmt::Display for BusType {
 
 #[derive(Clone)]
 pub struct BusMap {
-    bus_ids: HashMap<u64, BusType>,
+    bus_ids: BTreeMap<u64, BusType>,
 }
 
 impl BusMap {
@@ -68,7 +68,7 @@ impl BusMap {
             (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
         ]
         .into_iter()
-        .collect::<HashMap<u64, BusType>>();
+        .collect();
 
         Self { bus_ids }
     }
@@ -92,7 +92,7 @@ impl BusMap {
         self
     }
 
-    pub fn inner(&self) -> &HashMap<u64, BusType> {
+    pub fn inner(&self) -> &BTreeMap<u64, BusType> {
         &self.bus_ids
     }
 }
