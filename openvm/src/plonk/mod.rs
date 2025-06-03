@@ -245,7 +245,6 @@ pub mod test_utils {
                 id,
                 ptype: PolynomialType::Committed,
             },
-            next: false,
         })
     }
 

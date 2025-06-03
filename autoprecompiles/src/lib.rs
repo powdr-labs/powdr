@@ -371,7 +371,6 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
             ptype: PolynomialType::Committed,
             id: max_id,
         },
-        next: false,
     });
 
     machine.constraints = machine
