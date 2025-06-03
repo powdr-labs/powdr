@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -511,7 +512,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
-    columns: &[String],
+    columns: &[Arc<String>],
 ) -> SymbolicBusInteraction<P> {
     let id = interaction.bus_index as u64;
 
