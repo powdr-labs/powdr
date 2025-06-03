@@ -85,6 +85,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
+        // save the next available `RecordId`
+        let from_record_id = memory.get_memory_logs().len();
+
         // execute the original instructions one by one
         let res = self
             .instructions
@@ -98,6 +101,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             });
 
         self.number_of_calls += 1;
+        let to_record_id = memory.get_memory_logs().len() - 1;
+
+        memory
+            .memory
+            .apc_ranges
+            .push((from_record_id, to_record_id));
 
         res
     }
