@@ -1,6 +1,6 @@
 [package]
 name = "powdr-expression"
-description = "powdr AST definitions"
+description = "powdr expression type"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -9,7 +9,6 @@ repository = { workspace = true }
 
 [dependencies]
 powdr-number.workspace = true
-powdr-parser-util.workspace = true
 
 itertools = "0.13"
 num-traits = "0.2.15"
@@ -17,14 +16,6 @@ derive_more = "0.99.17"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 schemars = { version = "0.8.16", features = ["preserve_order"]}
 serde_cbor = "0.11.2"
-auto_enums = "0.8.5"
-
-[dev-dependencies]
-test-log = "0.2.12"
-pretty_assertions = "1.4.0"
-powdr-pil-analyzer.workspace = true
-powdr-parser.workspace = true
-
 
 [lints]
 workspace = true
