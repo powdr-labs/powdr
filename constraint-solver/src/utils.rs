@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
@@ -9,7 +9,7 @@ use crate::quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeCon
 
 /// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
-pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Display + 'a>(
+pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Display + 'a>(
     expressions: impl Iterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
 ) -> BTreeSet<V> {
     let mut all_known_variables = BTreeSet::new();
@@ -35,7 +35,8 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug +
         .collect::<Vec<_>>();
     if !inconsistent_variables.is_empty() {
         panic!(
-            "The following variables appear as both known and unknown: {inconsistent_variables:?}",
+            "The following variables appear as both known and unknown: {}",
+            inconsistent_variables.iter().format(", ")
         );
     }
 
