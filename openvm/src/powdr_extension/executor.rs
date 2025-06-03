@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::utils::OvmField;
+use crate::OpenVmField;
 
 use super::{
     chip::{RangeCheckerSend, RowEvaluator, SharedChips},
@@ -29,6 +29,7 @@ use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
 };
 
+use crate::IntoOpenVm;
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
@@ -42,26 +43,25 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
-use powdr_number::OpenVmField;
 
 type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<P: OpenVmField> {
-    instructions: Vec<OriginalInstruction<OvmField<P>>>,
+pub struct PowdrExecutor<P: IntoOpenVm> {
+    instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
     is_valid_poly_id: u64,
-    inventory: SdkVmInventory<OvmField<P>>,
+    inventory: SdkVmInventory<OpenVmField<P>>,
     number_of_calls: usize,
     periphery: SharedChips,
 }
 
-impl<P: OpenVmField> PowdrExecutor<P> {
+impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<OvmField<P>>>,
+        instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
-        memory: Arc<Mutex<OfflineMemory<OvmField<P>>>>,
+        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -87,7 +87,7 @@ impl<P: OpenVmField> PowdrExecutor<P> {
 
     pub fn execute(
         &mut self,
-        memory: &mut MemoryController<OvmField<P>>,
+        memory: &mut MemoryController<OpenVmField<P>>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // execute the original instructions one by one
@@ -114,15 +114,16 @@ impl<P: OpenVmField> PowdrExecutor<P> {
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
         bus_interactions: &[SymbolicBusInteraction<P>],
-    ) -> RowMajorMatrix<OvmField<P>>
+    ) -> RowMajorMatrix<OpenVmField<P>>
     where
         SC: StarkGenericConfig,
-        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = OvmField<P>>,
+        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain:
+            PolynomialSpace<Val = OpenVmField<P>>,
     {
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <OvmField<P> as FieldAlgebra>::zero_vec(height * width);
+        let mut values = <OpenVmField<P> as FieldAlgebra>::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
         let air_name_by_opcode = self
@@ -296,7 +297,7 @@ impl<P: OpenVmField> PowdrExecutor<P> {
                 }
 
                 // Set the is_valid column to 1
-                row_slice[is_valid_index] = OvmField::<P>::ONE;
+                row_slice[is_valid_index] = OpenVmField::<P>::ONE;
 
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 

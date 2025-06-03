@@ -45,9 +45,7 @@ openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git"
 ] }
 
 powdr-ast.workspace = true
-powdr-number = { workspace = true, features = [
-  "openvm",
-] }
+powdr-number.workspace = true
 powdr-riscv-elf.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true

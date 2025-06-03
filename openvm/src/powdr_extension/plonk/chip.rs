@@ -8,7 +8,7 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
-use crate::utils::OvmField;
+use crate::{IntoOpenVm, OpenVmField};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -32,23 +32,22 @@ use openvm_stark_backend::{
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::OpenVmField;
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<P: OpenVmField> {
+pub struct PlonkChip<P: IntoOpenVm> {
     name: String,
     opcode: PowdrOpcode,
-    air: Arc<PlonkAir<OvmField<P>>>,
+    air: Arc<PlonkAir<OpenVmField<P>>>,
     executor: PowdrExecutor<P>,
     machine: SymbolicMachine<P>,
 }
 
-impl<P: OpenVmField> PlonkChip<P> {
+impl<P: IntoOpenVm> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
-        memory: Arc<Mutex<OfflineMemory<OvmField<P>>>>,
+        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -82,11 +81,11 @@ impl<P: OpenVmField> PlonkChip<P> {
     }
 }
 
-impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for PlonkChip<P> {
+impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PlonkChip<P> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<OvmField<P>>,
-        instruction: &Instruction<OvmField<P>>,
+        memory: &mut MemoryController<OpenVmField<P>>,
+        instruction: &Instruction<OpenVmField<P>>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -102,7 +101,7 @@ impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for PlonkChip<P> {
     }
 }
 
-impl<P: OpenVmField> ChipUsageGetter for PlonkChip<P> {
+impl<P: IntoOpenVm> ChipUsageGetter for PlonkChip<P> {
     fn air_name(&self) -> String {
         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -115,7 +114,7 @@ impl<P: OpenVmField> ChipUsageGetter for PlonkChip<P> {
     }
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField<Field = Val<SC>>> Chip<SC> for PlonkChip<P>
+impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for PlonkChip<P>
 where
     Val<SC>: PrimeField32,
 {

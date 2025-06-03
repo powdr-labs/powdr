@@ -1,3 +1,4 @@
+use crate::traits::OpenVmField;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
@@ -12,7 +13,7 @@ use openvm_stark_sdk::{
     config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
 };
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::{BabyBearField, OpenVmField};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -21,7 +22,7 @@ use std::{
 use utils::get_pil;
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
-use crate::utils::{symbolic_to_algebraic, OvmField};
+use crate::utils::symbolic_to_algebraic;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
@@ -62,7 +63,26 @@ use tracing_subscriber::{
 };
 
 type BabyBearSC = BabyBearPoseidon2Config;
-pub type PowdrBB = powdr_number::BabyBearField;
+type PowdrBB = powdr_number::BabyBearField;
+
+pub use traits::IntoOpenVm;
+
+impl IntoOpenVm for PowdrBB {
+    type Field = openvm_stark_sdk::p3_baby_bear::BabyBear;
+
+    fn into_openvm_field(self) -> Self::Field {
+        use openvm_stark_backend::p3_field::FieldAlgebra;
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
+            self.to_integer().try_into_u32().unwrap(),
+        )
+    }
+
+    fn from_openvm_field(field: Self::Field) -> Self {
+        BabyBearField::from(
+            <Self::Field as openvm_stark_backend::p3_field::PrimeField32>::as_canonical_u32(&field),
+        )
+    }
+}
 
 pub use bus_interaction_handler::{BusMap, BusType};
 pub use openvm_build::GuestOptions;
@@ -77,28 +97,30 @@ mod powdr_extension;
 
 pub mod bus_interaction_handler;
 mod instruction_formatter;
+mod traits;
 
-#[allow(dead_code)]
 mod plonk;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "P::Field: Field")]
-pub struct SpecializedConfig<P: OpenVmField> {
+pub struct SpecializedConfig<P: IntoOpenVm> {
     sdk_config: SdkVmConfig,
     powdr: PowdrExtension<P>,
 }
 
 #[allow(clippy::large_enum_variant)]
 #[derive(ChipUsageGetter, From, AnyEnum)]
-pub enum SpecializedExecutor<P: OpenVmField> {
+pub enum SpecializedExecutor<P: IntoOpenVm> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<OvmField<P>>),
+    SdkExecutor(SdkVmConfigExecutor<OpenVmField<P>>),
     #[any_enum]
     PowdrExecutor(PowdrExecutor<P>),
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField<Field = Val<SC>>> Chip<SC> for SpecializedExecutor<P>
+// These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
+// but they don't work with the field types above.
+impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for SpecializedExecutor<P>
 where
     Val<SC>: PrimeField32,
 {
@@ -117,11 +139,11 @@ where
     }
 }
 
-impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for SpecializedExecutor<P> {
+impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for SpecializedExecutor<P> {
     fn execute(
         &mut self,
-        memory: &mut openvm_circuit::system::memory::MemoryController<OvmField<P>>,
-        instruction: &openvm_instructions::instruction::Instruction<OvmField<P>>,
+        memory: &mut openvm_circuit::system::memory::MemoryController<OpenVmField<P>>,
+        instruction: &openvm_instructions::instruction::Instruction<OpenVmField<P>>,
         from_state: openvm_circuit::arch::ExecutionState<u32>,
     ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
         match self {
@@ -150,21 +172,22 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl<P: OpenVmField> VmConfig<OvmField<P>> for SpecializedConfig<P> {
+impl<P: IntoOpenVm> VmConfig<OpenVmField<P>> for SpecializedConfig<P> {
     type Executor = SpecializedExecutor<P>;
-    type Periphery = MyPeriphery<OvmField<P>>;
+    type Periphery = MyPeriphery<OpenVmField<P>>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<OvmField<P>>::system(&self.sdk_config)
+        VmConfig::<OpenVmField<P>>::system(&self.sdk_config)
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<OvmField<P>>::system_mut(&mut self.sdk_config)
+        VmConfig::<OpenVmField<P>>::system_mut(&mut self.sdk_config)
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<VmChipComplex<OvmField<P>, Self::Executor, Self::Periphery>, VmInventoryError> {
+    ) -> Result<VmChipComplex<OpenVmField<P>, Self::Executor, Self::Periphery>, VmInventoryError>
+    {
         let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
@@ -172,7 +195,7 @@ impl<P: OpenVmField> VmConfig<OvmField<P>> for SpecializedConfig<P> {
     }
 }
 
-impl<P: OpenVmField> SpecializedConfig<P> {
+impl<P: IntoOpenVm> SpecializedConfig<P> {
     pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<P>) -> Self {
         Self { sdk_config, powdr }
     }
@@ -349,14 +372,14 @@ pub fn compile_exe(
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "P::Field: Field")]
-pub struct CompiledProgram<P: OpenVmField> {
-    pub exe: VmExe<OvmField<P>>,
+pub struct CompiledProgram<P: IntoOpenVm> {
+    pub exe: VmExe<OpenVmField<P>>,
     pub vm_config: SpecializedConfig<P>,
 }
 
 // the original openvm program and config without powdr extension
-pub struct OriginalCompiledProgram<P: OpenVmField> {
-    pub exe: VmExe<OvmField<P>>,
+pub struct OriginalCompiledProgram<P: IntoOpenVm> {
+    pub exe: VmExe<OpenVmField<P>>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -563,8 +586,8 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn instructions_to_airs<P: OpenVmField, VC: VmConfig<OvmField<P>>>(
-    exe: VmExe<OvmField<P>>,
+pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
+    exe: VmExe<OpenVmField<P>>,
     vm_config: VC,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where

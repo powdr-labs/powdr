@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::BusMap;
+use crate::IntoOpenVm;
+use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -15,13 +17,11 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement, OpenVmField as OpenVmFieldTrait};
+use powdr_number::{BabyBearField, FieldElement};
 
-pub(crate) type OvmField<PowdrField> = <PowdrField as OpenVmFieldTrait>::Field;
-
-pub fn algebraic_to_symbolic<P: OpenVmFieldTrait>(
+pub fn algebraic_to_symbolic<P: IntoOpenVm>(
     expr: &AlgebraicExpression<P>,
-) -> SymbolicExpression<OvmField<P>> {
+) -> SymbolicExpression<OpenVmField<P>> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
@@ -49,7 +49,7 @@ pub fn algebraic_to_symbolic<P: OpenVmFieldTrait>(
                 };
 
                 if exp == P::ZERO {
-                    SymbolicExpression::Constant(OvmField::<P>::ONE)
+                    SymbolicExpression::Constant(OpenVmField::<P>::ONE)
                 } else {
                     let mut result = base.clone();
                     let mut remaining = exp - P::ONE;

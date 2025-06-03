@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::IntoOpenVm;
+use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
@@ -17,11 +19,10 @@ use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
     InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
-use powdr_number::{FieldElement, OpenVmField};
+use powdr_number::FieldElement;
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::OvmField;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
@@ -33,14 +34,14 @@ const POWDR_OPCODE: usize = 0x10ff;
 
 use crate::PowdrConfig;
 
-pub fn customize<P: OpenVmField>(
-    mut exe: VmExe<OvmField<P>>,
+pub fn customize<P: IntoOpenVm>(
+    mut exe: VmExe<OpenVmField<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
-) -> (VmExe<OvmField<P>>, PowdrExtension<P>) {
+) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -143,13 +144,13 @@ pub fn customize<P: OpenVmField>(
 
     let noop = Instruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
-        a: OvmField::<P>::ZERO,
-        b: OvmField::<P>::ZERO,
-        c: OvmField::<P>::ZERO,
-        d: OvmField::<P>::ZERO,
-        e: OvmField::<P>::ZERO,
-        f: OvmField::<P>::ZERO,
-        g: OvmField::<P>::ZERO,
+        a: OpenVmField::<P>::ZERO,
+        b: OpenVmField::<P>::ZERO,
+        c: OpenVmField::<P>::ZERO,
+        d: OpenVmField::<P>::ZERO,
+        e: OpenVmField::<P>::ZERO,
+        f: OpenVmField::<P>::ZERO,
+        g: OpenVmField::<P>::ZERO,
     };
 
     let mut extensions = Vec::new();
@@ -172,13 +173,13 @@ pub fn customize<P: OpenVmField>(
         let apc_opcode = POWDR_OPCODE + i;
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
-            a: OvmField::<P>::ZERO,
-            b: OvmField::<P>::ZERO,
-            c: OvmField::<P>::ZERO,
-            d: OvmField::<P>::ZERO,
-            e: OvmField::<P>::ZERO,
-            f: OvmField::<P>::ZERO,
-            g: OvmField::<P>::ZERO,
+            a: OpenVmField::<P>::ZERO,
+            b: OpenVmField::<P>::ZERO,
+            c: OpenVmField::<P>::ZERO,
+            d: OpenVmField::<P>::ZERO,
+            e: OpenVmField::<P>::ZERO,
+            f: OpenVmField::<P>::ZERO,
+            g: OpenVmField::<P>::ZERO,
         };
 
         let pc = acc_block.start_idx as usize;
@@ -343,8 +344,8 @@ pub fn collect_basic_blocks<F: PrimeField32>(
 // 5: bitwise xor ->
 //    [a, b, 0, 0] byte range checks for a and b
 //    [a, b, c, 1] c = xor(a, b)
-fn generate_autoprecompile<P: OpenVmField>(
-    block: &BasicBlock<OvmField<P>>,
+fn generate_autoprecompile<P: IntoOpenVm>(
+    block: &BasicBlock<OpenVmField<P>>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,

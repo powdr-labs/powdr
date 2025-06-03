@@ -5,6 +5,7 @@ use std::iter::once;
 
 use derive_more::From;
 
+use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
     arch::{VmExtension, VmInventory},
@@ -26,10 +27,9 @@ use openvm_stark_backend::{
 };
 use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_number::OpenVmField;
 use serde::{Deserialize, Serialize};
 
-use crate::{OvmField, PrecompileImplementation};
+use crate::PrecompileImplementation;
 
 use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
@@ -37,7 +37,7 @@ use super::{chip::PowdrChip, PowdrOpcode};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "P::Field: Field")]
-pub struct PowdrExtension<P: OpenVmField> {
+pub struct PowdrExtension<P: IntoOpenVm> {
     pub precompiles: Vec<PowdrPrecompile<P>>,
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
@@ -68,21 +68,21 @@ impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "P::Field: Field")]
-pub struct PowdrPrecompile<P: OpenVmField> {
+pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub machine: SymbolicMachine<P>,
-    pub original_instructions: Vec<OriginalInstruction<OvmField<P>>>,
+    pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: Column,
 }
 
-impl<P: OpenVmField> PowdrPrecompile<P> {
+impl<P: IntoOpenVm> PowdrPrecompile<P> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
         machine: SymbolicMachine<P>,
-        original_instructions: Vec<OriginalInstruction<OvmField<P>>>,
+        original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
     ) -> Self {
@@ -97,7 +97,7 @@ impl<P: OpenVmField> PowdrPrecompile<P> {
     }
 }
 
-impl<P: OpenVmField> PowdrExtension<P> {
+impl<P: IntoOpenVm> PowdrExtension<P> {
     pub fn new(
         precompiles: Vec<PowdrPrecompile<P>>,
         base_config: SdkVmConfig,
@@ -113,12 +113,12 @@ impl<P: OpenVmField> PowdrExtension<P> {
 
 #[derive(ChipUsageGetter, From, AnyEnum)]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExecutor<P: OpenVmField> {
+pub enum PowdrExecutor<P: IntoOpenVm> {
     Powdr(PowdrChip<P>),
     Plonk(PlonkChip<P>),
 }
 
-impl<SC: StarkGenericConfig, P: OpenVmField<Field = Val<SC>>> Chip<SC> for PowdrExecutor<P>
+impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for PowdrExecutor<P>
 where
     Val<SC>: PrimeField32,
 {
@@ -137,11 +137,11 @@ where
     }
 }
 
-impl<P: OpenVmField> InstructionExecutor<OvmField<P>> for PowdrExecutor<P> {
+impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrExecutor<P> {
     fn execute(
         &mut self,
-        memory: &mut openvm_circuit::system::memory::MemoryController<OvmField<P>>,
-        instruction: &Instruction<OvmField<P>>,
+        memory: &mut openvm_circuit::system::memory::MemoryController<OpenVmField<P>>,
+        instruction: &Instruction<OpenVmField<P>>,
         from_state: openvm_circuit::arch::ExecutionState<u32>,
     ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
         match self {
@@ -164,14 +164,14 @@ pub enum PowdrPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl<P: OpenVmField> VmExtension<OvmField<P>> for PowdrExtension<P> {
+impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
     type Executor = PowdrExecutor<P>;
 
-    type Periphery = PowdrPeriphery<OvmField<P>>;
+    type Periphery = PowdrPeriphery<OpenVmField<P>>;
 
     fn build(
         &self,
-        builder: &mut openvm_circuit::arch::VmInventoryBuilder<OvmField<P>>,
+        builder: &mut openvm_circuit::arch::VmInventoryBuilder<OpenVmField<P>>,
     ) -> Result<VmInventory<Self::Executor, Self::Periphery>, VmInventoryError> {
         let mut inventory = VmInventory::new();
 
