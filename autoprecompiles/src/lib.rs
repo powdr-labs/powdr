@@ -308,13 +308,7 @@ pub fn build<T: FieldElement>(
     let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
 
     // add guards to constraints that are not satisfied by zeroes
-    let pre_degree = machine.degree();
     let machine = add_guards(machine);
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
 
     (machine, subs)
 }
@@ -365,6 +359,8 @@ fn add_guards_constraint<T: FieldElement>(
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
 fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let pre_degree = machine.degree();
+
     let max_id = machine
         .unique_columns()
         .map(|c| {
@@ -444,6 +440,14 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
 
     machine.constraints.extend(is_valid_mults);
 
+    assert_eq!(
+        pre_degree,
+        machine.degree(),
+        "Degree should not change after adding guards"
+    );
+
+    // This needs to be added after the assertion above because it's a quadratic constraint
+    // so it may increase the degree of the machine.
     machine.constraints.push(powdr::make_bool(is_valid).into());
 
     machine
