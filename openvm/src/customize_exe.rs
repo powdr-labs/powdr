@@ -676,6 +676,7 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32, P: FieldElement>(
             )
             .ok()?;
             apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());
+
             // calculate cells saved per row
             let apc_cells_per_row = apc_cache_entry.1.unique_columns().count();
             let original_cells_per_row: usize = acc_block
@@ -688,12 +689,13 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32, P: FieldElement>(
                 })
                 .sum();
             let cells_saved_per_row = original_cells_per_row - apc_cells_per_row;
+            assert!(cells_saved_per_row > 0);
             tracing::info!(
                 "Basic block start_idx: {}, cells saved per row: {}",
                 acc_block.start_idx,
                 cells_saved_per_row
             );
-            assert!(cells_saved_per_row > 0);
+
             Some((acc_block.start_idx, cells_saved_per_row))
         })
         .collect();
