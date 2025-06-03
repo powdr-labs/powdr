@@ -36,6 +36,8 @@ use crate::{
     utils::symbolic_to_algebraic,
 };
 
+use bimap::BiMap;
+
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 // TODO: read this from program
@@ -430,11 +432,222 @@ fn has_same_structure<T: PrimeField32>(expr1: &AlgebraicExpression<T, AlgebraicR
          AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op2, expr: expr2 })) => {
             op1 == op2 && has_same_structure(expr1, expr2)
         }
-        (AlgebraicExpression::Reference(_), AlgebraicExpression::Reference(_)) => true,
+        (AlgebraicExpression::Reference(r1), AlgebraicExpression::Reference(r2)) => {
+            r1.poly_id.id == r2.poly_id.id
+        },
         (AlgebraicExpression::Number(n1), AlgebraicExpression::Number(n2)) => n1 == n2,
         _ => false
     }
 }
+
+fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BTreeMap<u64, u64> {
+    fn create_mapping_inner<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BTreeMap<u64, u64> {
+        match (from, to) {
+            (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left1, op: op1, right: right1 }),
+             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left2, op: op2, right: right2 })) => {
+                assert_eq!(op1, op2);
+                let mut left = create_mapping_inner(left1, left2);
+                let right = create_mapping_inner(right1, right2);
+                // assert both sides don't conflict
+                assert!(extend_if_no_conflicts(&mut left, right), "conflict in mapping: {from} => {to}");
+                left
+            }
+            (AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op1, expr: expr1 }),
+             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op2, expr: expr2 })) => {
+                assert_eq!(op1, op2);
+                create_mapping_inner(&expr1, &expr2)
+            }
+            (AlgebraicExpression::Reference(from), AlgebraicExpression::Reference(to)) => {
+                let mappings = BTreeMap::from([(from.poly_id.id, to.poly_id.id)]);
+                // ref2.poly_id.id = ref1.poly_id.id;
+                mappings
+            }
+            _ => BTreeMap::new(),
+        }
+    }
+
+    create_mapping_inner(from, to)
+}
+
+/// assumes all expressions of the form `Y * is_valid_expr`
+// fn create_mapping<T: PrimeField32>(expr1: &AlgebraicExpression<T>, expr2: &AlgebraicExpression<T>) -> BTreeMap<u64, u64> {
+//     fn create_mapping_inner<T: PrimeField32>(expr1: &Box<AlgebraicExpression<T>>, expr2: &Box<AlgebraicExpression<T>>) -> BTreeMap<u64, u64> {
+//         match (expr1.as_ref(), expr2.as_ref()) {
+//             (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left1, op: op1, right: right1 }),
+//              AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left2, op: op2, right: right2 })) => {
+//                 assert_eq!(op1, op2);
+//                 let mut left = create_mapping_inner(left1, left2);
+//                 let right = create_mapping_inner(right1, right2);
+//                 // assert both sides don't conflict
+//                 assert!(extend_if_no_conflicts(&mut left, right), "conflict in mapping: {expr1} => {expr2}");
+//                 left
+//             }
+//             (AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op1, expr: expr1 }),
+//              AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op2, expr: expr2 })) => {
+//                 assert_eq!(op1, op2);
+//                 create_mapping_inner(expr1, expr2)
+//             }
+//             (AlgebraicExpression::Reference(ref1), AlgebraicExpression::Reference(ref2)) => {
+//                 let mappings = BTreeMap::from([(ref2.poly_id.id, ref1.poly_id.id)]); // CHECK
+//                 mappings
+//             }
+//             (AlgebraicExpression::Number(n1), AlgebraicExpression::Number(n2)) => {
+//                 assert_eq!(n1, n2, "numbers do not match: {n1} != {n2}");
+//                 BTreeMap::new() // no mapping needed for numbers
+//             }
+//             _ => unreachable!("invalid expression mapping: {expr1} => {expr2}"),
+//         }
+//     }
+//
+//     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: expr1, op: _, right: _is_valid }) = expr1 else {
+//         panic!("invalid expression mapping: {expr1} => {expr2}");
+//     };
+//     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: expr2, op: _, right: _is_valid }) = expr2 else {
+//         panic!("invalid expression: {expr1} => {expr2}");
+//     };
+//     create_mapping_inner(expr1, expr2)
+// }
+
+fn extend_if_no_conflicts(
+    mappings: &mut BTreeMap<u64, u64>,
+    new_mappings: BTreeMap<u64, u64>,
+) -> bool {
+    for (k, v) in &new_mappings {
+        if let Some(existing_v) = mappings.get(k) {
+            if existing_v != v {
+                return false; // conflict found
+            }
+        }
+    }
+    mappings.extend(new_mappings);
+    true
+}
+
+/// changes poly_id to match the order in which they are encountered in the expression.
+/// This allows us to compare two expressions for the same "structure".
+/// e.g., a+a == b+b and a+a != a+b
+fn expr_poly_id_by_order<F: PrimeField32>(mut expr: AlgebraicExpression<F>) -> AlgebraicExpression<F> {
+    let mut curr_id = 0;
+    let mut id_map: HashMap<u64, u64> = Default::default();
+    let mut new_poly_id = |old_id: u64| {
+        *id_map.entry(old_id).or_insert_with(|| {
+            let id = curr_id;
+            curr_id += 1;
+            id
+        })
+    };
+    expr.pre_visit_expressions_mut(&mut |e| {
+        if let AlgebraicExpression::Reference(r) = e {
+            r.poly_id.id = new_poly_id(r.poly_id.id);
+            r.name = format!("col_{}", r.poly_id.id); // this one not needed, just for printing
+        }
+    });
+    expr
+}
+
+fn expr_orig_poly_ids<F: PrimeField32>(mut expr: AlgebraicExpression<F>) -> AlgebraicExpression<F> {
+    expr.pre_visit_expressions_mut(&mut |e| {
+        if let AlgebraicExpression::Reference(r) = e {
+            r.name = format!("col_{}", r.poly_id.id); // this one not needed, just for printing
+        }
+    });
+    expr
+}
+
+#[derive(Default)]
+struct ColumnAssigner<F: PrimeField32> {
+    // original PCPs
+    pcps: Vec<PowdrPrecompile<F>>,
+    // id mapping for each PCP (by idx)
+    mappings: BTreeMap<usize, BTreeMap<u64, u64>>,
+}
+
+impl<F: PrimeField32> ColumnAssigner<F> {
+    fn assign_pcp(
+        &mut self,
+        pcp: &mut PowdrPrecompile<F>,
+    ) {
+        let idx = self.pcps.len();
+        println!("Assinging PCP {}", idx);
+        let mut mappings = BTreeMap::new();
+        // for each constraint, we want to find if there is a constraint in
+        // another machine with the same structure that we can assign the same
+        // ids.
+        // There may be multiple such constraints, so we try them all (as some
+        // of the ids in the current constraint may already be assigned)
+
+        'outer: for c in &mut pcp.machine.constraints {
+            for pcp2 in self.pcps.iter() {
+                for c2 in &pcp2.machine.constraints {
+                    if has_same_structure(&expr_poly_id_by_order(c.expr.clone()),
+                                          &expr_poly_id_by_order(c2.expr.clone())) {
+                        println!("Found same structure: \n\t{}\n\n\t{}",
+                                 &expr_poly_id_by_order(c.expr.clone()),
+                                 &expr_poly_id_by_order(c2.expr.clone()));
+
+                        println!("Found same structure (ids): \n\t{}\n\n\t{}",
+                                 &expr_orig_poly_ids(c.expr.clone()),
+                                 &expr_orig_poly_ids(c2.expr.clone()));
+
+                        // assign the same ids
+                        let new_mappings = create_mapping(&c.expr, &c2.expr);
+                        if extend_if_no_conflicts(
+                            &mut mappings,
+                            new_mappings,
+                        ) {
+                            println!("\tMappings: {:#?}", mappings);
+                            continue 'outer;
+                        }
+                        println!("\tCould not extend due to conflicts!");
+                    }
+                }
+            }
+        }
+
+        // TODO: do the same for bus interactions
+
+        println!("Mappings for PCP {}: {:#?}", idx, mappings);
+
+        // now assign new ids for all references in the PCP
+        let mut curr_id = 0;
+        let mut new_poly_id = |old_id: u64| {
+            if let Some(id) = mappings.get(&old_id) {
+                return *id;
+            }
+            // if the new id is a target in the mappings, find a new id not yet in the mapping
+            while mappings.values().any(|id| curr_id == *id) {
+                curr_id += 1;
+            }
+            assert!(mappings.values().all(|id| curr_id != *id), "New id {} already exists in mappings: {:?}", curr_id, mappings);
+            assert!(!mappings.contains_key(&old_id));
+            println!("Assigning new id {} for old id {}", curr_id, old_id);
+            let id = curr_id;
+            mappings.insert(old_id, id);
+            curr_id += 1;
+            id
+        };
+
+        pcp.machine.pre_visit_expressions_mut(&mut |expr| {
+            if let AlgebraicExpression::Reference(r) = expr {
+                if r.poly_id.ptype == PolynomialType::Committed {
+                    r.poly_id.id = new_poly_id(r.poly_id.id);
+                }
+            }
+        });
+        println!("----- assigning instr subs ------");
+        pcp.original_instructions.iter_mut().for_each(|instr| {
+            instr.subs.iter_mut().for_each(|sub| {
+                *sub = new_poly_id(*sub);
+            });
+        });
+
+        println!("----- assigning is valid ------");
+        pcp.is_valid_column.id.id = new_poly_id(pcp.is_valid_column.id.id);
+
+        self.pcps.push(pcp.clone());
+    }
+}
+
 
 
 // perform air stacking of multiple precompiles into stacked precompiles.
@@ -444,9 +657,9 @@ fn air_stacking<P: IntoOpenVm>(
     assert!(!extensions.is_empty());
 
     extensions.iter_mut().for_each(|ext| {
-        ext.machine.constraints.sort();
         ext.machine.constraints.iter_mut().for_each(|c| canonicalize_expression(&mut c.expr));
-        compact_ids(ext)
+        // ext.machine.constraints.sort();
+        // compact_ids(ext)
     });
 
     // create apc groups by number of columns
@@ -455,6 +668,17 @@ fn air_stacking<P: IntoOpenVm>(
         let idx = f64::log(pcp.machine.unique_columns().count() as f64, 2.0).floor() as usize;
         groups.entry(idx).or_default().push(pcp);
     }
+
+    // sort each group by number of columns
+    groups.values_mut().for_each(|g| {
+        // assign largest pcp first
+        g.sort_by(|pcp1, pcp2| pcp2.machine.unique_columns().count().cmp(&pcp1.machine.unique_columns().count()));
+        let mut column_assigner = ColumnAssigner::default();
+        g.iter_mut().for_each(|ext| {
+            column_assigner.assign_pcp(ext);
+            compact_ids(ext); // this should undo the above or sth is very wrong?
+        });
+    });
 
     let mut result = vec![];
 
@@ -490,6 +714,7 @@ fn air_stacking<P: IntoOpenVm>(
         let mut is_valid_sum: Option<AlgebraicExpression<P, AlgebraicReference>> = None;
 
         for (idx, pcp) in extensions.iter_mut().enumerate() {
+
             // is_valid columns cannot be shared between precompiles. Here we do
             // their remapping into exclusive columns.
             let is_valid_new_id = is_valid_start + idx as u64;
@@ -498,6 +723,7 @@ fn air_stacking<P: IntoOpenVm>(
 
             // remap is_valid column in constraints and interactions
             let mut remapped = pcp.machine.clone();
+
             remapped.pre_visit_expressions_mut(&mut |expr| {
                 if let AlgebraicExpression::Reference(r) = expr {
                     assert!(r.poly_id.id <= is_valid_start);
@@ -542,7 +768,7 @@ fn air_stacking<P: IntoOpenVm>(
         }
 
         println!("before joining constraints: {}", stacked_constraints.len());
-        let mut stacked_constraints = join_constraints(stacked_constraints);
+        // let mut stacked_constraints = join_constraints(stacked_constraints);
         stacked_constraints.sort();
         println!("after joining constraints: {}", stacked_constraints.len());
 
@@ -553,9 +779,9 @@ fn air_stacking<P: IntoOpenVm>(
         stacked_constraints.push(one_hot_is_valid.into());
 
         println!("interaction count before: {}", interactions_by_machine.iter().flatten().count());
-        let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
+        // let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
+        let mut stacked_interactions = merge_bus_interactions(interactions_by_machine);
         stacked_interactions.sort();
-        // let stacked_interactions = merge_bus_interactions(interactions_by_machine);
 
         let machine = SymbolicMachine {
             constraints: stacked_constraints,
