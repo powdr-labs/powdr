@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::BusMap;
+use crate::IntoOpenVm;
+use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -9,27 +11,19 @@ use openvm_stark_backend::{
         SymbolicConstraints,
     },
     interaction::Interaction,
-    p3_field::PrimeField32,
+    p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{BabyBearField, FieldElement};
 
-pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
-    f.as_canonical_u32().into()
-}
-
-pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
-}
-
-pub fn algebraic_to_symbolic<T: PrimeField32>(
-    expr: &AlgebraicExpression<T>,
-) -> SymbolicExpression<T> {
+pub fn algebraic_to_symbolic<P: IntoOpenVm>(
+    expr: &AlgebraicExpression<P>,
+) -> SymbolicExpression<OpenVmField<P>> {
     match expr {
-        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
+        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
                 x: Arc::new(algebraic_to_symbolic(&binary.left)),
@@ -54,19 +48,19 @@ pub fn algebraic_to_symbolic<T: PrimeField32>(
                     _ => unimplemented!(),
                 };
 
-                if exp == T::ZERO {
-                    SymbolicExpression::Constant(T::ONE)
+                if exp == P::ZERO {
+                    SymbolicExpression::Constant(OpenVmField::<P>::ONE)
                 } else {
                     let mut result = base.clone();
-                    let mut remaining = exp - T::ONE;
+                    let mut remaining = exp - P::ONE;
 
-                    while remaining != T::ZERO {
+                    while remaining != P::ZERO {
                         result = SymbolicExpression::Mul {
                             x: Arc::new(result),
                             y: Arc::new(base.clone()),
                             degree_multiple: 0,
                         };
-                        remaining -= T::ONE;
+                        remaining -= P::ONE;
                     }
                     result
                 }
