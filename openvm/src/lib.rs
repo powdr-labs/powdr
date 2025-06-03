@@ -848,6 +848,18 @@ mod tests {
     // }
 
     // The following are compilation tests only
+    fn test_guest_machine(pgo_config: PgoConfig) {
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
+            .unwrap()
+            .powdr_airs_metrics();
+        assert_eq!(machines.len(), 1);
+        let m = &machines[0];
+        assert_eq!(m.width, 53);
+        assert_eq!(m.constraints, 22);
+        assert_eq!(m.bus_interactions, 39);
+    }
+
     fn test_keccak_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
@@ -861,24 +873,12 @@ mod tests {
     }
 
     #[test]
-    fn guest_machine() {
+    fn guest_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin);
-        let machines = compile_guest(
-            GUEST,
-            GuestOptions::default(),
-            config,
-            PgoConfig::Cell(pgo_data),
-        )
-        .unwrap()
-        .powdr_airs_metrics();
-        assert_eq!(machines.len(), 1);
-        let m = &machines[0];
-        assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 39);
+        test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
+        test_guest_machine(PgoConfig::Cell(pgo_data));
     }
 
     #[test]

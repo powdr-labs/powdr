@@ -66,6 +66,8 @@ pub fn customize<F: PrimeField32>(
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
     // We don't want these opcodes because they create air constraints with next references, which powdr-openvm does not support yet.
     let opcodes_no_apc = vec![
+        Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
+        Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32LoadStoreOpcode::LOADB.global_opcode().as_usize(),
         Rv32LoadStoreOpcode::LOADH.global_opcode().as_usize(),
         Rv32WeierstrassOpcode::EC_ADD_NE.global_opcode().as_usize(),
@@ -119,8 +121,6 @@ pub fn customize<F: PrimeField32>(
         0x51c, // not sure yet what this is
         0x523, // not sure yet what this is
         0x526, // not sure yet what this is
-        Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
-        Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
         1024,
         1025,
         1028,
@@ -743,7 +743,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
     });
 
-    // Debug print blocks by decsending cost
+    // Debug print blocks by descending cost
     for block in blocks {
         let start_idx = block.start_idx;
         let count = pgo_program_idx_count[&(start_idx as u32)];
