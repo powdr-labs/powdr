@@ -601,35 +601,32 @@ where
     opcodes
         .iter()
         .filter_map(|op| {
-            chip_complex
-                .inventory
-                .get_mut_executor(&op)
-                .map(|executor| {
-                    let air = executor.air();
+            chip_complex.inventory.get_mut_executor(op).map(|executor| {
+                let air = executor.air();
 
-                    let columns = get_columns(air.clone());
+                let columns = get_columns(air.clone());
 
-                    let constraints = get_constraints(air);
+                let constraints = get_constraints(air);
 
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
-                        .collect::<Vec<_>>();
+                let powdr_exprs = constraints
+                    .constraints
+                    .iter()
+                    .map(|expr| symbolic_to_algebraic(expr, &columns).into())
+                    .collect::<Vec<_>>();
 
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                        .collect();
+                let powdr_bus_interactions = constraints
+                    .interactions
+                    .iter()
+                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                    .collect();
 
-                    let symb_machine = SymbolicMachine {
-                        constraints: powdr_exprs,
-                        bus_interactions: powdr_bus_interactions,
-                    };
+                let symb_machine = SymbolicMachine {
+                    constraints: powdr_exprs,
+                    bus_interactions: powdr_bus_interactions,
+                };
 
-                    (op.as_usize(), symb_machine)
-                })
+                (op.as_usize(), symb_machine)
+            })
         })
         .collect()
 }
