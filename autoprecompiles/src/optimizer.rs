@@ -12,7 +12,9 @@ use powdr_number::FieldElement;
 use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    legacy_expression::{AlgebraicExpression, AlgebraicReference, CompatibleWithAstExpression},
+    legacy_expression::{
+        ast_compatibility::CompatibleWithAstExpression, AlgebraicExpression, AlgebraicReference,
+    },
     memory_optimizer::optimize_memory,
     powdr::{self},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},

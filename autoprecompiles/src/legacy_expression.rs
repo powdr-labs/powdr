@@ -40,17 +40,6 @@ pub struct AlgebraicReference {
     pub next: bool,
 }
 
-impl AlgebraicReference {
-    #[inline]
-    pub fn is_witness(&self) -> bool {
-        self.poly_id.ptype == PolynomialType::Committed
-    }
-    #[inline]
-    pub fn is_fixed(&self) -> bool {
-        self.poly_id.ptype == PolynomialType::Constant
-    }
-}
-
 impl std::fmt::Display for AlgebraicReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}{}", self.name, if self.next { "'" } else { "" },)
@@ -82,143 +71,155 @@ impl Hash for AlgebraicReference {
     }
 }
 
-impl From<AlgebraicReference> for powdr_ast::analyzed::AlgebraicReference {
-    fn from(reference: AlgebraicReference) -> Self {
-        powdr_ast::analyzed::AlgebraicReference {
-            name: reference.name,
-            poly_id: powdr_ast::analyzed::PolyID {
-                id: reference.poly_id.id,
-                ptype: match reference.poly_id.ptype {
-                    PolynomialType::Committed => powdr_ast::analyzed::PolynomialType::Committed,
-                    PolynomialType::Constant => powdr_ast::analyzed::PolynomialType::Constant,
-                    PolynomialType::Intermediate => {
-                        powdr_ast::analyzed::PolynomialType::Intermediate
-                    }
-                },
-            },
-            next: reference.next,
-        }
-    }
-}
+/// Conversion to / from powdr_ast::analyzed::AlgebraicExpression.
+pub mod ast_compatibility {
 
-impl From<powdr_ast::analyzed::AlgebraicReference> for AlgebraicReference {
-    fn from(reference: powdr_ast::analyzed::AlgebraicReference) -> Self {
-        AlgebraicReference {
-            name: reference.name,
-            poly_id: PolyID {
-                id: reference.poly_id.id,
-                ptype: match reference.poly_id.ptype {
-                    powdr_ast::analyzed::PolynomialType::Committed => PolynomialType::Committed,
-                    powdr_ast::analyzed::PolynomialType::Constant => PolynomialType::Constant,
-                    powdr_ast::analyzed::PolynomialType::Intermediate => {
-                        PolynomialType::Intermediate
-                    }
-                },
-            },
-            next: reference.next,
-        }
-    }
-}
+    use super::*;
 
-pub trait CompatibleWithAstExpression<T>: Sized {
-    /// Converts the expression into an AST expression.
-    fn into_ast_expression(self) -> powdr_ast::analyzed::AlgebraicExpression<T>;
-
-    /// Attempts to convert an AST expression into this expression type.
-    /// Fails if there is a public reference, a reference to a challenge, or an exponentiation.
-    fn try_from_ast_expression(
-        expr: powdr_ast::analyzed::AlgebraicExpression<T>,
-    ) -> Result<Self, ()>;
-}
-
-impl<T> CompatibleWithAstExpression<T> for AlgebraicExpression<T> {
-    fn into_ast_expression(self) -> powdr_ast::analyzed::AlgebraicExpression<T> {
-        match self {
-            AlgebraicExpression::Number(n) => powdr_ast::analyzed::AlgebraicExpression::Number(n),
-            AlgebraicExpression::Reference(reference) => {
-                powdr_ast::analyzed::AlgebraicExpression::Reference(reference.into())
-            }
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = left.into_ast_expression();
-                let right = right.into_ast_expression();
-                let op = match op {
-                    AlgebraicBinaryOperator::Add => {
-                        powdr_ast::analyzed::AlgebraicBinaryOperator::Add
-                    }
-                    AlgebraicBinaryOperator::Sub => {
-                        powdr_ast::analyzed::AlgebraicBinaryOperator::Sub
-                    }
-                    AlgebraicBinaryOperator::Mul => {
-                        powdr_ast::analyzed::AlgebraicBinaryOperator::Mul
-                    }
-                };
-                powdr_ast::analyzed::AlgebraicExpression::BinaryOperation(
-                    powdr_ast::analyzed::AlgebraicBinaryOperation {
-                        left: Box::new(left),
-                        op,
-                        right: Box::new(right),
+    impl From<AlgebraicReference> for powdr_ast::analyzed::AlgebraicReference {
+        fn from(reference: AlgebraicReference) -> Self {
+            powdr_ast::analyzed::AlgebraicReference {
+                name: reference.name,
+                poly_id: powdr_ast::analyzed::PolyID {
+                    id: reference.poly_id.id,
+                    ptype: match reference.poly_id.ptype {
+                        PolynomialType::Committed => powdr_ast::analyzed::PolynomialType::Committed,
+                        PolynomialType::Constant => powdr_ast::analyzed::PolynomialType::Constant,
+                        PolynomialType::Intermediate => {
+                            powdr_ast::analyzed::PolynomialType::Intermediate
+                        }
                     },
-                )
+                },
+                next: reference.next,
             }
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                powdr_ast::analyzed::AlgebraicExpression::UnaryOperation(
-                    powdr_ast::analyzed::AlgebraicUnaryOperation {
-                        op: match op {
-                            AlgebraicUnaryOperator::Minus => {
-                                powdr_ast::analyzed::AlgebraicUnaryOperator::Minus
-                            }
+        }
+    }
+
+    impl From<powdr_ast::analyzed::AlgebraicReference> for AlgebraicReference {
+        fn from(reference: powdr_ast::analyzed::AlgebraicReference) -> Self {
+            AlgebraicReference {
+                name: reference.name,
+                poly_id: PolyID {
+                    id: reference.poly_id.id,
+                    ptype: match reference.poly_id.ptype {
+                        powdr_ast::analyzed::PolynomialType::Committed => PolynomialType::Committed,
+                        powdr_ast::analyzed::PolynomialType::Constant => PolynomialType::Constant,
+                        powdr_ast::analyzed::PolynomialType::Intermediate => {
+                            PolynomialType::Intermediate
+                        }
+                    },
+                },
+                next: reference.next,
+            }
+        }
+    }
+
+    pub trait CompatibleWithAstExpression<T>: Sized {
+        /// Converts the expression into an AST expression.
+        fn into_ast_expression(self) -> powdr_ast::analyzed::AlgebraicExpression<T>;
+
+        /// Attempts to convert an AST expression into this expression type.
+        /// Returns None if there is a public reference, a reference to a challenge, or an exponentiation.
+        fn try_from_ast_expression(
+            expr: powdr_ast::analyzed::AlgebraicExpression<T>,
+        ) -> Option<Self>;
+    }
+
+    impl<T> CompatibleWithAstExpression<T> for AlgebraicExpression<T> {
+        fn into_ast_expression(self) -> powdr_ast::analyzed::AlgebraicExpression<T> {
+            match self {
+                AlgebraicExpression::Number(n) => {
+                    powdr_ast::analyzed::AlgebraicExpression::Number(n)
+                }
+                AlgebraicExpression::Reference(reference) => {
+                    powdr_ast::analyzed::AlgebraicExpression::Reference(reference.into())
+                }
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left,
+                    op,
+                    right,
+                }) => {
+                    let left = left.into_ast_expression();
+                    let right = right.into_ast_expression();
+                    let op = match op {
+                        AlgebraicBinaryOperator::Add => {
+                            powdr_ast::analyzed::AlgebraicBinaryOperator::Add
+                        }
+                        AlgebraicBinaryOperator::Sub => {
+                            powdr_ast::analyzed::AlgebraicBinaryOperator::Sub
+                        }
+                        AlgebraicBinaryOperator::Mul => {
+                            powdr_ast::analyzed::AlgebraicBinaryOperator::Mul
+                        }
+                    };
+                    powdr_ast::analyzed::AlgebraicExpression::BinaryOperation(
+                        powdr_ast::analyzed::AlgebraicBinaryOperation {
+                            left: Box::new(left),
+                            op,
+                            right: Box::new(right),
                         },
-                        expr: Box::new(expr.into_ast_expression()),
-                    },
-                )
+                    )
+                }
+                AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                    powdr_ast::analyzed::AlgebraicExpression::UnaryOperation(
+                        powdr_ast::analyzed::AlgebraicUnaryOperation {
+                            op: match op {
+                                AlgebraicUnaryOperator::Minus => {
+                                    powdr_ast::analyzed::AlgebraicUnaryOperator::Minus
+                                }
+                            },
+                            expr: Box::new(expr.into_ast_expression()),
+                        },
+                    )
+                }
             }
         }
-    }
 
-    fn try_from_ast_expression(
-        expr: powdr_ast::analyzed::AlgebraicExpression<T>,
-    ) -> Result<Self, ()> {
-        match expr {
-            powdr_ast::analyzed::AlgebraicExpression::Number(n) => {
-                Ok(AlgebraicExpression::Number(n))
+        fn try_from_ast_expression(
+            expr: powdr_ast::analyzed::AlgebraicExpression<T>,
+        ) -> Option<Self> {
+            match expr {
+                powdr_ast::analyzed::AlgebraicExpression::Number(n) => {
+                    Some(AlgebraicExpression::Number(n))
+                }
+                powdr_ast::analyzed::AlgebraicExpression::Reference(reference) => {
+                    Some(AlgebraicExpression::Reference(reference.into()))
+                }
+                powdr_ast::analyzed::AlgebraicExpression::BinaryOperation(
+                    powdr_ast::analyzed::AlgebraicBinaryOperation { left, op, right },
+                ) => {
+                    let left = AlgebraicExpression::try_from_ast_expression(*left)?;
+                    let right = AlgebraicExpression::try_from_ast_expression(*right)?;
+                    let op = match op {
+                        powdr_ast::analyzed::AlgebraicBinaryOperator::Add => {
+                            AlgebraicBinaryOperator::Add
+                        }
+                        powdr_ast::analyzed::AlgebraicBinaryOperator::Sub => {
+                            AlgebraicBinaryOperator::Sub
+                        }
+                        powdr_ast::analyzed::AlgebraicBinaryOperator::Mul => {
+                            AlgebraicBinaryOperator::Mul
+                        }
+                        // Can't be represented, return an none.
+                        powdr_ast::analyzed::AlgebraicBinaryOperator::Pow => return None,
+                    };
+                    Some(AlgebraicExpression::new_binary(left, op, right))
+                }
+                powdr_ast::analyzed::AlgebraicExpression::UnaryOperation(
+                    powdr_ast::analyzed::AlgebraicUnaryOperation { op, expr },
+                ) => {
+                    let expr = AlgebraicExpression::try_from_ast_expression(*expr)?;
+                    let op = match op {
+                        powdr_ast::analyzed::AlgebraicUnaryOperator::Minus => {
+                            AlgebraicUnaryOperator::Minus
+                        }
+                    };
+                    Some(AlgebraicExpression::new_unary(op, expr))
+                }
+                // Can't be represented, return an none.
+                powdr_ast::analyzed::AlgebraicExpression::PublicReference(_)
+                | powdr_ast::analyzed::AlgebraicExpression::Challenge(_) => None,
             }
-            powdr_ast::analyzed::AlgebraicExpression::Reference(reference) => {
-                Ok(AlgebraicExpression::Reference(reference.into()))
-            }
-            powdr_ast::analyzed::AlgebraicExpression::BinaryOperation(
-                powdr_ast::analyzed::AlgebraicBinaryOperation { left, op, right },
-            ) => {
-                let left = AlgebraicExpression::try_from_ast_expression(*left)?;
-                let right = AlgebraicExpression::try_from_ast_expression(*right)?;
-                let op = match op {
-                    powdr_ast::analyzed::AlgebraicBinaryOperator::Add => {
-                        AlgebraicBinaryOperator::Add
-                    }
-                    powdr_ast::analyzed::AlgebraicBinaryOperator::Sub => {
-                        AlgebraicBinaryOperator::Sub
-                    }
-                    powdr_ast::analyzed::AlgebraicBinaryOperator::Mul => {
-                        AlgebraicBinaryOperator::Mul
-                    }
-                    // Can't be represented, return an error.
-                    powdr_ast::analyzed::AlgebraicBinaryOperator::Pow => return Err(()),
-                };
-                Ok(AlgebraicExpression::new_binary(left, op, right))
-            }
-            powdr_ast::analyzed::AlgebraicExpression::UnaryOperation(
-                powdr_ast::analyzed::AlgebraicUnaryOperation { op, expr },
-            ) => {
-                let expr = AlgebraicExpression::try_from_ast_expression(*expr)?;
-                let op = match op {
-                    powdr_ast::analyzed::AlgebraicUnaryOperator::Minus => {
-                        AlgebraicUnaryOperator::Minus
-                    }
-                };
-                Ok(AlgebraicExpression::new_unary(op, expr))
-            }
-            // Can't be represented, return an error.
-            powdr_ast::analyzed::AlgebraicExpression::PublicReference(_)
-            | powdr_ast::analyzed::AlgebraicExpression::Challenge(_) => Err(()),
         }
     }
 }
