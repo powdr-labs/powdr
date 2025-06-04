@@ -45,6 +45,7 @@ fn test_optimize() {
         machine.bus_interactions.len(),
         machine.constraints.len()
     );
+
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     assert_eq!(
@@ -53,7 +54,7 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [3194, 2861, 160]
+        [1996, 1775, 160]
     );
 }
 
@@ -87,6 +88,6 @@ fn test_conflicting_constraints_in_bus_interaction() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [36, 30, 20]
+        [36, 27, 20]
     );
 }
