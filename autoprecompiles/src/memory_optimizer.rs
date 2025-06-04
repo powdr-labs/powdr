@@ -70,10 +70,8 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // If there is an unconsumed send to this address, consume it.
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
-                // TODO: This does not check for equivalent expressions of the same address.
-                //       This is not a soundness issue, but we might miss some optimizations.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
-                    for (existing, new) in existing_values.iter().zip(mem_int.data.iter()) {
+                    for (existing, new) in existing_values.iter().zip_eq(mem_int.data.iter()) {
                         new_constraints.push((existing.clone() - new.clone()).into());
                     }
                     to_remove.extend([index, previous_send]);
@@ -223,15 +221,11 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
     // and try to solve for the expression
     let mut exprs = constraints
         .constraints_referencing_variables(expression.referenced_unknown_variables().cloned())
-        .flat_map(|constr| {
-            match constr {
-                ConstraintRef::AlgebraicConstraint(constr) => {
-                    Some(constr.try_solve_for_expr(expression))
-                }
-                ConstraintRef::BusInteraction(_) => None,
-            }
-            .flatten()
+        .filter_map(|constr| match constr {
+            ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
+            ConstraintRef::BusInteraction(_) => None,
         })
+        .flat_map(|constr| constr.try_solve_for_expr(expression))
         .collect_vec();
     if exprs.is_empty() {
         // If we cannot solve for the expression, we just take the expression unmodified.
