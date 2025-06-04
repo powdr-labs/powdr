@@ -91,6 +91,8 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
             Err(_) => {
                 // This interaction might be going to memory, but we do not know
                 // the multiplicity. Delete all knowledge.
+                // TODO If we can still clearly determine the memory type, we could
+                // only clear the knowledge for that memory type.
                 memory_contents.clear();
                 continue;
             }
