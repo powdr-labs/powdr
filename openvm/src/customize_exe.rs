@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::BusMap;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use itertools::Itertools;
@@ -24,7 +23,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::FieldElement;
 
-use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
+use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
