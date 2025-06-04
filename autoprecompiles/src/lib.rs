@@ -309,24 +309,24 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     vm_config: VmConfig<T, B>,
     degree_bound: usize,
     opcode: u32,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
         &vm_config.instruction_kind,
-        vm_config.instruction_machines,
+        &vm_config.instruction_machines,
     );
 
     let machine = optimizer::optimize(
         machine,
-        vm_config.bus_interaction_handler.clone(),
+        vm_config.bus_interaction_handler,
         Some(opcode),
         degree_bound,
-    );
+    )?;
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
 
-    (machine, subs)
+    Ok((machine, subs))
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
