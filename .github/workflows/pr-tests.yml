@@ -82,6 +82,8 @@ jobs:
         test:
           - "1"
           - "2"
+          - "3"
+          - "4"
 
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +105,7 @@ jobs:
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2 --no-tests=warn
+        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/4 --no-tests=warn
         env:
           POWDR_STD: ${{ github.workspace }}/std/
 
@@ -172,51 +174,6 @@ jobs:
         shell: bash
         env:
           POWDR_STD: ${{ github.workspace }}/std/
-
-  bench:
-    runs-on: warp-ubuntu-2404-x64-4x
-    permissions:
-      contents: write
-      deployments: write
-      pull-requests: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: ⚡ Restore rust cache
-        id: cache
-        uses: WarpBuilds/cache/restore@v1
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            Cargo.lock
-          key: ${{ runner.os }}-cargo-pr-tests
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.85
-        run: rustup toolchain install 1.85
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Run benchmarks
-        # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
-        run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          name: Benchmarks
-          tool: "cargo"
-          output-file-path: output.txt
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: "120%"
-          comment-on-alert: true
-          summary-always: true
 
   udeps:
     runs-on: ubuntu-22.04

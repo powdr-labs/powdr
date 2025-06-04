@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::IntoOpenVm;
+use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
@@ -10,18 +12,18 @@ use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
-use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeField32};
-use powdr_ast::analyzed::AlgebraicExpression;
+use openvm_stark_backend::{
+    interaction::SymbolicInteraction,
+    p3_field::{FieldAlgebra, PrimeField32},
+};
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
-    SymbolicMachine,
+    InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
@@ -36,14 +38,14 @@ const POWDR_OPCODE: usize = 0x10ff;
 
 use crate::PowdrConfig;
 
-pub fn customize<F: PrimeField32>(
-    mut exe: VmExe<F>,
+pub fn customize<P: IntoOpenVm>(
+    mut exe: VmExe<OpenVmField<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
+    airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
-) -> (VmExe<F>, PowdrExtension<F>) {
+) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -160,13 +162,13 @@ pub fn customize<F: PrimeField32>(
 
     let noop = Instruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
-        a: F::ZERO,
-        b: F::ZERO,
-        c: F::ZERO,
-        d: F::ZERO,
-        e: F::ZERO,
-        f: F::ZERO,
-        g: F::ZERO,
+        a: OpenVmField::<P>::ZERO,
+        b: OpenVmField::<P>::ZERO,
+        c: OpenVmField::<P>::ZERO,
+        d: OpenVmField::<P>::ZERO,
+        e: OpenVmField::<P>::ZERO,
+        f: OpenVmField::<P>::ZERO,
+        g: OpenVmField::<P>::ZERO,
     };
 
     let mut extensions = Vec::new();
@@ -189,13 +191,13 @@ pub fn customize<F: PrimeField32>(
         let apc_opcode = POWDR_OPCODE + i;
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
-            a: F::ZERO,
-            b: F::ZERO,
-            c: F::ZERO,
-            d: F::ZERO,
-            e: F::ZERO,
-            f: F::ZERO,
-            g: F::ZERO,
+            a: OpenVmField::<P>::ZERO,
+            b: OpenVmField::<P>::ZERO,
+            c: OpenVmField::<P>::ZERO,
+            d: OpenVmField::<P>::ZERO,
+            e: OpenVmField::<P>::ZERO,
+            f: OpenVmField::<P>::ZERO,
+            g: OpenVmField::<P>::ZERO,
         };
 
         let pc = acc_block.start_idx as usize;
@@ -220,7 +222,7 @@ pub fn customize<F: PrimeField32>(
         program.splice(pc..pc + n_acc, new_instrs);
         assert_eq!(program.len(), len_before);
 
-        let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
+        let (autoprecompile, subs) = generate_autoprecompile(
             acc_block,
             airs,
             apc_opcode,
@@ -245,14 +247,14 @@ pub fn customize<F: PrimeField32>(
             PowdrOpcode {
                 class_offset: apc_opcode,
             },
-            transpose_symbolic_machine(autoprecompile),
+            autoprecompile,
             acc.into_iter()
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
             airs.iter()
                 .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, transpose_symbolic_machine(air.clone())))
+                .map(|(i, air)| (*i, air.clone()))
                 .collect(),
             is_valid_column,
         ));
@@ -442,8 +444,8 @@ fn add_extra_targets<F: PrimeField32>(
 // 5: bitwise xor ->
 //    [a, b, 0, 0] byte range checks for a and b
 //    [a, b, c, 1] c = xor(a, b)
-fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
-    block: &BasicBlock<F>,
+fn generate_autoprecompile<P: IntoOpenVm>(
+    block: &BasicBlock<OpenVmField<P>>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
@@ -471,7 +473,7 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
                     instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
                 ]
                 .iter()
-                .map(|f| to_powdr_field::<F, P>(*f))
+                .map(|f| P::from_openvm_field(*f))
                 .collect(),
             };
 
@@ -521,66 +523,4 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect();
 
     SymbolicBusInteraction { id, mult, args }
-}
-
-// Transpose an algebraic expression from the powdr field to openvm field
-fn transpose_algebraic_expression<F: PrimeField32, P: FieldElement>(
-    expr: AlgebraicExpression<P>,
-) -> AlgebraicExpression<F> {
-    match expr {
-        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(to_ovm_field(n)),
-        AlgebraicExpression::Reference(reference) => AlgebraicExpression::Reference(reference),
-        AlgebraicExpression::PublicReference(reference) => {
-            AlgebraicExpression::PublicReference(reference)
-        }
-        AlgebraicExpression::Challenge(challenge) => AlgebraicExpression::Challenge(challenge),
-        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
-            let left = transpose_algebraic_expression(*algebraic_binary_operation.left);
-            let right = transpose_algebraic_expression(*algebraic_binary_operation.right);
-            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
-                left: Box::new(left),
-                right: Box::new(right),
-                op: algebraic_binary_operation.op,
-            })
-        }
-        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
-            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
-                op: algebraic_unary_operation.op,
-                expr: Box::new(transpose_algebraic_expression(
-                    *algebraic_unary_operation.expr,
-                )),
-            })
-        }
-    }
-}
-
-// Transpose a symbolic machine from the powdr field to openvm field
-fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
-    machine: SymbolicMachine<P>,
-) -> SymbolicMachine<F> {
-    let constraints = machine
-        .constraints
-        .into_iter()
-        .map(|constraint| SymbolicConstraint {
-            expr: transpose_algebraic_expression(constraint.expr),
-        })
-        .collect();
-    let bus_interactions = machine
-        .bus_interactions
-        .into_iter()
-        .map(|interaction| SymbolicBusInteraction {
-            id: interaction.id,
-            mult: transpose_algebraic_expression(interaction.mult.clone()),
-            args: interaction
-                .args
-                .iter()
-                .map(|arg| transpose_algebraic_expression(arg.clone()))
-                .collect(),
-        })
-        .collect();
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
-    }
 }
