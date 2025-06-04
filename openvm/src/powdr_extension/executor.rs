@@ -91,7 +91,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // save the next available `RecordId`
-        let from_record_id = memory.get_memory_logs().len();
+        // let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
         let res = self
@@ -106,12 +106,12 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             });
 
         self.number_of_calls += 1;
-        let to_record_id = memory.get_memory_logs().len() - 1;
+        // let to_record_id = memory.get_memory_logs().len() - 1;
 
-        memory
-            .memory
-            .apc_ranges
-            .push((from_record_id, to_record_id));
+        // memory
+        //     .memory
+        //     .apc_ranges
+        //     .push((from_record_id, to_record_id));
 
         res
     }
