@@ -372,3 +372,20 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         )),
     }
 }
+
+/// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
+/// simplifies constraints by introducing boolean variables.
+fn symbolic_to_simplified_constraints<T: FieldElement>(
+    constraints: &[SymbolicConstraint<T>],
+) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
+    let mut counter = 0..;
+    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
+
+    constraints
+        .iter()
+        .map(|constr| {
+            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
+            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+        })
+        .collect_vec()
+}

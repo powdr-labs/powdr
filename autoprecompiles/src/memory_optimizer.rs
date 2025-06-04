@@ -296,54 +296,6 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
     }
 }
 
-/// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
-/// simplifies constraints by introducing boolean variables.
-fn symbolic_to_simplified_constraints<T: FieldElement>(
-    constraints: &[SymbolicConstraint<T>],
-) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
-    let mut counter = 0..;
-    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
-
-    constraints
-        .iter()
-        .map(|constr| {
-            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
-        })
-        .collect_vec()
-}
-
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-pub enum Variable {
-    Reference(AlgebraicReference),
-    PublicReference(String),
-    Challenge(Challenge),
-    Boolean(usize),
-}
-
-impl Display for Variable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Variable::Reference(r) => write!(f, "{r}"),
-            Variable::PublicReference(r) => write!(f, "{r}"),
-            Variable::Challenge(c) => write!(f, "{c}"),
-            Variable::Boolean(id) => write!(f, "boolean_{id}"),
-        }
-    }
-}
-
-#[derive(Default)]
-struct RangeConstraintsForBooleans;
-
-impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsForBooleans {
-    fn get(&self, variable: &Variable) -> RangeConstraint<T> {
-        match variable {
-            Variable::Boolean(_) => RangeConstraint::from_mask(1),
-            _ => Default::default(),
-        }
-    }
-}
-
 /// Tries to find equivalent expressions for the given expression
 /// according to the given constraint system.
 /// Returns at least one equivalent expression (in the worst case, the expression itself).
@@ -389,33 +341,6 @@ fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash
         RangeConstraint::from_range(-T::from(word_size - 1), T::from(word_size - 1));
     possible_concrete_values(&(a - b), range_constraints, 20)
         .is_some_and(|mut values| !values.any(|value| disallowed_range.allows_value(value)))
-}
-
-/// Turns an algebraic expression into a quadratic symbolic expression,
-/// assuming all [`AlgebraicReference`]s, public references and challenges
-/// are unknown variables.
-pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> QuadraticSymbolicExpression<T, Variable> {
-    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
-
-    struct TerminalConverter;
-
-    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
-        for TerminalConverter
-    {
-        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
-        }
-        fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
-        }
-        fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Challenge(*challenge))
-        }
-    }
-
-    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
 }
 
 #[cfg(test)]
