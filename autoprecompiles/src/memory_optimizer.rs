@@ -16,22 +16,27 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::{FieldElement, LargeInt};
 
-use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, MEMORY_BUS_ID};
+use crate::{SymbolicConstraint, MEMORY_BUS_ID};
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
-pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine);
+pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
+    mut system: ConstraintSystem<T, V>,
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
+) -> ConstraintSystem<T, V> {
+    let (to_remove, new_constraints) =
+        redundant_memory_interactions_indices(&system, range_constraints);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
-    machine.bus_interactions = machine
+    system.bus_interactions = system
         .bus_interactions
         .into_iter()
         .enumerate()
         .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
         .collect();
-    machine.constraints.extend(new_constraints);
-    machine
+    // TODO perform substitutions instead
+    system.algebraic_constraints.extend(new_constraints);
+    system
 }
 
 /// Returns the word size of a particularly memory type.
@@ -47,8 +52,10 @@ pub fn word_size_by_memory(ty: MemoryType) -> Option<u32> {
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
-    let count_per_addr = machine
+pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
+    system: &ConstraintSystem<T, V>,
+) -> bool {
+    let count_per_addr = system
         .bus_interactions
         .iter()
         .filter_map(|bus_int| {
@@ -57,9 +64,9 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
         })
-        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .filter(|mem_int: &MemoryBusInteraction<_, _>| matches!(mem_int.ty, MemoryType::Register))
         .map(|mem_int| {
-            mem_int.try_addr_u32().unwrap_or_else(|| {
+            mem_int.addr.try_to_number().unwrap_or_else(|| {
                 panic!(
                     "Register memory access must have constant address but found {}",
                     mem_int.addr
@@ -76,23 +83,26 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
 
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
-fn redundant_memory_interactions_indices<T: FieldElement>(
-    machine: &SymbolicMachine<T>,
-) -> (Vec<usize>, Vec<SymbolicConstraint<T>>) {
-    let address_comparator = MemoryAddressComparator::new(machine);
-    let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
+    system: &ConstraintSystem<T, V>,
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
+) -> (Vec<usize>, Vec<QuadraticSymbolicExpression<T, V>>) {
+    let address_comparator = MemoryAddressComparator::new(system);
+    let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = Vec::new();
 
     // Address across all memory types.
-    type GlobalAddress<T> = (MemoryType, QuadraticSymbolicExpression<T, Variable>);
+    type GlobalAddress<T, V> = (MemoryType, QuadraticSymbolicExpression<T, V>);
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<GlobalAddress<T>, (usize, Vec<AlgebraicExpression<_>>)> =
-        Default::default();
+    let mut memory_contents: HashMap<
+        GlobalAddress<T, V>,
+        (usize, Vec<QuadraticSymbolicExpression<_, _>>),
+    > = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
-    for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
+    for (index, bus_int) in system.bus_interactions.iter().enumerate() {
         let mem_int = match MemoryBusInteraction::try_from_bus_interaction(bus_int) {
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
@@ -109,10 +119,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
             continue;
         };
 
-        let addr = (
-            mem_int.ty,
-            algebraic_to_quadratic_symbolic_expression(&mem_int.addr),
-        );
+        let addr = (mem_int.ty, mem_int.addr.clone());
 
         match mem_int.op {
             MemoryOp::Receive => {
@@ -121,7 +128,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data.iter()) {
-                        new_constraints.push((existing.clone() - new.clone()).into());
+                        new_constraints.push((existing.clone() - new.clone()));
                     }
                     to_remove.extend([index, previous_send]);
                 }
@@ -131,8 +138,12 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
-                    address_comparator
-                        .are_addrs_known_to_be_different_by_word(&addr, other_addr, word_size)
+                    address_comparator.are_addrs_known_to_be_different_by_word(
+                        &addr,
+                        other_addr,
+                        word_size,
+                        range_constraints.clone(),
+                    )
                 });
                 memory_contents.insert(addr.clone(), (index, mem_int.data.clone()));
             }
@@ -156,34 +167,34 @@ enum MemoryType {
     Native,
 }
 
-impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
-    fn from(expr: AlgebraicExpression<T>) -> Self {
-        match expr {
-            AlgebraicExpression::Number(n) => {
-                let n_u32 = n.to_integer().try_into_u32().unwrap();
-                match n_u32 {
-                    0 => MemoryType::Constant,
-                    1 => MemoryType::Register,
-                    2 => MemoryType::Memory,
-                    3 => MemoryType::Native,
-                    _ => unreachable!("Expected 0, 1, 2 or 3 but got {n}"),
-                }
-            }
-            _ => unreachable!("Expected number"),
-        }
+impl<T: FieldElement, V: Ord + Clone + Eq> TryFrom<QuadraticSymbolicExpression<T, V>>
+    for MemoryType
+{
+    type Error = ();
+    fn try_from(v: QuadraticSymbolicExpression<T, V>) -> Result<Self, Self::Error> {
+        let v = v
+            .try_to_number()
+            .and_then(|n| n.to_integer().try_into_u32());
+        Ok(match v {
+            Some(0) => MemoryType::Constant,
+            Some(1) => MemoryType::Register,
+            Some(2) => MemoryType::Memory,
+            Some(3) => MemoryType::Native,
+            _ => return Err(()),
+        })
     }
 }
 
-impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
-    fn from(ty: MemoryType) -> Self {
-        match ty {
-            MemoryType::Constant => AlgebraicExpression::Number(T::from(0u32)),
-            MemoryType::Register => AlgebraicExpression::Number(T::from(1u32)),
-            MemoryType::Memory => AlgebraicExpression::Number(T::from(2u32)),
-            MemoryType::Native => AlgebraicExpression::Number(T::from(3u32)),
-        }
-    }
-}
+// impl<T: FieldElement> Into<T> for MemoryType {
+//     fn from(ty: MemoryType) -> Self {
+//         T::from(match ty {
+//             MemoryType::Constant => 0u32,
+//             MemoryType::Register => 1u32,
+//             MemoryType::Memory => 2u32,
+//             MemoryType::Native => 3u32,
+//         })
+//     }
+// }
 
 #[derive(Clone, Debug)]
 enum MemoryOp {
@@ -199,16 +210,7 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     data: Vec<QuadraticSymbolicExpression<T, V>>,
 }
 
-impl<T: FieldElement> MemoryBusInteraction<T> {
-    fn try_addr_u32(&self) -> Option<u32> {
-        match self.addr {
-            AlgebraicExpression::Number(n) => n.to_integer().try_into_u32(),
-            _ => None,
-        }
-    }
-}
-
-impl<T: FieldElement, V> MemoryBusInteraction<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq> MemoryBusInteraction<T, V> {
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
@@ -218,39 +220,37 @@ impl<T: FieldElement, V> MemoryBusInteraction<T, V> {
     fn try_from_bus_interaction(
         bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
     ) -> Result<Option<Self>, ()> {
-        if !bus_interaction
+        if bus_interaction
             .bus_id
             .try_to_number()
-            .is_some_and(|id| id == MEMORY_BUS_ID)
+            .is_none_or(|id| id != MEMORY_BUS_ID.into())
         {
             return Ok(None);
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
         // are in the right order.
-        let ty = bus_interaction.args[0].clone().into();
-        let op = match bus_interaction.try_multiplicity_to_number() {
+        let ty = bus_interaction.payload[0].clone().try_into()?;
+        let op = match bus_interaction.multiplicity.try_to_number() {
             Some(n) if n == 1.into() => MemoryOp::Send,
             Some(n) if n == (-1).into() => MemoryOp::Receive,
             _ => return Err(()),
         };
-        let addr = bus_interaction.args[1].clone();
-        let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
+        let addr = bus_interaction.payload[1].clone();
+        let data = bus_interaction.payload[2..].to_vec();
         Ok(Some(MemoryBusInteraction { ty, op, addr, data }))
     }
 }
 
-struct MemoryAddressComparator<T: FieldElement> {
+struct MemoryAddressComparator<T: FieldElement, V> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
-    memory_addresses: HashMap<
-        QuadraticSymbolicExpression<T, Variable>,
-        Vec<QuadraticSymbolicExpression<T, Variable>>,
-    >,
+    memory_addresses:
+        HashMap<QuadraticSymbolicExpression<T, V>, Vec<QuadraticSymbolicExpression<T, V>>>,
 }
 
-impl<T: FieldElement> MemoryAddressComparator<T> {
-    fn new(machine: &SymbolicMachine<T>) -> Self {
-        let addresses = machine
+impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressComparator<T, V> {
+    fn new(system: &ConstraintSystem<T, V>) -> Self {
+        let addresses = system
             .bus_interactions
             .iter()
             .flat_map(|bus| {
@@ -258,15 +258,9 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
                     .ok()
                     .flatten()
             })
-            .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
+            .map(|bus| bus.addr);
 
-        let constraints = symbolic_to_simplified_constraints(&machine.constraints);
-        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
-            algebraic_constraints: constraints,
-            bus_interactions: vec![],
-        }
-        .into();
-
+        let constraint_system: IndexedConstraintSystem<_, _> = system.clone().into();
         let memory_addresses = addresses
             .map(|addr| {
                 (
@@ -282,9 +276,10 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
     /// `a - b` never falls into the range `-3..=3`.
     pub fn are_addrs_known_to_be_different_by_word(
         &self,
-        a: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
-        b: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
+        a: &(MemoryType, QuadraticSymbolicExpression<T, V>),
+        b: &(MemoryType, QuadraticSymbolicExpression<T, V>),
         word_size: u32,
+        rc: impl RangeConstraintProvider<T, V>,
     ) -> bool {
         if a.0 != b.0 {
             return true;
@@ -296,12 +291,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             .iter()
             .cartesian_product(b_exprs)
             .any(|(a_exprs, b_exprs)| {
-                is_value_known_to_be_different_by_word(
-                    a_exprs,
-                    b_exprs,
-                    word_size,
-                    &RangeConstraintsForBooleans,
-                )
+                is_value_known_to_be_different_by_word(a_exprs, b_exprs, word_size, &rc)
             })
     }
 }
