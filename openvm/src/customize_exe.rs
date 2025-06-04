@@ -19,7 +19,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
-    InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
+    SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 
@@ -168,7 +168,6 @@ pub fn customize<P: IntoOpenVm>(
                 airs,
                 config.clone(),
                 &opcodes_no_apc,
-                &branch_opcodes_set,
             );
         }
         PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -219,7 +218,6 @@ pub fn customize<P: IntoOpenVm>(
                     POWDR_OPCODE + i,
                     config.bus_map.clone(),
                     config.degree_bound,
-                    &branch_opcodes_set,
                 )
                 .expect("Failed to generate autoprecompile")
             });
@@ -469,16 +467,9 @@ fn generate_apc_cache<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: usize,
-    branch_opcodes: &BTreeSet<usize>,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
-    let (autoprecompile, subs) = generate_autoprecompile(
-        block,
-        airs,
-        apc_opcode,
-        bus_map,
-        degree_bound,
-        branch_opcodes,
-    )?;
+    let (autoprecompile, subs) =
+        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
 
     Ok((apc_opcode, autoprecompile, subs))
 }
@@ -497,25 +488,11 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: usize,
-    branch_opcodes: &BTreeSet<usize>,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
         block.start_idx
     );
-    let instruction_kind = airs
-        .keys()
-        .map(|opcode| {
-            (
-                *opcode,
-                if branch_opcodes.contains(opcode) {
-                    InstructionKind::ConditionalBranch
-                } else {
-                    InstructionKind::Normal
-                },
-            )
-        })
-        .collect();
     let program = block
         .statements
         .iter()
@@ -531,7 +508,6 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         .collect();
 
     let vm_config = VmConfig {
-        instruction_kind,
         instruction_machines: airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map),
     };
@@ -573,7 +549,6 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     opcodes_no_apc: &[usize],
-    branch_opcodes_set: &BTreeSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -607,7 +582,6 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 POWDR_OPCODE + i,
                 config.bus_map.clone(),
                 config.degree_bound,
-                branch_opcodes_set,
             )
             .ok()?;
             apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());

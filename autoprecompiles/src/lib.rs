@@ -163,7 +163,6 @@ pub enum InstructionKind {
     Normal,
     ConditionalBranch,
     UnconditionalBranch,
-    Terminal,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -295,8 +294,6 @@ pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, T: FieldElement, B> {
-    /// Maps an opcode to its kind.
-    pub instruction_kind: BTreeMap<usize, InstructionKind>,
     /// Maps an opcode to its AIR.
     pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
@@ -310,11 +307,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     degree_bound: usize,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
-    let (machine, subs) = statements_to_symbolic_machine(
-        &program,
-        &vm_config.instruction_kind,
-        vm_config.instruction_machines,
-    );
+    let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
 
     let machine = optimizer::optimize(
         machine,
