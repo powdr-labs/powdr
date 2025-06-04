@@ -78,7 +78,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     assert!(check_register_operation_consistency(&machine));
     stats_logger.log("register optimization", &machine);
     let machine = optimize_memory(machine);
-    stats_logger.log("optimizing memory", &machine);
+    stats_logger.log("memory optimization", &machine);
 
     let machine = optimize_bitwise_lookup(machine);
     stats_logger.log("optimizing bitwise lookup", &machine);
