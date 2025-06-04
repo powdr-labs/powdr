@@ -8,9 +8,9 @@ use powdr_constraint_solver::{
     solver::Solver,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::{inliner::replace_constrained_witness_columns, qse_opt::Variable};
+use powdr_pilopt::inliner::replace_constrained_witness_columns;
 
-use crate::stats_logger::StatsLogger;
+use crate::stats_logger::{IsWitnessColumn, StatsLogger};
 
 #[derive(Debug)]
 pub enum Error {
@@ -30,12 +30,15 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
-pub fn optimize_constraints<P: FieldElement>(
-    constraint_system: ConstraintSystem<P, Variable>,
+pub fn optimize_constraints<
+    P: FieldElement,
+    V: Ord + Clone + Eq + Hash + Display + IsWitnessColumn,
+>(
+    constraint_system: ConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
-) -> Result<ConstraintSystem<P, Variable>, Error> {
+) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("solver-based optimization", &constraint_system);
@@ -140,9 +143,9 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     }
 }
 
-fn remove_trivial_constraints<P: FieldElement>(
-    mut symbolic_machine: ConstraintSystem<P, Variable>,
-) -> ConstraintSystem<P, Variable> {
+fn remove_trivial_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash>(
+    mut symbolic_machine: ConstraintSystem<P, V>,
+) -> ConstraintSystem<P, V> {
     let zero = QuadraticSymbolicExpression::from(P::zero());
     symbolic_machine
         .algebraic_constraints
@@ -153,9 +156,9 @@ fn remove_trivial_constraints<P: FieldElement>(
     symbolic_machine
 }
 
-fn remove_equal_constraints<P: FieldElement>(
-    mut symbolic_machine: ConstraintSystem<P, Variable>,
-) -> ConstraintSystem<P, Variable> {
+fn remove_equal_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash>(
+    mut symbolic_machine: ConstraintSystem<P, V>,
+) -> ConstraintSystem<P, V> {
     symbolic_machine.algebraic_constraints = symbolic_machine
         .algebraic_constraints
         .into_iter()
@@ -164,10 +167,10 @@ fn remove_equal_constraints<P: FieldElement>(
     symbolic_machine
 }
 
-fn remove_equal_bus_interactions<P: FieldElement>(
-    mut symbolic_machine: ConstraintSystem<P, Variable>,
+fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
+    mut symbolic_machine: ConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
-) -> ConstraintSystem<P, Variable> {
+) -> ConstraintSystem<P, V> {
     let mut seen = HashSet::new();
     symbolic_machine.bus_interactions = symbolic_machine
         .bus_interactions
