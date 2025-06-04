@@ -336,6 +336,140 @@ fn merge_bus_interactions_simple<P: IntoOpenVm>(interactions: Vec<Vec<SymbolicBu
     interactions.into_iter().flatten().collect_vec()
 }
 
+fn merge_bus_interactions2<P: IntoOpenVm>(
+    interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>
+) -> Vec<SymbolicBusInteraction<P>> {
+    // split interactions by bus/args len
+    let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<P>>>> = Default::default();
+
+    for interactions in interactions_by_machine {
+        let interactions_by_bus_this_machine = interactions.into_iter()
+            // we group by bus id and number of args
+            .into_group_map_by(|interaction| (interaction.id, interaction.args.len()));
+        for (k,v) in interactions_by_bus_this_machine {
+            let e = interactions_by_bus.entry(k).or_default();
+            e.push(v);
+        }
+    }
+    interactions_by_bus.values_mut().for_each(|interactions_by_machine| {
+        interactions_by_machine.sort_by_key(|interactions| interactions.len());
+    });
+
+    let mut result = vec![];
+    for mut interactions_by_machine in interactions_by_bus.into_values() {
+        // to_merge is a vec of vecs, each inner vec is a set of interactions to be merged
+        let mut to_merge = interactions_by_machine.pop().unwrap().into_iter().map(|i| vec![i]).collect_vec();
+        for machine_interactions in interactions_by_machine {
+            let mut used = BTreeSet::new();
+            'outer: for i in machine_interactions {
+                // try to find a call with an exact match
+                for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
+                    if used.contains(&idx) {
+                        continue;
+                    }
+                    let i2 = to_merge_set.get(0).unwrap();
+                    let all_args_same_structure = i.args.iter()
+                        .zip_eq(i2.args.iter())
+                        .all(|(a1, a2)| has_same_structure(strip_is_valid(&a1),
+                                                           strip_is_valid(&a2)));
+                    if all_args_same_structure {
+                        println!("EXACT MATCH");
+                        to_merge_set.push(i);
+                        used.insert(idx);
+                        continue 'outer;
+                    }
+                }
+                // didn't find exact match, try one where some args match
+                for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
+                    if used.contains(&idx) {
+                        continue;
+                    }
+                    // check all args have the same structure
+                    let i2 = to_merge_set.get(0).unwrap();
+                    let some_args_same_structure = i.args.iter()
+                        .zip_eq(i2.args.iter())
+                        .any(|(a1, a2)| has_same_structure(strip_is_valid(&a1),
+                                                           strip_is_valid(&a2)));
+                    if some_args_same_structure {
+                        println!("PARTIAL MATCH");
+                        to_merge_set.push(i);
+                        used.insert(idx);
+                        continue 'outer;
+                    }
+                }
+                // just pick the first unused one
+                for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
+                    if !used.contains(&idx) {
+                        println!("NO MATCH");
+                        to_merge_set.push(i);
+                        used.insert(idx);
+                        continue 'outer;
+                    }
+                }
+                unreachable!("could not find any bus interactions to merge with, but should");
+            }
+        }
+
+        fn merge_args<P: IntoOpenVm>(arg1: AlgebraicExpression<P, AlgebraicReference>, arg2: AlgebraicExpression<P, AlgebraicReference>) -> AlgebraicExpression<P, AlgebraicReference> {
+            match arg1 {
+                // expr * is_valid
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left1, op: AlgebraicBinaryOperator::Mul, right: is_valid1 }) => {
+                    let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left2, op: AlgebraicBinaryOperator::Mul, right: is_valid2 }) = arg2 else {
+                        panic!("Expected binary operation for arg2, got: {arg2}");
+                    };
+                    if has_same_structure(&left1, &left2) {
+                        *left1 * (*is_valid1 + *is_valid2)
+                    } else {
+                        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                            left: left1,
+                            op: AlgebraicBinaryOperator::Mul,
+                            right: is_valid1,
+                        })
+                            +
+                        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                            left: left2,
+                            op: AlgebraicBinaryOperator::Mul,
+                            right: is_valid2,
+                        })
+                    }
+                }
+                // exprA * is_validA + exprB * is_validB + ...
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left:_, op: AlgebraicBinaryOperator::Add, right:_ }) => {
+                    arg1 + arg2
+                }
+                _ => unreachable!()
+            }
+        }
+
+        fn simplify_arg<P: IntoOpenVm>(arg: AlgebraicExpression<P, AlgebraicReference>) -> AlgebraicExpression<P, AlgebraicReference> {
+            // expr * is_valid_expr
+            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op: AlgebraicBinaryOperator::Mul, right: _is_valid_expr }) = arg {
+                *left
+            } else {
+                // sum of expr * is_validN, can't simplify
+                arg
+            }
+        }
+
+        // merge each set of interactions
+        for set in to_merge {
+            let id = set[0].id;
+            let mult = set.iter().map(|i| i.mult.clone()).reduce(|a, b| a + b).unwrap();
+            let args = set.into_iter().map(|i| i.args)
+                .reduce(|a, b| a.into_iter().zip_eq(b).map(|(a1, a2)| merge_args(a1, a2)).collect())
+                .unwrap();
+            let args = args.into_iter().map(simplify_arg).collect_vec();
+            result.push(SymbolicBusInteraction {
+                id,
+                args,
+                mult,
+            });
+        }
+    }
+
+    result
+}
+
 fn merge_bus_interactions<P: IntoOpenVm>(interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>) -> Vec<SymbolicBusInteraction<P>> {
     let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<P>>>> = Default::default();
 
@@ -422,7 +556,7 @@ fn join_constraints<P: IntoOpenVm>(mut constraints: Vec<SymbolicConstraint<P>>) 
     result
 }
 
-fn has_same_structure<T: PrimeField32>(expr1: &AlgebraicExpression<T, AlgebraicReference>, expr2: &AlgebraicExpression<T, AlgebraicReference>) -> bool {
+fn has_same_structure<P: IntoOpenVm>(expr1: &AlgebraicExpression<P, AlgebraicReference>, expr2: &AlgebraicExpression<P, AlgebraicReference>) -> bool {
     match (expr1, expr2) {
         (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation{ left: left1, op: op1, right: right1 }),
          AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation{ left: left2, op: op2, right: right2 })) => {
@@ -440,8 +574,17 @@ fn has_same_structure<T: PrimeField32>(expr1: &AlgebraicExpression<T, AlgebraicR
     }
 }
 
-fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BiMap<u64, u64> {
-    fn create_mapping_inner<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &AlgebraicExpression<T>) -> BiMap<u64, u64> {
+// assumes expression is of the form `some_expr * is_valid_expr`.
+fn strip_is_valid<P: IntoOpenVm>(expr: &AlgebraicExpression<P, AlgebraicReference>) -> &AlgebraicExpression<P, AlgebraicReference> {
+    let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op: AlgebraicBinaryOperator::Mul, right: _ }) = expr else {
+        panic!("Expression is not a binary operation with Mul operator: {expr}");
+    };
+    left.as_ref()
+}
+
+
+fn create_mapping<P: IntoOpenVm>(from: &AlgebraicExpression<P, AlgebraicReference>, to: &AlgebraicExpression<P, AlgebraicReference>) -> BiMap<u64, u64> {
+    fn create_mapping_inner<P: IntoOpenVm>(from: &AlgebraicExpression<P, AlgebraicReference>, to: &AlgebraicExpression<P, AlgebraicReference>) -> BiMap<u64, u64> {
         match (from, to) {
             (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left1, op: op1, right: right1 }),
              AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left2, op: op2, right: right2 })) => {
@@ -469,45 +612,6 @@ fn create_mapping<T: PrimeField32>(from: &AlgebraicExpression<T>, to: &Algebraic
     create_mapping_inner(from, to)
 }
 
-/// assumes all expressions of the form `Y * is_valid_expr`
-// fn create_mapping<T: PrimeField32>(expr1: &AlgebraicExpression<T>, expr2: &AlgebraicExpression<T>) -> BTreeMap<u64, u64> {
-//     fn create_mapping_inner<T: PrimeField32>(expr1: &Box<AlgebraicExpression<T>>, expr2: &Box<AlgebraicExpression<T>>) -> BTreeMap<u64, u64> {
-//         match (expr1.as_ref(), expr2.as_ref()) {
-//             (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left1, op: op1, right: right1 }),
-//              AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: left2, op: op2, right: right2 })) => {
-//                 assert_eq!(op1, op2);
-//                 let mut left = create_mapping_inner(left1, left2);
-//                 let right = create_mapping_inner(right1, right2);
-//                 // assert both sides don't conflict
-//                 assert!(extend_if_no_conflicts(&mut left, right), "conflict in mapping: {expr1} => {expr2}");
-//                 left
-//             }
-//             (AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op1, expr: expr1 }),
-//              AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: op2, expr: expr2 })) => {
-//                 assert_eq!(op1, op2);
-//                 create_mapping_inner(expr1, expr2)
-//             }
-//             (AlgebraicExpression::Reference(ref1), AlgebraicExpression::Reference(ref2)) => {
-//                 let mappings = BTreeMap::from([(ref2.poly_id.id, ref1.poly_id.id)]); // CHECK
-//                 mappings
-//             }
-//             (AlgebraicExpression::Number(n1), AlgebraicExpression::Number(n2)) => {
-//                 assert_eq!(n1, n2, "numbers do not match: {n1} != {n2}");
-//                 BTreeMap::new() // no mapping needed for numbers
-//             }
-//             _ => unreachable!("invalid expression mapping: {expr1} => {expr2}"),
-//         }
-//     }
-//
-//     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: expr1, op: _, right: _is_valid }) = expr1 else {
-//         panic!("invalid expression mapping: {expr1} => {expr2}");
-//     };
-//     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left: expr2, op: _, right: _is_valid }) = expr2 else {
-//         panic!("invalid expression: {expr1} => {expr2}");
-//     };
-//     create_mapping_inner(expr1, expr2)
-// }
-
 fn extend_if_no_conflicts(
     mappings: &mut BiMap<u64, u64>,
     new_mappings: BiMap<u64, u64>,
@@ -531,7 +635,7 @@ fn extend_if_no_conflicts(
 /// changes poly_id to match the order in which they are encountered in the expression.
 /// This allows us to compare two expressions for the same "structure".
 /// e.g., a+a == b+b and a+a != a+b
-fn expr_poly_id_by_order<F: PrimeField32>(mut expr: AlgebraicExpression<F>) -> AlgebraicExpression<F> {
+fn expr_poly_id_by_order<P: IntoOpenVm>(mut expr: AlgebraicExpression<P, AlgebraicReference>) -> AlgebraicExpression<P, AlgebraicReference> {
     let mut curr_id = 0;
     let mut id_map: HashMap<u64, u64> = Default::default();
     let mut new_poly_id = |old_id: u64| {
@@ -550,7 +654,7 @@ fn expr_poly_id_by_order<F: PrimeField32>(mut expr: AlgebraicExpression<F>) -> A
     expr
 }
 
-fn expr_orig_poly_ids<F: PrimeField32>(mut expr: AlgebraicExpression<F>) -> AlgebraicExpression<F> {
+fn expr_orig_poly_ids<P: IntoOpenVm>(mut expr: AlgebraicExpression<P, AlgebraicReference>) -> AlgebraicExpression<P, AlgebraicReference> {
     expr.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
             r.name = format!("col_{}", r.poly_id.id); // this one not needed, just for printing
@@ -560,17 +664,17 @@ fn expr_orig_poly_ids<F: PrimeField32>(mut expr: AlgebraicExpression<F>) -> Alge
 }
 
 #[derive(Default)]
-struct ColumnAssigner<F: PrimeField32> {
+struct ColumnAssigner<P: IntoOpenVm> {
     // original PCPs
-    pcps: Vec<PowdrPrecompile<F>>,
+    pcps: Vec<PowdrPrecompile<P>>,
     // id mapping for each PCP (by idx)
     mappings: BTreeMap<usize, BTreeMap<u64, u64>>,
 }
 
-impl<F: PrimeField32> ColumnAssigner<F> {
+impl<P: IntoOpenVm> ColumnAssigner<P> {
     fn assign_pcp(
         &mut self,
-        pcp: &mut PowdrPrecompile<F>,
+        pcp: &mut PowdrPrecompile<P>,
     ) {
         let idx = self.pcps.len();
         println!("Assinging PCP {}", idx);
@@ -581,7 +685,34 @@ impl<F: PrimeField32> ColumnAssigner<F> {
         // There may be multiple such constraints, so we try them all (as some
         // of the ids in the current constraint may already be assigned)
 
-        'outer: for c in &mut pcp.machine.constraints {
+        // do the same for bus interactions
+        'outer: for b in &pcp.machine.bus_interactions {
+            for pcp2 in self.pcps.iter() {
+                for b2 in &pcp2.machine.bus_interactions {
+                    if b.id == b2.id && b.args.len() == b2.args.len() {
+                        // let all_args_same_structure = b.args.iter()
+                        //     .zip_eq(b2.args.iter())
+                        //     .all(|(a1, a2)| has_same_structure(&expr_poly_id_by_order(a1.clone()), &expr_poly_id_by_order(a2.clone())));
+                        // if all_args_same_structure {
+                        // println!("Found same bus interaction: {b:?} == {b2:?}");
+                        for (arg1, arg2) in b.args.iter().zip_eq(b2.args.iter()) {
+                            let new_mappings = create_mapping(&arg1, &arg2);
+                            if extend_if_no_conflicts(
+                                &mut mappings,
+                                new_mappings,
+                            ) {
+                                println!("\tFound mapping for bus interaction");
+                                continue 'outer;
+                            }
+                            println!("\tCould not extend due to conflicts!");
+                        }
+                        // }
+                    }
+                }
+            }
+        }
+
+        'outer: for c in &pcp.machine.constraints {
             for pcp2 in self.pcps.iter() {
                 for c2 in &pcp2.machine.constraints {
                     if has_same_structure(&expr_poly_id_by_order(c.expr.clone()),
@@ -609,8 +740,6 @@ impl<F: PrimeField32> ColumnAssigner<F> {
             }
         }
 
-        // TODO: do the same for bus interactions
-
         println!("Mappings for PCP {}: {:#?}", idx, mappings);
 
         // now assign new ids for all references in the PCP
@@ -624,7 +753,6 @@ impl<F: PrimeField32> ColumnAssigner<F> {
                 curr_id += 1;
             }
             assert!(mappings.get_by_right(&curr_id).is_none(), "New id {} already exists in mappings: {:?}", curr_id, mappings);
-            // assert!(mappings.values().all(|id| curr_id != *id), "New id {} already exists in mappings: {:?}", curr_id, mappings);
             assert!(!mappings.contains_left(&old_id));
             // println!("Assigning new id {} for old id {}", curr_id, old_id);
             let id = curr_id;
@@ -682,7 +810,6 @@ fn air_stacking<P: IntoOpenVm>(
         let mut column_assigner = ColumnAssigner::default();
         g.iter_mut().for_each(|ext| {
             column_assigner.assign_pcp(ext);
-            // compact_ids(ext); // this should undo the above or sth is very wrong?
         });
     });
 
@@ -786,7 +913,8 @@ fn air_stacking<P: IntoOpenVm>(
 
         println!("interaction count before: {}", interactions_by_machine.iter().flatten().count());
         // let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
-        let mut stacked_interactions = merge_bus_interactions(interactions_by_machine);
+        // let mut stacked_interactions = merge_bus_interactions(interactions_by_machine);
+        let mut stacked_interactions = merge_bus_interactions2(interactions_by_machine);
         stacked_interactions.sort();
 
         let machine = SymbolicMachine {
