@@ -15,7 +15,10 @@ use openvm_circuit::{
         ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
         VmInventoryError,
     },
-    system::memory::{online::MemoryLogEntry, OfflineMemory},
+    system::memory::{
+        online::{ApcRange, MemoryLogEntry},
+        OfflineMemory,
+    },
 };
 use openvm_circuit::{
     arch::{VmConfig, VmInventory},
@@ -106,9 +109,9 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             });
 
         self.number_of_calls += 1;
-        let to_record_id = memory.get_memory_logs().len(); // exclusive range
+        let memory_logs = memory.get_memory_logs(); // exclusive range
 
-        let memory_logs = memory.get_memory_logs();
+        let to_record_id = memory_logs.len();
 
         let last_read_write = memory_logs[from_record_id..to_record_id]
             .iter()
@@ -118,20 +121,19 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
                     MemoryLogEntry::Read { .. } | MemoryLogEntry::Write { .. }
                 )
             })
-            .unwrap() // assume that there is at least one read/write within the apc range
-            + from_record_id;
+            .map(|idx| idx + from_record_id as usize);
 
         tracing::debug!(
             "APC range (exclusive): {}..{} (last read/write at {})",
             from_record_id,
             to_record_id,
-            last_read_write
+            last_read_write.unwrap_or(to_record_id)
         );
 
         memory
             .memory
             .apc_ranges
-            .push((from_record_id, to_record_id, last_read_write));
+            .push(ApcRange::new(from_record_id, to_record_id, last_read_write));
 
         res
     }
