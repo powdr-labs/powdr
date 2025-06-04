@@ -8,6 +8,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_constraint_solver::test_utils::Var;
 use powdr_number::FieldElement;
 
 pub fn build_circuit<T>(machine: &SymbolicMachine<T>) -> PlonkCircuit<T, AlgebraicReference>
@@ -253,28 +254,34 @@ where
                 AlgebraicUnaryOperator::Minus => {
                     let mut current_neg = false;
                     *neg = !*neg;
-                    let expr = self.evaluate_expression(expr, false, &mut current_neg, false);
+                    let var = self.evaluate_expression(expr, false, &mut current_neg, false);
 
                     if assert_zero {
                         self.plonk_circuit.add_gate(Gate {
                             q_l: if current_neg { T::ONE } else { -T::ONE },
                             q_o: T::ZERO,
-                            a: expr.clone(),
+                            a: var.clone(),
                             ..Default::default()
                         });
                         Variable::Unused
                     } else if is_last {
-                        self.plonk_circuit.add_gate(Gate {
-                            q_l: if current_neg { T::ONE } else { -T::ONE },
-                            q_o: -T::ONE,
-                            a: expr.clone(),
-                            c: Variable::Tmp(self.temp_id_offset),
-                            ..Default::default()
-                        });
-                        self.temp_id_offset += 1;
-                        Variable::Tmp(self.temp_id_offset - 1)
+                        if let AlgebraicExpression::Reference(r) = &**expr {
+                            self.plonk_circuit.add_gate(Gate {
+                                q_l: T::ONE,
+                                q_o: T::ONE,
+                                a: Variable::Witness(r.clone()),
+                                c: Variable::Tmp(self.temp_id_offset),
+                                ..Default::default()
+                            });
+                            self.temp_id_offset += 1;
+                            Variable::Tmp(self.temp_id_offset - 1)
+                        } else {
+                            self.plonk_circuit.gates.last_mut().unwrap().q_o =
+                                if *neg ^ current_neg { T::ONE } else { -T::ONE };
+                            var
+                        }
                     } else {
-                        expr
+                        var
                     }
                 }
             },
