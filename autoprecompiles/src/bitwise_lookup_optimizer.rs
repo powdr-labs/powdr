@@ -40,9 +40,8 @@ pub fn optimize_bitwise_lookup<T: FieldElement>(
             // The bus interaction is equivalent to "x and y are bytes and z = 0".
             to_byte_constrain.extend([x.clone(), y.clone()]);
             to_remove.push(index);
-            if z != &T::from(0).into() {
-                new_constraints.push(z.clone().into());
-            }
+            // If it is not zero, we could also add it as a new constraint.
+            assert!(z == &T::from(0).into());
         } else if op == &1.into() {
             // The bus interaction is equivalent to "x, y and z are bytes and z = x ^ y".
 
