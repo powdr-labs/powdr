@@ -292,6 +292,7 @@ pub fn build<T: FieldElement>(
 
     if let Ok(machine_path) = std::env::var("APC_EXPORT_MACHINE") {
         let file_name = format!("{machine_path}_{opcode}.cbor");
+        log::info!("Exporting chip to {file_name}");
         serde_cbor::to_writer(std::fs::File::create(file_name).unwrap(), &machine).unwrap();
     }
 
