@@ -313,7 +313,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
         &vm_config.instruction_kind,
-        &vm_config.instruction_machines,
+        vm_config.instruction_machines,
     );
 
     let machine = optimizer::optimize(
