@@ -187,7 +187,7 @@ where
                 columns.q_pc = gate.q_pc;
                 columns.q_range_tuple = gate.q_range_tuple;
                 columns.q_range_check = gate.q_range_check;
-                
+
                 columns.q_l = gate.q_l;
                 columns.q_r = gate.q_r;
                 columns.q_o = gate.q_o;
