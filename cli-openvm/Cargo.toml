@@ -12,7 +12,7 @@ path = "src/main.rs"
 bench = false         # See https://github.com/bheisler/criterion.rs/issues/458
 
 [dependencies]
-openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "dfa605a" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "e3dbf0f" }
 openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "fe1c5a8", default-features = false }
 openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "fe1c5a8", default-features = false }
 

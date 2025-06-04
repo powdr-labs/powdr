@@ -121,7 +121,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
                     MemoryLogEntry::Read { .. } | MemoryLogEntry::Write { .. }
                 )
             })
-            .map(|idx| idx + from_record_id as usize);
+            .map(|idx| idx + from_record_id);
 
         tracing::debug!(
             "APC range (exclusive): {}..{} (last read/write at {})",
