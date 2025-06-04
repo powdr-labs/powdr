@@ -1,5 +1,6 @@
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
+use legacy_expression::ast_compatibility::CompatibleWithAstExpression;
 use legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr::UniqueColumns;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -12,7 +13,6 @@ use std::fmt::Display;
 use std::{collections::BTreeMap, iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
-use crate::simplify_expression::simplify_expression;
 use powdr_number::{FieldElement, LargeInt};
 
 mod bitwise_lookup_optimizer;
@@ -22,9 +22,15 @@ pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
-mod simplify_expression;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+
+pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    // Wrap powdr_pilopt::simplify_expression, which uses powdr_ast::analyzed::AlgebraicExpression.
+    let ast_expression = e.into_ast_expression();
+    let ast_expression = powdr_pilopt::simplify_expression(ast_expression);
+    AlgebraicExpression::try_from_ast_expression(ast_expression).unwrap()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
