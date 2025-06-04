@@ -190,7 +190,7 @@ where
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => {
-                    let (neg, var) = self.evaluate_expression(expr, false, false);
+                    let (_neg, var) = self.evaluate_expression(expr, false, false);
 
                     if assert_zero {
                         self.plonk_circuit.add_gate(Gate {
@@ -205,7 +205,7 @@ where
                         if let AlgebraicExpression::Reference(r)= &**expr {
                             self.plonk_circuit.add_gate(Gate {
                                 q_l: -T::ONE,
-                                q_o: T::ONE,
+                                q_o: -T::ONE,
                                 a: Variable::Witness(r.clone()),
                                 c: Variable::Tmp(self.temp_id_offset),
                                 ..Default::default()
