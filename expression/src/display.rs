@@ -115,3 +115,37 @@ impl Display for AlgebraicBinaryOperator {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use powdr_number::GoldilocksField;
+    use pretty_assertions::assert_eq;
+    use test_log::test;
+
+    use super::AlgebraicExpression;
+
+    fn test_display(expr: AlgebraicExpression<GoldilocksField, &str>, expected: &str) {
+        assert_eq!(expr.to_string(), expected);
+    }
+
+    #[test]
+    fn binary_op() {
+        let x = AlgebraicExpression::Reference("x");
+        let y = AlgebraicExpression::Reference("y");
+        let z = AlgebraicExpression::Reference("z");
+        // Don't add extra
+        test_display(x.clone() + y.clone() + z.clone(), "x + y + z");
+        test_display(x.clone() * y.clone() * z.clone(), "x * y * z");
+        // Remove unneeded
+        test_display(-x.clone() + y.clone() * z.clone(), "-x + y * z");
+        test_display((x.clone() * y.clone()) * z.clone(), "x * y * z");
+        test_display(x.clone() - (y.clone() + z.clone()), "x - (y + z)");
+        // Observe associativity
+        test_display(x.clone() * (y.clone() * z.clone()), "x * (y * z)");
+        test_display(x.clone() + (y.clone() + z.clone()), "x + (y + z)");
+        // Don't remove needed
+        test_display((x.clone() + y.clone()) * z.clone(), "(x + y) * z");
+        test_display((x.clone() + y.clone()) * z.clone(), "(x + y) * z");
+        test_display(-(x.clone() + y.clone()), "-(x + y)");
+    }
+}
