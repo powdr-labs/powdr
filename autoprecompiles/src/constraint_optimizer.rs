@@ -8,7 +8,10 @@ use powdr_constraint_solver::{
     solver::Solver,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::{inliner::{replace_constrained_witness_columns, DegreeBound}, qse_opt::Variable};
+use powdr_pilopt::{
+    inliner::{replace_constrained_witness_columns, DegreeBound},
+    qse_opt::Variable,
+};
 
 use crate::stats_logger::StatsLogger;
 
