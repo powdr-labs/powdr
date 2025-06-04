@@ -17,6 +17,7 @@ use powdr_pilopt::{
 };
 
 use crate::{
+    bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
@@ -75,6 +76,9 @@ fn optimization_loop_iteration<T: FieldElement>(
     let machine = optimize_memory(machine);
     assert!(check_register_operation_consistency(&machine));
     stats_logger.log("memory optimization", &machine);
+
+    let machine = optimize_bitwise_lookup(machine);
+    stats_logger.log("optimizing bitwise lookup", &machine);
 
     Ok(symbolic_machine_to_constraint_system(machine))
 }
