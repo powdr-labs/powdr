@@ -940,9 +940,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 3017);
+        assert_eq!(m.width, 2175);
         assert_eq!(m.constraints, 161);
-        assert_eq!(m.bus_interactions, 2487);
+        assert_eq!(m.bus_interactions, 2181);
     }
 
     #[test]
