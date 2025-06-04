@@ -7,7 +7,6 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_constraint_solver::test_utils::Var;
 use powdr_number::FieldElement;
 
 pub fn build_circuit<T>(machine: &SymbolicMachine<T>) -> PlonkCircuit<T, AlgebraicReference>

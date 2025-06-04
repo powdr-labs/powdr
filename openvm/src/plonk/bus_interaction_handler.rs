@@ -1,5 +1,4 @@
 use crate::plonk::Gate;
-use crate::plonk::Gate;
 use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
@@ -7,8 +6,6 @@ use bus_interaction_handler::BusType::{
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
-
-use super::air_to_plonkish::CircuitBuilder;
 
 use super::air_to_plonkish::CircuitBuilder;
 
