@@ -205,6 +205,17 @@ impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
     }
 }
 
+/// Returns the word size of a particularly memory type.
+/// Word size `k` means that an address `x` and an address `x + k` are guaranteed to be
+/// non-overlapping, it is not necessarily related to what is stored, rather
+/// how memory is addressed.
+pub fn word_size_by_memory(ty: MemoryType) -> Option<u32> {
+    match ty {
+        MemoryType::Register | MemoryType::Memory => Some(4),
+        MemoryType::Constant | MemoryType::Native => None, // Let's not optimize this.
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum MemoryOp {
     Send,
