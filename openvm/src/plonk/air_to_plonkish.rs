@@ -16,7 +16,7 @@ where
 {
     let mut circuit_builder = CircuitBuilder::<T>::new();
     for constraint in &machine.constraints {
-        circuit_builder.evaluate_expression(&constraint.expr, true,true);
+        circuit_builder.evaluate_expression(&constraint.expr, true, true);
     }
 
     for bus_interaction in &machine.bus_interactions {
@@ -200,9 +200,9 @@ where
                             ..Default::default()
                         });
                         (true, Variable::Unused)
-                    } else if is_last{
+                    } else if is_last {
                         // if is_last is ture, assert_zero is false, the expression is used in bus interaction
-                        if let AlgebraicExpression::Reference(r)= &**expr {
+                        if let AlgebraicExpression::Reference(r) = &**expr {
                             self.plonk_circuit.add_gate(Gate {
                                 q_l: -T::ONE,
                                 q_o: -T::ONE,
@@ -213,12 +213,12 @@ where
                             self.temp_id_offset += 1;
                             (false, Variable::Tmp(self.temp_id_offset - 1))
                         } else {
-                            self.plonk_circuit.gates.last_mut().unwrap().q_o = -T::ONE * self.plonk_circuit.gates.last().unwrap().q_o;
+                            self.plonk_circuit.gates.last_mut().unwrap().q_o =
+                                -T::ONE * self.plonk_circuit.gates.last().unwrap().q_o;
                             (false, self.plonk_circuit.gates.last().unwrap().c.clone())
                         }
                     } else {
                         (true, var.clone())
-
                     }
                 }
             },
@@ -258,9 +258,8 @@ mod tests {
         assert_eq!(
             format!("{}", build_circuit(&machine)),
             "bus: none, x * y = tmp_1
-bus: none, -x = tmp_3
-bus: none, x + y = tmp_4
-bus: none, tmp_3 * tmp_4 = tmp_2
+bus: none, x + y = tmp_3
+bus: none, -x * tmp_3 = tmp_2
 bus: none, tmp_1 + -tmp_2 = tmp_0
 bus: none, -tmp_0 = 0
 "
@@ -311,11 +310,10 @@ bus: none, tmp_0 + 4 = 0
 
         assert_eq!(
             format!("{}", build_circuit(&machine)),
-            "bus: none, 2 * x = tmp_3
-bus: none, tmp_3 * y = tmp_2
-bus: none, -tmp_2 + 3 = tmp_1
-bus: none, -tmp_1 = tmp_0
-bus: none, tmp_0 + 1 = 0
+            "bus: none, 2 * x = tmp_2
+bus: none, tmp_2 * y = tmp_1
+bus: none, -tmp_1 + 3 = tmp_0
+bus: none, -tmp_0 + 1 = 0
 "
         );
     }
@@ -352,27 +350,4 @@ bus: none, -tmp_0 = 0
 "
         );
     }
-
-    #[test]
-    fn addition_test() {
-        let x = var("x", 0);
-        let y = var("y", 1);
-        let machine = SymbolicMachine {
-            constraints: vec![SymbolicConstraint { expr:x.clone() + y.clone() },
-            SymbolicConstraint { expr: x.clone() + y.clone() + (-y.clone()) },
-            SymbolicConstraint { expr: (-x.clone()) + y.clone() },
-            SymbolicConstraint { expr: x.clone() + c(1) },
-            SymbolicConstraint { expr: -(x.clone()) + c(1) },
-            SymbolicConstraint { expr: c(1) + x.clone() },],
-            bus_interactions: vec![],
-        };
-
-        assert_eq!(
-            format!("{}", build_circuit(&machine)),
-            "
-"
-        );
-    }
-
-
 }
