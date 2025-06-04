@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::iter::once;
+use std::sync::Arc;
 
 use derive_more::From;
 
@@ -71,7 +72,7 @@ impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
 pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub machine: SymbolicMachine<P>,
+    pub machine: Arc<SymbolicMachine<P>>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: Column,
@@ -89,7 +90,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         Self {
             name,
             opcode,
-            machine,
+            machine: Arc::new(machine),
             original_instructions,
             original_airs,
             is_valid_column,
