@@ -52,7 +52,7 @@ pub struct Solver<T: FieldElement, V, BusInterHandler> {
     assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug>
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
     Solver<T, V, DefaultBusInteractionHandler<T>>
 {
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
@@ -70,11 +70,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug>
     }
 }
 
-impl<
-        T: FieldElement,
-        V: Ord + Clone + Hash + Eq + Display + Debug,
-        BusInter: BusInteractionHandler<T>,
-    > Solver<T, V, BusInter>
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInteractionHandler<T>>
+    Solver<T, V, BusInter>
 {
     pub fn with_bus_interaction_handler<B: BusInteractionHandler<T>>(
         self,

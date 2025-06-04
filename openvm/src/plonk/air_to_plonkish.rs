@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;

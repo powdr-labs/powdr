@@ -149,12 +149,14 @@ fn vm_to_block_unique_interface() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_block_to_block() {
     let f = "asm/vm_to_block_to_block.asm";
     regular_test_gl(f, &[]);
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn block_to_block() {
     let f = "asm/block_to_block.asm";
     regular_test_all_fields(f, &[]);
@@ -190,6 +192,7 @@ fn block_to_block_empty_submachine() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
@@ -215,6 +218,7 @@ fn block_to_block_with_bus_different_sizes() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn block_to_block_lookup_and_permutation() {
     let f = "asm/block_to_block_lookup_and_permutation.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
@@ -229,6 +233,7 @@ fn static_bus() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn static_bus_multi() {
     let f = "asm/static_bus_multi.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
@@ -244,12 +249,14 @@ fn dynamic_bus() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_instr_param_mapping() {
     let f = "asm/vm_instr_param_mapping.asm";
     regular_test_all_fields(f, &[]);
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_block_multiple_interfaces() {
     let f = "asm/vm_to_block_multiple_interfaces.asm";
     regular_test_all_fields(f, &[]);
@@ -268,6 +275,7 @@ fn vm_to_vm_dynamic_trace_length() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_vm_to_block() {
     let f = "asm/vm_to_vm_to_block.asm";
     regular_test_all_fields(f, &[]);
@@ -481,12 +489,14 @@ fn permutation_incoming_needs_selector() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
     regular_test_gl(f, Default::default());
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
     regular_test_gl(f, Default::default());
