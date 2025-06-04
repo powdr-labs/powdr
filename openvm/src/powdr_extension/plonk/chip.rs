@@ -161,7 +161,6 @@ where
                 let index = call_index * plonk_circuit.len() + gate_index;
                 let columns: &mut PlonkColumns<_> =
                     values[index * width..(index + 1) * width].borrow_mut();
-
                 let gate = Gate {
                     a: gate.a.clone(),
                     b: gate.b.clone(),
@@ -182,6 +181,13 @@ where
                 };
 
                 // TODO: These should be pre-processed columns (for soundness and efficiency).
+                columns.q_bitwise = gate.q_bitwise;
+                columns.q_memory = gate.q_memory;
+                columns.q_execution = gate.q_execution;
+                columns.q_pc = gate.q_pc;
+                columns.q_range_tuple = gate.q_range_tuple;
+                columns.q_range_check = gate.q_range_check;
+                
                 columns.q_l = gate.q_l;
                 columns.q_r = gate.q_r;
                 columns.q_o = gate.q_o;
