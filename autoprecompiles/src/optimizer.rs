@@ -4,13 +4,16 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge};
+use powdr_ast::analyzed::{
+    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
+};
 use powdr_constraint_solver::{
     boolean_extractor,
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::{
         NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
+    range_constraint::RangeConstraint,
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -21,7 +24,7 @@ use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
-    stats_logger::StatsLogger,
+    stats_logger::{IsWitnessColumn, StatsLogger},
     SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
     PC_LOOKUP_BUS_ID,
 };
@@ -271,6 +274,7 @@ fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
 }
 
+// TODO Maybe use an inner generic type?
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
 enum Variable {
     Reference(AlgebraicReference),
@@ -286,6 +290,15 @@ impl Display for Variable {
             Variable::PublicReference(r) => write!(f, "{r}"),
             Variable::Challenge(c) => write!(f, "{c}"),
             Variable::Boolean(id) => write!(f, "boolean_{id}"),
+        }
+    }
+}
+
+impl IsWitnessColumn for Variable {
+    fn is_witness_column(&self) -> bool {
+        match self {
+            Variable::Reference(poly) => poly.is_witness(),
+            Variable::PublicReference(_) | Variable::Challenge(_) | Variable::Boolean(_) => false,
         }
     }
 }
