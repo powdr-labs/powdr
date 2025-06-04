@@ -212,7 +212,7 @@ pub fn customize<P: IntoOpenVm>(
         // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
         let (apc_opcode, autoprecompile, subs) =
             apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
-                generate_apc_cache::<F, powdr_number::BabyBearField>(
+                generate_apc_cache(
                     acc_block,
                     airs,
                     POWDR_OPCODE + i,
@@ -462,8 +462,8 @@ fn add_extra_targets<F: PrimeField32>(
     labels
 }
 
-fn generate_apc_cache<F: PrimeField32, P: FieldElement>(
-    block: &BasicBlock<F>,
+fn generate_apc_cache<P: IntoOpenVm>(
+    block: &BasicBlock<OpenVmField<P>>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
@@ -571,8 +571,8 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     SymbolicBusInteraction { id, mult, args }
 }
 
-fn sort_blocks_by_pgo_cell_cost<F: PrimeField32, P: FieldElement>(
-    blocks: &mut Vec<BasicBlock<F>>,
+fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
+    blocks: &mut Vec<BasicBlock<OpenVmField<P>>>,
     apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
@@ -606,7 +606,7 @@ fn sort_blocks_by_pgo_cell_cost<F: PrimeField32, P: FieldElement>(
         .iter()
         .enumerate()
         .filter_map(|(i, acc_block)| {
-            let apc_cache_entry = generate_apc_cache::<F, P>(
+            let apc_cache_entry = generate_apc_cache(
                 acc_block,
                 airs,
                 POWDR_OPCODE + i,
