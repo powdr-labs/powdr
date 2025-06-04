@@ -217,6 +217,11 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
     expression: &QuadraticSymbolicExpression<T, V>,
     constraints: &IndexedConstraintSystem<T, V>,
 ) -> Vec<QuadraticSymbolicExpression<T, V>> {
+    if expression.is_quadratic() {
+        // This case is too complicated.
+        return vec![expression.clone()];
+    }
+
     // Go through the constraints related to this address
     // and try to solve for the expression
     let mut exprs = constraints
