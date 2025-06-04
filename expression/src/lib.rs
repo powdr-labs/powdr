@@ -8,7 +8,17 @@ pub mod display;
 pub mod visitors;
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Clone,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    Hash,
+    derive_more::Display,
 )]
 pub enum AlgebraicExpression<T, R> {
     Reference(R),
@@ -52,8 +62,8 @@ pub enum AlgebraicUnaryOperator {
 
 impl<T, R> AlgebraicExpression<T, R> {
     /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement Children because otherwise it would
-    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// This specifically does not implement the Children trait because otherwise it
+    /// would have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T, R>> + '_> {
         match self {
@@ -69,8 +79,8 @@ impl<T, R> AlgebraicExpression<T, R> {
         }
     }
     /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement Children because otherwise it would
-    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// This specifically does not implement the Children trait because otherwise it
+    /// would have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T, R>> + '_> {
         match self {

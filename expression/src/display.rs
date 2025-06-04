@@ -5,30 +5,25 @@ use crate::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 
-pub type ExpressionPrecedence = u64;
+type ExpressionPrecedence = u64;
 trait Precedence {
     fn precedence(&self) -> Option<ExpressionPrecedence>;
 }
 
 impl Precedence for AlgebraicUnaryOperator {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
-        use AlgebraicUnaryOperator::*;
-        let precedence = match self {
-            Minus => 1,
-        };
-
-        Some(precedence)
+        Some(match self {
+            AlgebraicUnaryOperator::Minus => 1,
+        })
     }
 }
 
 impl Precedence for AlgebraicBinaryOperator {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
-        let precedence = match self {
+        Some(match self {
             Self::Mul => 3,
             Self::Add | Self::Sub => 4,
-        };
-
-        Some(precedence)
+        })
     }
 }
 
@@ -37,20 +32,7 @@ impl<T, R> Precedence for AlgebraicExpression<T, R> {
         match self {
             AlgebraicExpression::UnaryOperation(operation) => operation.op.precedence(),
             AlgebraicExpression::BinaryOperation(operation) => operation.op.precedence(),
-            _ => None,
-        }
-    }
-}
-
-impl<T: Display, R: Display> Display for AlgebraicExpression<T, R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
-            AlgebraicExpression::Number(value) => write!(f, "{value}"),
-            AlgebraicExpression::BinaryOperation(o) => {
-                write!(f, "{o}")
-            }
-            AlgebraicExpression::UnaryOperation(o) => write!(f, "{o}"),
+            AlgebraicExpression::Number(..) | AlgebraicExpression::Reference(..) => None,
         }
     }
 }

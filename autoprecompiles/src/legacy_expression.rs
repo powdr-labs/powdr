@@ -1,16 +1,19 @@
+//! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
+//! custom `AlgebraicReference` type. This makes the type very similar to the
+//! `powdr_ast::analyzed::AlgebraicExpression`, which we've used historically.
+//! Going forward, we will simplify the code and remove this module eventually.
 use powdr_expression::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator,
-    AlgebraicExpression as ActualAlgebraicExpression, AlgebraicUnaryOperation,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
 };
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
-pub type AlgebraicExpression<T> = ActualAlgebraicExpression<T, AlgebraicReference>;
+pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PolynomialType {
-    Committed = 0,
+    Committed,
     Constant,
     Intermediate,
 }

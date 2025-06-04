@@ -297,6 +297,7 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     let expr = expr.transform_var_type(&mut |algebraic_reference| {
         powdr_pilopt::qse_opt::Variable::Reference(algebraic_reference.clone().into())
     });
+    // This is where the core conversion is implemented, including the simplification.
     let ast_algebraic_expression =
         powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic(&expr);
     // Unwrap should be fine, because by construction we don't have challenges or public references,
