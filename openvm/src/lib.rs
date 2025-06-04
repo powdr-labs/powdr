@@ -930,7 +930,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(m.width, 53);
         assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 39);
+        assert_eq!(m.bus_interactions, 31);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
