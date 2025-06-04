@@ -13,14 +13,13 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
-use powdr_autoprecompiles::legacy_expression::PolyID;
-use powdr_autoprecompiles::legacy_expression::PolynomialType;
-use powdr_expression::AlgebraicBinaryOperation;
-use powdr_expression::AlgebraicBinaryOperator;
-use powdr_expression::AlgebraicUnaryOperation;
-use powdr_expression::AlgebraicUnaryOperator;
+use powdr_autoprecompiles::legacy_expression::{
+    AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
+};
+use powdr_expression::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
+};
 use powdr_number::{BabyBearField, FieldElement};
 
 pub fn algebraic_to_symbolic<P: IntoOpenVm>(
