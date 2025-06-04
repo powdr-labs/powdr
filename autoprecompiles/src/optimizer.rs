@@ -19,7 +19,7 @@ use powdr_pilopt::{
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     memory_optimizer::optimize_memory,
-    powdr::{self, UniqueColumns},
+    powdr::{self},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     stats_logger::StatsLogger,
     SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
@@ -78,8 +78,8 @@ fn optimization_loop_iteration<T: FieldElement>(
     stats_logger.log("register optimization", &machine);
     let machine = optimize_memory(machine);
     stats_logger.log("memory optimization", &machine);
-    let constraint_system = symbolic_machine_to_constraint_system(machine);
-    constraint_system
+
+    symbolic_machine_to_constraint_system(machine)
 }
 
 fn system_size<T: FieldElement>(constraint_system: &ConstraintSystem<T, Variable>) -> [usize; 3] {
