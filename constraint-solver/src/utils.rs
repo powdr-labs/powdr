@@ -1,15 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider};
+use crate::symbolic_expression::SymbolicExpression;
 
 /// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
-pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Display + 'a>(
+pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Display + 'a>(
     expressions: impl Iterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
 ) -> BTreeSet<V> {
     let mut all_known_variables = BTreeSet::new();
@@ -35,7 +36,8 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug +
         .collect::<Vec<_>>();
     if !inconsistent_variables.is_empty() {
         panic!(
-            "The following variables appear as both known and unknown: {inconsistent_variables:?}",
+            "The following variables appear as both known and unknown: {}",
+            inconsistent_variables.iter().format(", ")
         );
     }
 
@@ -46,7 +48,7 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Debug +
 /// Returns `None` if this number would not fit a `u64`.
 pub fn count_possible_assignments<T: FieldElement, V: Clone + Ord>(
     variables: impl Iterator<Item = V>,
-    rc: impl RangeConstraintProvider<T, V>,
+    rc: &impl RangeConstraintProvider<T, V>,
 ) -> Option<u64> {
     variables
         .map(|v| rc.get(&v))
@@ -62,7 +64,7 @@ pub fn count_possible_assignments<T: FieldElement, V: Clone + Ord>(
 /// the function `has_few_possible_assignments`.
 pub fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
     variables: impl IntoIterator<Item = V>,
-    rc: impl RangeConstraintProvider<T, V>,
+    rc: &impl RangeConstraintProvider<T, V>,
 ) -> impl Iterator<Item = BTreeMap<V, T>> {
     variables
         .into_iter()
@@ -75,4 +77,31 @@ pub fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
         })
         .multi_cartesian_product()
         .map(|assignment| assignment.into_iter().collect::<BTreeMap<_, _>>())
+}
+
+/// Returns all possible concrete values for `expr` using exhaustive search.
+/// Returns None if the number of possible assignments exceeds `max_elements`.
+pub fn possible_concrete_values<'a, T: FieldElement, V: Clone + Ord + Hash>(
+    expr: &'a QuadraticSymbolicExpression<T, V>,
+    rc: &'a impl RangeConstraintProvider<T, V>,
+    max_elements: u64,
+) -> Option<impl Iterator<Item = T> + 'a> {
+    let variables = expr.referenced_unknown_variables().cloned().collect_vec();
+    if count_possible_assignments(variables.iter().cloned(), rc)
+        .is_none_or(|count| count > max_elements)
+    {
+        // If there are too many possible assignments, we do not try to perform exhaustive search.
+        None
+    } else {
+        Some(
+            get_all_possible_assignments(variables, rc).map(|assignment| {
+                let mut expr = expr.clone();
+                for (variable, value) in assignment.iter() {
+                    expr.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                }
+                // We substitute all variables, so this has to be a number.
+                expr.try_to_number().unwrap()
+            }),
+        )
+    }
 }

@@ -17,10 +17,13 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
+mod bitwise_lookup_optimizer;
 pub mod constraint_optimizer;
+pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
+mod stats_logger;
 pub mod symbolic_machine_generator;
 
 pub use powdr_pilopt::inliner::DegreeBound;
@@ -294,6 +297,9 @@ pub enum VMBusInteraction<T> {
 pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
+pub const VARIABLE_RANGE_CHECKER_BUS_ID: u64 = 3;
+pub const BITWISE_LOOKUP_BUS_ID: u64 = 6;
+pub const TUPLE_RANGE_CHECKER_BUS_ID: u64 = 7;
 
 pub fn build<T: FieldElement>(
     program: Vec<SymbolicInstructionStatement<T>>,
@@ -302,22 +308,17 @@ pub fn build<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     opcode: u32,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-    let machine = optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound);
+    let machine =
+        optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound)?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let pre_degree = machine.degree();
     let machine = add_guards(machine);
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
 
-    (machine, subs)
+    Ok((machine, subs))
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
@@ -366,6 +367,8 @@ fn add_guards_constraint<T: FieldElement>(
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
 fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let pre_degree = machine.degree();
+
     let max_id = machine
         .unique_columns()
         .map(|c| {
@@ -444,6 +447,16 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     }
 
     machine.constraints.extend(is_valid_mults);
+
+    assert_eq!(
+        pre_degree,
+        machine.degree(),
+        "Degree should not change after adding guards"
+    );
+
+    // This needs to be added after the assertion above because it's a quadratic constraint
+    // so it may increase the degree of the machine.
+    machine.constraints.push(powdr::make_bool(is_valid).into());
 
     machine
 }
