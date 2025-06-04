@@ -844,7 +844,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.width, 3195);
-        assert_eq!(m.constraints, 160);
+        assert_eq!(m.constraints, 161);
         assert_eq!(m.bus_interactions, 2861);
     }
 
@@ -860,7 +860,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 21);
+        assert_eq!(m.constraints, 22);
         assert_eq!(m.bus_interactions, 39);
     }
 
