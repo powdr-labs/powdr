@@ -31,7 +31,7 @@ pub fn optimize<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
     degree_bound: usize,
-) -> SymbolicMachine<T> {
+) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
     let machine = if let Some(opcode) = opcode {
         let machine = optimize_pc_lookup(machine, opcode);
@@ -52,9 +52,9 @@ pub fn optimize<T: FieldElement>(
             bus_interaction_handler.clone(),
             degree_bound,
             &mut stats_logger,
-        );
+        )?;
         if system_size(&constraint_system) == size {
-            return constraint_system_to_symbolic_machine(constraint_system);
+            return Ok(constraint_system_to_symbolic_machine(constraint_system));
         }
     }
 }
@@ -64,13 +64,13 @@ fn optimization_loop_iteration<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
-) -> ConstraintSystem<T, Variable> {
+) -> Result<ConstraintSystem<T, Variable>, crate::constraint_optimizer::Error> {
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
-    );
+    )?;
     // TODO avoid this conversion.
     let machine =
         optimize_register_operations(constraint_system_to_symbolic_machine(constraint_system));
@@ -79,7 +79,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     let machine = optimize_memory(machine);
     stats_logger.log("memory optimization", &machine);
 
-    symbolic_machine_to_constraint_system(machine)
+    Ok(symbolic_machine_to_constraint_system(machine))
 }
 
 fn system_size<T: FieldElement>(constraint_system: &ConstraintSystem<T, Variable>) -> [usize; 3] {
