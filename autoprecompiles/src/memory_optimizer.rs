@@ -8,7 +8,7 @@ use powdr_ast::analyzed::{
     algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
 };
 use powdr_constraint_solver::boolean_extractor;
-use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
+use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
@@ -52,7 +52,7 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
         .bus_interactions
         .iter()
         .filter_map(|bus_int| {
-            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int)
+            MemoryBusInteraction::try_from_bus_interaction(bus_int)
                 .ok()
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
@@ -93,7 +93,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
-        let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int) {
+        let mem_int = match MemoryBusInteraction::try_from_bus_interaction(bus_int) {
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
             Err(_) => {
@@ -192,11 +192,11 @@ enum MemoryOp {
 }
 
 #[derive(Clone, Debug)]
-struct MemoryBusInteraction<T> {
+struct MemoryBusInteraction<T: FieldElement, V> {
     ty: MemoryType,
     op: MemoryOp,
-    addr: AlgebraicExpression<T>,
-    data: Vec<AlgebraicExpression<T>>,
+    addr: QuadraticSymbolicExpression<T, V>,
+    data: Vec<QuadraticSymbolicExpression<T, V>>,
 }
 
 impl<T: FieldElement> MemoryBusInteraction<T> {
@@ -208,17 +208,21 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> MemoryBusInteraction<T> {
-    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction`.
+impl<T: FieldElement, V> MemoryBusInteraction<T, V> {
+    /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
     /// Returns `Err(_)` if the bus interaction is a memory bus interaction but could not be converted properly
     /// (usually because the multiplicity is not -1 or 1).
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
-    fn try_from_symbolic_bus_interaction(
-        bus_interaction: &SymbolicBusInteraction<T>,
+    fn try_from_bus_interaction(
+        bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
     ) -> Result<Option<Self>, ()> {
-        if bus_interaction.id != MEMORY_BUS_ID {
+        if !bus_interaction
+            .bus_id
+            .try_to_number()
+            .is_some_and(|id| id == MEMORY_BUS_ID)
+        {
             return Ok(None);
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
@@ -250,7 +254,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus)
+                MemoryBusInteraction::try_from_bus_interaction(bus)
                     .ok()
                     .flatten()
             })
