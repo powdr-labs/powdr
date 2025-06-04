@@ -2,25 +2,15 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    constraint_system::{BusInteractionHandler, ConstraintSystem},
     indexed_constraint_system::apply_substitutions,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::Solver,
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::{
-    inliner::replace_constrained_witness_columns,
-    qse_opt::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-        Variable,
-    },
-    simplify_expression,
-};
+use powdr_pilopt::{inliner::replace_constrained_witness_columns, qse_opt::Variable};
 
-use crate::{
-    stats_logger::StatsLogger, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
-};
+use crate::stats_logger::StatsLogger;
 
 #[derive(Debug)]
 pub enum Error {
@@ -41,13 +31,11 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize_constraints<P: FieldElement>(
-    symbolic_machine: SymbolicMachine<P>,
+    constraint_system: ConstraintSystem<P, Variable>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
-) -> Result<SymbolicMachine<P>, Error> {
-    let constraint_system = symbolic_machine_to_constraint_system(symbolic_machine);
-
+) -> Result<ConstraintSystem<P, Variable>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("solver-based optimization", &constraint_system);
@@ -69,43 +57,7 @@ pub fn optimize_constraints<P: FieldElement>(
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    Ok(constraint_system_to_symbolic_machine(constraint_system))
-}
-
-fn symbolic_machine_to_constraint_system<P: FieldElement>(
-    symbolic_machine: SymbolicMachine<P>,
-) -> ConstraintSystem<P, Variable> {
-    ConstraintSystem {
-        algebraic_constraints: symbolic_machine
-            .constraints
-            .iter()
-            .map(|constraint| algebraic_to_quadratic_symbolic_expression(&constraint.expr))
-            .collect(),
-        bus_interactions: symbolic_machine
-            .bus_interactions
-            .iter()
-            .map(symbolic_bus_interaction_to_bus_interaction)
-            .collect(),
-    }
-}
-
-fn constraint_system_to_symbolic_machine<P: FieldElement>(
-    constraint_system: ConstraintSystem<P, Variable>,
-) -> SymbolicMachine<P> {
-    SymbolicMachine {
-        constraints: constraint_system
-            .algebraic_constraints
-            .iter()
-            .map(|constraint| SymbolicConstraint {
-                expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(constraint)),
-            })
-            .collect(),
-        bus_interactions: constraint_system
-            .bus_interactions
-            .into_iter()
-            .map(bus_interaction_to_symbolic_bus_interaction)
-            .collect(),
-    }
+    Ok(constraint_system)
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
@@ -232,45 +184,6 @@ fn remove_equal_bus_interactions<P: FieldElement>(
         })
         .collect();
     symbolic_machine
-}
-
-fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
-    bus_interaction: &SymbolicBusInteraction<P>,
-) -> BusInteraction<QuadraticSymbolicExpression<P, Variable>> {
-    BusInteraction {
-        bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
-        payload: bus_interaction
-            .args
-            .iter()
-            .map(|arg| algebraic_to_quadratic_symbolic_expression(arg))
-            .collect(),
-        multiplicity: algebraic_to_quadratic_symbolic_expression(&bus_interaction.mult),
-    }
-}
-
-fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
-    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, Variable>>,
-) -> SymbolicBusInteraction<P> {
-    // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
-    // so this should always succeed.
-    let id = bus_interaction
-        .bus_id
-        .try_to_number()
-        .unwrap()
-        .to_arbitrary_integer()
-        .try_into()
-        .unwrap();
-    SymbolicBusInteraction {
-        id,
-        args: bus_interaction
-            .payload
-            .into_iter()
-            .map(|arg| simplify_expression(quadratic_symbolic_expression_to_algebraic(&arg)))
-            .collect(),
-        mult: simplify_expression(quadratic_symbolic_expression_to_algebraic(
-            &bus_interaction.multiplicity,
-        )),
-    }
 }
 
 pub trait IsBusStateful<T: FieldElement> {
