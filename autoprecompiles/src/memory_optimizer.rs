@@ -250,20 +250,9 @@ fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> QuadraticSymbolicExpression<T, Variable> {
-    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
-
-    struct TerminalConverter;
-
-    impl<T: FieldElement>
-        powdr_expression::conversion::TerminalConverter<AlgebraicReference, Qse<T>>
-        for TerminalConverter
-    {
-        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
-        }
-    }
-
-    powdr_expression::conversion::convert(expr, &mut TerminalConverter)
+    powdr_expression::conversion::convert(expr, &mut |reference| {
+        QuadraticSymbolicExpression::from_unknown_variable(Variable::Reference(reference.clone()))
+    })
 }
 
 #[cfg(test)]

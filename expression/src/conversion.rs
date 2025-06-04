@@ -5,15 +5,11 @@ use super::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 
-pub trait TerminalConverter<R, Target> {
-    fn convert_reference(&mut self, reference: &R) -> Target;
-}
-
 /// Converts an AlgebraicExpression into a different structure that supports algebraic operations.
-/// The `terminal_converter` is used to convert the terminal nodes of the expression.
+/// The `reference_converter` is used to convert the reference that appear in the expression.
 pub fn convert<T: FieldElement, R, Target>(
     expr: &AlgebraicExpression<T, R>,
-    terminal_converter: &mut impl TerminalConverter<R, Target>,
+    reference_converter: &mut impl FnMut(&R) -> Target,
 ) -> Target
 where
     Target: From<T>
@@ -24,11 +20,11 @@ where
         + std::ops::Neg<Output = Target>,
 {
     match expr {
-        AlgebraicExpression::Reference(r) => terminal_converter.convert_reference(r),
+        AlgebraicExpression::Reference(r) => reference_converter(r),
         AlgebraicExpression::Number(n) => (*n).into(),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = convert(left, terminal_converter);
-            let right = convert(right, terminal_converter);
+            let left = convert(left, reference_converter);
+            let right = convert(right, reference_converter);
             match op {
                 AlgebraicBinaryOperator::Add => left + right,
                 AlgebraicBinaryOperator::Sub => left - right,
@@ -36,7 +32,7 @@ where
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
-            AlgebraicUnaryOperator::Minus => -convert(expr, terminal_converter),
+            AlgebraicUnaryOperator::Minus => -convert(expr, reference_converter),
         },
     }
 }

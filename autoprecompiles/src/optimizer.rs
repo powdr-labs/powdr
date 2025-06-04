@@ -281,20 +281,9 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> QuadraticSymbolicExpression<T, AlgebraicReference> {
-    type Qse<T> = QuadraticSymbolicExpression<T, AlgebraicReference>;
-
-    struct TerminalConverter;
-
-    impl<T: FieldElement>
-        powdr_expression::conversion::TerminalConverter<AlgebraicReference, Qse<T>>
-        for TerminalConverter
-    {
-        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(reference.clone())
-        }
-    }
-
-    powdr_expression::conversion::convert(expr, &mut TerminalConverter)
+    powdr_expression::conversion::convert(expr, &mut |reference| {
+        QuadraticSymbolicExpression::from_unknown_variable(reference.clone())
+    })
 }
 
 /// Turns a quadratic symbolic expression back into an algebraic expression.
