@@ -19,6 +19,7 @@ use powdr_pilopt::simplify_expression;
 
 mod bitwise_lookup_optimizer;
 pub mod constraint_optimizer;
+pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 pub mod register_optimizer;
