@@ -12,6 +12,17 @@ use powdr_pilopt::inliner::replace_constrained_witness_columns;
 
 use crate::{legacy_expression::AlgebraicReference, stats_logger::StatsLogger};
 
+#[derive(Debug)]
+pub enum Error {
+    ConstraintSolverError,
+}
+
+impl From<powdr_constraint_solver::solver::Error> for Error {
+    fn from(_err: powdr_constraint_solver::solver::Error) -> Self {
+        Error::ConstraintSolverError
+    }
+}
+
 /// Simplifies the constraints as much as possible.
 /// This function is similar to powdr_pilopt::qse_opt::run_qse_optimization, except it:
 /// - Runs on the entire constraint system, including bus interactions.
@@ -24,9 +35,9 @@ pub fn optimize_constraints<P: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
-) -> ConstraintSystem<P, AlgebraicReference> {
+) -> Result<ConstraintSystem<P, AlgebraicReference>, Error> {
     let constraint_system =
-        solver_based_optimization(constraint_system, bus_interaction_handler.clone());
+        solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
@@ -46,25 +57,21 @@ pub fn optimize_constraints<P: FieldElement>(
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    constraint_system
+    Ok(constraint_system)
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
-) -> ConstraintSystem<T, V> {
+) -> Result<ConstraintSystem<T, V>, Error> {
     let result = Solver::new(constraint_system.clone())
         .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()
-        .map_err(|e| {
-            panic!("Solver failed: {e:?}");
-        })
-        .unwrap();
+        .solve()?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in result.assignments.iter() {
         log::trace!("  {var} = {value}");
     }
-    apply_substitutions(constraint_system, result.assignments)
+    Ok(apply_substitutions(constraint_system, result.assignments))
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
