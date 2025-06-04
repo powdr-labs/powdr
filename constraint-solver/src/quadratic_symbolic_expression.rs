@@ -408,7 +408,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         &self,
         expr: &QuadraticSymbolicExpression<T, V>,
     ) -> Option<QuadraticSymbolicExpression<T, V>> {
-        assert!(expr.is_affine());
+        assert!(
+            expr.is_affine(),
+            "Tried to solve for quadratic expression {expr}"
+        );
         if self.is_quadratic() {
             return None;
         }

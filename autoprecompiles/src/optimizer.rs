@@ -18,9 +18,8 @@ use powdr_pilopt::{
 
 use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    memory_optimizer::optimize_memory,
+    memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
-    register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     stats_logger::StatsLogger,
     SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
     PC_LOOKUP_BUS_ID,
@@ -71,12 +70,10 @@ fn optimization_loop_iteration<T: FieldElement>(
         degree_bound,
         stats_logger,
     )?;
-    // TODO avoid this conversion.
-    let machine =
-        optimize_register_operations(constraint_system_to_symbolic_machine(constraint_system));
-    assert!(check_register_operation_consistency(&machine));
-    stats_logger.log("register optimization", &machine);
+    // TODO avoid these conversions.
+    let machine = constraint_system_to_symbolic_machine(constraint_system);
     let machine = optimize_memory(machine);
+    assert!(check_register_operation_consistency(&machine));
     stats_logger.log("memory optimization", &machine);
 
     Ok(symbolic_machine_to_constraint_system(machine))

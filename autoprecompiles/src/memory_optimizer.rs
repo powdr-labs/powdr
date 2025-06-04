@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -34,6 +34,35 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     machine
 }
 
+// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
+// Assumption: all register memory bus interactions feature a concrete address.
+pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
+    let count_per_addr = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| {
+            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int)
+                .ok()
+                // We ignore conversion failures here, since we also did that in a previous version.
+                .flatten()
+        })
+        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .map(|mem_int| {
+            mem_int.try_addr_u32().unwrap_or_else(|| {
+                panic!(
+                    "Register memory access must have constant address but found {}",
+                    mem_int.addr
+                )
+            })
+        })
+        .fold(BTreeMap::new(), |mut map, addr| {
+            *map.entry(addr).or_insert(0) += 1;
+            map
+        });
+
+    count_per_addr.values().all(|&v| v % 2 == 0)
+}
+
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement>(
@@ -42,18 +71,19 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     let address_comparator = MemoryAddressComparator::new(machine);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-    // Track memory contents while we go through bus interactions.
+    // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<_, (usize, Vec<AlgebraicExpression<_>>)> = Default::default();
+    let mut memory_contents: HashMap<MemoryType, HashMap<_, (usize, Vec<AlgebraicExpression<_>>)>> =
+        [MemoryType::Register, MemoryType::Memory]
+            .into_iter()
+            .map(|t| (t, HashMap::new()))
+            .collect();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
-        let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
-            bus_int,
-            MemoryType::Memory,
-        ) {
+        let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int) {
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
             Err(_) => {
@@ -63,6 +93,12 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 continue;
             }
         };
+        if mem_int.ty != MemoryType::Register && mem_int.ty != MemoryType::Memory {
+            // We do not want to interfere with other memory types.
+            continue;
+        }
+        let memory_contents = &mut memory_contents.get_mut(&mem_int.ty).unwrap();
+
         let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
 
         match mem_int.op {
@@ -113,12 +149,9 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
-                    bus,
-                    MemoryType::Memory,
-                )
-                .ok()
-                .flatten()
+                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus)
+                    .ok()
+                    .flatten()
             })
             .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
 
@@ -217,6 +250,11 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
     expression: &QuadraticSymbolicExpression<T, V>,
     constraints: &IndexedConstraintSystem<T, V>,
 ) -> Vec<QuadraticSymbolicExpression<T, V>> {
+    if expression.is_quadratic() {
+        // This case is too complicated.
+        return vec![expression.clone()];
+    }
+
     // Go through the constraints related to this address
     // and try to solve for the expression
     let mut exprs = constraints

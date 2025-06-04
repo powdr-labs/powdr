@@ -21,7 +21,6 @@ pub mod constraint_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
-pub mod register_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 
@@ -168,7 +167,7 @@ pub enum InstructionKind {
     Terminal,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryType {
     Constant,
     Register,
@@ -229,15 +228,14 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
 }
 
 impl<T: FieldElement> MemoryBusInteraction<T> {
-    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction` of the given memory type.
+    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction`.
     ///
-    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction of the given type.
-    /// Returns `Err(_)` if the bus interaction is a memory bus interaction of the given type but could not be converted properly
+    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
+    /// Returns `Err(_)` if the bus interaction is a memory bus interaction but could not be converted properly
     /// (usually because the multiplicity is not -1 or 1).
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
-    fn try_from_symbolic_bus_interaction_with_memory_kind(
+    fn try_from_symbolic_bus_interaction(
         bus_interaction: &SymbolicBusInteraction<T>,
-        memory_type: MemoryType,
     ) -> Result<Option<Self>, ()> {
         if bus_interaction.id != MEMORY_BUS_ID {
             return Ok(None);
@@ -245,9 +243,6 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
         // are in the right order.
         let ty = bus_interaction.args[0].clone().into();
-        if ty != memory_type {
-            return Ok(None);
-        }
         let op = match bus_interaction.try_multiplicity_to_number() {
             Some(n) if n == 1.into() => MemoryOp::Send,
             Some(n) if n == (-1).into() => MemoryOp::Receive,
