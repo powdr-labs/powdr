@@ -372,7 +372,7 @@ pub fn compile_exe(
         exe,
         sdk_vm_config.clone(),
         &elf_powdr.text_labels,
-        &airs,
+        airs,
         config.clone(),
         pgo_config,
     );
