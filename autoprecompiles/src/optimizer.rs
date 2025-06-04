@@ -1,20 +1,20 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display},
+};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicExpression;
+use powdr_ast::analyzed::{algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge};
 use powdr_constraint_solver::{
+    boolean_extractor,
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
+    quadratic_symbolic_expression::{
+        NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider,
+    },
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::{
-    qse_opt::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-        Variable,
-    },
-    simplify_expression,
-};
+use powdr_pilopt::{qse_opt::quadratic_symbolic_expression_to_algebraic, simplify_expression};
 
 use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -214,6 +214,91 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .iter()
             .map(symbolic_bus_interaction_to_bus_interaction)
             .collect(),
+    }
+}
+
+/// Converts from a SymbolicMachine to a ConstraintSystem and
+/// simplifies some quadratic constraints by introducing boolean variables.
+fn symbolic_machine_to_simplified_constraint_systems<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+) -> ConstraintSystem<T, Variable> {
+    let mut counter = 0..;
+    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
+
+    let algebraic_constraints = machine
+        .constraints
+        .iter()
+        .map(|constr| {
+            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
+            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+        })
+        .collect_vec();
+    let bus_interactions = machine
+        .bus_interactions
+        .iter()
+        .map(symbolic_bus_interaction_to_bus_interaction)
+        .collect_vec();
+    ConstraintSystem {
+        algebraic_constraints,
+        bus_interactions,
+    }
+}
+
+/// Turns an algebraic expression into a quadratic symbolic expression,
+/// assuming all [`AlgebraicReference`]s, public references and challenges
+/// are unknown variables.
+fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+) -> QuadraticSymbolicExpression<T, Variable> {
+    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
+
+    struct TerminalConverter;
+
+    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
+        for TerminalConverter
+    {
+        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
+            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
+        }
+        fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
+            Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
+        }
+        fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
+            Qse::from_unknown_variable(Variable::Challenge(*challenge))
+        }
+    }
+
+    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
+}
+
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
+enum Variable {
+    Reference(AlgebraicReference),
+    PublicReference(String),
+    Challenge(Challenge),
+    Boolean(usize),
+}
+
+impl Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable::Reference(r) => write!(f, "{r}"),
+            Variable::PublicReference(r) => write!(f, "{r}"),
+            Variable::Challenge(c) => write!(f, "{c}"),
+            Variable::Boolean(id) => write!(f, "boolean_{id}"),
+        }
+    }
+}
+
+#[derive(Default)]
+struct RangeConstraintsForBooleans;
+
+impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsForBooleans {
+    fn get(&self, variable: &Variable) -> RangeConstraint<T> {
+        match variable {
+            Variable::Boolean(_) => RangeConstraint::from_mask(1),
+            _ => Default::default(),
+        }
     }
 }
 
