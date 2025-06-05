@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -7,14 +6,17 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
 };
-use powdr_constraint_solver::boolean_extractor;
+use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
+use powdr_constraint_solver::quadratic_symbolic_expression::{
+    NoRangeConstraints, QuadraticSymbolicExpression,
+};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
+use powdr_pilopt::qse_opt::Variable;
 
 use crate::{
     word_size_by_memory, MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint,
@@ -144,8 +146,8 @@ struct MemoryAddressComparator<T: FieldElement> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
     memory_addresses: HashMap<
-        QuadraticSymbolicExpression<T, Variable>,
-        Vec<QuadraticSymbolicExpression<T, Variable>>,
+        QuadraticSymbolicExpression<T, boolean_extractor::Variable<Variable>>,
+        Vec<QuadraticSymbolicExpression<T, boolean_extractor::Variable<Variable>>>,
     >,
 }
 
@@ -161,7 +163,12 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             })
             .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
 
-        let constraints = symbolic_to_simplified_constraints(&machine.constraints);
+        let constraints = machine
+            .constraints
+            .iter()
+            .map(|constr| algebraic_to_quadratic_symbolic_expression(&constr.expr))
+            .collect_vec();
+        let constraints = boolean_extractor::to_boolean_extracted_system(&constraints);
         let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: constraints,
             bus_interactions: vec![],
@@ -170,6 +177,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
 
         let memory_addresses = addresses
             .map(|addr| {
+                let addr = addr.transform_var_type(&mut |v| v.into());
                 (
                     addr.clone(),
                     find_equivalent_expressions(&addr, &constraint_system),
@@ -191,8 +199,8 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             return true;
         }
 
-        let a_exprs = &self.memory_addresses[&a.1];
-        let b_exprs = &self.memory_addresses[&b.1];
+        let a_exprs = &self.memory_addresses[&a.1.transform_var_type(&mut |v| v.into())];
+        let b_exprs = &self.memory_addresses[&b.1.transform_var_type(&mut |v| v.into())];
         a_exprs
             .iter()
             .cartesian_product(b_exprs)
@@ -201,57 +209,9 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
                     a_exprs,
                     b_exprs,
                     word_size,
-                    &RangeConstraintsForBooleans,
+                    &RangeConstraintsForBooleans::from(NoRangeConstraints),
                 )
             })
-    }
-}
-
-/// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
-/// simplifies constraints by introducing boolean variables.
-fn symbolic_to_simplified_constraints<T: FieldElement>(
-    constraints: &[SymbolicConstraint<T>],
-) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
-    let mut counter = 0..;
-    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
-
-    constraints
-        .iter()
-        .map(|constr| {
-            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
-        })
-        .collect_vec()
-}
-
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-pub enum Variable {
-    Reference(AlgebraicReference),
-    PublicReference(String),
-    Challenge(Challenge),
-    Boolean(usize),
-}
-
-impl Display for Variable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Variable::Reference(r) => write!(f, "{r}"),
-            Variable::PublicReference(r) => write!(f, "{r}"),
-            Variable::Challenge(c) => write!(f, "{c}"),
-            Variable::Boolean(id) => write!(f, "boolean_{id}"),
-        }
-    }
-}
-
-#[derive(Default)]
-struct RangeConstraintsForBooleans;
-
-impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsForBooleans {
-    fn get(&self, variable: &Variable) -> RangeConstraint<T> {
-        match variable {
-            Variable::Boolean(_) => RangeConstraint::from_mask(1),
-            _ => Default::default(),
-        }
     }
 }
 

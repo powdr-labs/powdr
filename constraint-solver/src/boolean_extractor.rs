@@ -38,7 +38,7 @@ pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 ///
 /// The constraints in the output use a new variable type that can be converted from
 /// and to the original variable type.
-pub fn to_extracted_system<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + 'a>(
+pub fn to_boolean_extracted_system<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + 'a>(
     constraints: impl IntoIterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
 ) -> Vec<QuadraticSymbolicExpression<T, Variable<V>>> {
     let mut counter = 0..;
@@ -53,6 +53,8 @@ pub fn to_extracted_system<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + 'a>
         .collect_vec()
 }
 
+/// Range constraint provider that works for `Variable` and delegates range constraint requests
+/// for original variables to a provided range constraint provider.
 #[derive(Default)]
 pub struct RangeConstraintsForBooleans<T: FieldElement, V, R: RangeConstraintProvider<T, V>> {
     range_constraints: R,
