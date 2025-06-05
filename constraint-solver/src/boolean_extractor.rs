@@ -37,7 +37,7 @@ pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 /// NOTE: The boolean constraint is not part of the output.
 ///
 /// The constraints in the output use a new variable type that can be converted from
-/// and to the original variable type.
+/// the original variable type.
 pub fn to_boolean_extracted_system<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + 'a>(
     constraints: impl IntoIterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
 ) -> Vec<QuadraticSymbolicExpression<T, Variable<V>>> {
