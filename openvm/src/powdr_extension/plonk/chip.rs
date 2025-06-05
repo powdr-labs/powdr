@@ -9,6 +9,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
 use crate::utils::to_ovm_field;
+use crate::BusMap;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -42,6 +43,7 @@ pub struct PlonkChip<F: PrimeField32> {
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
     machine: SymbolicMachine<F>,
+    bus_map: BusMap,
 }
 
 impl<F: PrimeField32> PlonkChip<F> {
@@ -51,6 +53,7 @@ impl<F: PrimeField32> PlonkChip<F> {
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
+        bus_map: BusMap,
     ) -> Self {
         let PowdrPrecompile {
             original_instructions,
@@ -61,6 +64,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             machine,
         } = precompile;
         let air = PlonkAir {
+            bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         };
         let executor = PowdrExecutor::new(
@@ -78,6 +82,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             air: Arc::new(air),
             executor,
             machine,
+            bus_map,
         }
     }
 }
@@ -128,7 +133,7 @@ where
 
         let machine: SymbolicMachine<BabyBearField> =
             transpose_symbolic_machine_back(self.machine.clone());
-        let plonk_circuit = build_circuit(&machine);
+        let plonk_circuit = build_circuit(&machine, &self.bus_map);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());

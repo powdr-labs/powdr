@@ -1,6 +1,4 @@
-use crate::bus_interaction_handler::{
-    DEFAULT_BITWISE_LOOKUP, DEFAULT_EXECUTION_BRIDGE, DEFAULT_VARIABLE_RANGE_CHECKER,
-};
+use crate::{BusMap, BusType};
 use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
@@ -35,6 +33,7 @@ pub struct PlonkColumns<T> {
 }
 
 pub struct PlonkAir<F> {
+    pub bus_map: BusMap,
     pub _marker: std::marker::PhantomData<F>,
 }
 
@@ -97,21 +96,27 @@ where
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
 
         builder.push_interaction(
-            DEFAULT_EXECUTION_BRIDGE as u16,
+            self.bus_map
+                .get_bus_id(&BusType::ExecutionBridge)
+                .expect("BusType::ExecutionBridge not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_execution,
             1,
         );
 
         builder.push_interaction(
-            DEFAULT_VARIABLE_RANGE_CHECKER as u16,
+            self.bus_map
+                .get_bus_id(&BusType::VariableRangeChecker)
+                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_range_check,
             1,
         );
 
         builder.push_interaction(
-            DEFAULT_BITWISE_LOOKUP as u16,
+            self.bus_map
+                .get_bus_id(&BusType::BitwiseLookup)
+                .expect("BusType::BitwiseLookup not found in bus_map") as u16,
             vec![*a, *b, *c, *a_next],
             *b_next * *q_bitwise,
             1,

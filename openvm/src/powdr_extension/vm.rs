@@ -23,7 +23,7 @@ use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
-use crate::PrecompileImplementation;
+use crate::{BusMap, PrecompileImplementation};
 
 use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
@@ -35,6 +35,7 @@ pub struct PowdrExtension<F: PrimeField32> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
+    pub bus_map: BusMap,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -96,11 +97,13 @@ impl<F: PrimeField32> PowdrExtension<F> {
         precompiles: Vec<PowdrPrecompile<F>>,
         base_config: SdkVmConfig,
         implementation: PrecompileImplementation,
+        bus_map: BusMap,
     ) -> Self {
         Self {
             precompiles,
             base_config,
             implementation,
+            bus_map,
         }
     }
 }
@@ -167,6 +170,7 @@ impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
                         range_checker.clone(),
                         tuple_range_checker.cloned(),
                     ),
+                    self.bus_map.clone(),
                 )
                 .into(),
             };

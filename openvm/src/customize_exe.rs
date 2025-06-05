@@ -260,7 +260,12 @@ pub fn customize<F: PrimeField32>(
 
     (
         exe,
-        PowdrExtension::new(extensions, base_config, config.implementation),
+        PowdrExtension::new(
+            extensions,
+            base_config,
+            config.implementation,
+            config.bus_map,
+        ),
     )
 }
 

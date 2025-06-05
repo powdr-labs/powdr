@@ -8,6 +8,7 @@ use powdr_constraint_solver::{
     range_constraint::RangeConstraint,
 };
 use powdr_number::{FieldElement, LargeInt};
+use serde::{Deserialize, Serialize};
 use tuple_range_checker::handle_tuple_range_checker;
 use variable_range_checker::handle_variable_range_checker;
 
@@ -23,7 +24,7 @@ pub const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
 pub const DEFAULT_BITWISE_LOOKUP: u64 = 6;
 pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
 pub enum BusType {
     ExecutionBridge,
     Memory,
@@ -49,7 +50,7 @@ impl std::fmt::Display for BusType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct BusMap {
     bus_ids: BTreeMap<u64, BusType>,
 }
@@ -94,6 +95,12 @@ impl BusMap {
 
     pub fn inner(&self) -> &BTreeMap<u64, BusType> {
         &self.bus_ids
+    }
+
+    pub fn get_bus_id(&self, bus_type: &BusType) -> Option<u64> {
+        self.bus_ids
+            .iter()
+            .find_map(|(id, bus)| if bus == bus_type { Some(*id) } else { None })
     }
 }
 
