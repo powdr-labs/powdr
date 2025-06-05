@@ -8,7 +8,7 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
-use crate::{IntoOpenVm, OpenVmField,BusMap};
+use crate::{BusMap, IntoOpenVm, OpenVmField};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -129,7 +129,7 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let plonk_circuit = build_circuit(&self.machine,&self.bus_map);
+        let plonk_circuit = build_circuit(&self.machine, &self.bus_map);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
