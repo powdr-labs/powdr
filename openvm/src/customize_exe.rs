@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::IntoOpenVm;
+use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
@@ -10,19 +12,20 @@ use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
-use openvm_stark_backend::{interaction::SymbolicInteraction, p3_field::PrimeField32};
+use openvm_stark_backend::{
+    interaction::SymbolicInteraction,
+    p3_field::{FieldAlgebra, PrimeField32},
+};
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::{
-    InstructionKind, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement,
-    SymbolicMachine,
+    InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::utils::{to_ovm_field, to_powdr_field};
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile, PowdrStackedPrecompile},
     utils::symbolic_to_algebraic,
@@ -37,14 +40,14 @@ const POWDR_OPCODE: usize = 0x10ff;
 
 use crate::PowdrConfig;
 
-pub fn customize<F: PrimeField32>(
-    mut exe: VmExe<F>,
+pub fn customize<P: IntoOpenVm>(
+    mut exe: VmExe<OpenVmField<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
+    airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pc_idx_count: Option<HashMap<u32, u32>>,
-) -> (VmExe<F>, PowdrExtension<F>) {
+) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
     // The following opcodes shall never be accelerated and therefore always put in its own basic block.
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
@@ -161,13 +164,13 @@ pub fn customize<F: PrimeField32>(
 
     let noop = Instruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
-        a: F::ZERO,
-        b: F::ZERO,
-        c: F::ZERO,
-        d: F::ZERO,
-        e: F::ZERO,
-        f: F::ZERO,
-        g: F::ZERO,
+        a: OpenVmField::<P>::ZERO,
+        b: OpenVmField::<P>::ZERO,
+        c: OpenVmField::<P>::ZERO,
+        d: OpenVmField::<P>::ZERO,
+        e: OpenVmField::<P>::ZERO,
+        f: OpenVmField::<P>::ZERO,
+        g: OpenVmField::<P>::ZERO,
     };
 
     let mut extensions = Vec::new();
@@ -190,13 +193,13 @@ pub fn customize<F: PrimeField32>(
         let apc_opcode = POWDR_OPCODE + i;
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
-            a: F::ZERO,
-            b: F::ZERO,
-            c: F::ZERO,
-            d: F::ZERO,
-            e: F::ZERO,
-            f: F::ZERO,
-            g: F::ZERO,
+            a: OpenVmField::<P>::ZERO,
+            b: OpenVmField::<P>::ZERO,
+            c: OpenVmField::<P>::ZERO,
+            d: OpenVmField::<P>::ZERO,
+            e: OpenVmField::<P>::ZERO,
+            f: OpenVmField::<P>::ZERO,
+            g: OpenVmField::<P>::ZERO,
         };
 
         let pc = acc_block.start_idx as usize;
@@ -221,7 +224,7 @@ pub fn customize<F: PrimeField32>(
         program.splice(pc..pc + n_acc, new_instrs);
         assert_eq!(program.len(), len_before);
 
-        let (autoprecompile, subs) = generate_autoprecompile::<F, powdr_number::BabyBearField>(
+        let (autoprecompile, subs) = generate_autoprecompile(
             acc_block,
             airs,
             apc_opcode,
@@ -246,14 +249,14 @@ pub fn customize<F: PrimeField32>(
             PowdrOpcode {
                 class_offset: apc_opcode,
             },
-            transpose_symbolic_machine(autoprecompile),
+            autoprecompile,
             acc.into_iter()
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
             airs.iter()
                 .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, transpose_symbolic_machine(air.clone())))
+                .map(|(i, air)| (*i, air.clone()))
                 .collect(),
             is_valid_column,
         ));
@@ -267,7 +270,7 @@ pub fn customize<F: PrimeField32>(
 }
 
 /// make PolyIDs start from zero, sequential and compact
-fn compact_ids<F: PrimeField32>(pcp: &mut PowdrPrecompile<F>) {
+fn compact_ids<P: IntoOpenVm>(pcp: &mut PowdrPrecompile<P>) {
     let mut curr_id = 0;
     let mut id_map: HashMap<u64, u64> = Default::default();
     let mut new_poly_id = |old_id: u64| {
@@ -294,12 +297,12 @@ fn compact_ids<F: PrimeField32>(pcp: &mut PowdrPrecompile<F>) {
     pcp.is_valid_column.id.id = new_poly_id(pcp.is_valid_column.id.id);
 }
 
-fn merge_bus_interactions_simple<F: PrimeField32>(interactions: Vec<Vec<SymbolicBusInteraction<F>>>) -> Vec<SymbolicBusInteraction<F>> {
+fn merge_bus_interactions_simple<P: IntoOpenVm>(interactions: Vec<Vec<SymbolicBusInteraction<P>>>) -> Vec<SymbolicBusInteraction<P>> {
     interactions.into_iter().flatten().collect_vec()
 }
 
-fn merge_bus_interactions<F: PrimeField32>(interactions_by_machine: Vec<Vec<SymbolicBusInteraction<F>>>) -> Vec<SymbolicBusInteraction<F>> {
-    let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<F>>>> = Default::default();
+fn merge_bus_interactions<P: IntoOpenVm>(interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>) -> Vec<SymbolicBusInteraction<P>> {
+    let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<P>>>> = Default::default();
 
     for interactions in interactions_by_machine {
         let interactions_by_bus_this_machine = interactions.into_iter()
@@ -355,15 +358,15 @@ fn merge_bus_interactions<F: PrimeField32>(interactions_by_machine: Vec<Vec<Symb
 }
 
 // perform air stacking of multiple precompiles into stacked precompiles.
-fn air_stacking<F: PrimeField32>(
-    mut extensions: Vec<PowdrPrecompile<F>>,
-) -> Vec<PowdrStackedPrecompile<F>> {
+fn air_stacking<P: IntoOpenVm>(
+    mut extensions: Vec<PowdrPrecompile<P>>,
+) -> Vec<PowdrStackedPrecompile<P>> {
     assert!(!extensions.is_empty());
 
     extensions.iter_mut().for_each(compact_ids);
 
     // create apc groups by number of columns
-    let mut groups: HashMap<usize, Vec<PowdrPrecompile<F>>> = Default::default();
+    let mut groups: HashMap<usize, Vec<PowdrPrecompile<P>>> = Default::default();
     for pcp in extensions {
         let idx = f64::log(pcp.machine.unique_columns().count() as f64, 2.0).floor() as usize;
         groups.entry(idx).or_default().push(pcp);
@@ -400,7 +403,7 @@ fn air_stacking<F: PrimeField32>(
             .unwrap();
 
 
-        let mut is_valid_sum: Option<AlgebraicExpression<F>> = None;
+        let mut is_valid_sum: Option<AlgebraicExpression<P>> = None;
 
         for (idx, pcp) in extensions.iter_mut().enumerate() {
             // is_valid columns cannot be shared between precompiles. Here we do
@@ -455,7 +458,7 @@ fn air_stacking<F: PrimeField32>(
         }
 
         // enforce only one is_valid is active
-        let one = AlgebraicExpression::Number(F::ONE);
+        let one = AlgebraicExpression::Number(P::ONE);
         let one_hot_is_valid = (one - is_valid_sum.clone().unwrap()) * is_valid_sum.unwrap();
 
         stacked_constraints.push(one_hot_is_valid.into());
@@ -664,8 +667,8 @@ fn add_extra_targets<F: PrimeField32>(
 // 5: bitwise xor ->
 //    [a, b, 0, 0] byte range checks for a and b
 //    [a, b, c, 1] c = xor(a, b)
-fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
-    block: &BasicBlock<F>,
+fn generate_autoprecompile<P: IntoOpenVm>(
+    block: &BasicBlock<OpenVmField<P>>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
@@ -692,9 +695,9 @@ fn generate_autoprecompile<F: PrimeField32, P: FieldElement>(
                 args: [
                     instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
                 ]
-                    .iter()
-                    .map(|f| to_powdr_field::<F, P>(*f))
-                    .collect(),
+                .iter()
+                .map(|f| P::from_openvm_field(*f))
+                .collect(),
             };
 
             if branch_opcodes.contains(&instr.opcode.as_usize()) {
@@ -744,66 +747,4 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect();
 
     SymbolicBusInteraction { id, mult, args }
-}
-
-// Transpose an algebraic expression from the powdr field to openvm field
-fn transpose_algebraic_expression<F: PrimeField32, P: FieldElement>(
-    expr: AlgebraicExpression<P>,
-) -> AlgebraicExpression<F> {
-    match expr {
-        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(to_ovm_field(n)),
-        AlgebraicExpression::Reference(reference) => AlgebraicExpression::Reference(reference),
-        AlgebraicExpression::PublicReference(reference) => {
-            AlgebraicExpression::PublicReference(reference)
-        }
-        AlgebraicExpression::Challenge(challenge) => AlgebraicExpression::Challenge(challenge),
-        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
-            let left = transpose_algebraic_expression(*algebraic_binary_operation.left);
-            let right = transpose_algebraic_expression(*algebraic_binary_operation.right);
-            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
-                left: Box::new(left),
-                right: Box::new(right),
-                op: algebraic_binary_operation.op,
-            })
-        }
-        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
-            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
-                op: algebraic_unary_operation.op,
-                expr: Box::new(transpose_algebraic_expression(
-                    *algebraic_unary_operation.expr,
-                )),
-            })
-        }
-    }
-}
-
-// Transpose a symbolic machine from the powdr field to openvm field
-fn transpose_symbolic_machine<F: PrimeField32, P: FieldElement>(
-    machine: SymbolicMachine<P>,
-) -> SymbolicMachine<F> {
-    let constraints = machine
-        .constraints
-        .into_iter()
-        .map(|constraint| SymbolicConstraint {
-            expr: transpose_algebraic_expression(constraint.expr),
-        })
-        .collect();
-    let bus_interactions = machine
-        .bus_interactions
-        .into_iter()
-        .map(|interaction| SymbolicBusInteraction {
-            id: interaction.id,
-            mult: transpose_algebraic_expression(interaction.mult.clone()),
-            args: interaction
-                .args
-                .iter()
-                .map(|arg| transpose_algebraic_expression(arg.clone()))
-                .collect(),
-        })
-        .collect();
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
-    }
 }
