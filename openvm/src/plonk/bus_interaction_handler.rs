@@ -119,9 +119,8 @@ bus: none, x * y = tmp_3
 bus: none, -tmp_3 = tmp_2
 bus: none, 5 * y = tmp_4
 bus: none, 1 = tmp_5
-bus: memory, tmp_0, tmp_1, y
-bus: none, tmp_2, tmp_4, x
-bus: none, y, tmp_5, Unused
+bus: memory, tmp_0, tmp_1, y, tmp_2, tmp_4
+bus: none, x, y, tmp_5, Unused, Unused
 "
         )
     }
