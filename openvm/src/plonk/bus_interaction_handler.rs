@@ -62,7 +62,8 @@ pub fn add_bus_to_plonk_circuit<T>(
                 .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
         )
         .for_each(|(arg, payload)| {
-            *payload = circuit_builder.evaluate_expression(arg, false);
+            let _neg: bool;
+            (_neg, *payload) = circuit_builder.evaluate_expression(arg, false, true);
         });
 
     // Add the gates to the circuit.
@@ -95,9 +96,9 @@ mod tests {
                 x.clone() + y.clone(),
                 y.clone(),
                 -(x.clone() * y.clone()),
-                y.clone() * c(5),
-                x.clone(),
-                y.clone(),
+                y.clone() * -c(5),
+                -x.clone(),
+                -x * y.clone(),
             ],
             mult: AlgebraicExpression::Number(BabyBearField::from(1)),
         };
@@ -110,13 +111,15 @@ mod tests {
             format!("{plonk_circuit}"),
             "bus: none, 42 = tmp_0
 bus: none, x + y = tmp_1
-bus: none, x * y = tmp_3
-bus: none, -tmp_3 = tmp_2
-bus: none, 5 * y = tmp_4
-bus: none, 1 = tmp_5
+bus: none, x * y = -tmp_2
+bus: none, 5 = tmp_4
+bus: none, -y * tmp_4 = tmp_3
+bus: none, -x = tmp_5
+bus: none, tmp_5 * y = tmp_6
+bus: none, 1 = tmp_7
 bus: memory, tmp_0, tmp_1, y
-bus: none, tmp_2, tmp_4, x
-bus: none, y, tmp_5, Unused
+bus: none, tmp_2, tmp_3, tmp_5
+bus: none, tmp_6, tmp_7, Unused
 "
         )
     }
