@@ -896,7 +896,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000)); // should create two segments
+        // should create two segments
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
     }
 
     #[test]
