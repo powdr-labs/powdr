@@ -8,8 +8,7 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
-use crate::utils::to_ovm_field;
-use crate::BusMap;
+use crate::{IntoOpenVm, OpenVmField,BusMap};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -30,27 +29,26 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_autoprecompiles::powdr::UniqueColumns;
-use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<F: PrimeField32> {
+pub struct PlonkChip<P: IntoOpenVm> {
     name: String,
     opcode: PowdrOpcode,
-    air: Arc<PlonkAir<F>>,
-    executor: PowdrExecutor<F>,
-    machine: SymbolicMachine<F>,
+    air: Arc<PlonkAir<OpenVmField<P>>>,
+    executor: PowdrExecutor<P>,
+    machine: SymbolicMachine<P>,
     bus_map: BusMap,
 }
 
-impl<F: PrimeField32> PlonkChip<F> {
+impl<P: IntoOpenVm> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        precompile: PowdrPrecompile<P>,
+        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
         bus_map: BusMap,
@@ -87,11 +85,11 @@ impl<F: PrimeField32> PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
+impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PlonkChip<P> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
+        memory: &mut MemoryController<OpenVmField<P>>,
+        instruction: &Instruction<OpenVmField<P>>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -107,7 +105,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
+impl<P: IntoOpenVm> ChipUsageGetter for PlonkChip<P> {
     fn air_name(&self) -> String {
         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -120,7 +118,7 @@ impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
     }
 }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PlonkChip<Val<SC>>
+impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for PlonkChip<P>
 where
     Val<SC>: PrimeField32,
 {
@@ -131,9 +129,7 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let machine: SymbolicMachine<BabyBearField> =
-            transpose_symbolic_machine_back(self.machine.clone());
-        let plonk_circuit = build_circuit(&machine, &self.bus_map);
+        let plonk_circuit = build_circuit(&self.machine,&self.bus_map);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
@@ -171,18 +167,18 @@ where
                     b: gate.b.clone(),
                     c: gate.c.clone(),
 
-                    q_bitwise: to_ovm_field(gate.q_bitwise),
-                    q_memory: to_ovm_field(gate.q_memory),
-                    q_execution: to_ovm_field(gate.q_execution),
-                    q_pc: to_ovm_field(gate.q_pc),
-                    q_range_tuple: to_ovm_field(gate.q_range_tuple),
-                    q_range_check: to_ovm_field(gate.q_range_check),
+                    q_bitwise: gate.q_bitwise.into_openvm_field(),
+                    q_memory: gate.q_memory.into_openvm_field(),
+                    q_execution: gate.q_execution.into_openvm_field(),
+                    q_pc: gate.q_pc.into_openvm_field(),
+                    q_range_tuple: gate.q_range_tuple.into_openvm_field(),
+                    q_range_check: gate.q_range_check.into_openvm_field(),
 
-                    q_l: to_ovm_field(gate.q_l),
-                    q_r: to_ovm_field(gate.q_r),
-                    q_o: to_ovm_field(gate.q_o),
-                    q_mul: to_ovm_field(gate.q_mul),
-                    q_const: to_ovm_field(gate.q_const),
+                    q_l: gate.q_l.into_openvm_field(),
+                    q_r: gate.q_r.into_openvm_field(),
+                    q_o: gate.q_o.into_openvm_field(),
+                    q_mul: gate.q_mul.into_openvm_field(),
+                    q_const: gate.q_const.into_openvm_field(),
                 };
 
                 // TODO: These should be pre-processed columns (for soundness and efficiency).
@@ -287,66 +283,5 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
         if let Variable::Tmp(id) = gate.c {
             assert!(self.tmp_vars[id].is_some(), "Variable `c` is unknown.",);
         }
-    }
-}
-
-// TODO: We transpose expressions from powdr -> openvm -> powdr, we should fix this...
-fn transpose_algebraic_expression_back<F: PrimeField32, P: FieldElement>(
-    expr: AlgebraicExpression<F>,
-) -> AlgebraicExpression<P> {
-    match expr {
-        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(n.as_canonical_u32().into()),
-        AlgebraicExpression::Reference(reference) => AlgebraicExpression::Reference(reference),
-        AlgebraicExpression::PublicReference(reference) => {
-            AlgebraicExpression::PublicReference(reference)
-        }
-        AlgebraicExpression::Challenge(challenge) => AlgebraicExpression::Challenge(challenge),
-        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
-            let left = transpose_algebraic_expression_back(*algebraic_binary_operation.left);
-            let right = transpose_algebraic_expression_back(*algebraic_binary_operation.right);
-            AlgebraicExpression::BinaryOperation(powdr_ast::analyzed::AlgebraicBinaryOperation {
-                left: Box::new(left),
-                right: Box::new(right),
-                op: algebraic_binary_operation.op,
-            })
-        }
-        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
-            AlgebraicExpression::UnaryOperation(powdr_ast::analyzed::AlgebraicUnaryOperation {
-                op: algebraic_unary_operation.op,
-                expr: Box::new(transpose_algebraic_expression_back(
-                    *algebraic_unary_operation.expr,
-                )),
-            })
-        }
-    }
-}
-
-fn transpose_symbolic_machine_back<F: PrimeField32, P: FieldElement>(
-    machine: SymbolicMachine<F>,
-) -> SymbolicMachine<P> {
-    let constraints = machine
-        .constraints
-        .into_iter()
-        .map(|constraint| SymbolicConstraint {
-            expr: transpose_algebraic_expression_back(constraint.expr),
-        })
-        .collect();
-    let bus_interactions = machine
-        .bus_interactions
-        .into_iter()
-        .map(|interaction| SymbolicBusInteraction {
-            id: interaction.id,
-            mult: transpose_algebraic_expression_back(interaction.mult.clone()),
-            args: interaction
-                .args
-                .iter()
-                .map(|arg| transpose_algebraic_expression_back(arg.clone()))
-                .collect(),
-        })
-        .collect();
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
     }
 }
