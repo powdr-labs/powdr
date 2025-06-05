@@ -301,7 +301,10 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
-            degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
+            // We use OPENVM_DEGREE_BOUND - 1 because LogUp can increase the degree of the
+            // expressions in bus interactions. The `-1` here can be removed once the inliner
+            // accepts two different degree bounds for polynomial constraints and bus interactions.
+            degree_bound: customize_exe::OPENVM_DEGREE_BOUND - 1,
             implementation: PrecompileImplementation::default(),
         }
     }
@@ -995,7 +998,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(m.width, 53);
         assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 31);
+        assert_eq!(m.bus_interactions, 39);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
@@ -1005,9 +1008,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 1997);
+        assert_eq!(m.width, 2175);
         assert_eq!(m.constraints, 161);
-        assert_eq!(m.bus_interactions, 1775);
+        assert_eq!(m.bus_interactions, 2181);
     }
 
     #[test]
