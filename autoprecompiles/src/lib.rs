@@ -14,7 +14,7 @@ use std::fmt::Display;
 use std::iter::once;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 use powdr_pilopt::simplify_expression;
 
 pub mod constraint_optimizer;
@@ -167,104 +167,6 @@ pub enum InstructionKind {
     Terminal,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum MemoryType {
-    Constant,
-    Register,
-    Memory,
-    Native,
-}
-
-impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
-    fn from(expr: AlgebraicExpression<T>) -> Self {
-        match expr {
-            AlgebraicExpression::Number(n) => {
-                let n_u32 = n.to_integer().try_into_u32().unwrap();
-                match n_u32 {
-                    0 => MemoryType::Constant,
-                    1 => MemoryType::Register,
-                    2 => MemoryType::Memory,
-                    3 => MemoryType::Native,
-                    _ => unreachable!("Expected 0, 1, 2 or 3 but got {n}"),
-                }
-            }
-            _ => unreachable!("Expected number"),
-        }
-    }
-}
-
-impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
-    fn from(ty: MemoryType) -> Self {
-        match ty {
-            MemoryType::Constant => AlgebraicExpression::Number(T::from(0u32)),
-            MemoryType::Register => AlgebraicExpression::Number(T::from(1u32)),
-            MemoryType::Memory => AlgebraicExpression::Number(T::from(2u32)),
-            MemoryType::Native => AlgebraicExpression::Number(T::from(3u32)),
-        }
-    }
-}
-
-/// Returns the word size of a particularly memory type.
-/// Word size `k` means that an address `x` and an address `x + k` are guaranteed to be
-/// non-overlapping, it is not necessarily related to what is stored, rather
-/// how memory is addressed.
-pub fn word_size_by_memory(ty: MemoryType) -> Option<u32> {
-    match ty {
-        MemoryType::Register | MemoryType::Memory => Some(4),
-        MemoryType::Constant | MemoryType::Native => None, // Let's not optimize this.
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum MemoryOp {
-    Send,
-    Receive,
-}
-
-#[derive(Clone, Debug)]
-pub struct MemoryBusInteraction<T> {
-    pub ty: MemoryType,
-    pub op: MemoryOp,
-    pub addr: AlgebraicExpression<T>,
-    pub data: Vec<AlgebraicExpression<T>>,
-}
-
-impl<T: FieldElement> MemoryBusInteraction<T> {
-    pub fn try_addr_u32(&self) -> Option<u32> {
-        match self.addr {
-            AlgebraicExpression::Number(n) => n.to_integer().try_into_u32(),
-            _ => None,
-        }
-    }
-}
-
-impl<T: FieldElement> MemoryBusInteraction<T> {
-    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction`.
-    ///
-    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
-    /// Returns `Err(_)` if the bus interaction is a memory bus interaction but could not be converted properly
-    /// (usually because the multiplicity is not -1 or 1).
-    /// Otherwise returns `Ok(Some(memory_bus_interaction))`
-    fn try_from_symbolic_bus_interaction(
-        bus_interaction: &SymbolicBusInteraction<T>,
-    ) -> Result<Option<Self>, ()> {
-        if bus_interaction.id != MEMORY_BUS_ID {
-            return Ok(None);
-        }
-        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
-        // are in the right order.
-        let ty = bus_interaction.args[0].clone().into();
-        let op = match bus_interaction.try_multiplicity_to_number() {
-            Some(n) if n == 1.into() => MemoryOp::Send,
-            Some(n) if n == (-1).into() => MemoryOp::Receive,
-            _ => return Err(()),
-        };
-        let addr = bus_interaction.args[1].clone();
-        let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
-        Ok(Some(MemoryBusInteraction { ty, op, addr, data }))
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct PcLookupBusInteraction<T> {
     pub from_pc: AlgebraicExpression<T>,
@@ -291,10 +193,6 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteract
             })
             .ok_or(())
     }
-}
-
-pub enum VMBusInteraction<T> {
-    Memory(MemoryBusInteraction<T>),
 }
 
 pub const EXECUTION_BUS_ID: u64 = 0;
