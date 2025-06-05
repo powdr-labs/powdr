@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -16,7 +16,10 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
-use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
+use crate::{
+    word_size_by_memory, MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint,
+    SymbolicMachine,
+};
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
@@ -34,6 +37,35 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
     machine
 }
 
+// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
+// Assumption: all register memory bus interactions feature a concrete address.
+pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
+    let count_per_addr = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| {
+            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int)
+                .ok()
+                // We ignore conversion failures here, since we also did that in a previous version.
+                .flatten()
+        })
+        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .map(|mem_int| {
+            mem_int.try_addr_u32().unwrap_or_else(|| {
+                panic!(
+                    "Register memory access must have constant address but found {}",
+                    mem_int.addr
+                )
+            })
+        })
+        .fold(BTreeMap::new(), |mut map, addr| {
+            *map.entry(addr).or_insert(0) += 1;
+            map
+        });
+
+    count_per_addr.values().all(|&v| v % 2 == 0)
+}
+
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement>(
@@ -42,28 +74,37 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     let address_comparator = MemoryAddressComparator::new(machine);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-    // Track memory contents while we go through bus interactions.
+    // Address across all memory types.
+    type GlobalAddress<T> = (MemoryType, QuadraticSymbolicExpression<T, Variable>);
+    // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<_, (usize, Vec<AlgebraicExpression<_>>)> = Default::default();
+    let mut memory_contents: HashMap<GlobalAddress<T>, (usize, Vec<AlgebraicExpression<_>>)> =
+        Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
-        let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
-            bus_int,
-            MemoryType::Memory,
-        ) {
+        let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int) {
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
             Err(_) => {
                 // This interaction might be going to memory, but we do not know
                 // the multiplicity. Delete all knowledge.
+                // TODO If we can still clearly determine the memory type, we could
+                // only clear the knowledge for that memory type.
                 memory_contents.clear();
                 continue;
             }
         };
-        let addr = algebraic_to_quadratic_symbolic_expression(&mem_int.addr);
+        let Some(word_size) = word_size_by_memory(mem_int.ty) else {
+            continue;
+        };
+
+        let addr = (
+            mem_int.ty,
+            algebraic_to_quadratic_symbolic_expression(&mem_int.addr),
+        );
 
         match mem_int.op {
             MemoryOp::Receive => {
@@ -82,7 +123,8 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
-                    address_comparator.are_addrs_known_to_be_different_by_word(&addr, other_addr)
+                    address_comparator
+                        .are_addrs_known_to_be_different_by_word(&addr, other_addr, word_size)
                 });
                 memory_contents.insert(addr.clone(), (index, mem_int.data.clone()));
             }
@@ -113,12 +155,9 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                MemoryBusInteraction::try_from_symbolic_bus_interaction_with_memory_kind(
-                    bus,
-                    MemoryType::Memory,
-                )
-                .ok()
-                .flatten()
+                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus)
+                    .ok()
+                    .flatten()
             })
             .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
 
@@ -144,11 +183,16 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
     /// `a - b` never falls into the range `-3..=3`.
     pub fn are_addrs_known_to_be_different_by_word(
         &self,
-        a: &QuadraticSymbolicExpression<T, Variable>,
-        b: &QuadraticSymbolicExpression<T, Variable>,
+        a: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
+        b: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
+        word_size: u32,
     ) -> bool {
-        let a_exprs = &self.memory_addresses[a];
-        let b_exprs = &self.memory_addresses[b];
+        if a.0 != b.0 {
+            return true;
+        }
+
+        let a_exprs = &self.memory_addresses[&a.1];
+        let b_exprs = &self.memory_addresses[&b.1];
         a_exprs
             .iter()
             .cartesian_product(b_exprs)
@@ -156,6 +200,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
                 is_value_known_to_be_different_by_word(
                     a_exprs,
                     b_exprs,
+                    word_size,
                     &RangeConstraintsForBooleans,
                 )
             })
@@ -243,9 +288,16 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
 fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     a: &QuadraticSymbolicExpression<T, V>,
     b: &QuadraticSymbolicExpression<T, V>,
+    word_size: u32,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
-    let disallowed_range = RangeConstraint::from_range(-T::from(3), T::from(3));
+    assert!(
+        word_size > 0
+            && word_size < 0x10000
+            && T::Integer::from(2 * word_size as u64) < T::modulus()
+    );
+    let disallowed_range =
+        RangeConstraint::from_range(-T::from(word_size - 1), T::from(word_size - 1));
     possible_concrete_values(&(a - b), range_constraints, 20)
         .is_some_and(|mut values| !values.any(|value| disallowed_range.allows_value(value)))
 }
@@ -291,21 +343,25 @@ mod tests {
         assert!(!is_value_known_to_be_different_by_word(
             &constant(7),
             &constant(5),
+            4,
             &NoRangeConstraints
         ));
         assert!(!is_value_known_to_be_different_by_word(
             &constant(5),
             &constant(7),
+            4,
             &NoRangeConstraints
         ));
         assert!(is_value_known_to_be_different_by_word(
             &constant(4),
             &constant(0),
+            4,
             &NoRangeConstraints
         ));
         assert!(is_value_known_to_be_different_by_word(
             &constant(0),
             &constant(4),
+            4,
             &NoRangeConstraints
         ));
     }
@@ -315,21 +371,53 @@ mod tests {
         assert!(!is_value_known_to_be_different_by_word(
             &(constant(7) + var("a")),
             &(constant(5) + var("a")),
+            4,
             &NoRangeConstraints
         ));
         assert!(is_value_known_to_be_different_by_word(
             &(constant(7) + var("a")),
             &(constant(2) + var("a")),
+            4,
             &NoRangeConstraints
         ));
         assert!(!is_value_known_to_be_different_by_word(
             &(constant(7) - var("a")),
             &(constant(2) + var("a")),
+            4,
             &NoRangeConstraints
         ));
         assert!(!is_value_known_to_be_different_by_word(
             &var("a"),
             &var("b"),
+            4,
+            &NoRangeConstraints
+        ));
+    }
+
+    #[test]
+    fn smaller_word() {
+        assert!(is_value_known_to_be_different_by_word(
+            &(constant(7) + var("a")),
+            &(constant(6) + var("a")),
+            1,
+            &NoRangeConstraints
+        ));
+        assert!(is_value_known_to_be_different_by_word(
+            &(constant(6) + var("a")),
+            &(constant(7) + var("a")),
+            1,
+            &NoRangeConstraints
+        ));
+        assert!(!is_value_known_to_be_different_by_word(
+            &(constant(7) + var("a")),
+            &(constant(6) + var("a")),
+            2,
+            &NoRangeConstraints
+        ));
+        assert!(!is_value_known_to_be_different_by_word(
+            &(constant(6) + var("a")),
+            &(constant(7) + var("a")),
+            2,
             &NoRangeConstraints
         ));
     }
