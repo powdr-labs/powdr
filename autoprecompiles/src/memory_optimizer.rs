@@ -142,12 +142,14 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     (to_remove, new_constraints)
 }
 
+type BooleanExtractedExpression<T, V> =
+    QuadraticSymbolicExpression<T, boolean_extractor::Variable<V>>;
 struct MemoryAddressComparator<T: FieldElement> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
     memory_addresses: HashMap<
-        QuadraticSymbolicExpression<T, boolean_extractor::Variable<Variable>>,
-        Vec<QuadraticSymbolicExpression<T, boolean_extractor::Variable<Variable>>>,
+        BooleanExtractedExpression<T, Variable>,
+        Vec<BooleanExtractedExpression<T, Variable>>,
     >,
 }
 
