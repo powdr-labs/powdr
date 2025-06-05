@@ -28,6 +28,7 @@ use powdr_autoprecompiles::{
     SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
+use powdr_pilopt::simplify_expression;
 
 use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -361,6 +362,7 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
         let mut to_merge = interactions_by_machine.pop().unwrap().into_iter().map(|i| vec![i]).collect_vec();
         for machine_interactions in interactions_by_machine {
             let mut used = BTreeSet::new();
+            let mut try_partial_match = vec![];
             'outer: for i in machine_interactions {
                 // try to find a call with an exact match
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
@@ -379,6 +381,11 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
                         continue 'outer;
                     }
                 }
+                try_partial_match.push(i);
+            }
+
+            let mut no_match = vec![];
+            'outer: for i in try_partial_match {
                 // didn't find exact match, try one where some args match
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
                     if used.contains(&idx) {
@@ -397,6 +404,10 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
                         continue 'outer;
                     }
                 }
+                no_match.push(i);
+            }
+
+            'outer: for i in no_match {
                 // just pick the first unused one
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
                     if !used.contains(&idx) {
@@ -454,11 +465,11 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
         // merge each set of interactions
         for set in to_merge {
             let id = set[0].id;
-            let mult = set.iter().map(|i| i.mult.clone()).reduce(|a, b| a + b).unwrap();
+            let mult = simplify_expression(set.iter().map(|i| i.mult.clone()).reduce(|a, b| a + b).unwrap());
             let args = set.into_iter().map(|i| i.args)
                 .reduce(|a, b| a.into_iter().zip_eq(b).map(|(a1, a2)| merge_args(a1, a2)).collect())
                 .unwrap();
-            let args = args.into_iter().map(simplify_arg).collect_vec();
+            let args = args.into_iter().map(|arg| simplify_expression(simplify_arg(arg))).collect_vec();
             result.push(SymbolicBusInteraction {
                 id,
                 args,
@@ -685,33 +696,6 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
         // There may be multiple such constraints, so we try them all (as some
         // of the ids in the current constraint may already be assigned)
 
-        // do the same for bus interactions
-        'outer: for b in &pcp.machine.bus_interactions {
-            for pcp2 in self.pcps.iter() {
-                for b2 in &pcp2.machine.bus_interactions {
-                    if b.id == b2.id && b.args.len() == b2.args.len() {
-                        // let all_args_same_structure = b.args.iter()
-                        //     .zip_eq(b2.args.iter())
-                        //     .all(|(a1, a2)| has_same_structure(&expr_poly_id_by_order(a1.clone()), &expr_poly_id_by_order(a2.clone())));
-                        // if all_args_same_structure {
-                        // println!("Found same bus interaction: {b:?} == {b2:?}");
-                        for (arg1, arg2) in b.args.iter().zip_eq(b2.args.iter()) {
-                            let new_mappings = create_mapping(&arg1, &arg2);
-                            if extend_if_no_conflicts(
-                                &mut mappings,
-                                new_mappings,
-                            ) {
-                                println!("\tFound mapping for bus interaction");
-                                continue 'outer;
-                            }
-                            println!("\tCould not extend due to conflicts!");
-                        }
-                        // }
-                    }
-                }
-            }
-        }
-
         'outer: for c in &pcp.machine.constraints {
             for pcp2 in self.pcps.iter() {
                 for c2 in &pcp2.machine.constraints {
@@ -735,6 +719,29 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
                             continue 'outer;
                         }
                         println!("\tCould not extend due to conflicts!");
+                    }
+                }
+            }
+        }
+
+        // do the same for bus interactions
+        'outer: for b in &pcp.machine.bus_interactions {
+            for pcp2 in self.pcps.iter() {
+                for b2 in &pcp2.machine.bus_interactions {
+                    if b.id == b2.id && b.args.len() == b2.args.len() {
+                        let all_args_same_structure = b.args.iter()
+                            .zip_eq(b2.args.iter())
+                            .all(|(a1, a2)| has_same_structure(&expr_poly_id_by_order(a1.clone()), &expr_poly_id_by_order(a2.clone())));
+                        if all_args_same_structure {
+                            for (arg1, arg2) in b.args.iter().zip_eq(b2.args.iter()) {
+                                let new_mappings = create_mapping(&arg1, &arg2);
+                                extend_if_no_conflicts(
+                                    &mut mappings,
+                                    new_mappings,
+                                );
+                            }
+                            continue 'outer;
+                        }
                     }
                 }
             }
