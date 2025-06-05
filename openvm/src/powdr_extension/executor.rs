@@ -123,7 +123,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             })
             .map(|idx| idx + from_record_id);
 
-        tracing::debug!(
+        tracing::trace!(
             "APC range (exclusive): {}..{} (last read/write at {})",
             from_record_id,
             to_record_id,
