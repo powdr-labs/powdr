@@ -50,6 +50,7 @@ powdr-number.workspace = true
 powdr-riscv-elf.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true
+powdr-pilopt.workspace = true
 
 eyre = "0.6.12"
 serde = "1.0.217"
