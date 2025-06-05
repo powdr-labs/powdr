@@ -1,3 +1,4 @@
+use crate::{BusMap, BusType};
 use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
@@ -19,12 +20,20 @@ pub struct PlonkColumns<T> {
     pub q_mul: T,
     pub q_const: T,
 
+    pub q_bitwise: T,
+    pub q_memory: T,
+    pub q_range_check: T,
+    pub q_execution: T,
+    pub q_pc: T,
+    pub q_range_tuple: T,
+
     pub a: T,
     pub b: T,
     pub c: T,
 }
 
 pub struct PlonkAir<F> {
+    pub bus_map: BusMap,
     pub _marker: std::marker::PhantomData<F>,
 }
 
@@ -48,6 +57,7 @@ where
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
+        let local_next = main.row_slice(1);
 
         let PlonkColumns {
             q_l,
@@ -55,12 +65,62 @@ where
             q_o,
             q_mul,
             q_const,
+            q_bitwise,
+            q_memory: _,
+            q_range_check,
+            q_execution,
+            q_pc: _,
+            q_range_tuple: _,
             a,
             b,
             c,
         } = (*local).borrow();
 
+        let PlonkColumns {
+            q_l: _,
+            q_r: _,
+            q_o: _,
+            q_mul: _,
+            q_const: _,
+            q_bitwise: _,
+            q_memory: _,
+            q_range_check: _,
+            q_execution: _,
+            q_pc: _t,
+            q_range_tuple: _,
+            a: a_next,
+            b: b_next,
+            c: _,
+        } = (*local_next).borrow();
+
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::ExecutionBridge)
+                .expect("BusType::ExecutionBridge not found in bus_map") as u16,
+            vec![*a, *b],
+            *c * *q_execution,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::VariableRangeChecker)
+                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
+            vec![*a, *b],
+            *c * *q_range_check,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::BitwiseLookup)
+                .expect("BusType::BitwiseLookup not found in bus_map") as u16,
+            vec![*a, *b, *c, *a_next],
+            *b_next * *q_bitwise,
+            1,
+        );
     }
 }
 
