@@ -67,7 +67,7 @@ impl<T: FieldElement, V, R: RangeConstraintProvider<T, V>> RangeConstraintProvid
     fn get(&self, variable: &Variable<V>) -> RangeConstraint<T> {
         match variable {
             Variable::Boolean(_) => RangeConstraint::from_mask(1),
-            Variable::Regular(v) => self.range_constraints.get(v),
+            Variable::Original(v) => self.range_constraints.get(v),
         }
     }
 }
@@ -88,7 +88,7 @@ impl<T: FieldElement, V, R: RangeConstraintProvider<T, V>> From<R>
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Variable<V> {
     /// A regular variable that also exists in the original system.
-    Regular(V),
+    Original(V),
     /// A new boolean-constrained variable that was introduced by the solver.
     Boolean(usize),
 }
@@ -96,14 +96,14 @@ pub enum Variable<V> {
 impl<V: Clone> From<&V> for Variable<V> {
     /// Converts a regular variable to a `Variable`.
     fn from(v: &V) -> Self {
-        Variable::Regular(v.clone())
+        Variable::Original(v.clone())
     }
 }
 
 impl<V: Display> Display for Variable<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Variable::Regular(v) => write!(f, "{v}"),
+            Variable::Original(v) => write!(f, "{v}"),
             Variable::Boolean(i) => write!(f, "boolean_{i}"),
         }
     }
