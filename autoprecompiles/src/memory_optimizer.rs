@@ -41,17 +41,6 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
     system
 }
 
-/// Returns the word size of a particularly memory type.
-/// Word size `k` means that an address `x` and an address `x + k` are guaranteed to be
-/// non-overlapping, it is not necessarily related to what is stored, rather
-/// how memory is addressed.
-pub fn word_size_by_memory(ty: MemoryType) -> Option<u32> {
-    match ty {
-        MemoryType::Register | MemoryType::Memory => Some(4),
-        MemoryType::Constant | MemoryType::Native => None, // Let's not optimize this.
-    }
-}
-
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
 pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
@@ -109,16 +98,16 @@ impl<T: FieldElement, V: Ord + Clone + Eq> TryFrom<QuadraticSymbolicExpression<T
     }
 }
 
-// impl<T: FieldElement> Into<T> for MemoryType {
-//     fn from(ty: MemoryType) -> Self {
-//         T::from(match ty {
-//             MemoryType::Constant => 0u32,
-//             MemoryType::Register => 1u32,
-//             MemoryType::Memory => 2u32,
-//             MemoryType::Native => 3u32,
-//         })
-//     }
-// }
+/// Returns the word size of a particularly memory type.
+/// Word size `k` means that an address `x` and an address `x + k` are guaranteed to be
+/// non-overlapping, it is not necessarily related to what is stored, rather
+/// how memory is addressed.
+fn word_size_by_memory(ty: MemoryType) -> Option<u32> {
+    match ty {
+        MemoryType::Register | MemoryType::Memory => Some(4),
+        MemoryType::Constant | MemoryType::Native => None, // Let's not optimize this.
+    }
+}
 
 #[derive(Clone, Debug)]
 enum MemoryOp {
