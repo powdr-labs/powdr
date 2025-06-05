@@ -301,7 +301,10 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
-            degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
+            // We use OPENVM_DEGREE_BOUND - 1 because LogUp can increase the degree of the
+            // expressions in bus interactions. The `-1` here can be removed once the inliner
+            // accepts two different degree bounds for polynomial constraints and bus interactions.
+            degree_bound: customize_exe::OPENVM_DEGREE_BOUND - 1,
             implementation: PrecompileImplementation::default(),
         }
     }
