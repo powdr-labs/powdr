@@ -73,12 +73,11 @@ fn optimization_loop_iteration<T: FieldElement>(
         degree_bound,
         stats_logger,
     )?;
-    // TODO call boolean extractor.
-    let machine = optimize_memory(constraint_system, NoRangeConstraints);
-    assert!(check_register_operation_consistency(&machine));
-    stats_logger.log("memory optimization", &machine);
+    let constraint_system = optimize_memory(constraint_system, NoRangeConstraints);
+    assert!(check_register_operation_consistency(&constraint_system));
+    stats_logger.log("memory optimization", &constraint_system);
 
-    Ok(symbolic_machine_to_constraint_system(machine))
+    Ok(constraint_system)
 }
 
 fn system_size<T: FieldElement>(constraint_system: &ConstraintSystem<T, Variable>) -> [usize; 3] {

@@ -15,9 +15,7 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
 };
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
-use powdr_number::{
-    LargeInt, {FieldElement, LargeInt},
-};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::qse_opt::Variable;
 
 use crate::{SymbolicConstraint, MEMORY_BUS_ID};
@@ -236,13 +234,11 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
 
 type BooleanExtractedExpression<T, V> =
     QuadraticSymbolicExpression<T, boolean_extractor::Variable<V>>;
-struct MemoryAddressComparator<T: FieldElement> {
+struct MemoryAddressComparator<T: FieldElement, V> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
-    memory_addresses: HashMap<
-        BooleanExtractedExpression<T, Variable>,
-        Vec<BooleanExtractedExpression<T, Variable>>,
-    >,
+    memory_addresses:
+        HashMap<BooleanExtractedExpression<T, V>, Vec<BooleanExtractedExpression<T, V>>>,
 }
 
 impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressComparator<T, V> {
@@ -257,12 +253,8 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
             })
             .map(|bus| bus.addr);
 
-        let constraints = machine
-            .constraints
-            .iter()
-            .map(|constr| algebraic_to_quadratic_symbolic_expression(&constr.expr))
-            .collect_vec();
-        let constraints = boolean_extractor::to_boolean_extracted_system(&constraints);
+        let constraints =
+            boolean_extractor::to_boolean_extracted_system(&system.algebraic_constraints);
         let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: constraints,
             bus_interactions: vec![],
