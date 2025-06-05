@@ -3,22 +3,16 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
-};
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
-use powdr_constraint_solver::quadratic_symbolic_expression::{
-    NoRangeConstraints, QuadraticSymbolicExpression,
-};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::{FieldElement, LargeInt};
-use powdr_pilopt::qse_opt::Variable;
 
-use crate::{SymbolicConstraint, MEMORY_BUS_ID};
+use crate::MEMORY_BUS_ID;
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
@@ -201,7 +195,7 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data.iter()) {
-                        new_constraints.push((existing.clone() - new.clone()));
+                        new_constraints.push(existing.clone() - new.clone());
                     }
                     to_remove.extend([index, previous_send]);
                 }
@@ -280,7 +274,7 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
         a: &(MemoryType, QuadraticSymbolicExpression<T, V>),
         b: &(MemoryType, QuadraticSymbolicExpression<T, V>),
         word_size: u32,
-        rc: impl RangeConstraintProvider<T, V>,
+        rc: impl RangeConstraintProvider<T, V> + Clone,
     ) -> bool {
         if a.0 != b.0 {
             return true;
@@ -296,7 +290,7 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
                     a_exprs,
                     b_exprs,
                     word_size,
-                    &RangeConstraintsForBooleans::from(NoRangeConstraints),
+                    &RangeConstraintsForBooleans::from(rc.clone()),
                 )
             })
     }
