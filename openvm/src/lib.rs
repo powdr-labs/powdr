@@ -813,7 +813,6 @@ mod tests {
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
-    #[should_panic = "LogUp multiset equality check failed."]
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
