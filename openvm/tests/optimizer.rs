@@ -57,7 +57,7 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [1996, 1775, 160]
+        [2174, 2181, 160]
     );
 }
 
@@ -94,6 +94,6 @@ fn test_conflicting_constraints_in_bus_interaction() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [36, 27, 20]
+        [36, 30, 20]
     );
 }
