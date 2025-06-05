@@ -28,7 +28,7 @@ use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
-use crate::PrecompileImplementation;
+use crate::{BusMap, PrecompileImplementation};
 
 use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
@@ -40,6 +40,7 @@ pub struct PowdrExtension<P: IntoOpenVm> {
     pub precompiles: Vec<PowdrStackedPrecompile<P>>,
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
+    pub bus_map: BusMap,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -110,11 +111,13 @@ impl<P: IntoOpenVm> PowdrExtension<P> {
         precompiles: Vec<PowdrStackedPrecompile<P>>,
         base_config: SdkVmConfig,
         implementation: PrecompileImplementation,
+        bus_map: BusMap,
     ) -> Self {
         Self {
             precompiles,
             base_config,
             implementation,
+            bus_map,
         }
     }
 }
@@ -224,6 +227,7 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                 //         range_checker.clone(),
                 //         tuple_range_checker.cloned(),
                 //     ),
+                //     self.bus_map.clone(),
                 // )
                 // .into(),
             };

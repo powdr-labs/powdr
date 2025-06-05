@@ -91,7 +91,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // save the next available `RecordId`
-        let from_record_id = memory.get_memory_logs().len();
+        // let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
         let res = self
@@ -106,12 +106,12 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             });
 
         self.number_of_calls += 1;
-        let to_record_id = memory.get_memory_logs().len() - 1;
+        // let to_record_id = memory.get_memory_logs().len() - 1;
 
-        memory
-            .memory
-            .apc_ranges
-            .push((from_record_id, to_record_id));
+        // memory
+        //     .memory
+        //     .apc_ranges
+        //     .push((from_record_id, to_record_id));
 
         res
     }
@@ -148,20 +148,23 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             })
             .collect::<HashMap<_, _>>();
 
-        let dummy_trace_by_air_name: HashMap<_, _> = self
-            .inventory
-            .executors
-            .into_iter()
-            .map(|executor| {
-                (
-                    executor.air_name(),
-                    Chip::<SC>::generate_air_proof_input(executor)
-                        .raw
-                        .common_main
-                        .unwrap(),
-                )
-            })
-            .collect();
+        let dummy_trace_by_air_name: HashMap<_, _> =
+            self.inventory
+                .executors
+                .into_iter()
+                .map(|executor| {
+                    (
+                        executor.air_name().clone(),
+                        tracing::debug_span!("dummy trace", air_name = executor.air_name())
+                            .in_scope(|| {
+                                Chip::<SC>::generate_air_proof_input(executor)
+                                    .raw
+                                    .common_main
+                                    .unwrap()
+                            }),
+                    )
+                })
+                .collect();
 
         let instruction_index_to_table_offset = self
             .instructions

@@ -36,7 +36,8 @@ fn test_optimize() {
         OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
         None, // opcode
         5,
-    );
+    )
+    .unwrap();
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",
@@ -44,6 +45,7 @@ fn test_optimize() {
         machine.bus_interactions.len(),
         machine.constraints.len()
     );
+
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     assert_eq!(
@@ -52,7 +54,7 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [3194, 2861, 160]
+        [2174, 2181, 160]
     );
 }
 
@@ -71,7 +73,8 @@ fn test_conflicting_constraints_in_bus_interaction() {
         OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
         None, // opcode
         5,
-    );
+    )
+    .unwrap();
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",
