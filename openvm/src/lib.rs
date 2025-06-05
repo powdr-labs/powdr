@@ -789,7 +789,7 @@ mod tests {
     const GUEST_KECCAK_ITER: u32 = 1000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
     const GUEST_KECCAK_APC: u64 = 1;
-    const GUEST_KECCAK_APC_PGO: u64 = 2;
+    const GUEST_KECCAK_APC_PGO: u64 = 5;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
