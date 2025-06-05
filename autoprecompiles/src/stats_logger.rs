@@ -1,7 +1,8 @@
+use std::hash::Hash;
 use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::PolynomialType;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_number::FieldElement;
 use powdr_pilopt::qse_opt::Variable;
@@ -59,31 +60,33 @@ impl<P: FieldElement> From<&SymbolicMachine<P>> for Stats {
     }
 }
 
-impl<P: FieldElement> From<&ConstraintSystem<P, Variable>> for Stats {
-    fn from(constraint_system: &ConstraintSystem<P, Variable>) -> Self {
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn> From<&ConstraintSystem<P, V>>
+    for Stats
+{
+    fn from(constraint_system: &ConstraintSystem<P, V>) -> Self {
         Stats {
             num_constraints: constraint_system.algebraic_constraints.len(),
             num_bus_interactions: constraint_system.bus_interactions.len(),
             num_witness_columns: constraint_system
                 .expressions()
                 .flat_map(|e| e.referenced_variables())
-                .filter_map(|expr| {
-                    if let Variable::Reference(AlgebraicReference {
-                        poly_id:
-                            PolyID {
-                                ptype: PolynomialType::Committed,
-                                id,
-                            },
-                        ..
-                    }) = expr
-                    {
-                        Some(id)
-                    } else {
-                        None
-                    }
-                })
+                .filter(|var| var.is_witness_column())
                 .unique()
                 .count(),
+        }
+    }
+}
+
+pub trait IsWitnessColumn {
+    /// Returns true if the variable is a witness column (for statistical purposes).
+    fn is_witness_column(&self) -> bool;
+}
+
+impl IsWitnessColumn for Variable {
+    fn is_witness_column(&self) -> bool {
+        match self {
+            Variable::Reference(poly) => poly.is_witness(),
+            _ => false,
         }
     }
 }
