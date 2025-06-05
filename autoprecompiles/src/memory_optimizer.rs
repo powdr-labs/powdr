@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -7,16 +6,19 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
 };
-use powdr_constraint_solver::boolean_extractor;
+use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
+use powdr_constraint_solver::quadratic_symbolic_expression::{
+    NoRangeConstraints, QuadraticSymbolicExpression,
+};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::{
     LargeInt, {FieldElement, LargeInt},
 };
+use powdr_pilopt::qse_opt::Variable;
 
 use crate::{SymbolicConstraint, MEMORY_BUS_ID};
 
@@ -232,11 +234,15 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     (to_remove, new_constraints)
 }
 
-struct MemoryAddressComparator<T: FieldElement, V> {
+type BooleanExtractedExpression<T, V> =
+    QuadraticSymbolicExpression<T, boolean_extractor::Variable<V>>;
+struct MemoryAddressComparator<T: FieldElement> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
-    memory_addresses:
-        HashMap<QuadraticSymbolicExpression<T, V>, Vec<QuadraticSymbolicExpression<T, V>>>,
+    memory_addresses: HashMap<
+        BooleanExtractedExpression<T, Variable>,
+        Vec<BooleanExtractedExpression<T, Variable>>,
+    >,
 }
 
 impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressComparator<T, V> {
@@ -251,9 +257,21 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
             })
             .map(|bus| bus.addr);
 
-        let constraint_system: IndexedConstraintSystem<_, _> = system.clone().into();
+        let constraints = machine
+            .constraints
+            .iter()
+            .map(|constr| algebraic_to_quadratic_symbolic_expression(&constr.expr))
+            .collect_vec();
+        let constraints = boolean_extractor::to_boolean_extracted_system(&constraints);
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
+            algebraic_constraints: constraints,
+            bus_interactions: vec![],
+        }
+        .into();
+
         let memory_addresses = addresses
             .map(|addr| {
+                let addr = addr.transform_var_type(&mut |v| v.into());
                 (
                     addr.clone(),
                     find_equivalent_expressions(&addr, &constraint_system),
@@ -276,13 +294,18 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
             return true;
         }
 
-        let a_exprs = &self.memory_addresses[&a.1];
-        let b_exprs = &self.memory_addresses[&b.1];
+        let a_exprs = &self.memory_addresses[&a.1.transform_var_type(&mut |v| v.into())];
+        let b_exprs = &self.memory_addresses[&b.1.transform_var_type(&mut |v| v.into())];
         a_exprs
             .iter()
             .cartesian_product(b_exprs)
             .any(|(a_exprs, b_exprs)| {
-                is_value_known_to_be_different_by_word(a_exprs, b_exprs, word_size, &rc)
+                is_value_known_to_be_different_by_word(
+                    a_exprs,
+                    b_exprs,
+                    word_size,
+                    &RangeConstraintsForBooleans::from(NoRangeConstraints),
+                )
             })
     }
 }

@@ -1,6 +1,10 @@
-use std::hash::Hash;
+use std::{fmt::Display, hash::Hash};
 
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use crate::{
+    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    range_constraint::RangeConstraint,
+};
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 /// Tries to simplify a quadratic constraint by transforming it into an affine
@@ -26,6 +30,83 @@ pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 
     // We return `right + z * offset == 0`, which is equivalent to the original constraint.
     Some(right + &(QuadraticSymbolicExpression::from_unknown_variable(z) * offset))
+}
+
+/// Tries to simplify a sequence of constraints by transforming them into affine
+/// constraints that make use of a new variable that is assumed to be boolean constrained.
+/// NOTE: The boolean constraint is not part of the output.
+///
+/// The constraints in the output use a new variable type that can be converted from
+/// the original variable type.
+pub fn to_boolean_extracted_system<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + 'a>(
+    constraints: impl IntoIterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
+) -> Vec<QuadraticSymbolicExpression<T, Variable<V>>> {
+    let mut counter = 0..;
+    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
+
+    constraints
+        .into_iter()
+        .map(|constr| {
+            let constr = constr.transform_var_type(&mut |v| v.into());
+            extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+        })
+        .collect_vec()
+}
+
+/// Range constraint provider that works for `Variable` and delegates range constraint requests
+/// for original variables to a provided range constraint provider.
+#[derive(Default)]
+pub struct RangeConstraintsForBooleans<T: FieldElement, V, R: RangeConstraintProvider<T, V>> {
+    range_constraints: R,
+    _phantom: std::marker::PhantomData<(T, V)>,
+}
+
+impl<T: FieldElement, V, R: RangeConstraintProvider<T, V>> RangeConstraintProvider<T, Variable<V>>
+    for RangeConstraintsForBooleans<T, V, R>
+{
+    fn get(&self, variable: &Variable<V>) -> RangeConstraint<T> {
+        match variable {
+            Variable::Boolean(_) => RangeConstraint::from_mask(1),
+            Variable::Original(v) => self.range_constraints.get(v),
+        }
+    }
+}
+
+impl<T: FieldElement, V, R: RangeConstraintProvider<T, V>> From<R>
+    for RangeConstraintsForBooleans<T, V, R>
+{
+    fn from(range_constraints: R) -> Self {
+        RangeConstraintsForBooleans {
+            range_constraints,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+/// We introduce new variables (that are always boolean-constrained).
+/// This enum avoids clashes with the original variables.
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub enum Variable<V> {
+    /// A regular variable that also exists in the original system.
+    Original(V),
+    /// A new boolean-constrained variable that was introduced by the solver.
+    Boolean(usize),
+}
+
+impl<V: Clone> From<&V> for Variable<V> {
+    /// Converts a regular variable to a `Variable`.
+    fn from(v: &V) -> Self {
+        Variable::Original(v.clone())
+    }
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Original(v) => write!(f, "{v}"),
+            Variable::Boolean(i) => write!(f, "boolean_{i}"),
+        }
+    }
 }
 
 #[cfg(test)]
