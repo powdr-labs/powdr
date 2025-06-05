@@ -509,7 +509,7 @@ pub fn prove(
     mock: bool,
     recursion: bool,
     inputs: StdIn,
-    segment_height: Option<usize>,
+    segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     let exe = &program.exe;
     let mut vm_config = program.vm_config.clone();
