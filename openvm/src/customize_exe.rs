@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -59,7 +60,7 @@ pub fn customize<P: IntoOpenVm>(
     mut exe: VmExe<OpenVmField<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
@@ -164,7 +165,7 @@ pub fn customize<P: IntoOpenVm>(
                 &mut blocks,
                 &mut apc_cache,
                 pgo_program_idx_count,
-                airs,
+                &airs,
                 config.clone(),
                 &opcodes_no_apc,
                 &branch_opcodes_set,
@@ -196,6 +197,8 @@ pub fn customize<P: IntoOpenVm>(
     let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles");
 
+    let airs = Arc::new(airs);
+
     // now the blocks have been sorted by cost
     for (i, acc_block) in blocks.iter().skip(n_skip).take(n_acc).enumerate() {
         tracing::debug!(
@@ -214,7 +217,7 @@ pub fn customize<P: IntoOpenVm>(
             apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
                 generate_apc_cache(
                     acc_block,
-                    airs,
+                    &airs,
                     POWDR_OPCODE + i,
                     config.bus_map.clone(),
                     config.degree_bound,
@@ -261,12 +264,6 @@ pub fn customize<P: IntoOpenVm>(
             .find(|c| c.name == "is_valid")
             .unwrap();
 
-        let opcodes_in_acc = acc
-            .iter()
-            .map(|x| x.opcode.as_usize())
-            .unique()
-            .collect_vec();
-
         extensions.push(PowdrPrecompile::new(
             format!("PowdrAutoprecompile_{i}"),
             PowdrOpcode {
@@ -277,10 +274,7 @@ pub fn customize<P: IntoOpenVm>(
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
-            airs.iter()
-                .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, air.clone()))
-                .collect(),
+            airs.clone(),
             is_valid_column,
         ));
     }
