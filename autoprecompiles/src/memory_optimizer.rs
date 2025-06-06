@@ -306,23 +306,18 @@ mod tests {
 
     use powdr_constraint_solver::{
         quadratic_symbolic_expression::NoRangeConstraints,
+        range_constraint::RangeConstraint,
         test_utils::{constant, var},
     };
+    use powdr_number::GoldilocksField;
 
     #[test]
-    fn difference_for_constants() {
+    fn is_known_to_by_nonzero() {
         assert!(!is_known_to_be_nonzero(&constant(0), &NoRangeConstraints));
         assert!(is_known_to_be_nonzero(&constant(1), &NoRangeConstraints));
         assert!(is_known_to_be_nonzero(&constant(7), &NoRangeConstraints));
         assert!(is_known_to_be_nonzero(&-constant(1), &NoRangeConstraints));
-    }
 
-    #[test]
-    fn difference_for_vars() {
-        assert!(is_known_to_be_nonzero(
-            &(constant(7) + var("a")),
-            &NoRangeConstraints
-        ));
         assert!(!is_known_to_be_nonzero(
             &(constant(42) - constant(2) * var("a")),
             &NoRangeConstraints
@@ -330,6 +325,24 @@ mod tests {
         assert!(!is_known_to_be_nonzero(
             &(var("a") - var("b")),
             &NoRangeConstraints
+        ));
+
+        struct AllVarsThreeOrFour;
+        impl RangeConstraintProvider<GoldilocksField, &'static str> for AllVarsThreeOrFour {
+            fn get(&self, _var: &&'static str) -> RangeConstraint<GoldilocksField> {
+                RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4))
+            }
+        }
+        assert!(is_known_to_be_nonzero(&var("a"), &AllVarsThreeOrFour));
+        assert!(is_known_to_be_nonzero(
+            // Can't be zero for all assignments of a and b.
+            &(var("a") - constant(2) * var("b")),
+            &AllVarsThreeOrFour
+        ));
+        assert!(!is_known_to_be_nonzero(
+            // Can be zero for a = 4, b = 3.
+            &(constant(3) * var("a") - constant(4) * var("b")),
+            &AllVarsThreeOrFour
         ));
     }
 }
