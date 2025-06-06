@@ -36,53 +36,18 @@ pub enum VisitOrder {
 /// visits recursively.
 /// If a node implements Children<Expr>, it also implements ExpressionVisitable<Expr>.
 pub trait ExpressionVisitable<Expr> {
-    /// Traverses the AST and calls `f` on each Expression in pre-order,
-    /// potentially break early and return a value.
-    fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expr) -> ControlFlow<B>,
-    {
-        self.visit_expressions_mut(f, VisitOrder::Pre)
-    }
-
     /// Traverses the AST and calls `f` on each Expression in pre-order.
     fn pre_visit_expressions_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut Expr),
     {
-        let _ = self.pre_visit_expressions_return_mut(&mut move |e| {
-            f(e);
-            ControlFlow::Continue::<()>(())
-        });
-    }
-
-    /// Traverses the AST and calls `f` on each Expression in pre-order,
-    /// potentially break early and return a value.
-    fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
-    where
-        F: FnMut(&Expr) -> ControlFlow<B>,
-    {
-        self.visit_expressions(f, VisitOrder::Pre)
-    }
-
-    /// Traverses the AST and calls `f` on each Expression in pre-order.
-    fn pre_visit_expressions<F>(&self, f: &mut F)
-    where
-        F: FnMut(&Expr),
-    {
-        let _ = self.pre_visit_expressions_return(&mut move |e| {
-            f(e);
-            ControlFlow::Continue::<()>(())
-        });
-    }
-
-    /// Traverses the AST and calls `f` on each Expression in post-order,
-    /// potentially break early and return a value.
-    fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expr) -> ControlFlow<B>,
-    {
-        self.visit_expressions_mut(f, VisitOrder::Post)
+        let _ = self.visit_expressions_mut(
+            &mut move |e| {
+                f(e);
+                ControlFlow::Continue::<()>(())
+            },
+            VisitOrder::Pre,
+        );
     }
 
     /// Traverses the AST and calls `f` on each Expression in post-order.
@@ -90,30 +55,13 @@ pub trait ExpressionVisitable<Expr> {
     where
         F: FnMut(&mut Expr),
     {
-        let _ = self.post_visit_expressions_return_mut(&mut move |e| {
-            f(e);
-            ControlFlow::Continue::<()>(())
-        });
-    }
-
-    /// Traverses the AST and calls `f` on each Expression in post-order,
-    /// potentially break early and return a value.
-    fn post_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
-    where
-        F: FnMut(&Expr) -> ControlFlow<B>,
-    {
-        self.visit_expressions(f, VisitOrder::Post)
-    }
-
-    /// Traverses the AST and calls `f` on each Expression in post-order.
-    fn post_visit_expressions<F>(&self, f: &mut F)
-    where
-        F: FnMut(&Expr),
-    {
-        let _ = self.post_visit_expressions_return(&mut move |e| {
-            f(e);
-            ControlFlow::Continue::<()>(())
-        });
+        let _ = self.visit_expressions_mut(
+            &mut move |e| {
+                f(e);
+                ControlFlow::Continue::<()>(())
+            },
+            VisitOrder::Post,
+        );
     }
 
     fn visit_expressions<F, B>(&self, f: &mut F, order: VisitOrder) -> ControlFlow<B>
@@ -123,17 +71,6 @@ pub trait ExpressionVisitable<Expr> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, order: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expr) -> ControlFlow<B>;
-
-    fn expr_any(&self, mut f: impl FnMut(&Expr) -> bool) -> bool {
-        self.pre_visit_expressions_return(&mut |e| {
-            if f(e) {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .is_break()
-    }
 }
 
 impl<Expr: ExpressionVisitable<Expr>, C: Children<Expr>> ExpressionVisitable<Expr> for C {
