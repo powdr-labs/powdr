@@ -16,7 +16,7 @@ use openvm_stark_sdk::{
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -374,8 +374,9 @@ pub fn compile_exe(
         .program
         .instructions_and_debug_infos
         .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode);
-    let airs = instructions_to_airs(sdk_vm_config.clone(), used_instructions);
+        .map(|instr| instr.as_ref().unwrap().0.opcode)
+        .collect();
+    let airs = instructions_to_airs(sdk_vm_config.clone(), &used_instructions);
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -610,7 +611,7 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
 
 pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
-    used_instructions: impl Iterator<Item = VmOpcode>,
+    used_instructions: &HashSet<VmOpcode>,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
     VC::Executor: Chip<BabyBearSC>,
@@ -622,8 +623,9 @@ where
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
     used_instructions
+        .iter()
         .filter_map(|op| {
-            chip_complex.inventory.get_executor(op).map(|executor| {
+            chip_complex.inventory.get_executor(*op).map(|executor| {
                 let air = executor.air();
 
                 let columns = get_columns(air.clone());
