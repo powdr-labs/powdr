@@ -18,6 +18,9 @@ use powdr_number::{FieldElement, LargeInt};
 
 use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, MEMORY_BUS_ID};
 
+/// The memory address space for register memory operations.
+const REGISTER_ADDRESS_SPACE: u32 = 1;
+
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
@@ -46,7 +49,9 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
         })
-        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .filter(|mem_int: &MemoryBusInteraction<T>| {
+            mem_int.address_space == T::from(REGISTER_ADDRESS_SPACE)
+        })
         .map(|mem_int| {
             mem_int.try_addr_u32().unwrap_or_else(|| {
                 panic!(
@@ -63,43 +68,6 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
     count_per_addr.values().all(|&v| v % 2 == 0)
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum MemoryType {
-    Constant,
-    Register,
-    Memory,
-    Native,
-}
-
-impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
-    fn from(expr: AlgebraicExpression<T>) -> Self {
-        match expr {
-            AlgebraicExpression::Number(n) => {
-                let n_u32 = n.to_integer().try_into_u32().unwrap();
-                match n_u32 {
-                    0 => MemoryType::Constant,
-                    1 => MemoryType::Register,
-                    2 => MemoryType::Memory,
-                    3 => MemoryType::Native,
-                    _ => unreachable!("Expected 0, 1, 2 or 3 but got {n}"),
-                }
-            }
-            _ => unreachable!("Expected number"),
-        }
-    }
-}
-
-impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
-    fn from(ty: MemoryType) -> Self {
-        match ty {
-            MemoryType::Constant => AlgebraicExpression::Number(T::from(0u32)),
-            MemoryType::Register => AlgebraicExpression::Number(T::from(1u32)),
-            MemoryType::Memory => AlgebraicExpression::Number(T::from(2u32)),
-            MemoryType::Native => AlgebraicExpression::Number(T::from(3u32)),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 enum MemoryOp {
     Send,
@@ -108,8 +76,8 @@ enum MemoryOp {
 
 #[derive(Clone, Debug)]
 struct MemoryBusInteraction<T> {
-    ty: MemoryType,
     op: MemoryOp,
+    address_space: T,
     addr: AlgebraicExpression<T>,
     data: Vec<AlgebraicExpression<T>>,
 }
@@ -138,7 +106,9 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
         // are in the right order.
-        let ty = bus_interaction.args[0].clone().into();
+        let AlgebraicExpression::Number(address_space) = bus_interaction.args[0].clone() else {
+            panic!("Address space must be known!")
+        };
         let op = match bus_interaction.try_multiplicity_to_number() {
             Some(n) if n == 1.into() => MemoryOp::Send,
             Some(n) if n == (-1).into() => MemoryOp::Receive,
@@ -146,7 +116,12 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
         };
         let addr = bus_interaction.args[1].clone();
         let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
-        Ok(Some(MemoryBusInteraction { ty, op, addr, data }))
+        Ok(Some(MemoryBusInteraction {
+            op,
+            address_space,
+            addr,
+            data,
+        }))
     }
 }
 
@@ -158,8 +133,8 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     let address_comparator = MemoryAddressComparator::new(machine);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-    // Address across all memory types.
-    type GlobalAddress<T> = (MemoryType, QuadraticSymbolicExpression<T, Variable>);
+    // Address across all address spaces.
+    type GlobalAddress<T> = (T, QuadraticSymbolicExpression<T, Variable>);
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
@@ -183,7 +158,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
         };
 
         let addr = (
-            mem_int.ty,
+            mem_int.address_space,
             algebraic_to_quadratic_symbolic_expression(&mem_int.addr),
         );
 
@@ -263,8 +238,8 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
     /// `a - b` cannot be 0.
     pub fn are_addrs_known_to_be_different(
         &self,
-        a: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
-        b: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
+        a: &(T, QuadraticSymbolicExpression<T, Variable>),
+        b: &(T, QuadraticSymbolicExpression<T, Variable>),
     ) -> bool {
         if a.0 != b.0 {
             return true;
