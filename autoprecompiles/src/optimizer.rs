@@ -10,7 +10,6 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::{
-    DegreeBound,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     legacy_expression::{
         ast_compatibility::CompatibleWithAstExpression, AlgebraicExpression, AlgebraicReference,
@@ -18,7 +17,7 @@ use crate::{
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::StatsLogger,
-    SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
+    DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
     PC_LOOKUP_BUS_ID,
 };
 

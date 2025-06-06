@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
+use inliner::DegreeBound;
 use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
@@ -9,7 +10,6 @@ use powdr_constraint_solver::{
     solver::Solver,
 };
 use powdr_number::FieldElement;
-use inliner::DegreeBound;
 
 use crate::stats_logger::{IsWitnessColumn, StatsLogger};
 
