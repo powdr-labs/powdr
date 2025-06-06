@@ -15,6 +15,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+mod bitwise_lookup_optimizer;
 pub mod constraint_optimizer;
 pub mod legacy_expression;
 pub mod memory_optimizer;
@@ -197,6 +198,9 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteract
 pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
+pub const VARIABLE_RANGE_CHECKER_BUS_ID: u64 = 3;
+pub const BITWISE_LOOKUP_BUS_ID: u64 = 6;
+pub const TUPLE_RANGE_CHECKER_BUS_ID: u64 = 7;
 
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, T: FieldElement, B> {
