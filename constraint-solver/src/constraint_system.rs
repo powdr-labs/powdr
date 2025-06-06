@@ -17,6 +17,15 @@ pub struct ConstraintSystem<T: FieldElement, V> {
     pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
 }
 
+impl<T: FieldElement, V> Default for ConstraintSystem<T, V> {
+    fn default() -> Self {
+        Self {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: Vec::new(),
+        }
+    }
+}
+
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(

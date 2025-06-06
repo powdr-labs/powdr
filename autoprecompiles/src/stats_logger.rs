@@ -4,6 +4,7 @@ use std::{fmt::Display, time::Instant};
 use itertools::Itertools;
 use powdr_ast::analyzed::PolynomialType;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
+use powdr_constraint_solver::journalled_constraint_system::JournalledConstraintSystem;
 use powdr_number::FieldElement;
 use powdr_pilopt::qse_opt::Variable;
 
@@ -74,6 +75,14 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn> From<&Constr
                 .unique()
                 .count(),
         }
+    }
+}
+
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn>
+    From<&JournalledConstraintSystem<P, V>> for Stats
+{
+    fn from(constraint_system: &JournalledConstraintSystem<P, V>) -> Self {
+        Stats::from(constraint_system.system())
     }
 }
 
