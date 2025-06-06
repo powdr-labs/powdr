@@ -102,10 +102,10 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
             .values_mut()
             .for_each(|occurrences| {
                 *occurrences = occurrences
-                    .into_iter()
+                    .iter_mut()
                     .filter_map(|item| match item {
                         ConstraintSystemItem::AlgebraicConstraint(i) => replacement_map[*i]
-                            .map(|i| ConstraintSystemItem::AlgebraicConstraint(i)),
+                            .map(ConstraintSystemItem::AlgebraicConstraint),
                         ConstraintSystemItem::BusInteraction(_) => Some(*item),
                     })
                     .collect();
@@ -134,10 +134,10 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
             .values_mut()
             .for_each(|occurrences| {
                 *occurrences = occurrences
-                    .into_iter()
+                    .iter_mut()
                     .filter_map(|item| match item {
                         ConstraintSystemItem::BusInteraction(i) => {
-                            replacement_map[*i].map(|i| ConstraintSystemItem::BusInteraction(i))
+                            replacement_map[*i].map(ConstraintSystemItem::BusInteraction)
                         }
                         ConstraintSystemItem::AlgebraicConstraint(_) => Some(*item),
                     })
