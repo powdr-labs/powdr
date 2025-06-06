@@ -11,6 +11,7 @@ members = [
   "cli-rs",
   "constraint-solver",
   "executor",
+  "expression",
   "jit-compiler",
   "riscv",
   "riscv-elf",
@@ -61,6 +62,7 @@ powdr-backend = { path = "./backend", version = "0.1.4" }
 powdr-backend-utils = { path = "./backend-utils", version = "0.1.4" }
 powdr-executor = { path = "./executor", version = "0.1.4" }
 powdr-executor-utils = { path = "./executor-utils", version = "0.1.4" }
+powdr-expression = { path = "./expression", version = "0.1.4" }
 powdr-importer = { path = "./importer", version = "0.1.4" }
 powdr-jit-compiler = { path = "./jit-compiler", version = "0.1.4" }
 powdr-linker = { path = "./linker", version = "0.1.4" }

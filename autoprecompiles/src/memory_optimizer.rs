@@ -4,9 +4,6 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
-};
 use powdr_constraint_solver::boolean_extractor;
 use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
@@ -16,6 +13,7 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::{FieldElement, LargeInt};
 
+use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
 use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, MEMORY_BUS_ID};
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
@@ -322,8 +320,6 @@ fn symbolic_to_simplified_constraints<T: FieldElement>(
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
 pub enum Variable {
     Reference(AlgebraicReference),
-    PublicReference(String),
-    Challenge(Challenge),
     Boolean(usize),
 }
 
@@ -331,8 +327,6 @@ impl Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Variable::Reference(r) => write!(f, "{r}"),
-            Variable::PublicReference(r) => write!(f, "{r}"),
-            Variable::Challenge(c) => write!(f, "{c}"),
             Variable::Boolean(id) => write!(f, "boolean_{id}"),
         }
     }
@@ -403,25 +397,9 @@ fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> QuadraticSymbolicExpression<T, Variable> {
-    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
-
-    struct TerminalConverter;
-
-    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
-        for TerminalConverter
-    {
-        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
-        }
-        fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
-        }
-        fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Challenge(*challenge))
-        }
-    }
-
-    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
+    powdr_expression::conversion::convert(expr, &mut |reference| {
+        QuadraticSymbolicExpression::from_unknown_variable(Variable::Reference(reference.clone()))
+    })
 }
 
 #[cfg(test)]

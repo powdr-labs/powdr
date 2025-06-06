@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 
+use super::simplify_expression;
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicBinaryOperation, AlgebraicExpression};
+use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::{FieldElement, LargeInt};
-use powdr_pilopt::simplify_expression;
 
 use crate::{
+    legacy_expression::AlgebraicExpression,
     powdr::{self, Column},
     PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicInstructionStatement, SymbolicMachine, EXECUTION_BUS_ID, MEMORY_BUS_ID,

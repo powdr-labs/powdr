@@ -1,28 +1,34 @@
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
+use legacy_expression::ast_compatibility::CompatibleWithAstExpression;
+use legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr::UniqueColumns;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator,
-};
-use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_expression::{
+    visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::fmt::Display;
-use std::iter::once;
+use std::{collections::BTreeMap, iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
-use powdr_pilopt::simplify_expression;
 
 pub mod constraint_optimizer;
+pub mod legacy_expression;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+
+pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    // Wrap powdr_pilopt::simplify_expression, which uses powdr_ast::analyzed::AlgebraicExpression.
+    let ast_expression = e.into_ast_expression();
+    let ast_expression = powdr_pilopt::simplify_expression(ast_expression);
+    AlgebraicExpression::try_from_ast_expression(ast_expression).unwrap()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -125,12 +131,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
 
 impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
     pub fn degree(&self) -> usize {
-        let mut cache = Default::default();
-        let ints = Default::default();
-        self.children()
-            .map(|e| e.degree_with_cache(&ints, &mut cache))
-            .max()
-            .unwrap_or(0)
+        self.children().map(|e| e.degree()).max().unwrap_or(0)
     }
 }
 
@@ -255,7 +256,6 @@ fn add_guards_constraint<T: FieldElement>(
                     Box::new(add_guards_constraint(*right, is_valid))
                 }
                 AlgebraicBinaryOperator::Mul => right,
-                AlgebraicBinaryOperator::Pow => unimplemented!(),
             };
             AlgebraicExpression::new_binary(left, op, *right)
         }
