@@ -301,7 +301,10 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
-            degree_bound: customize_exe::OPENVM_DEGREE_BOUND,
+            // We use OPENVM_DEGREE_BOUND - 1 because LogUp can increase the degree of the
+            // expressions in bus interactions. The `-1` here can be removed once the inliner
+            // accepts two different degree bounds for polynomial constraints and bus interactions.
+            degree_bound: customize_exe::OPENVM_DEGREE_BOUND - 1,
             implementation: PrecompileImplementation::default(),
         }
     }
@@ -774,7 +777,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
+    fn prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
         let result = compile_and_prove(guest, config, false, true, stdin, pgo_config);
         assert!(result.is_ok());
     }
@@ -819,15 +822,15 @@ mod tests {
         prove_mock(GUEST, config, stdin, PgoConfig::None);
     }
 
-    // #[test]
-    // #[ignore = "Too much RAM"]
-    // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
-    // #[should_panic = "No such file or directory"]
-    // fn guest_prove_recursion() {
-    //     let mut stdin = StdIn::default();
-    //     stdin.write(&GUEST_ITER);
-    //     prove_recursion(GUEST, GUEST_APC, GUEST_SKIP, stdin);
-    // }
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn guest_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data));
+    }
 
     #[test]
     fn keccak_small_prove_simple() {
@@ -930,7 +933,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(m.width, 53);
         assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 31);
+        assert_eq!(m.bus_interactions, 39);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
@@ -940,9 +943,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 1997);
+        assert_eq!(m.width, 2175);
         assert_eq!(m.constraints, 161);
-        assert_eq!(m.bus_interactions, 1775);
+        assert_eq!(m.bus_interactions, 2181);
     }
 
     #[test]
@@ -963,9 +966,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 8);
+        assert_eq!(m.width, 14);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 0);
+        assert_eq!(m.bus_interactions, 3);
     }
 
     #[test]

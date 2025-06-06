@@ -287,7 +287,12 @@ pub fn customize<P: IntoOpenVm>(
 
     (
         exe,
-        PowdrExtension::new(extensions, base_config, config.implementation),
+        PowdrExtension::new(
+            extensions,
+            base_config,
+            config.implementation,
+            config.bus_map,
+        ),
     )
 }
 

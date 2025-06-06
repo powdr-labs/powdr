@@ -2,12 +2,14 @@ name: Nightly tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *' # run at 2 AM UTC
+    - cron: "0 2 * * *" # run at 2 AM UTC
 
 env:
-    CARGO_TERM_COLOR: always
-    IS_NIGHTLY_TEST: true
-    POWDR_GENERATE_PROOFS: "true"
+  CARGO_TERM_COLOR: always
+  IS_NIGHTLY_TEST: true
+  POWDR_GENERATE_PROOFS: "true"
+  RUSTFLAGS: "-C target-cpu=native"
+  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
 
 jobs:
   check_if_needs_running:
@@ -16,10 +18,10 @@ jobs:
       status: ${{ steps.count.outputs.status }}
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Count recent commits
-      id: count
-      run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+      - name: Count recent commits
+        id: count
+        run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
 
   udeps:
     runs-on: ubuntu-22.04
@@ -39,8 +41,8 @@ jobs:
       - name: Run cargo-udeps
         uses: aig787/cargo-udeps-action@v1
         with:
-          version: 'latest'
-          args: '--all-targets'
+          version: "latest"
+          args: "--all-targets"
 
   test_release:
     runs-on: ubuntu-24.04
@@ -48,31 +50,31 @@ jobs:
     if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: ⚡ Cache rust
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-    - name: Install Rust toolchain 1.85
-      run: rustup toolchain install 1.85
-    - name: Install nightly
-      run: rustup toolchain install nightly-2025-05-14 --component rust-src
-    - name: Install nightly
-      run: rustup toolchain install nightly-2025-02-14 --component rust-src
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
-    - name: Install test dependencies
-      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-    - name: Build
-      run: cargo build --all --release --all-features
-    - name: Run tests
-      run: cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=2
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+      - name: Install Rust toolchain 1.85
+        run: rustup toolchain install 1.85
+      - name: Install nightly
+        run: rustup toolchain install nightly-2025-05-14 --component rust-src
+      - name: Install nightly
+        run: rustup toolchain install nightly-2025-02-14 --component rust-src
+      - name: Install riscv target
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Build
+        run: cargo build --all --release --all-features
+      - name: Run tests
+        run: cargo test --all --release --verbose --all-features --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
 
   bench:
     runs-on: warp-ubuntu-2404-x64-4x
@@ -118,3 +120,23 @@ jobs:
           alert-threshold: "120%"
           comment-on-alert: true
           summary-always: true
+
+  test_apc:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+      - name: Run tests
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=16
