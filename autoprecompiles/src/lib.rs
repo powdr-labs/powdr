@@ -26,7 +26,6 @@ pub mod symbolic_machine_generator;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
-    pub name: String,
     pub opcode: usize,
     pub args: Vec<T>,
 }
@@ -164,7 +163,6 @@ pub enum InstructionKind {
     Normal,
     ConditionalBranch,
     UnconditionalBranch,
-    Terminal,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -199,19 +197,29 @@ pub const EXECUTION_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
-pub fn build<T: FieldElement>(
+/// A configuration of a VM in which execution is happening.
+pub struct VmConfig<'a, T: FieldElement, B> {
+    /// Maps an opcode to its AIR.
+    pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
+    /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
+    pub bus_interaction_handler: B,
+    // TODO: Add bus map
+}
+
+pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
     program: Vec<SymbolicInstructionStatement<T>>,
-    instruction_kind: BTreeMap<String, InstructionKind>,
-    instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    vm_config: VmConfig<T, B>,
     degree_bound: usize,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
-    let (machine, subs) =
-        statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
+    let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
 
-    let machine =
-        optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound)?;
+    let machine = optimizer::optimize(
+        machine,
+        vm_config.bus_interaction_handler,
+        Some(opcode),
+        degree_bound,
+    )?;
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
