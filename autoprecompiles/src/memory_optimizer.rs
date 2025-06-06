@@ -83,9 +83,10 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     address_space: T,
     addr: QuadraticSymbolicExpression<T, V>,
     data: Vec<QuadraticSymbolicExpression<T, V>>,
+    timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq> MemoryBusInteraction<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> {
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
@@ -112,13 +113,15 @@ impl<T: FieldElement, V: Ord + Clone + Eq> MemoryBusInteraction<T, V> {
             Some(n) if n == (-1).into() => MemoryOp::Receive,
             _ => return Err(()),
         };
-        let addr = bus_interaction.payload[1].clone();
-        let data = bus_interaction.payload[2..].to_vec();
+        let [addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
+            panic!();
+        };
         Ok(Some(MemoryBusInteraction {
             op,
             address_space,
-            addr,
-            data,
+            addr: addr.clone(),
+            data: data.into_iter().cloned().collect(),
+            timestamp: timestamp.clone(),
         }))
     }
 }
