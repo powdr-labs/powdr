@@ -65,7 +65,7 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
             map
         });
 
-    count_per_addr.values().all(|&v| v % 2 == 0)
+    count_per_addr.values().all(|&v| v == 2)
 }
 
 #[derive(Clone, Debug)]
