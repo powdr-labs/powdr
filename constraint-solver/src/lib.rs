@@ -4,6 +4,7 @@ pub mod boolean_extractor;
 pub mod constraint_system;
 pub mod effect;
 pub mod indexed_constraint_system;
+pub mod inliner;
 pub mod journalled_constraint_system;
 pub mod quadratic_symbolic_expression;
 pub mod range_constraint;

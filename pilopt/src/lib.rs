@@ -17,7 +17,6 @@ use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
-pub mod inliner;
 pub mod qse_opt;
 pub mod referenced_symbols;
 
