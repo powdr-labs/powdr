@@ -792,10 +792,12 @@ mod tests {
     const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
-    const GUEST_KECCAK_ITER: u32 = 1000;
+    const GUEST_KECCAK_ITER: u32 = 1_000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
+    const GUEST_KECCAK_ITER_LARGE: u32 = 25_000;
     const GUEST_KECCAK_APC: u64 = 1;
-    const GUEST_KECCAK_APC_PGO: u64 = 5;
+    const GUEST_KECCAK_APC_PGO: u64 = 10;
+    const GUEST_KECCAK_APC_PGO_LARGE: u64 = 100;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
@@ -850,6 +852,45 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None);
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn keccak_prove_many_apcs() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER);
+        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
+        prove_recursion(
+            GUEST_KECCAK,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data.clone()),
+        );
+
+        prove_recursion(
+            GUEST_KECCAK,
+            config.clone(),
+            stdin,
+            PgoConfig::Cell(pgo_data),
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn keccak_prove_large() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_LARGE);
+        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
+        prove_recursion(
+            GUEST_KECCAK,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+        );
     }
 
     #[test]
