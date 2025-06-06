@@ -254,16 +254,11 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
 
         let a_exprs = &self.memory_addresses[&a.1.transform_var_type(&mut |v| v.into())];
         let b_exprs = &self.memory_addresses[&b.1.transform_var_type(&mut |v| v.into())];
+        let range_constraints = RangeConstraintsForBooleans::from(NoRangeConstraints);
         a_exprs
             .iter()
             .cartesian_product(b_exprs)
-            .any(|(a_exprs, b_exprs)| {
-                is_value_known_to_be_different(
-                    a_exprs,
-                    b_exprs,
-                    &RangeConstraintsForBooleans::from(NoRangeConstraints),
-                )
-            })
+            .any(|(a_expr, b_expr)| is_known_to_be_nonzero(&(a_expr - b_expr), &range_constraints))
     }
 }
 
@@ -296,13 +291,12 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
     exprs
 }
 
-/// Returns true if we can prove that `a - b` cannot be 0.
-fn is_value_known_to_be_different<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
-    a: &QuadraticSymbolicExpression<T, V>,
-    b: &QuadraticSymbolicExpression<T, V>,
+/// Returns true if we can prove that `expr` cannot be 0.
+fn is_known_to_be_nonzero<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
+    expr: &QuadraticSymbolicExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
-    possible_concrete_values(&(a - b), range_constraints, 20)
+    possible_concrete_values(expr, range_constraints, 20)
         .is_some_and(|mut values| values.all(|value| !value.is_zero()))
 }
 
@@ -317,43 +311,24 @@ mod tests {
 
     #[test]
     fn difference_for_constants() {
-        assert!(!is_value_known_to_be_different(
-            &constant(7),
-            &constant(7),
-            &NoRangeConstraints
-        ));
-        assert!(is_value_known_to_be_different(
-            &constant(4),
-            &constant(0),
-            &NoRangeConstraints
-        ));
-        assert!(is_value_known_to_be_different(
-            &constant(0),
-            &constant(4),
-            &NoRangeConstraints
-        ));
+        assert!(!is_known_to_be_nonzero(&constant(0), &NoRangeConstraints));
+        assert!(is_known_to_be_nonzero(&constant(1), &NoRangeConstraints));
+        assert!(is_known_to_be_nonzero(&constant(7), &NoRangeConstraints));
+        assert!(is_known_to_be_nonzero(&-constant(1), &NoRangeConstraints));
     }
 
     #[test]
     fn difference_for_vars() {
-        assert!(!is_value_known_to_be_different(
-            &(constant(7) + var("a")),
+        assert!(is_known_to_be_nonzero(
             &(constant(7) + var("a")),
             &NoRangeConstraints
         ));
-        assert!(is_value_known_to_be_different(
-            &(constant(7) + var("a")),
-            &(constant(2) + var("a")),
+        assert!(!is_known_to_be_nonzero(
+            &(constant(42) - constant(2) * var("a")),
             &NoRangeConstraints
         ));
-        assert!(!is_value_known_to_be_different(
-            &(constant(7) - var("a")),
-            &(constant(2) + var("a")),
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different(
-            &var("a"),
-            &var("b"),
+        assert!(!is_known_to_be_nonzero(
+            &(var("a") - var("b")),
             &NoRangeConstraints
         ));
     }
