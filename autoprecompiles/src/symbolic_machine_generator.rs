@@ -142,6 +142,38 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         }
     }
 
+    let memory_bus_interactions = bus_interactions
+        .iter()
+        .filter(|bus_int| bus_int.id == MEMORY_BUS_ID)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    tracing::debug!(
+        "Total number of memory bus interactions: {}",
+        memory_bus_interactions.len()
+    ); // 3986
+
+    // apc range: 2820..4813 (exclusive), so 1993 accesses each keccak
+    // 4320 increment timestamp, 24 keccaks, so 180 for each keccak
+    // so 1993 - 180 = 1813 read/write accesses per apc
+    // however 1993 * 2 = 3986
+
+    memory_bus_interactions
+        .iter()
+        .enumerate()
+        .for_each(|(idx, bus_int)| {
+            tracing::debug!(
+                "Memory bus interaction {} mult: {}, args: {:?}",
+                idx,
+                bus_int.mult,
+                bus_int
+                    .args
+                    .iter()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<_>>()
+            );
+        });
+
     (
         SymbolicMachine {
             constraints,

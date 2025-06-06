@@ -4,12 +4,16 @@ use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_number::FieldElement;
 
-use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, BITWISE_LOOKUP_BUS_ID};
+use crate::{
+    optimizer::BusInteractionOptimization, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicMachine, BITWISE_LOOKUP_BUS_ID,
+};
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> SymbolicMachine<T> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
@@ -66,6 +70,12 @@ pub fn optimize_bitwise_lookup<T: FieldElement>(
         .filter(|(i, _)| !to_remove.contains(i))
         .map(|(_, bus_int)| bus_int)
         .collect();
+
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Remove {
+        index: to_remove.into_iter().collect(),
+        keep: false,
+    });
+
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
@@ -88,13 +98,20 @@ pub fn optimize_bitwise_lookup<T: FieldElement>(
     if to_byte_constrain.len() % 2 != 0 {
         to_byte_constrain.push(T::from(0).into());
     }
+
+    let mut to_add = 0;
     for (x, y) in to_byte_constrain.into_iter().tuples() {
         machine.bus_interactions.push(SymbolicBusInteraction {
             id: BITWISE_LOOKUP_BUS_ID,
             args: vec![x.clone(), y.clone(), T::from(0).into(), T::from(0).into()],
             mult: T::from(1).into(),
         });
+        to_add += 1;
     }
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Append {
+        number_appended: to_add,
+    });
+
     machine.constraints.extend(new_constraints);
     machine
 }

@@ -4,11 +4,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use powdr_number::FieldElement;
 
-use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
+use crate::{
+    optimizer::BusInteractionOptimization, MemoryBusInteraction, MemoryOp, MemoryType,
+    SymbolicConstraint, SymbolicMachine,
+};
 
 /// Optimizes bus sends that correspend to register read and write operations.
 pub fn optimize_register_operations<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> SymbolicMachine<T> {
     // For each address, it stores the latest send index and the data.
     let mut memory: BTreeMap<u32, (Option<usize>, Vec<AlgebraicExpression<T>>)> = BTreeMap::new();
@@ -77,6 +81,11 @@ pub fn optimize_register_operations<T: FieldElement>(
         .collect();
 
     machine.constraints.extend(new_constraints);
+
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Remove {
+        index: to_remove,
+        keep: false,
+    });
 
     machine
 }

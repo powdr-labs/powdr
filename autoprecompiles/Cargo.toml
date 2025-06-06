@@ -17,6 +17,7 @@ itertools = "0.13"
 lazy_static = "1.4.0"
 log = "0.4.18"
 serde = "1.0.218"
+tracing = "0.1.40"
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]

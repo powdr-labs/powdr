@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
@@ -10,7 +14,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 use powdr_pilopt::{inliner::replace_constrained_witness_columns, qse_opt::Variable};
 
-use crate::stats_logger::StatsLogger;
+use crate::{optimizer::BusInteractionOptimization, stats_logger::StatsLogger};
 
 #[derive(Debug)]
 pub enum Error {
@@ -35,26 +39,34 @@ pub fn optimize_constraints<P: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> Result<ConstraintSystem<P, Variable>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
-    let constraint_system =
-        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
+    let constraint_system = remove_disconnected_columns(
+        constraint_system,
+        bus_interaction_handler.clone(),
+        bus_int_optimization_tracker,
+    );
     stats_logger.log("removing disconnected columns", &constraint_system);
 
     let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
     stats_logger.log("in-lining witness columns", &constraint_system);
 
-    let constraint_system = remove_trivial_constraints(constraint_system);
+    let constraint_system =
+        remove_trivial_constraints(constraint_system, bus_int_optimization_tracker);
     stats_logger.log("removing trivial constraints", &constraint_system);
 
     let constraint_system = remove_equal_constraints(constraint_system);
     stats_logger.log("removing equal constraints", &constraint_system);
 
-    let constraint_system =
-        remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
+    let constraint_system = remove_equal_bus_interactions(
+        constraint_system,
+        bus_interaction_handler,
+        bus_int_optimization_tracker,
+    );
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
     Ok(constraint_system)
@@ -85,6 +97,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> ConstraintSystem<T, V> {
     // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
     let mut variables_to_keep = constraint_system
@@ -114,6 +127,33 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
         }
     }
 
+    let mut to_remove = BTreeSet::new();
+
+    let bus_interactions = constraint_system
+        .bus_interactions
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, bus_interaction)| {
+            let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+            let has_vars_to_keep = bus_interaction
+                .referenced_variables()
+                .any(|var| variables_to_keep.contains(var));
+            // has_vars_to_keep would also be false for bus interactions containing only
+            // constants, so we also check again whether it is stateful.
+            if bus_interaction_handler.is_stateful(bus_id) || has_vars_to_keep {
+                Some(bus_interaction)
+            } else {
+                to_remove.insert(idx);
+                None
+            }
+        })
+        .collect();
+
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Remove {
+        index: to_remove,
+        keep: false,
+    });
+
     ConstraintSystem {
         algebraic_constraints: constraint_system
             .algebraic_constraints
@@ -124,32 +164,37 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
                     .any(|var| variables_to_keep.contains(var))
             })
             .collect(),
-        bus_interactions: constraint_system
-            .bus_interactions
-            .into_iter()
-            .filter(|bus_interaction| {
-                let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
-                let has_vars_to_keep = bus_interaction
-                    .referenced_variables()
-                    .any(|var| variables_to_keep.contains(var));
-                // has_vars_to_keep would also be false for bus interactions containing only
-                // constants, so we also check again whether it is stateful.
-                bus_interaction_handler.is_stateful(bus_id) || has_vars_to_keep
-            })
-            .collect(),
+        bus_interactions,
     }
 }
 
 fn remove_trivial_constraints<P: FieldElement>(
     mut symbolic_machine: ConstraintSystem<P, Variable>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> ConstraintSystem<P, Variable> {
     let zero = QuadraticSymbolicExpression::from(P::zero());
     symbolic_machine
         .algebraic_constraints
         .retain(|constraint| constraint != &zero);
-    symbolic_machine
+    let mut to_remove = BTreeSet::new();
+    symbolic_machine.bus_interactions = symbolic_machine
         .bus_interactions
-        .retain(|bus_interaction| bus_interaction.multiplicity != zero);
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, bus_interaction)| {
+            if bus_interaction.multiplicity == zero {
+                to_remove.insert(index);
+                None
+            } else {
+                Some(bus_interaction)
+            }
+        })
+        .collect();
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Remove {
+        index: to_remove,
+        keep: false,
+    });
+
     symbolic_machine
 }
 
@@ -167,22 +212,30 @@ fn remove_equal_constraints<P: FieldElement>(
 fn remove_equal_bus_interactions<P: FieldElement>(
     mut symbolic_machine: ConstraintSystem<P, Variable>,
     bus_interaction_handler: impl IsBusStateful<P>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> ConstraintSystem<P, Variable> {
     let mut seen = HashSet::new();
+    let mut to_remove = BTreeSet::new();
     symbolic_machine.bus_interactions = symbolic_machine
         .bus_interactions
         .into_iter()
-        .filter_map(|interaction| {
+        .enumerate()
+        .filter_map(|(idx, interaction)| {
             // We only touch interactions with non-stateful buses.
             if let Some(bus_id) = interaction.bus_id.try_to_number() {
                 if !bus_interaction_handler.is_stateful(bus_id) && !seen.insert(interaction.clone())
                 {
+                    to_remove.insert(idx);
                     return None;
                 }
             }
             Some(interaction)
         })
         .collect();
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Remove {
+        index: to_remove,
+        keep: false,
+    });
     symbolic_machine
 }
 

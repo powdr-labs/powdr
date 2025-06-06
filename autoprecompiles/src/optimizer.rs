@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
@@ -23,16 +23,22 @@ use crate::{
     powdr::{self},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     stats_logger::StatsLogger,
-    SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
-    PC_LOOKUP_BUS_ID,
+    MemoryBusInteraction, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+    EXECUTION_BUS_ID, PC_LOOKUP_BUS_ID,
 };
+
+#[derive(Debug)]
+pub enum BusInteractionOptimization {
+    Remove { index: BTreeSet<usize>, keep: bool },
+    Append { number_appended: usize },
+}
 
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
     degree_bound: usize,
-) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
+) -> Result<(SymbolicMachine<T>, BTreeSet<usize>), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
     let machine = if let Some(opcode) = opcode {
         let machine = optimize_pc_lookup(machine, opcode);
@@ -46,6 +52,25 @@ pub fn optimize<T: FieldElement>(
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
 
+    let mut bus_int_optimization_tracker: Vec<BusInteractionOptimization> = Vec::new();
+
+    // No memory bus interactions is removed before this point (they are stateful)
+    // so we snapshot the indices of memory bus interactions
+    let mem_bus_int_idx = constraint_system
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .map(|(idx, bus_int)| {
+            if bus_int.bus_id.try_to_number() == Some(T::from(crate::MEMORY_BUS_ID)) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    tracing::debug!("mem_bus_int_idx: {:?}", mem_bus_int_idx);
+
     loop {
         let size = system_size(&constraint_system);
         constraint_system = optimization_loop_iteration(
@@ -53,11 +78,25 @@ pub fn optimize<T: FieldElement>(
             bus_interaction_handler.clone(),
             degree_bound,
             &mut stats_logger,
+            &mut bus_int_optimization_tracker,
         )?;
         if system_size(&constraint_system) == size {
-            return Ok(constraint_system_to_symbolic_machine(constraint_system));
+            break;
         }
     }
+
+    let mem_bus_int_original_index =
+        compute_orig_mem_bus_int_idx(mem_bus_int_idx, &mut bus_int_optimization_tracker);
+
+    tracing::debug!(
+        "mem_bus_int_original_index: {:?}",
+        mem_bus_int_original_index
+    );
+
+    return Ok((
+        constraint_system_to_symbolic_machine(constraint_system),
+        mem_bus_int_original_index,
+    ));
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
@@ -65,22 +104,32 @@ fn optimization_loop_iteration<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
 ) -> Result<ConstraintSystem<T, Variable>, crate::constraint_optimizer::Error> {
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
+        bus_int_optimization_tracker,
     )?;
+
     // TODO avoid conversions
-    let machine =
-        optimize_register_operations(constraint_system_to_symbolic_machine(constraint_system));
+    let machine = optimize_register_operations(
+        constraint_system_to_symbolic_machine(constraint_system),
+        bus_int_optimization_tracker,
+    );
+    // tracing::debug!("optimize_register_operations to_remove: {:?}", reg_mem_bus_int_removed);
     assert!(check_register_operation_consistency(&machine));
     stats_logger.log("register optimization", &machine);
-    let machine = optimize_memory(machine);
+    let machine = optimize_memory(machine, bus_int_optimization_tracker);
+    // tracing::debug!(
+    //     "optimize_memory to_remove: {:?}",
+    //     heap_mem_bus_int_removed
+    // );
     stats_logger.log("memory optimization", &machine);
 
-    let machine = optimize_bitwise_lookup(machine);
+    let machine = optimize_bitwise_lookup(machine, bus_int_optimization_tracker);
     stats_logger.log("optimizing bitwise lookup", &machine);
 
     Ok(symbolic_machine_to_constraint_system(machine))
@@ -276,4 +325,46 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
             &bus_interaction.multiplicity,
         )),
     }
+}
+
+fn compute_orig_mem_bus_int_idx(
+    mut orig_mem_bus_int_idx: Vec<Option<usize>>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
+) -> BTreeSet<usize> {
+    tracing::debug!(
+        "original # of bus interactions: {}",
+        orig_mem_bus_int_idx.len()
+    );
+    tracing::debug!("original bus interactions: {:?}", orig_mem_bus_int_idx);
+
+    // store original indices that ever get removed
+    let mut removed_indices = BTreeSet::new();
+
+    bus_int_optimization_tracker
+        .iter()
+        .for_each(|optimization| {
+            tracing::debug!("bus interaction optimization: {:?}", optimization);
+            tracing::debug!("applying optimization to {:?}", orig_mem_bus_int_idx);
+            match optimization {
+                BusInteractionOptimization::Remove { index, keep } => {
+                    for idx in index.iter().rev() {
+                        if *keep {
+                            // bus interaction we track are expected to be heap memory bus interactions and thus memory bus interactions
+                            removed_indices.insert(orig_mem_bus_int_idx.remove(*idx).expect(
+                                format!("index {} should be memory bus interaction", idx).as_str(),
+                            ));
+                        } else {
+                            // bus interactions we don't keep are expected to be non heap memory bus interactions
+                            orig_mem_bus_int_idx.remove(*idx);
+                        }
+                    }
+                }
+                BusInteractionOptimization::Append { number_appended } => {
+                    // appended bus interactions are not memory bus interactions
+                    orig_mem_bus_int_idx.extend(std::iter::repeat(None).take(*number_appended));
+                }
+            }
+        });
+
+    removed_indices
 }

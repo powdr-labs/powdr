@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -16,14 +16,18 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
+use crate::optimizer::BusInteractionOptimization;
 use crate::{MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint, SymbolicMachine};
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
-pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+pub fn optimize_memory<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
+) -> SymbolicMachine<T> {
     let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine);
-    let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
+    let to_remove = to_remove.into_iter().collect::<BTreeSet<_>>();
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
@@ -31,6 +35,10 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
         .collect();
     machine.constraints.extend(new_constraints);
+    bus_int_optimization_tracker.push(BusInteractionOptimization::Remove {
+        index: to_remove,
+        keep: true,
+    });
     machine
 }
 
@@ -71,7 +79,11 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
+                    tracing::debug!(
+                        "address: {addr}, previous send: {previous_send}, current receive: {index}"
+                    );
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data.iter()) {
+                        tracing::debug!("   {} = {}", existing, new);
                         new_constraints.push((existing.clone() - new.clone()).into());
                     }
                     to_remove.extend([index, previous_send]);

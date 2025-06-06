@@ -236,7 +236,7 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     /// Returns `Err(_)` if the bus interaction is a memory bus interaction of the given type but could not be converted properly
     /// (usually because the multiplicity is not -1 or 1).
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
-    fn try_from_symbolic_bus_interaction_with_memory_kind(
+    pub fn try_from_symbolic_bus_interaction_with_memory_kind(
         bus_interaction: &SymbolicBusInteraction<T>,
         memory_type: MemoryType,
     ) -> Result<Option<Self>, ()> {
@@ -310,7 +310,7 @@ pub fn build<T: FieldElement>(
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-    let machine =
+    let (machine, removed_memory_bus_interactions) =
         optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound)?;
 
     // add guards to constraints that are not satisfied by zeroes
