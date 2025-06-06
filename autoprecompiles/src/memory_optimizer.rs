@@ -83,6 +83,7 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     address_space: T,
     addr: QuadraticSymbolicExpression<T, V>,
     data: Vec<QuadraticSymbolicExpression<T, V>>,
+    #[allow(dead_code)]
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
@@ -120,7 +121,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
             op,
             address_space,
             addr: addr.clone(),
-            data: data.into_iter().cloned().collect(),
+            data: data.to_vec(),
             timestamp: timestamp.clone(),
         }))
     }
