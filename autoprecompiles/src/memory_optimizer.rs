@@ -3,9 +3,6 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
-};
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
@@ -18,6 +15,8 @@ use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::{FieldElement, LargeInt};
 use powdr_pilopt::qse_opt::Variable;
 
+use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
+use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
 use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, MEMORY_BUS_ID};
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
@@ -357,33 +356,6 @@ fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash
         RangeConstraint::from_range(-T::from(word_size - 1), T::from(word_size - 1));
     possible_concrete_values(&(a - b), range_constraints, 20)
         .is_some_and(|mut values| !values.any(|value| disallowed_range.allows_value(value)))
-}
-
-/// Turns an algebraic expression into a quadratic symbolic expression,
-/// assuming all [`AlgebraicReference`]s, public references and challenges
-/// are unknown variables.
-pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> QuadraticSymbolicExpression<T, Variable> {
-    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
-
-    struct TerminalConverter;
-
-    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
-        for TerminalConverter
-    {
-        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
-        }
-        fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
-        }
-        fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Challenge(*challenge))
-        }
-    }
-
-    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
 }
 
 #[cfg(test)]
