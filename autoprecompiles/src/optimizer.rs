@@ -55,16 +55,17 @@ pub fn optimize<T: FieldElement>(
     let mut bus_int_optimization_tracker: Vec<BusInteractionOptimization> = Vec::new();
 
     // No memory bus interactions is removed before this point (they are stateful)
-    // so we snapshot the indices of memory bus interactions
+    // so we snapshot the indices of memory bus interactions (both register and heap, so that they match memory records)
     let mem_bus_int_idx = constraint_system
         .bus_interactions
         .iter()
-        .enumerate()
-        .map(|(idx, bus_int)| {
+        .scan(0usize, |counter, bus_int| {
             if bus_int.bus_id.try_to_number() == Some(T::from(crate::MEMORY_BUS_ID)) {
-                Some(idx)
+                let idx = *counter;
+                *counter += 1;
+                Some(Some(idx))
             } else {
-                None
+                Some(None)
             }
         })
         .collect::<Vec<_>>();
