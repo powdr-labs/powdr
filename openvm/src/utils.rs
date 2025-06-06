@@ -70,9 +70,10 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
         }
     }
 }
+
 pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
     expr: &SymbolicExpression<T>,
-    columns: &[String],
+    columns: &[Arc<String>],
 ) -> AlgebraicExpression<P> {
     match expr {
         SymbolicExpression::Constant(c) => {
@@ -128,7 +129,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
             _ => unimplemented!(),
         },
         SymbolicExpression::IsFirstRow => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_first_row".to_string(),
+            name: Arc::new("is_first_row".to_string()),
             poly_id: PolyID {
                 id: 0,
                 ptype: PolynomialType::Constant,
@@ -136,7 +137,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
             next: false,
         }),
         SymbolicExpression::IsLastRow => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_last_row".to_string(),
+            name: Arc::new("is_last_row".to_string()),
             poly_id: PolyID {
                 id: 1,
                 ptype: PolynomialType::Constant,
@@ -144,7 +145,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
             next: false,
         }),
         SymbolicExpression::IsTransition => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_transition".to_string(),
+            name: Arc::new("is_transition".to_string()),
             poly_id: PolyID {
                 id: 2,
                 ptype: PolynomialType::Constant,
@@ -157,7 +158,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
 pub fn get_pil<F: PrimeField32>(
     name: &str,
     constraints: &SymbolicConstraints<F>,
-    columns: &Vec<String>,
+    columns: &Vec<Arc<String>>,
     public_values: Vec<String>,
     bus_map: &BusMap,
 ) -> String {
@@ -229,7 +230,7 @@ namespace {name};
 fn format_bus_interaction<F: PrimeField32>(
     pil: &mut String,
     interaction: &Interaction<SymbolicExpression<F>>,
-    columns: &[String],
+    columns: &[Arc<String>],
     public_values: &[String],
     bus_name: &str,
 ) {
@@ -251,7 +252,7 @@ fn format_bus_interaction<F: PrimeField32>(
 
 fn format_expr<F: PrimeField32>(
     expr: &SymbolicExpression<F>,
-    columns: &[String],
+    columns: &[Arc<String>],
     // TODO: Implement public references
     _public_values: &[String],
 ) -> String {

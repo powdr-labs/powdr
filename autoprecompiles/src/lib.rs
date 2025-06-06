@@ -10,6 +10,7 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::sync::Arc;
 use std::{collections::BTreeMap, iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
@@ -278,7 +279,7 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
         + 1;
 
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-        name: "is_valid".to_string(),
+        name: Arc::new("is_valid".to_string()),
         poly_id: PolyID {
             ptype: PolynomialType::Committed,
             id: max_id,

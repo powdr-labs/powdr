@@ -7,7 +7,10 @@ use powdr_expression::{
     AlgebraicUnaryOperator,
 };
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
@@ -36,7 +39,7 @@ pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
     /// In case of an array element, this ends in `[i]`.
-    pub name: String,
+    pub name: Arc<String>,
     /// Identifier for a polynomial reference, already contains
     /// the element offset in case of an array element.
     pub poly_id: PolyID,
