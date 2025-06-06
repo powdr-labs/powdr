@@ -1,10 +1,12 @@
-use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ConstraintRef;
-use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::{
+use crate::constraint_system::ConstraintRef;
+use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::{
     constraint_system::ConstraintSystem, quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
+
+use itertools::Itertools;
 use powdr_number::FieldElement;
+
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -158,7 +160,7 @@ fn qse_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 
 #[cfg(test)]
 mod test {
-    use powdr_constraint_solver::{
+    use crate::{
         constraint_system::BusInteraction,
         test_utils::{constant, var},
     };

@@ -4,11 +4,12 @@ use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
     indexed_constraint_system::apply_substitutions,
+    inliner,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::Solver,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::inliner::{replace_constrained_witness_columns, DegreeBound};
+use inliner::DegreeBound;
 
 use crate::stats_logger::{IsWitnessColumn, StatsLogger};
 
@@ -47,7 +48,8 @@ pub fn optimize_constraints<
         remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
-    let constraint_system = replace_constrained_witness_columns(constraint_system, degree_bound);
+    let constraint_system =
+        inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);

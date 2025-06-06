@@ -6,6 +6,7 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe, InstructionExecutor, Streams, SystemConfig, VirtualMachine,
     VmChipComplex, VmConfig, VmInventoryError,
 };
+use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
@@ -369,7 +370,12 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let airs = instructions_to_airs(exe.clone(), sdk_vm_config.clone());
+    let used_instructions = exe
+        .program
+        .instructions_and_debug_infos
+        .iter()
+        .map(|instr| instr.as_ref().unwrap().0.opcode);
+    let airs = instructions_to_airs(sdk_vm_config.clone(), used_instructions);
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -603,49 +609,46 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
 }
 
 pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
-    exe: VmExe<OpenVmField<P>>,
     vm_config: VC,
+    used_instructions: impl Iterator<Item = VmOpcode>,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
 {
-    let mut chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-    exe.program
-        .instructions_and_debug_infos
-        .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode)
-        .unique()
+    let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
+
+    // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
+    // which depends on the program being executed. But this turns out to be heavy on memory, because
+    // it includes large precompiles like Keccak.
+    used_instructions
         .filter_map(|op| {
-            chip_complex
-                .inventory
-                .get_mut_executor(&op)
-                .map(|executor| {
-                    let air = executor.air();
+            chip_complex.inventory.get_executor(op).map(|executor| {
+                let air = executor.air();
 
-                    let columns = get_columns(air.clone());
+                let columns = get_columns(air.clone());
 
-                    let constraints = get_constraints(air);
+                let constraints = get_constraints(air);
 
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
-                        .collect::<Vec<_>>();
+                let powdr_exprs = constraints
+                    .constraints
+                    .iter()
+                    .map(|expr| symbolic_to_algebraic(expr, &columns).into())
+                    .collect::<Vec<_>>();
 
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                        .collect();
+                let powdr_bus_interactions = constraints
+                    .interactions
+                    .iter()
+                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                    .collect();
 
-                    let symb_machine = SymbolicMachine {
-                        constraints: powdr_exprs,
-                        bus_interactions: powdr_bus_interactions,
-                    };
+                let symb_machine = SymbolicMachine {
+                    constraints: powdr_exprs,
+                    bus_interactions: powdr_bus_interactions,
+                };
 
-                    (op.as_usize(), symb_machine)
-                })
+                (op.as_usize(), symb_machine)
+            })
         })
         .collect()
 }
@@ -777,7 +780,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
+    fn prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
         let result = compile_and_prove(guest, config, false, true, stdin, pgo_config);
         assert!(result.is_ok());
     }
@@ -822,15 +825,15 @@ mod tests {
         prove_mock(GUEST, config, stdin, PgoConfig::None);
     }
 
-    // #[test]
-    // #[ignore = "Too much RAM"]
-    // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
-    // #[should_panic = "No such file or directory"]
-    // fn guest_prove_recursion() {
-    //     let mut stdin = StdIn::default();
-    //     stdin.write(&GUEST_ITER);
-    //     prove_recursion(GUEST, GUEST_APC, GUEST_SKIP, stdin);
-    // }
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn guest_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data));
+    }
 
     #[test]
     fn keccak_small_prove_simple() {
