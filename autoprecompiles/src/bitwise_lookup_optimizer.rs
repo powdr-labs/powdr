@@ -54,9 +54,9 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 let [a, b] = args.try_into().unwrap();
                 new_constraints.push(a.clone() - b.clone());
                 to_byte_constrain.push(a.clone());
-                true
-            } else {
                 false
+            } else {
+                true
             }
         } else {
             panic!("Expected bitwise bus interaction operation to be either 0 or 1.");
@@ -92,11 +92,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
             multiplicity: T::from(1).into(),
         });
     }
-    system.algebraic_constraints.extend(
-        new_constraints
-            .into_iter()
-            .filter(|e| e != &T::from(0).into()),
-    );
+    system.algebraic_constraints.extend(new_constraints);
     system
 }
 
