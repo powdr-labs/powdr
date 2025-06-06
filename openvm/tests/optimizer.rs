@@ -54,7 +54,7 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [2174, 2181, 160]
+        [1996, 1775, 160]
     );
 }
 

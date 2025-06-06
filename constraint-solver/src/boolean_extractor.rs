@@ -9,6 +9,10 @@ use powdr_number::FieldElement;
 
 /// Tries to simplify a quadratic constraint by transforming it into an affine
 /// constraint that makes use of a new boolean variable.
+/// NOTE: The boolean constraint is not part of the output.
+///
+/// For example `(a + b) * (a + b + 10) = 0` can be transformed into
+/// `a + b + z * 10 = 0`, where `z` is a new boolean variable.
 ///
 /// @param constraint The quadratic constraint to transform.
 /// @param var_dispenser A function that returns a new variable that is assumed to be boolean-constrained.
@@ -35,6 +39,9 @@ pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 /// Tries to simplify a sequence of constraints by transforming them into affine
 /// constraints that make use of a new variable that is assumed to be boolean constrained.
 /// NOTE: The boolean constraint is not part of the output.
+///
+/// For example `(a + b) * (a + b + 10) = 0` can be transformed into
+/// `a + b + z * 10 = 0`, where `z` is a new boolean variable.
 ///
 /// The constraints in the output use a new variable type that can be converted from
 /// the original variable type.
