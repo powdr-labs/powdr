@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_number::FieldElement;
 
-use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, BITWISE_LOOKUP_BUS_ID};
+use crate::{
+    legacy_expression::AlgebraicExpression, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicMachine, BITWISE_LOOKUP_BUS_ID,
+};
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
