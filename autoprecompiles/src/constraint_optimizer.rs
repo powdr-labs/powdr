@@ -113,7 +113,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
         }
     }
 
-    constraint_system.retain_constraints(|constraint| {
+    constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
             .referenced_variables()
             .any(|var| variables_to_keep.contains(var))
@@ -134,7 +134,7 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq>(
     constraint_system: &mut JournalledConstraintSystem<P, V>,
 ) {
     let zero = QuadraticSymbolicExpression::from(P::zero());
-    constraint_system.retain_constraints(|constraint| constraint != &zero);
+    constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
     constraint_system
         .retain_bus_interactions(|bus_interaction| bus_interaction.multiplicity != zero);
 }
@@ -143,7 +143,7 @@ fn remove_equal_constraints<P: FieldElement, V: Eq + Hash + Clone>(
     constraint_system: &mut JournalledConstraintSystem<P, V>,
 ) {
     let mut seen = HashSet::new();
-    constraint_system.retain_constraints(|constraint| seen.insert(constraint.clone()));
+    constraint_system.retain_algebraic_constraints(|constraint| seen.insert(constraint.clone()));
 }
 
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(

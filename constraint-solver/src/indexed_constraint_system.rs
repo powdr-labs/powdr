@@ -81,7 +81,7 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
 
 impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     /// Removes all constraints that do not fulfill the predicate.
-    pub fn retain_constraints(
+    pub fn retain_algebraic_constraints(
         &mut self,
         mut f: impl FnMut(&QuadraticSymbolicExpression<T, V>) -> bool,
     ) {
@@ -409,7 +409,7 @@ mod tests {
         }
         .into();
 
-        s.retain_constraints(|c| !c.referenced_unknown_variables().any(|v| *v == "y"));
+        s.retain_algebraic_constraints(|c| !c.referenced_unknown_variables().any(|v| *v == "y"));
         s.retain_bus_interactions(|b| {
             !b.fields()
                 .any(|e| e.referenced_unknown_variables().any(|v| *v == "y"))
