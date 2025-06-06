@@ -13,7 +13,6 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::{FieldElement, LargeInt};
-use powdr_pilopt::qse_opt::Variable;
 
 use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
 use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
@@ -171,7 +170,10 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
     // Address across all memory types.
-    type GlobalAddress<T> = (MemoryType, QuadraticSymbolicExpression<T, Variable>);
+    type GlobalAddress<T> = (
+        MemoryType,
+        QuadraticSymbolicExpression<T, AlgebraicReference>,
+    );
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
@@ -242,8 +244,8 @@ struct MemoryAddressComparator<T: FieldElement> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
     memory_addresses: HashMap<
-        BooleanExtractedExpression<T, Variable>,
-        Vec<BooleanExtractedExpression<T, Variable>>,
+        BooleanExtractedExpression<T, AlgebraicReference>,
+        Vec<BooleanExtractedExpression<T, AlgebraicReference>>,
     >,
 }
 
@@ -287,8 +289,14 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
     /// `a - b` never falls into the range `-3..=3`.
     pub fn are_addrs_known_to_be_different_by_word(
         &self,
-        a: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
-        b: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
+        a: &(
+            MemoryType,
+            QuadraticSymbolicExpression<T, AlgebraicReference>,
+        ),
+        b: &(
+            MemoryType,
+            QuadraticSymbolicExpression<T, AlgebraicReference>,
+        ),
         word_size: u32,
     ) -> bool {
         if a.0 != b.0 {
