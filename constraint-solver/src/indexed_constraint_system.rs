@@ -27,6 +27,7 @@ pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
+#[derive(Clone, Default)]
 pub struct IndexedConstraintSystem<T: FieldElement, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
@@ -59,6 +60,10 @@ impl<T: FieldElement, V> From<IndexedConstraintSystem<T, V>> for ConstraintSyste
 }
 
 impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
+        &self.constraint_system
+    }
+
     pub fn algebraic_constraints(&self) -> &[QuadraticSymbolicExpression<T, V>] {
         &self.constraint_system.algebraic_constraints
     }
@@ -71,6 +76,74 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     /// constraints and all expressions in bus interactions.
     pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         self.constraint_system.expressions()
+    }
+}
+
+impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+    /// Removes all constraints that do not fulfill the predicate.
+    pub fn retain_algebraic_constraints(
+        &mut self,
+        mut f: impl FnMut(&QuadraticSymbolicExpression<T, V>) -> bool,
+    ) {
+        let mut counter = 0usize;
+        let mut replacement_map = vec![];
+        self.constraint_system.algebraic_constraints.retain(|c| {
+            let retain = f(c);
+            if retain {
+                replacement_map.push(Some(counter));
+                counter += 1;
+            } else {
+                replacement_map.push(None);
+            }
+            retain
+        });
+        assert_eq!(counter, self.constraint_system.algebraic_constraints.len());
+        self.variable_occurrences
+            .values_mut()
+            .for_each(|occurrences| {
+                *occurrences = occurrences
+                    .iter_mut()
+                    .filter_map(|item| match item {
+                        ConstraintSystemItem::AlgebraicConstraint(i) => {
+                            replacement_map[*i].map(ConstraintSystemItem::AlgebraicConstraint)
+                        }
+                        ConstraintSystemItem::BusInteraction(_) => Some(*item),
+                    })
+                    .collect();
+            });
+    }
+
+    /// Removes all bus interactions that do not fulfill the predicate.
+    pub fn retain_bus_interactions(
+        &mut self,
+        mut f: impl FnMut(&BusInteraction<QuadraticSymbolicExpression<T, V>>) -> bool,
+    ) {
+        let mut counter = 0usize;
+        let mut replacement_map = vec![];
+        self.constraint_system.bus_interactions.retain(|c| {
+            let retain = f(c);
+            if retain {
+                replacement_map.push(Some(counter));
+                counter += 1;
+            } else {
+                replacement_map.push(None);
+            }
+            retain
+        });
+        assert_eq!(counter, self.constraint_system.bus_interactions.len());
+        self.variable_occurrences
+            .values_mut()
+            .for_each(|occurrences| {
+                *occurrences = occurrences
+                    .iter_mut()
+                    .filter_map(|item| match item {
+                        ConstraintSystemItem::BusInteraction(i) => {
+                            replacement_map[*i].map(ConstraintSystemItem::BusInteraction)
+                        }
+                        ConstraintSystemItem::AlgebraicConstraint(_) => Some(*item),
+                    })
+                    .collect();
+            });
     }
 }
 
@@ -308,5 +381,78 @@ mod tests {
             format_system(&s),
             "x + y + 7  |  0  |  -x + y + -7  |  x + 7: y * [y, x + 7]"
         );
+    }
+
+    #[test]
+    fn retain_update_index() {
+        type Qse = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
+        let x = Qse::from_unknown_variable("x");
+        let y = Qse::from_unknown_variable("y");
+        let z = Qse::from_unknown_variable("z");
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
+            algebraic_constraints: vec![
+                x.clone() + y.clone(),
+                x.clone() - z.clone(),
+                y.clone() - z.clone(),
+            ],
+            bus_interactions: vec![
+                BusInteraction {
+                    bus_id: x.clone(),
+                    payload: vec![y.clone(), z],
+                    multiplicity: y,
+                },
+                BusInteraction {
+                    bus_id: x.clone(),
+                    payload: vec![x.clone(), x.clone()],
+                    multiplicity: x,
+                },
+            ],
+        }
+        .into();
+
+        s.retain_algebraic_constraints(|c| !c.referenced_unknown_variables().any(|v| *v == "y"));
+        s.retain_bus_interactions(|b| {
+            !b.fields()
+                .any(|e| e.referenced_unknown_variables().any(|v| *v == "y"))
+        });
+
+        assert_eq!(
+            s.constraints_referencing_variables(["y"].into_iter())
+                .count(),
+            0
+        );
+        let items_with_x = s
+            .constraints_referencing_variables(["x"].into_iter())
+            .map(|c| match c {
+                ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    format!(
+                        "{}: {} * [{}]",
+                        bus_interaction.bus_id,
+                        bus_interaction.multiplicity,
+                        bus_interaction.payload.iter().format(", ")
+                    )
+                }
+            })
+            .format(", ")
+            .to_string();
+        assert_eq!(items_with_x, "x + -z, x: x * [x, x]");
+
+        let items_with_z = s
+            .constraints_referencing_variables(["z"].into_iter())
+            .map(|c| match c {
+                ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    format!(
+                        "{}: {} * [{}]",
+                        bus_interaction.bus_id,
+                        bus_interaction.multiplicity,
+                        bus_interaction.payload.iter().format(", ")
+                    )
+                }
+            })
+            .format(", ")
+            .to_string();
+        assert_eq!(items_with_z, "x + -z");
     }
 }
