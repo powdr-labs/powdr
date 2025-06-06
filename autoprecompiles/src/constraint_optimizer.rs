@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
+use inliner::DegreeBound;
 use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
@@ -36,7 +37,7 @@ pub fn optimize_constraints<
 >(
     constraint_system: ConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system =

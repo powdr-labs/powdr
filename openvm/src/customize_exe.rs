@@ -17,6 +17,7 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
     SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
@@ -471,7 +472,7 @@ fn generate_apc_cache<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
     let (autoprecompile, subs) =
         generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
@@ -492,7 +493,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
