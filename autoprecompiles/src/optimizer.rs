@@ -1,24 +1,20 @@
 use std::collections::BTreeMap;
 
+use super::simplify_expression;
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use powdr_pilopt::{
-    qse_opt::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-        Variable,
-    },
-    simplify_expression,
-};
 
 use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
+    legacy_expression::{
+        ast_compatibility::CompatibleWithAstExpression, AlgebraicExpression, AlgebraicReference,
+    },
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::StatsLogger,
@@ -60,11 +56,11 @@ pub fn optimize<T: FieldElement>(
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, Variable>,
+    constraint_system: ConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
-) -> Result<ConstraintSystem<T, Variable>, crate::constraint_optimizer::Error> {
+) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
@@ -83,7 +79,9 @@ fn optimization_loop_iteration<T: FieldElement>(
     Ok(symbolic_machine_to_constraint_system(machine))
 }
 
-fn system_size<T: FieldElement>(constraint_system: &ConstraintSystem<T, Variable>) -> [usize; 3] {
+fn system_size<T: FieldElement>(
+    constraint_system: &ConstraintSystem<T, AlgebraicReference>,
+) -> [usize; 3] {
     [
         constraint_system.algebraic_constraints.len(),
         constraint_system.bus_interactions.len(),
@@ -202,7 +200,7 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
 
 fn symbolic_machine_to_constraint_system<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-) -> ConstraintSystem<P, Variable> {
+) -> ConstraintSystem<P, AlgebraicReference> {
     ConstraintSystem {
         algebraic_constraints: symbolic_machine
             .constraints
@@ -218,7 +216,7 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
 }
 
 fn constraint_system_to_symbolic_machine<P: FieldElement>(
-    constraint_system: ConstraintSystem<P, Variable>,
+    constraint_system: ConstraintSystem<P, AlgebraicReference>,
 ) -> SymbolicMachine<P> {
     SymbolicMachine {
         constraints: constraint_system
@@ -238,7 +236,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
-) -> BusInteraction<QuadraticSymbolicExpression<P, Variable>> {
+) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
     BusInteraction {
         bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
         payload: bus_interaction
@@ -251,7 +249,7 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
 }
 
 fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
-    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, Variable>>,
+    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>>,
 ) -> SymbolicBusInteraction<P> {
     // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
     // so this should always succeed.
@@ -273,4 +271,33 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
             &bus_interaction.multiplicity,
         )),
     }
+}
+
+/// Turns an algebraic expression into a quadratic symbolic expression,
+/// assuming all [`AlgebraicReference`]s are unknown variables.
+pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+) -> QuadraticSymbolicExpression<T, AlgebraicReference> {
+    powdr_expression::conversion::convert(expr, &mut |reference| {
+        QuadraticSymbolicExpression::from_unknown_variable(reference.clone())
+    })
+}
+
+/// Turns a quadratic symbolic expression back into an algebraic expression.
+/// Tries to simplify the expression wrt negation and constant factors
+/// to aid human readability.
+pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
+    expr: &QuadraticSymbolicExpression<T, AlgebraicReference>,
+) -> AlgebraicExpression<T> {
+    // Wrap `powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic`, which
+    // works on a `powdr_ast::analyzed::AlgebraicExpression`.
+    let expr = expr.transform_var_type(&mut |algebraic_reference| {
+        powdr_pilopt::qse_opt::Variable::Reference(algebraic_reference.clone().into())
+    });
+    // This is where the core conversion is implemented, including the simplification.
+    let ast_algebraic_expression =
+        powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic(&expr);
+    // Unwrap should be fine, because by construction we don't have challenges or public references,
+    // and quadratic_symbolic_expression_to_algebraic should not introduce any exponentiations.
+    AlgebraicExpression::try_from_ast_expression(ast_algebraic_expression).unwrap()
 }
