@@ -234,8 +234,9 @@ impl<T, V> PlonkCircuit<T, V> {
 
 #[cfg(test)]
 pub mod test_utils {
-    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_autoprecompiles::legacy_expression::{
+        AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
+    };
     use powdr_number::BabyBearField;
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
         AlgebraicExpression::Reference(AlgebraicReference {

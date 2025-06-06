@@ -2,13 +2,15 @@ use std::hash::Hash;
 use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::PolynomialType;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_constraint_solver::journalled_constraint_system::JournalledConstraintSystem;
 use powdr_number::FieldElement;
-use powdr_pilopt::qse_opt::Variable;
 
-use crate::{powdr::UniqueColumns, SymbolicMachine};
+use crate::{
+    legacy_expression::{AlgebraicReference, PolynomialType},
+    powdr::UniqueColumns,
+    SymbolicMachine,
+};
 
 pub struct StatsLogger {
     start_time: Instant,
@@ -91,11 +93,8 @@ pub trait IsWitnessColumn {
     fn is_witness_column(&self) -> bool;
 }
 
-impl IsWitnessColumn for Variable {
+impl IsWitnessColumn for AlgebraicReference {
     fn is_witness_column(&self) -> bool {
-        match self {
-            Variable::Reference(poly) => poly.is_witness(),
-            _ => false,
-        }
+        self.poly_id.ptype == PolynomialType::Committed
     }
 }
