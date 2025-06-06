@@ -52,17 +52,16 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
         },
         AlgebraicExpression::Reference(algebraic_reference) => {
             let poly_id = algebraic_reference.poly_id;
-            let next = algebraic_reference.next as usize;
             match poly_id.ptype {
                 PolynomialType::Committed => SymbolicExpression::Variable(SymbolicVariable::new(
                     Entry::Main {
                         part_index: 0,
-                        offset: next,
+                        offset: 0,
                     },
                     poly_id.id as usize,
                 )),
                 PolynomialType::Constant => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Preprocessed { offset: next },
+                    Entry::Preprocessed { offset: 0 },
                     poly_id.id as usize,
                 )),
                 PolynomialType::Intermediate => todo!(),
@@ -108,11 +107,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
         SymbolicExpression::Variable(SymbolicVariable { entry, index, .. }) => match entry {
             Entry::Main { offset, part_index } => {
                 assert_eq!(*part_index, 0);
-                let next = match offset {
-                    0 => false,
-                    1 => true,
-                    _ => unimplemented!(),
-                };
+                assert_eq!(offset, &0);
                 let name = columns.get(*index).unwrap_or_else(|| {
                     panic!("Column index out of bounds: {index}\nColumns: {columns:?}");
                 });
@@ -122,7 +117,6 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                         id: *index as u64,
                         ptype: PolynomialType::Committed,
                     },
-                    next,
                 })
             }
             _ => unimplemented!(),
@@ -133,7 +127,6 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                 id: 0,
                 ptype: PolynomialType::Constant,
             },
-            next: false,
         }),
         SymbolicExpression::IsLastRow => AlgebraicExpression::Reference(AlgebraicReference {
             name: "is_last_row".to_string(),
@@ -141,7 +134,6 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                 id: 1,
                 ptype: PolynomialType::Constant,
             },
-            next: false,
         }),
         SymbolicExpression::IsTransition => AlgebraicExpression::Reference(AlgebraicReference {
             name: "is_transition".to_string(),
@@ -149,7 +141,6 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                 id: 2,
                 ptype: PolynomialType::Constant,
             },
-            next: false,
         }),
     }
 }

@@ -40,12 +40,11 @@ pub struct AlgebraicReference {
     /// Identifier for a polynomial reference, already contains
     /// the element offset in case of an array element.
     pub poly_id: PolyID,
-    pub next: bool,
 }
 
 impl std::fmt::Display for AlgebraicReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.name, if self.next { "'" } else { "" },)
+        write!(f, "{}", self.name)
     }
 }
 
@@ -57,20 +56,19 @@ impl PartialOrd for AlgebraicReference {
 
 impl Ord for AlgebraicReference {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (&self.poly_id, &self.next).cmp(&(&other.poly_id, &other.next))
+        self.poly_id.cmp(&other.poly_id)
     }
 }
 
 impl PartialEq for AlgebraicReference {
     fn eq(&self, other: &Self) -> bool {
-        self.poly_id == other.poly_id && self.next == other.next
+        self.poly_id == other.poly_id
     }
 }
 
 impl Hash for AlgebraicReference {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.poly_id.hash(state);
-        self.next.hash(state);
     }
 }
 
