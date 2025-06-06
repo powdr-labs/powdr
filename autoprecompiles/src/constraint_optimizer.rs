@@ -46,8 +46,7 @@ pub fn optimize_constraints<
     remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &*constraint_system);
 
-    let constraint_system =
-        inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
+    inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     remove_trivial_constraints(constraint_system);

@@ -27,6 +27,7 @@ pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
+#[derive(Clone, Default)]
 pub struct IndexedConstraintSystem<T: FieldElement, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
@@ -59,6 +60,10 @@ impl<T: FieldElement, V> From<IndexedConstraintSystem<T, V>> for ConstraintSyste
 }
 
 impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
+        &self.constraint_system
+    }
+
     pub fn algebraic_constraints(&self) -> &[QuadraticSymbolicExpression<T, V>] {
         &self.constraint_system.algebraic_constraints
     }
@@ -71,6 +76,26 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     /// constraints and all expressions in bus interactions.
     pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         self.constraint_system.expressions()
+    }
+}
+
+impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+    /// Removes all constraints that do not fulfill the predicate.
+    pub fn retain_constraints(
+        &mut self,
+        f: impl FnMut(&QuadraticSymbolicExpression<T, V>) -> bool,
+    ) {
+        // TODO updated index
+        self.constraint_system.algebraic_constraints.retain(f);
+    }
+
+    /// Removes all bus interactions that do not fulfill the predicate.
+    pub fn retain_bus_interactions(
+        &mut self,
+        f: impl FnMut(&BusInteraction<QuadraticSymbolicExpression<T, V>>) -> bool,
+    ) {
+        // TODO updated index
+        self.constraint_system.bus_interactions.retain(f);
     }
 }
 
