@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -57,7 +58,7 @@ pub enum Error {
 /// It also provides ways to quickly update the expression when the value of
 /// an unknown variable gets known and provides functions to solve
 /// (some kinds of) equations.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
@@ -447,6 +448,150 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         Some(result)
     }
 
+    /// Tries to split this constraint into a list of equivalent constraints.
+    /// This is the case for example if the variables in this expression can
+    /// be split into different bit areas.
+    pub fn try_split(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<Vec<QuadraticSymbolicExpression<T, V>>> {
+        if self.is_quadratic() {
+            return None;
+        }
+        let mut constant = self.constant.try_to_number()?;
+
+        // Group the linear part by absolute coefficients.
+        let mut components = self
+            .linear
+            .iter()
+            .map(|(var, coeff)| Some((coeff.try_to_number()?, var)))
+            .collect::<Option<Vec<_>>>()?
+            .into_iter()
+            .map(|(coeff, var)| {
+                let is_negative = !coeff.is_in_lower_half();
+                if is_negative {
+                    (-coeff, -Self::from_unknown_variable(var.clone()))
+                } else {
+                    (coeff, Self::from_unknown_variable(var.clone()))
+                }
+            })
+            .into_grouping_map()
+            .sum()
+            .into_iter()
+            .sorted()
+            .collect_vec();
+        if components.len() < 2 {
+            return None;
+        }
+
+        // Now try to split out each one in turn.
+        let mut parts = vec![];
+        for index in 0..components.len() {
+            let (candidate_coeff, candidate) = &components[index];
+            let candidate_coeff = *candidate_coeff;
+            // Get all other components with non-zero coefficients.
+            let rest = components
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != index)
+                .map(|(_, component)| component)
+                .filter(|(coeff, _)| *coeff != 0.into())
+                .map(|(coeff, expr)| (*coeff / candidate_coeff, expr.clone()))
+                .collect_vec();
+            if rest.is_empty() {
+                // We are done anyway.
+                continue;
+            }
+            // The original constraint is equivalent to `candidate + rest + constant / candidate_coeff = 0`.
+            // Now we try to extract the smallest coefficient in rest.
+            // Maybe something like smallest common divisor would be better, but this is
+            // good enough for now.
+            let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
+
+            let candidate_rc = candidate.range_constraint(range_constraints);
+            if candidate_rc.range_width() > smallest_coeff.to_integer() {
+                continue;
+            }
+            // Now compute the range constraint of `rest / smallest_coeff`.
+            let remaining_rc = rest
+                .into_iter()
+                .map(|(coeff, expr)| expr * &SymbolicExpression::from(coeff / smallest_coeff))
+                .sum::<QuadraticSymbolicExpression<_, _>>()
+                .range_constraint(range_constraints);
+            if remaining_rc.range_width() >= RangeConstraint::<T>::default().range_width() {
+                continue;
+            }
+
+            // At this point, we have a constraint of the form
+            // `candidate + smallest_coeff * y + constant / candidate_coeff = 0`,
+            // let us write it as `x + k * y + c = 0`.
+            // Furthermore,
+            //   `RC[x] = [s..t]` where `t - s <= k` and
+            //   `RC[y] = [u..v]` where `(v - u) * k` (integer multiplication) is less than the field modulus.
+            //
+            // Let us start with the easy case `s = 0`, `u = 0` and `0 <= c < k`.
+
+            // Assume `0 <= x < k`, `0 <= y < v` and `v * k` (integer multiplication) is less than the field modulus.
+            // Furthermore, `0 <= c < k`.
+            // Then `x = k * y + c` is equivalent to `x = c` and y = 0`.
+            // The direction `<=` is obvious, so let's focus on `=>` and assume `y != 0`.
+            // This means `x < k + c <= k * y + c` and the multiplication does not wrap
+            // because `k * y + c < k * (y + 1) <= k * v` which is less than the field modulus.
+            // So since `x < k * y + c`, we must have `y = 0`. From this, `x = c` follows
+            // directly.
+
+            // Now we show how to transform the generic case into the specific.
+            // `x + k * y + c = 0`
+            // `(x - s) + k * (y - u) + (c + s + k * u) = 0`
+
+            // For `x = k * y + c`, we need to find `r` such that we have
+            // `x = k * (y - r) + (c + k * r)`, such that `c + k * r` is in the range of `RC[x]`
+            // and `r` is in the range of `RC[y]`. The problem is that we could try the whole field
+            // since both expressions are allowed to wrap.
+
+            let scaled_constant = constant / candidate_coeff;
+            let (scaled_constant, scaled_constant_is_negative) =
+                if scaled_constant.is_in_lower_half() {
+                    (scaled_constant, false)
+                } else {
+                    (-scaled_constant, true)
+                };
+            let candidate_constant = scaled_constant.to_integer().try_into_u64()?
+                % smallest_coeff.to_integer().try_into_u64()?;
+            let candidate_constant = if scaled_constant_is_negative {
+                -T::from(candidate_constant)
+            } else {
+                T::from(candidate_constant)
+            };
+            parts.push(candidate + &QuadraticSymbolicExpression::from(candidate_constant));
+            components[index] = (0.into(), T::from(0).into());
+
+            // But now we have to modify the constant in the remaining constraint.
+            constant -= candidate_constant * candidate_coeff;
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            // We found some independent parts, add the remaining components to the parts
+            // and return them.
+            let remaining = components
+                .into_iter()
+                .filter(|(coeff, _)| *coeff != 0.into())
+                .collect_vec();
+            parts.push(match remaining.as_slice() {
+                [(coeff, expr)] => expr.clone() + (constant / *coeff).into(), // if there is only one component, we can ignore the coefficient
+                _ => {
+                    remaining
+                        .into_iter()
+                        .map(|(coeff, expr)| expr * SymbolicExpression::from(coeff))
+                        .sum::<QuadraticSymbolicExpression<_, _>>()
+                        + constant.into()
+                }
+            });
+            Some(parts)
+        }
+    }
+
     fn solve_affine(
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
@@ -816,6 +961,16 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExp
         }
         self.constant += rhs.constant.clone();
         self.linear.retain(|_, f| !f.is_known_zero());
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sum for QuadraticSymbolicExpression<T, V> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut result = QuadraticSymbolicExpression::from(T::zero());
+        for item in iter {
+            result += item;
+        }
+        result
     }
 }
 
@@ -1571,6 +1726,113 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
                 .unwrap()
                 .to_string(),
             "-t * y"
+        );
+    }
+
+    #[test]
+    fn split_simple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-a + x
+b + y"
+        );
+    }
+
+    #[test]
+    fn split_multiple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+            ("r", four_bit_rc.clone()),
+            ("s", four_bit_rc.clone()),
+            ("w", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(50) - var("a") + var("b") * constant(50)
+            - var("r") * constant(6000)
+            + var("s") * constant(6000)
+            + var("w") * constant(1200000);
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-a + x
+b + y
+-r + s
+w"
+        );
+    }
+
+    #[test]
+    fn split_multiple_with_const() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+            ("r", four_bit_rc.clone()),
+            ("s", four_bit_rc.clone()),
+            ("w", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(64)
+            - var("a")
+            - var("b") * constant(64)
+            - var("r") * constant(65536)
+            + var("s") * constant(65536)
+            + var("w") * constant(0x1000000)
+            - constant(5 * 0x1000000 - 6 + 1 * 64 - 5 * 65536);
+
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-a + x + 6
+b + y - 1
+-r + s + 5
+w + 31"
+        );
+    }
+
+    #[test]
+    fn split_limb_decomposition() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("l0", four_bit_rc.clone()),
+            ("l1", four_bit_rc.clone()),
+            ("l2", four_bit_rc.clone()),
+            ("l3", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("l0")
+            + var("l1") * constant(0x10)
+            + var("l2") * constant(0x100)
+            + var("l3") * constant(0x1000)
+            - constant(0x1234);
+
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "l0 + -4
+l1 + -3
+l2 + -2
+l3 + -1"
         );
     }
 }
