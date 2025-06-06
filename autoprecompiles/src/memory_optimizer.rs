@@ -100,17 +100,6 @@ impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
     }
 }
 
-/// Returns the word size of a particularly memory type.
-/// Word size `k` means that an address `x` and an address `x + k` are guaranteed to be
-/// non-overlapping, it is not necessarily related to what is stored, rather
-/// how memory is addressed.
-fn word_size_by_memory(ty: MemoryType) -> Option<u32> {
-    match ty {
-        MemoryType::Register | MemoryType::Memory => Some(4),
-        MemoryType::Constant | MemoryType::Native => None, // Let's not optimize this.
-    }
-}
-
 #[derive(Clone, Debug)]
 enum MemoryOp {
     Send,
@@ -192,9 +181,6 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 continue;
             }
         };
-        let Some(word_size) = word_size_by_memory(mem_int.ty) else {
-            continue;
-        };
 
         let addr = (
             mem_int.ty,
@@ -218,8 +204,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
-                    address_comparator
-                        .are_addrs_known_to_be_different_by_word(&addr, other_addr, word_size)
+                    address_comparator.are_addrs_known_to_be_different(&addr, other_addr)
                 });
                 memory_contents.insert(addr.clone(), (index, mem_int.data.clone()));
             }
@@ -275,12 +260,11 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
     }
 
     /// Returns true if we can prove that for two addresses `a` and `b`,
-    /// `a - b` never falls into the range `-3..=3`.
-    pub fn are_addrs_known_to_be_different_by_word(
+    /// `a - b` cannot be 0.
+    pub fn are_addrs_known_to_be_different(
         &self,
         a: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
         b: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
-        word_size: u32,
     ) -> bool {
         if a.0 != b.0 {
             return true;
@@ -292,12 +276,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             .iter()
             .cartesian_product(b_exprs)
             .any(|(a_exprs, b_exprs)| {
-                is_value_known_to_be_different_by_word(
-                    a_exprs,
-                    b_exprs,
-                    word_size,
-                    &RangeConstraintsForBooleans,
-                )
+                is_value_known_to_be_different(a_exprs, b_exprs, &RangeConstraintsForBooleans)
             })
     }
 }
@@ -379,22 +358,14 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
     exprs
 }
 
-/// Returns true if we can prove that `a - b` never falls into the range `-3..=3`.
-fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
+/// Returns true if we can prove that `a - b` cannot be 0.
+fn is_value_known_to_be_different<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     a: &QuadraticSymbolicExpression<T, V>,
     b: &QuadraticSymbolicExpression<T, V>,
-    word_size: u32,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
-    assert!(
-        word_size > 0
-            && word_size < 0x10000
-            && T::Integer::from(2 * word_size as u64) < T::modulus()
-    );
-    let disallowed_range =
-        RangeConstraint::from_range(-T::from(word_size - 1), T::from(word_size - 1));
     possible_concrete_values(&(a - b), range_constraints, 20)
-        .is_some_and(|mut values| !values.any(|value| disallowed_range.allows_value(value)))
+        .is_some_and(|mut values| values.all(|value| !value.is_zero()))
 }
 
 /// Turns an algebraic expression into a quadratic symbolic expression,
@@ -435,84 +406,43 @@ mod tests {
 
     #[test]
     fn difference_for_constants() {
-        assert!(!is_value_known_to_be_different_by_word(
+        assert!(!is_value_known_to_be_different(
             &constant(7),
-            &constant(5),
-            4,
+            &constant(7),
             &NoRangeConstraints
         ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &constant(5),
-            &constant(7),
-            4,
-            &NoRangeConstraints
-        ));
-        assert!(is_value_known_to_be_different_by_word(
+        assert!(is_value_known_to_be_different(
             &constant(4),
             &constant(0),
-            4,
             &NoRangeConstraints
         ));
-        assert!(is_value_known_to_be_different_by_word(
+        assert!(is_value_known_to_be_different(
             &constant(0),
             &constant(4),
-            4,
             &NoRangeConstraints
         ));
     }
 
     #[test]
     fn difference_for_vars() {
-        assert!(!is_value_known_to_be_different_by_word(
+        assert!(!is_value_known_to_be_different(
             &(constant(7) + var("a")),
-            &(constant(5) + var("a")),
-            4,
+            &(constant(7) + var("a")),
             &NoRangeConstraints
         ));
-        assert!(is_value_known_to_be_different_by_word(
+        assert!(is_value_known_to_be_different(
             &(constant(7) + var("a")),
             &(constant(2) + var("a")),
-            4,
             &NoRangeConstraints
         ));
-        assert!(!is_value_known_to_be_different_by_word(
+        assert!(!is_value_known_to_be_different(
             &(constant(7) - var("a")),
             &(constant(2) + var("a")),
-            4,
             &NoRangeConstraints
         ));
-        assert!(!is_value_known_to_be_different_by_word(
+        assert!(!is_value_known_to_be_different(
             &var("a"),
             &var("b"),
-            4,
-            &NoRangeConstraints
-        ));
-    }
-
-    #[test]
-    fn smaller_word() {
-        assert!(is_value_known_to_be_different_by_word(
-            &(constant(7) + var("a")),
-            &(constant(6) + var("a")),
-            1,
-            &NoRangeConstraints
-        ));
-        assert!(is_value_known_to_be_different_by_word(
-            &(constant(6) + var("a")),
-            &(constant(7) + var("a")),
-            1,
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &(constant(7) + var("a")),
-            &(constant(6) + var("a")),
-            2,
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &(constant(6) + var("a")),
-            &(constant(7) + var("a")),
-            2,
             &NoRangeConstraints
         ));
     }
