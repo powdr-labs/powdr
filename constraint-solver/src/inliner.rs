@@ -143,7 +143,7 @@ fn qse_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 #[cfg(test)]
 mod test {
     use crate::{
-        constraint_system::BusInteraction,
+        constraint_system::{BusInteraction, ConstraintSystem},
         test_utils::{constant, var},
     };
 

@@ -4,6 +4,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    journalled_constraint_system::JournalledConstraintSystem,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
@@ -64,14 +65,17 @@ fn optimization_loop_iteration<T: FieldElement>(
     degree_bound: usize,
     stats_logger: &mut StatsLogger,
 ) -> Result<ConstraintSystem<T, Variable>, crate::constraint_optimizer::Error> {
-    let constraint_system = optimize_constraints(
-        constraint_system,
+    let mut constraint_system = JournalledConstraintSystem::from(constraint_system);
+    optimize_constraints(
+        &mut constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     )?;
     // TODO avoid these this conversion..
-    let machine = constraint_system_to_symbolic_machine(constraint_system);
+    // TODO continue here with the journalled system once the memory machen is changed to
+    // ConstraintSystem
+    let machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
     let machine = optimize_memory(machine);
     assert!(check_register_operation_consistency(&machine));
     stats_logger.log("memory optimization", &machine);

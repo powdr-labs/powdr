@@ -1,13 +1,9 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use itertools::Itertools;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteractionHandler, ConstraintSystem},
-    indexed_constraint_system::apply_substitutions,
-    inliner,
+    constraint_system::BusInteractionHandler, inliner,
     journalled_constraint_system::JournalledConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    solver::Solver,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
 };
 use powdr_number::FieldElement;
 
@@ -47,7 +43,7 @@ pub fn optimize_constraints<
     stats_logger.log("removing disconnected columns", &*constraint_system);
 
     inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
-    stats_logger.log("in-lining witness columns", &constraint_system);
+    stats_logger.log("in-lining witness columns", &*constraint_system);
 
     remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &*constraint_system);
