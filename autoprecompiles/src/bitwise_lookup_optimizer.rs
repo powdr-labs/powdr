@@ -1,16 +1,13 @@
 use std::collections::HashSet;
 use std::hash::Hash;
-use std::{collections::BTreeSet, fmt::Debug, fmt::Display};
+use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
-use crate::{
-    legacy_expression::AlgebraicExpression, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicMachine, BITWISE_LOOKUP_BUS_ID,
-};
+use crate::BITWISE_LOOKUP_BUS_ID;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
@@ -55,7 +52,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 args.remove(zero_pos);
                 // The two remaning expressions in args are equal and bytes.
                 let [a, b] = args.try_into().unwrap();
-                new_constraints.push((a.clone() - b.clone()).into());
+                new_constraints.push(a.clone() - b.clone());
                 to_byte_constrain.push(a.clone());
                 true
             } else {
@@ -95,7 +92,11 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
             multiplicity: T::from(1).into(),
         });
     }
-    system.algebraic_constraints.extend(new_constraints);
+    system.algebraic_constraints.extend(
+        new_constraints
+            .into_iter()
+            .filter(|e| e != &T::from(0).into()),
+    );
     system
 }
 
