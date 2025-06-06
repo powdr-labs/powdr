@@ -4,7 +4,7 @@ use super::simplify_expression;
 use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -67,12 +67,12 @@ fn optimization_loop_iteration<T: FieldElement>(
         degree_bound,
         stats_logger,
     )?;
+    let constraint_system = optimize_memory(constraint_system, NoRangeConstraints);
+    assert!(check_register_operation_consistency(&constraint_system));
+    stats_logger.log("memory optimization", &constraint_system);
+
     // TODO: avoid these conversions
     let machine = constraint_system_to_symbolic_machine(constraint_system);
-    let machine = optimize_memory(machine);
-    assert!(check_register_operation_consistency(&machine));
-    stats_logger.log("memory optimization", &machine);
-
     let machine = optimize_bitwise_lookup(machine);
     stats_logger.log("optimizing bitwise lookup", &machine);
 
