@@ -777,7 +777,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    fn _prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
+    fn prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
         let result = compile_and_prove(guest, config, false, true, stdin, pgo_config);
         assert!(result.is_ok());
     }
@@ -822,15 +822,15 @@ mod tests {
         prove_mock(GUEST, config, stdin, PgoConfig::None);
     }
 
-    // #[test]
-    // #[ignore = "Too much RAM"]
-    // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
-    // #[should_panic = "No such file or directory"]
-    // fn guest_prove_recursion() {
-    //     let mut stdin = StdIn::default();
-    //     stdin.write(&GUEST_ITER);
-    //     prove_recursion(GUEST, GUEST_APC, GUEST_SKIP, stdin);
-    // }
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn guest_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data));
+    }
 
     #[test]
     fn keccak_small_prove_simple() {
