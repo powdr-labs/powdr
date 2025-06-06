@@ -104,8 +104,9 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
                 *occurrences = occurrences
                     .iter_mut()
                     .filter_map(|item| match item {
-                        ConstraintSystemItem::AlgebraicConstraint(i) => replacement_map[*i]
-                            .map(ConstraintSystemItem::AlgebraicConstraint),
+                        ConstraintSystemItem::AlgebraicConstraint(i) => {
+                            replacement_map[*i].map(ConstraintSystemItem::AlgebraicConstraint)
+                        }
                         ConstraintSystemItem::BusInteraction(_) => Some(*item),
                     })
                     .collect();
