@@ -30,7 +30,6 @@ pub struct PlonkColumns<T> {
     pub a: T,
     pub b: T,
     pub c: T,
-
     pub d: T,
     pub e: T,
 }
