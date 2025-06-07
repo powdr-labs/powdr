@@ -24,7 +24,8 @@ pub fn add_bus_to_plonk_circuit<T>(
 ) where
     T: FieldElement,
 {
-    let number_of_gates = ((bus_interaction.args.len() + 1) as f64 / 3.0).ceil() as usize;
+    // There are 5 witness cell per gate to store the bus arguments, therefore divide the number of arguments by 5 to get the number of gates needed.
+    let number_of_gates = (bus_interaction.args.len() as u32).div_ceil(5) as usize;
     let mut gates: Vec<Gate<T, AlgebraicReference>> =
         (0..number_of_gates).map(|_| Gate::default()).collect();
     match bus_map.bus_type(bus_interaction.id) {
@@ -56,11 +57,15 @@ pub fn add_bus_to_plonk_circuit<T>(
         .args
         .iter()
         .chain([bus_interaction.mult].iter())
-        .zip(
-            gates
-                .iter_mut()
-                .flat_map(|gate| [&mut gate.a, &mut gate.b, &mut gate.c]),
-        )
+        .zip(gates.iter_mut().flat_map(|gate| {
+            [
+                &mut gate.a,
+                &mut gate.b,
+                &mut gate.c,
+                &mut gate.d,
+                &mut gate.e,
+            ]
+        }))
         .for_each(|(arg, payload)| {
             *payload = circuit_builder.evaluate_expression(arg, false);
         });
@@ -114,9 +119,8 @@ bus: none, x * y = tmp_3
 bus: none, -tmp_3 = tmp_2
 bus: none, 5 * y = tmp_4
 bus: none, 1 = tmp_5
-bus: memory, tmp_0, tmp_1, y
-bus: none, tmp_2, tmp_4, x
-bus: none, y, tmp_5, Unused
+bus: memory, tmp_0, tmp_1, y, tmp_2, tmp_4
+bus: none, x, y, tmp_5, Unused, Unused
 "
         )
     }

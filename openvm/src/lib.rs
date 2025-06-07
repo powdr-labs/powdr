@@ -818,7 +818,6 @@ mod tests {
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
-    #[should_panic = "LogUp multiset equality check failed."]
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -904,7 +903,6 @@ mod tests {
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
-    #[should_panic = "LogUp multiset equality check failed."]
     fn keccak_plonk_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
@@ -1010,9 +1008,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 14);
+        assert_eq!(m.width, 16);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 3);
+        assert_eq!(m.bus_interactions, 5);
     }
 
     #[test]
