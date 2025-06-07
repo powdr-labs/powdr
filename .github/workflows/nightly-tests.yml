@@ -140,4 +140,4 @@ jobs:
       - name: Build
         run: cargo build --release -p powdr-openvm
       - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=16
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
