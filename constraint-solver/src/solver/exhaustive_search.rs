@@ -85,22 +85,31 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     rc: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<Option<BTreeMap<V, T>>, Error> {
-    match get_all_possible_assignments(variables.iter().cloned(), &rc)
-        .filter(|assignments| {
-            !constraint_system.is_assignment_conflicting(assignments, &rc, bus_interaction_handler)
+    let assignments = get_all_possible_assignments(variables.iter().cloned(), &rc)
+        .filter_map(|assignments| {
+            constraint_system
+                .derive_more_assignments(assignments, &rc, bus_interaction_handler)
+                .ok()
         })
-        .exactly_one()
-    {
-        Ok(assignments) => Ok(Some(assignments)),
-        Err(mut iter) => {
-            if iter.next().is_some() {
-                // There are at least two assignments, so there is no unique assignment.
-                Ok(None)
-            } else {
-                // No assignment satisfied the constraint system.
-                Err(Error::ExhaustiveSearchError)
-            }
-        }
+        .collect::<Vec<_>>();
+    if assignments.is_empty() {
+        // No assignment satisfied the constraint system.
+        return Err(Error::ExhaustiveSearchError);
+    }
+    // If all branches agree, return the unique assignment.
+    let assignments = assignments[0]
+        .clone()
+        .into_iter()
+        .filter(|(variable, value)| {
+            assignments
+                .iter()
+                .all(|assignment| assignment.get(variable).map_or(false, |v| v == value))
+        })
+        .collect::<BTreeMap<_, _>>();
+    if assignments.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(assignments))
     }
 }
 
