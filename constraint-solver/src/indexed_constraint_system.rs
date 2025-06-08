@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{btree_map::Entry, BTreeMap, HashMap},
     fmt::Display,
     hash::Hash,
 };
@@ -9,6 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
+    effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
@@ -141,23 +142,26 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
 }
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSystem<T, V> {
-    /// Given a set of variable assignments, checks if they violate any constraint.
-    /// Note that this might return false negatives, because it does not propagate any values.
-    pub fn is_assignment_conflicting(
+    // TODO: Add documentation.
+    pub fn derive_more_assignments(
         &self,
-        assignments: &BTreeMap<V, T>,
+        assignments: BTreeMap<V, T>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
         bus_interaction_handler: &impl BusInteractionHandler<T>,
-    ) -> bool {
-        self.constraints_referencing_variables(assignments.keys().cloned())
-            .any(|constraint| match constraint {
+    ) -> Result<BTreeMap<V, T>, ()> {
+        let effects = self
+            .constraints_referencing_variables(assignments.keys().cloned())
+            .map(|constraint| match constraint {
                 ConstraintRef::AlgebraicConstraint(identity) => {
                     let mut identity = identity.clone();
                     for (variable, value) in assignments.iter() {
                         identity
                             .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
                     }
-                    identity.solve(range_constraints).is_err()
+                    identity
+                        .solve(range_constraints)
+                        .map_err(|_| ())
+                        .map(|result| result.effects)
                 }
                 ConstraintRef::BusInteraction(bus_interaction) => {
                     let mut bus_interaction = bus_interaction.clone();
@@ -171,8 +175,37 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     }
                     bus_interaction
                         .solve(bus_interaction_handler, range_constraints)
-                        .is_err()
+                        .map_err(|_| ())
                 }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let new_assignments = effects
+            .into_iter()
+            .flatten()
+            .filter_map(|effect| {
+                if let Effect::Assignment(variable, SymbolicExpression::Concrete(value)) = effect {
+                    Some((variable, value))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        new_assignments
+            .into_iter()
+            .chain(assignments.into_iter())
+            .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
+                match map.entry(variable) {
+                    Entry::Vacant(e) => {
+                        e.insert(value);
+                    }
+                    Entry::Occupied(e) if e.get() == &value => {}
+                    _ => {
+                        // Duplicate assignment with different value.
+                        return Err(());
+                    }
+                }
+                Ok(map)
             })
     }
 }
