@@ -103,7 +103,7 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
         .filter(|(variable, value)| {
             assignments
                 .iter()
-                .all(|assignment| assignment.get(variable).map_or(false, |v| v == value))
+                .all(|assignment| assignment.get(variable) == Some(value))
         })
         .collect::<BTreeMap<_, _>>();
     if assignments.is_empty() {
