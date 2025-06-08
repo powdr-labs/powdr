@@ -141,6 +141,8 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     }
 }
 
+pub struct ContradictingConstraint;
+
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSystem<T, V> {
     // TODO: Add documentation.
     pub fn derive_more_assignments(
@@ -148,7 +150,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
         assignments: BTreeMap<V, T>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
         bus_interaction_handler: &impl BusInteractionHandler<T>,
-    ) -> Result<BTreeMap<V, T>, ()> {
+    ) -> Result<BTreeMap<V, T>, ContradictingConstraint> {
         let effects = self
             .constraints_referencing_variables(assignments.keys().cloned())
             .map(|constraint| match constraint {
@@ -160,7 +162,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     }
                     identity
                         .solve(range_constraints)
-                        .map_err(|_| ())
+                        .map_err(|_| ContradictingConstraint)
                         .map(|result| result.effects)
                 }
                 ConstraintRef::BusInteraction(bus_interaction) => {
@@ -175,7 +177,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     }
                     bus_interaction
                         .solve(bus_interaction_handler, range_constraints)
-                        .map_err(|_| ())
+                        .map_err(|_| ContradictingConstraint)
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -191,10 +193,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
             })
             .collect::<Vec<_>>();
 
-        new_assignments
-            .into_iter()
-            .chain(assignments.into_iter())
-            .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
+        new_assignments.into_iter().chain(assignments).try_fold(
+            BTreeMap::new(),
+            |mut map, (variable, value)| {
                 match map.entry(variable) {
                     Entry::Vacant(e) => {
                         e.insert(value);
@@ -202,11 +203,12 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     Entry::Occupied(e) if e.get() == &value => {}
                     _ => {
                         // Duplicate assignment with different value.
-                        return Err(());
+                        return Err(ContradictingConstraint);
                     }
                 }
                 Ok(map)
-            })
+            },
+        )
     }
 }
 
