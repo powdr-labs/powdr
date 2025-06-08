@@ -12,6 +12,7 @@ use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
+use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
@@ -577,8 +578,11 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
 
     // generate apc and cache it for all basic blocks
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-    let cells_saved_per_row_by_bb: HashMap<_, _> = blocks
-        .iter()
+    let (cells_saved_per_row_by_bb, new_apc_cache): (
+        HashMap<_, _>,
+        HashMap<usize, CachedAutoPrecompile<P>>,
+    ) = blocks
+        .par_iter()
         .enumerate()
         .filter_map(|(i, acc_block)| {
             let apc_cache_entry = generate_apc_cache(
@@ -589,7 +593,6 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 config.degree_bound,
             )
             .ok()?;
-            apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());
 
             // calculate cells saved per row
             let apc_cells_per_row = apc_cache_entry.1.unique_columns().count();
@@ -610,9 +613,14 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 cells_saved_per_row
             );
 
-            Some((acc_block.start_idx, cells_saved_per_row))
+            Some((
+                (acc_block.start_idx, cells_saved_per_row),
+                (acc_block.start_idx, apc_cache_entry),
+            ))
         })
-        .collect();
+        .unzip();
+
+    apc_cache.extend(new_apc_cache);
 
     // filter out the basic blocks where the apc generation errored out
     blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
