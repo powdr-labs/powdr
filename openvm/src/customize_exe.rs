@@ -365,9 +365,13 @@ where
         let cells_saved_per_row_by_bb: HashMap<_, _> = self
             .blocks
             .par_iter_mut()
-            .enumerate()
-            .filter_map(|(i, acc_block)| {
-                let apc = acc_block.apc.as_ref().unwrap();
+            .filter_map(|acc_block| {
+                let apc = acc_block.apc(
+                    &self.airs,
+                    &self.program.exe,
+                    &self.config.bus_map,
+                    self.config.degree_bound,
+                );
 
                 // calculate cells saved per row
                 let apc_cells_per_row = apc.1.unique_columns().count();
@@ -393,8 +397,6 @@ where
         // filter out the basic blocks where the apc generation errored out
         self.blocks
             .retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
-
-        println!("sort");
 
         // cost = frequency * cells_saved_per_row
         self.blocks.sort_by(|a, b| {
@@ -425,8 +427,6 @@ where
     }
 
     fn build(mut self) -> CompiledProgram<P> {
-        let program = &mut self.program.exe.program.instructions_and_debug_infos;
-
         let noop = Instruction {
             opcode: VmOpcode::from_usize(0xdeadaf),
             a: OpenVmField::<P>::ZERO,
@@ -443,6 +443,21 @@ where
         let n_skip = self.config.skip_autoprecompiles as usize;
         tracing::info!("Generating {n_acc} autoprecompiles");
 
+        self.blocks[n_skip..n_skip + n_acc]
+            .par_iter_mut()
+            .for_each(|acc_block| {
+                acc_block
+                    .cache_apc(
+                        &self.airs,
+                        &self.program.exe,
+                        &self.config.bus_map,
+                        self.config.degree_bound,
+                    )
+                    .unwrap();
+            });
+
+        let program = &mut self.program.exe.program.instructions_and_debug_infos;
+
         // now the blocks have been sorted by cost
         for (i, acc_block) in self.blocks.drain(..).skip(n_skip).take(n_acc).enumerate() {
             tracing::debug!(
@@ -453,12 +468,7 @@ where
 
             let pc = acc_block.start_idx;
             let n_acc = acc_block.len();
-            let (apc_opcode, autoprecompile, subs) = acc_block.into_apc(
-                &self.airs,
-                &self.config.bus_map,
-                self.config.degree_bound,
-                POWDR_OPCODE + i,
-            );
+            let (apc_opcode, autoprecompile, subs) = acc_block.apc.unwrap();
 
             let new_instr = Instruction {
                 opcode: VmOpcode::from_usize(apc_opcode),
@@ -547,13 +557,15 @@ where
 pub struct BasicBlock<P> {
     start_idx: usize,
     len: usize,
+    index: usize,
     apc: Option<CachedAutoPrecompile<P>>,
 }
 
 impl<P> BasicBlock<P> {
-    fn new_with_index(start_idx: usize) -> Self {
+    fn new_at_start_index(start_idx: usize) -> Self {
         BasicBlock {
             start_idx,
+            index: 0, // gets set later, hacky
             len: 0,
             apc: None,
         }
@@ -572,13 +584,13 @@ impl<P: IntoOpenVm> BasicBlock<P> {
     pub fn apc(
         &mut self,
         airs: &BTreeMap<usize, SymbolicMachine<P>>,
+        program: &VmExe<P::Field>,
         bus_map: &BusMap,
         degree_bound: usize,
-        opcode_id: usize,
     ) -> &CachedAutoPrecompile<P> {
         // TODO: we can only cache if the opcode id is known before pgo, so we will have gaps in opcode ids
         if self.apc.is_none() {
-            self.cache_apc(airs, bus_map, degree_bound, opcode_id)
+            self.cache_apc(airs, program, bus_map, degree_bound)
                 .expect("APC should be built successfully");
         }
 
@@ -590,22 +602,15 @@ impl<P: IntoOpenVm> BasicBlock<P> {
     fn cache_apc(
         &mut self,
         airs: &BTreeMap<usize, SymbolicMachine<P>>,
+        program: &VmExe<P::Field>,
         bus_map: &BusMap,
         degree_bound: usize,
-        opcode_id: usize,
-    ) -> Result<CachedAutoPrecompile<P>, Error> {
-        unimplemented!("APC building logic should be implemented here");
-    }
+    ) -> Result<(), Error> {
+        let (autoprecompile, subs) =
+            generate_autoprecompile(program, self, airs, bus_map.clone(), degree_bound)?;
 
-    fn into_apc(
-        mut self,
-        airs: &BTreeMap<usize, SymbolicMachine<P>>,
-        bus_map: &BusMap,
-        degree_bound: usize,
-        apc_opcode: usize,
-    ) -> (usize, SymbolicMachine<P>, Vec<Vec<u64>>) {
-        let _ = self.apc(airs, bus_map, degree_bound, apc_opcode);
-        self.apc.unwrap()
+        self.apc = Some((self.index, autoprecompile, subs));
+        Ok(())
     }
 
     fn pretty_print(
@@ -650,7 +655,7 @@ pub fn collect_basic_blocks<P: IntoOpenVm>(
                 blocks.push(curr_block);
             }
             // Skip the instrucion and start a new block from the next instruction.
-            curr_block = BasicBlock::new_with_index(i + 1);
+            curr_block = BasicBlock::new_at_start_index(i + 1);
         } else {
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
@@ -658,20 +663,25 @@ pub fn collect_basic_blocks<P: IntoOpenVm>(
                 if !curr_block.is_empty() {
                     blocks.push(curr_block);
                 }
-                curr_block = BasicBlock::new_with_index(i);
+                curr_block = BasicBlock::new_at_start_index(i);
             }
             curr_block.len += 1;
             // If the instruction is a branch, we need to close this block
             // with this instruction and start a new block from the next one.
             if is_branch {
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
-                curr_block = BasicBlock::new_with_index(i + 1);
+                curr_block = BasicBlock::new_at_start_index(i + 1);
             }
         }
     }
 
     if !curr_block.is_empty() {
         blocks.push(curr_block);
+    }
+
+    // Number the blocks by their index. Hacky.
+    for (index, block) in blocks.iter_mut().enumerate() {
+        block.index = POWDR_OPCODE + index;
     }
 
     blocks
@@ -715,9 +725,8 @@ fn add_extra_targets<F: PrimeField32>(
 //    [a, b, c, 1] c = xor(a, b)
 fn generate_autoprecompile<P: IntoOpenVm>(
     exe: &VmExe<OpenVmField<P>>,
-    block: &BasicBlock<OpenVmField<P>>,
+    block: &BasicBlock<P>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
-    apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: usize,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
@@ -746,7 +755,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     };
 
     let (precompile, subs) =
-        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
+        powdr_autoprecompiles::build(program, vm_config, degree_bound, block.index as u32)?;
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());
