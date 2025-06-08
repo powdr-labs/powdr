@@ -59,7 +59,7 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
-pub fn customize<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>, E: StarkFriEngine<SC>>(
+pub fn customize<SC, P, E>(
     program: OriginalCompiledProgram<P>,
     stdin: Option<StdIn>,
     labels: &BTreeSet<u32>,
@@ -67,7 +67,7 @@ pub fn customize<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>, E: Star
     pcs: &SC::Pcs,
 ) -> CompiledProgram<P>
 where
-    Val<SC>: PrimeField32,
+    Val<SC>: PrimeField32, SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>, E: StarkFriEngine<SC>
 {
     ApcBuilder::<SC, _, E>::new(program, stdin, labels.clone(), config.clone(), pcs)
         .pgo()
@@ -138,22 +138,29 @@ fn branch_opcodes_bigint_set() -> BTreeSet<usize> {
 }
 
 pub struct ApcBuilder<SC: StarkGenericConfig, P: IntoOpenVm, E: StarkFriEngine<SC>> {
+    /// The original program that is being customized.
     program: OriginalCompiledProgram<P>,
-    // dedup by airm because many opcodes can share the same air
+    /// The air for each opcode, where the key is the opcode's global opcode as usize.
+    // TODO: dedup by air because many opcodes can share the same air
     airs: BTreeMap<usize, SymbolicMachine<P>>,
+    /// The basic blocks of the program.
     blocks: Vec<BasicBlock<P>>,
+    /// The configuration for the Powdr extension.
     config: PowdrConfig,
+    /// The opcodes that should not be accelerated with autoprecompiles.
     opcodes_no_apc: Vec<usize>,
+    /// The standard input for the program, if any. Must be provided for PGO.
     stdin: Option<StdIn>,
-    _marker: PhantomData<SC>,
-    _marker2: PhantomData<E>,
+    _sc: PhantomData<SC>,
+    _e: PhantomData<E>,
 }
 
-impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>, E: StarkFriEngine<SC>>
+impl<SC, P, E>
     ApcBuilder<SC, P, E>
 where
-    Val<SC>: PrimeField32,
+    Val<SC>: PrimeField32, SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>, E: StarkFriEngine<SC>
 {
+    /// Creates a new `ApcBuilder` instance.
     pub fn new(
         program: OriginalCompiledProgram<P>,
         stdin: Option<StdIn>,
@@ -245,8 +252,6 @@ where
         let labels = add_extra_targets(&program.exe.program, labels.clone());
         let branch_opcodes_set = branch_opcodes_set();
 
-        println!("Collect basic blocks");
-
         let blocks = collect_basic_blocks(
             &program.exe.program,
             &labels,
@@ -261,11 +266,12 @@ where
             config: powdr_config,
             opcodes_no_apc,
             stdin,
-            _marker: PhantomData,
-            _marker2: PhantomData,
+            _sc: PhantomData,
+            _e: PhantomData,
         }
     }
 
+    /// Runs the PGO measurement and sorts the basic blocks based on the PGO mode.
     fn pgo(mut self) -> Self {
         let pgo_mode = &self.config.pgo_mode;
 
@@ -426,6 +432,7 @@ where
         }
     }
 
+    /// Builds and outputs the customized program with autoprecompiles applied.
     fn build(mut self) -> CompiledProgram<P> {
         let noop = Instruction {
             opcode: VmOpcode::from_usize(0xdeadaf),
@@ -443,6 +450,7 @@ where
         let n_skip = self.config.skip_autoprecompiles as usize;
         tracing::info!("Generating {n_acc} autoprecompiles");
 
+        // Ensure the autoprecompiles are generated for the blocks that are going to be accelerated.
         self.blocks[n_skip..n_skip + n_acc]
             .par_iter_mut()
             .for_each(|acc_block| {
@@ -458,7 +466,6 @@ where
 
         let program = &mut self.program.exe.program.instructions_and_debug_infos;
 
-        // now the blocks have been sorted by cost
         for (i, acc_block) in self.blocks.drain(..).skip(n_skip).take(n_acc).enumerate() {
             tracing::debug!(
                 "Accelerating block {i} of length {} and start idx {}",
@@ -480,8 +487,6 @@ where
                 f: OpenVmField::<P>::ZERO,
                 g: OpenVmField::<P>::ZERO,
             };
-
-            println!("Replacing instructions at pc {pc} with {n_acc} autoprecompile instructions");
             let (acc, new_instrs): (Vec<_>, Vec<_>) = program[pc..pc + n_acc]
                 .iter()
                 .enumerate()
@@ -498,7 +503,6 @@ where
 
             let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
 
-            println!("splice etc");
             let len_before = program.len();
             program.splice(pc..pc + n_acc, new_instrs);
             assert_eq!(program.len(), len_before);
@@ -513,8 +517,6 @@ where
                 .map(|x| x.opcode.as_usize())
                 .unique()
                 .collect_vec();
-
-            println!("push extension");
 
             extensions.push(PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{i}"),
@@ -588,7 +590,6 @@ impl<P: IntoOpenVm> BasicBlock<P> {
         bus_map: &BusMap,
         degree_bound: usize,
     ) -> &CachedAutoPrecompile<P> {
-        // TODO: we can only cache if the opcode id is known before pgo, so we will have gaps in opcode ids
         if self.apc.is_none() {
             self.cache_apc(airs, program, bus_map, degree_bound)
                 .expect("APC should be built successfully");

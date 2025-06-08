@@ -75,7 +75,6 @@ enum Commands {
         #[arg(default_value_t = false)]
         recursion: bool,
 
-        // TODO: default to Cell?
         #[arg(long, value_enum)]
         pgo_mode: Option<PgoMode>,
 
@@ -179,24 +178,3 @@ fn stdin_from(input: Option<u32>) -> StdIn {
     }
     s
 }
-
-// fn get_pgo_config(
-//     guest: String,
-//     guest_opts: GuestOptions,
-//     pgo: CliPgoType,
-//     input: Option<u32>,
-// ) -> PgoConfig {
-//     match pgo {
-//         CliPgoType::Cell => {
-//             let pc_idx_count =
-//                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
-//             PgoMode::Cell.with_pc_idx_count(pc_idx_count)
-//         }
-//         CliPgoType::Instruction => {
-//             let pc_idx_count =
-//                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
-//             PgoMode::Instruction.with_pc_idx_count(pc_idx_count)
-//         }
-//         CliPgoType::None => PgoConfig::None.into(),
-//     }
-// }

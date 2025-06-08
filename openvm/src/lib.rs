@@ -111,15 +111,14 @@ mod traits;
 mod plonk;
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
-/// The inner HashMap contains number of time a pc is executed.
 #[derive(Copy, Clone, Debug, ValueEnum, Default)]
 pub enum PgoMode {
     /// cost = cells saved per apc * times executed
+    #[default]
     Cell,
     /// cost = instruction per apc * times executed
     Instruction,
     /// disable PGO
-    #[default]
     None,
 }
 
@@ -302,7 +301,7 @@ pub struct PowdrConfig {
     pub degree_bound: usize,
     /// Implementation of the precompile, i.e., how to compile it to a RAP.
     pub implementation: PrecompileImplementation,
-    /// The pgo mode
+    /// The PGO mode
     pub pgo_mode: PgoMode,
 }
 
