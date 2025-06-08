@@ -379,7 +379,7 @@ fn ternary_flags() {
     // The flags must be 0, 1, or 2, and their sum must be 1 or 2.
     // Given these constraints, there are 14 possible assignments. The following
     // expressions evaluate to 1 for exactly one of them, and otherwise to 0:
-    let flags = vec![
+    let cases = vec![
         // (2, 0, 0, 0), (0, 2, 0, 0), (0, 0, 2, 0), (0, 0, 0, 2)
         var("flag0") * (var("flag0") - constant(1)) * two_inv.clone(),
         var("flag1") * (var("flag1") - constant(1)) * two_inv.clone(),
@@ -407,18 +407,18 @@ fn ternary_flags() {
             var("flag3") * (var("flag3") - constant(1)) * (var("flag3") - constant(2)),
             // The sum of flags is either 1 or 2.
             (sum.clone() - constant(1)) * (sum.clone() - constant(2)),
-            // Of the expressions in `flags`, exactly one must evaluate to 1.
-            // In this case, it must be one of flag3, flag4, flag5, or flag6.
-            flags[0].clone() * constant(1)
-                + (flags[1].clone() + flags[2].clone()) * constant(2)
-                + (flags[3].clone() + flags[4].clone() + flags[5].clone() + flags[6].clone())
+            // Of the expressions in `cases`, exactly one must evaluate to 1.
+            // From this constraint, it can be derived that it must be one of case 3, 4, 5, or 6.
+            cases[0].clone() * constant(1)
+                + (cases[1].clone() + cases[2].clone()) * constant(2)
+                + (cases[3].clone() + cases[4].clone() + cases[5].clone() + cases[6].clone())
                     * constant(3)
-                + flags[7].clone() * constant(4)
-                + (flags[8].clone() + flags[9].clone()) * constant(5)
-                + (flags[10].clone() + flags[11].clone() + flags[12].clone() + flags[13].clone())
+                + cases[7].clone() * constant(4)
+                + (cases[8].clone() + cases[9].clone()) * constant(5)
+                + (cases[10].clone() + cases[11].clone() + cases[12].clone() + cases[13].clone())
                     * constant(6)
                 - constant(3),
-            // We don't know which flag is active, but for any of the flags that it could be,
+            // We don't know which case is active, but for any of the cases that it could be,
             // is_load would be 1, so we should be able to solve for it.
             var("is_load")
                 - (var("flag0")
