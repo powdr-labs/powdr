@@ -421,13 +421,13 @@ fn ternary_flags() {
             // We don't know which case is active, but for any of the cases that it could be,
             // is_load would be 1, so we should be able to solve for it.
             var("is_load")
-                - (var("flag0")
-                    + var("flag1")
-                    + var("flag2")
-                    + var("flag3")
-                    + var("flag4")
-                    + var("flag5")
-                    + var("flag6")),
+                - (cases[0].clone()
+                    + cases[1].clone()
+                    + cases[2].clone()
+                    + cases[3].clone()
+                    + cases[4].clone()
+                    + cases[5].clone()
+                    + cases[6].clone()),
         ],
         bus_interactions: vec![],
     };
