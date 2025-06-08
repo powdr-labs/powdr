@@ -42,9 +42,9 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         local_constraints.push((is_valid.clone() + one).into());
 
         let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
-        if is_loadstore(instr.opcode) {
-            sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
-        }
+        // if is_loadstore(instr.opcode) {
+        //     sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
+        // }
 
         // Constrain the opcode expression to equal the actual opcode.
         let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
