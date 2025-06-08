@@ -366,3 +366,73 @@ fn binary_flags() {
         ],
     );
 }
+
+#[test]
+fn ternary_flags() {
+    // Implementing this logic in the OpenVM load/store chip:
+    // https://github.com/openvm-org/openvm/blob/v1.2.0/extensions/rv32im/circuit/src/loadstore/core.rs#L110-L139
+    let two_inv = Qse::from(GoldilocksField::one() / GoldilocksField::from(2));
+    let neg_one = Qse::from(-GoldilocksField::one());
+    let sum = var("flag0") + var("flag1") + var("flag2") + var("flag3");
+    // The flags must be 0, 1, or 2, and their sum must be 1 or 2.
+    // Given these constraints, there are 14 possible assignments. The following
+    // expressions evaluate to 1 for exactly one of them, and otherwise to 0:
+    let flags = vec![
+        // (2, 0, 0, 0), (0, 2, 0, 0), (0, 0, 2, 0), (0, 0, 0, 2)
+        var("flag0") * (var("flag0") - constant(1)) * two_inv.clone(),
+        var("flag1") * (var("flag1") - constant(1)) * two_inv.clone(),
+        var("flag2") * (var("flag2") - constant(1)) * two_inv.clone(),
+        var("flag3") * (var("flag3") - constant(1)) * two_inv.clone(),
+        // (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)
+        var("flag0") * (sum.clone() - constant(2)) * neg_one.clone(),
+        var("flag1") * (sum.clone() - constant(2)) * neg_one.clone(),
+        var("flag2") * (sum.clone() - constant(2)) * neg_one.clone(),
+        var("flag3") * (sum.clone() - constant(2)) * neg_one.clone(),
+        // (1, 1, 0, 0), (1, 0, 1, 0), (1, 0, 0, 1), (0, 1, 1, 0), (0, 1, 0, 1), (0, 0, 1, 1)
+        var("flag0") * var("flag1"),
+        var("flag0") * var("flag2"),
+        var("flag0") * var("flag3"),
+        var("flag1") * var("flag2"),
+        var("flag1") * var("flag3"),
+        var("flag2") * var("flag3"),
+    ];
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // All flags are either 0, 1, or 2.
+            var("flag0") * (var("flag0") - constant(1)) * (var("flag0") - constant(2)),
+            var("flag1") * (var("flag1") - constant(1)) * (var("flag1") - constant(2)),
+            var("flag2") * (var("flag2") - constant(1)) * (var("flag2") - constant(2)),
+            var("flag3") * (var("flag3") - constant(1)) * (var("flag3") - constant(2)),
+            // The sum of flags is either 1 or 2.
+            (sum.clone() - constant(1)) * (sum.clone() - constant(2)),
+            // Of the expressions in `flags`, exactly one must evaluate to 1.
+            // In this case, it is the 13th, which corresponds to the assignment (0, 1, 0, 1).
+            flags[0].clone() * constant(1)
+                + flags[1].clone() * constant(2)
+                + flags[2].clone() * constant(3)
+                + flags[3].clone() * constant(4)
+                + flags[4].clone() * constant(5)
+                + flags[5].clone() * constant(6)
+                + flags[6].clone() * constant(7)
+                + flags[7].clone() * constant(8)
+                + flags[8].clone() * constant(9)
+                + flags[9].clone() * constant(10)
+                + flags[10].clone() * constant(11)
+                + flags[11].clone() * constant(12)
+                + flags[12].clone() * constant(13)
+                + flags[13].clone() * constant(14)
+                - constant(13),
+        ],
+        bus_interactions: vec![],
+    };
+
+    assert_solve_result(
+        Solver::new(constraint_system),
+        vec![
+            ("flag0", 0.into()),
+            ("flag1", 1.into()),
+            ("flag2", 0.into()),
+            ("flag3", 1.into()),
+        ],
+    );
+}
