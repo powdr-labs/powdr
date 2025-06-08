@@ -2,25 +2,33 @@ use crate::traits::OpenVmField;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
-use openvm_circuit::arch::{
-    instructions::exe::VmExe, InstructionExecutor, Streams, SystemConfig, VirtualMachine,
-    VmChipComplex, VmConfig, VmInventoryError,
+use openvm_circuit::{
+    arch::{
+        instructions::exe::VmExe, InstructionExecutor, Streams, SystemConfig, VirtualMachine,
+        VmChipComplex, VmConfig, VmExecutor, VmInventoryError,
+    },
+    system::memory::tree::public_values::extract_public_values,
 };
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
 };
 use openvm_stark_sdk::{
-    config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
+    config::{baby_bear_poseidon2::BabyBearPermutationConfig, fri_params::SecurityParameters},
+    engine::StarkFriEngine,
+    p3_baby_bear::{self, Poseidon2BabyBear},
 };
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use utils::get_pil;
+// TODO: make clap-agnostic
+use clap::ValueEnum;
+use openvm_stark_backend::p3_field::FieldAlgebra;
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
@@ -104,12 +112,12 @@ mod plonk;
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
 /// The inner HashMap contains number of time a pc is executed.
-#[derive(Default)]
-pub enum PgoConfig {
+#[derive(Copy, Clone, Debug, ValueEnum, Default)]
+pub enum PgoMode {
     /// cost = cells saved per apc * times executed
-    Cell(HashMap<u32, u32>),
+    Cell,
     /// cost = instruction per apc * times executed
-    Instruction(HashMap<u32, u32>),
+    Instruction,
     /// disable PGO
     #[default]
     None,
@@ -294,6 +302,8 @@ pub struct PowdrConfig {
     pub degree_bound: usize,
     /// Implementation of the precompile, i.e., how to compile it to a RAP.
     pub implementation: PrecompileImplementation,
+    /// The pgo mode
+    pub pgo_mode: PgoMode,
 }
 
 impl PowdrConfig {
@@ -307,6 +317,7 @@ impl PowdrConfig {
             // accepts two different degree bounds for polynomial constraints and bus interactions.
             degree_bound: customize_exe::OPENVM_DEGREE_BOUND - 1,
             implementation: PrecompileImplementation::default(),
+            pgo_mode: PgoMode::None,
         }
     }
 
@@ -337,25 +348,28 @@ impl PowdrConfig {
             ..self
         }
     }
+
+    pub fn with_pgo_mode(self, pgo_mode: PgoMode) -> Self {
+        Self { pgo_mode, ..self }
+    }
 }
 
 pub fn compile_guest(
     guest: &str,
     guest_opts: GuestOptions,
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    input: StdIn,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
-    compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_config)
+    let program = compile_openvm(guest, guest_opts.clone())?;
+    compile_exe(guest, guest_opts, program, config, Some(input))
 }
 
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    exe: VmExe<p3_baby_bear::BabyBear>,
-    sdk_vm_config: SdkVmConfig,
+    program: OriginalCompiledProgram<BabyBearField>,
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    stdin: Option<StdIn>,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -370,26 +384,21 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let used_instructions = exe
-        .program
-        .instructions_and_debug_infos
-        .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode);
-    let airs = instructions_to_airs(sdk_vm_config.clone(), used_instructions);
-
-    let (exe, extension) = customize_exe::customize(
-        exe,
-        sdk_vm_config.clone(),
+    let compiled_program = customize_exe::customize::<BabyBearSC, _, BabyBearPoseidon2Engine>(
+        program,
+        stdin,
         &elf_powdr.text_labels,
-        &airs,
         config.clone(),
-        pgo_config,
+        bb_config().pcs(),
     );
-    // Generate the custom config based on the generated instructions
-    let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
+    export_pil(
+        compiled_program.vm_config.clone(),
+        "debug.pil",
+        1000,
+        &config.bus_map,
+    );
 
-    Ok(CompiledProgram { exe, vm_config })
+    Ok(compiled_program)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -412,6 +421,12 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
+fn bb_config() -> BabyBearPermutationConfig<Poseidon2BabyBear<16>> {
+    let perm = default_perm();
+    let security_params = SecurityParameters::standard_fast();
+    config_from_perm(&perm, security_params)
+}
+
 impl CompiledProgram<PowdrBB> {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
@@ -421,7 +436,7 @@ impl CompiledProgram<PowdrBB> {
             .executors()
             .iter()
             .filter_map(|executor| {
-                let air = executor.air();
+                let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
                 let width = air.width();
                 let name = air.name();
 
@@ -429,7 +444,7 @@ impl CompiledProgram<PowdrBB> {
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                    let constraints = get_constraints(air);
+                    let constraints = get_constraints(air, bb_config().pcs());
                     Some(AirMetrics {
                         name: name.to_string(),
                         width,
@@ -458,10 +473,13 @@ pub fn execute(
     Ok(())
 }
 
-pub fn pgo(
-    program: OriginalCompiledProgram<BabyBearField>,
+pub fn pgo<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>, E: StarkFriEngine<SC>>(
+    program: &OriginalCompiledProgram<P>,
     inputs: StdIn,
-) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>> {
+) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>>
+where
+    Val<SC>: PrimeField32,
+{
     // in memory collector storage
     let collected = Arc::new(Mutex::new(Vec::new()));
     let collector_layer = PgoCollector {
@@ -473,13 +491,36 @@ pub fn pgo(
 
     // prepare for execute
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
-    let sdk = Sdk::default();
 
     // dispatch constructs a local subscriber at trace level that is invoked during pgo but doesn't override the global one at info level
     let dispatch = Dispatch::new(subscriber);
     tracing::dispatcher::with_default(&dispatch, || {
-        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
+        let vm = VmExecutor::new(sdk_vm_config.clone());
+        let final_memory = vm
+            .execute(
+                exe.clone(),
+                Streams::from(
+                    inputs
+                        .buffer
+                        .into_iter()
+                        .map(|e| {
+                            e.into_iter()
+                                .map(|e| Val::<SC>::from_canonical_u32(e.as_canonical_u32()))
+                                .collect()
+                        })
+                        .collect::<VecDeque<_>>(),
+                ),
+            )
             .unwrap();
+        let public_values = extract_public_values(
+            &<SdkVmConfig as openvm_circuit::arch::VmConfig<Val<SC>>>::system(&vm.config)
+                .memory_config
+                .memory_dimensions(),
+            <SdkVmConfig as openvm_circuit::arch::VmConfig<Val<SC>>>::system(&vm.config)
+                .num_public_values,
+            final_memory.as_ref().unwrap(),
+        );
+        public_values
     });
 
     // collect the pc's during execution
@@ -601,20 +642,19 @@ pub fn prove(
     Ok(())
 }
 
-pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) -> HashMap<u32, u32> {
-    let program = compile_openvm(guest, guest_opts).unwrap();
-    // times executed by program index, where index = (pc - base_pc) / step
-    // help determine the basic blocks to create autoprecompile for
-    pgo(program, inputs).unwrap()
-}
-
-pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
+pub fn instructions_to_airs<
+    SC: StarkGenericConfig,
+    P: IntoOpenVm<Field = Val<SC>>,
+    VC: VmConfig<Val<SC>>,
+>(
+    pcs: &SC::Pcs,
     vm_config: VC,
     used_instructions: impl Iterator<Item = VmOpcode>,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
-    VC::Executor: Chip<BabyBearSC>,
-    VC::Periphery: Chip<BabyBearSC>,
+    Val<SC>: PrimeField32,
+    VC::Executor: Chip<SC>,
+    VC::Periphery: Chip<SC>,
 {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
 
@@ -628,7 +668,7 @@ where
 
                 let columns = get_columns(air.clone());
 
-                let constraints = get_constraints(air);
+                let constraints = get_constraints(air, pcs);
 
                 let powdr_exprs = constraints
                     .constraints
@@ -680,7 +720,7 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
 
             let columns = get_columns(air.clone());
 
-            let constraints = get_constraints(air);
+            let constraints = get_constraints(air, bb_config().pcs());
 
             Some(get_pil(&name, &constraints, &columns, vec![], bus_map))
         })
@@ -691,7 +731,7 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     println!("Exported PIL to {path}");
 }
 
-fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
+fn get_columns<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> Vec<String> {
     let width = air.width();
     air.columns()
         .inspect(|columns| {
@@ -700,13 +740,11 @@ fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
 }
 
-fn get_constraints(
-    air: Arc<dyn AnyRap<BabyBearSC>>,
-) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
-    let perm = default_perm();
-    let security_params = SecurityParameters::standard_fast();
-    let config = config_from_perm(&perm, security_params);
-    let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
+fn get_constraints<SC: StarkGenericConfig>(
+    air: Arc<dyn AnyRap<SC>>,
+    pcs: &SC::Pcs,
+) -> SymbolicConstraints<Val<SC>> {
+    let air_keygen_builder = AirKeygenBuilder::new(pcs, air);
     let builder = air_keygen_builder.get_symbolic_builder(None);
     builder.constraints()
 }
@@ -764,24 +802,23 @@ mod tests {
         mock: bool,
         recursion: bool,
         stdin: StdIn,
-        pgo_config: PgoConfig,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
         prove(&program, mock, recursion, stdin)
     }
 
-    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
-        let result = compile_and_prove(guest, config, false, false, stdin, pgo_config);
+    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, false, false, stdin);
         assert!(result.is_ok());
     }
 
-    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
-        let result = compile_and_prove(guest, config, true, false, stdin, pgo_config);
+    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, true, false, stdin);
         assert!(result.is_ok());
     }
 
-    fn prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
-        let result = compile_and_prove(guest, config, false, true, stdin, pgo_config);
+    fn prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn) {
+        let result = compile_and_prove(guest, config, false, true, stdin);
         assert!(result.is_ok());
     }
 
@@ -968,9 +1005,9 @@ mod tests {
     // }
 
     // The following are compilation tests only
-    fn test_guest_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
+    fn test_guest_machine(pgo_mode: PgoMode) {
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO).with_pgo_mode(pgo_mode);
+        let machines = compile_guest(GUEST, GuestOptions::default(), config)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -980,9 +1017,9 @@ mod tests {
         assert_eq!(m.bus_interactions, 31);
     }
 
-    fn test_keccak_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
+    fn test_keccak_machine(pgo_mode: PgoMode) {
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP).with_pgo_mode(pgo_mode);
+        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
