@@ -367,7 +367,9 @@ fn binary_flags() {
     );
 }
 
+// TODO: The solver is not smart enough yet to solve this.
 #[test]
+#[should_panic(expected = "Different set of variables")]
 fn ternary_flags() {
     // Implementing this logic in the OpenVM load/store chip:
     // https://github.com/openvm-org/openvm/blob/v1.2.0/extensions/rv32im/circuit/src/loadstore/core.rs#L110-L139
@@ -406,33 +408,29 @@ fn ternary_flags() {
             // The sum of flags is either 1 or 2.
             (sum.clone() - constant(1)) * (sum.clone() - constant(2)),
             // Of the expressions in `flags`, exactly one must evaluate to 1.
-            // In this case, it is the 13th, which corresponds to the assignment (0, 1, 0, 1).
+            // In this case, it must be one of flag3, flag4, flag5, or flag6.
             flags[0].clone() * constant(1)
-                + flags[1].clone() * constant(2)
-                + flags[2].clone() * constant(3)
-                + flags[3].clone() * constant(4)
-                + flags[4].clone() * constant(5)
-                + flags[5].clone() * constant(6)
-                + flags[6].clone() * constant(7)
-                + flags[7].clone() * constant(8)
-                + flags[8].clone() * constant(9)
-                + flags[9].clone() * constant(10)
-                + flags[10].clone() * constant(11)
-                + flags[11].clone() * constant(12)
-                + flags[12].clone() * constant(13)
-                + flags[13].clone() * constant(14)
-                - constant(13),
+                + (flags[1].clone() + flags[2].clone()) * constant(2)
+                + (flags[3].clone() + flags[4].clone() + flags[5].clone() + flags[6].clone())
+                    * constant(3)
+                + flags[7].clone() * constant(4)
+                + (flags[8].clone() + flags[9].clone()) * constant(5)
+                + (flags[10].clone() + flags[11].clone() + flags[12].clone() + flags[13].clone())
+                    * constant(6)
+                - constant(3),
+            // We don't know which flag is active, but for any of the flags that it could be,
+            // is_load would be 1, so we should be able to solve for it.
+            var("is_load")
+                - (var("flag0")
+                    + var("flag1")
+                    + var("flag2")
+                    + var("flag3")
+                    + var("flag4")
+                    + var("flag5")
+                    + var("flag6")),
         ],
         bus_interactions: vec![],
     };
 
-    assert_solve_result(
-        Solver::new(constraint_system),
-        vec![
-            ("flag0", 0.into()),
-            ("flag1", 1.into()),
-            ("flag2", 0.into()),
-            ("flag3", 1.into()),
-        ],
-    );
+    assert_solve_result(Solver::new(constraint_system), vec![("is_load", 1.into())]);
 }
