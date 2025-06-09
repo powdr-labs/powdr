@@ -96,34 +96,34 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         // after the first round of simplifying,
         // we need to look for register memory bus interactions
         // and replace the addr by the first argument of the instruction
-        for bus_int in &mut bus_interactions {
-            if bus_int.id != MEMORY_BUS_ID {
-                continue;
-            }
-
-            let addr_space = match bus_int.args[0] {
-                AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
-                _ => panic!(
-                    "Address space must be a constant but got {}",
-                    bus_int.args[0]
-                ),
-            };
-
-            if addr_space != 1 {
-                continue;
-            }
-
-            match bus_int.args[1] {
-                AlgebraicExpression::Number(_) => {}
-                _ => {
-                    if let Some(arg) = bus_int.args.get_mut(1) {
-                        *arg = instr.args[0].into();
-                    } else {
-                        panic!("Expected address argument");
-                    }
-                }
-            };
-        }
+        // for bus_int in &mut bus_interactions {
+        //     if bus_int.id != MEMORY_BUS_ID {
+        //         continue;
+        //     }
+        //
+        //     let addr_space = match bus_int.args[0] {
+        //         AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
+        //         _ => panic!(
+        //             "Address space must be a constant but got {}",
+        //             bus_int.args[0]
+        //         ),
+        //     };
+        //
+        //     if addr_space != 1 {
+        //         continue;
+        //     }
+        //
+        //     match bus_int.args[1] {
+        //         AlgebraicExpression::Number(_) => {}
+        //         _ => {
+        //             if let Some(arg) = bus_int.args.get_mut(1) {
+        //                 *arg = instr.args[0].into();
+        //             } else {
+        //                 panic!("Expected address argument");
+        //             }
+        //         }
+        //     };
+        // }
     }
 
     (
