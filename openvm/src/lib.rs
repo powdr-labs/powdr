@@ -955,6 +955,7 @@ mod tests {
             config,
             stdin,
             PgoConfig::Instruction(pgo_data),
+            None,
         );
     }
 
