@@ -148,6 +148,7 @@ impl<P: IntoOpenVm> PowdrChip<P> {
             is_valid_column,
             name,
             opcode,
+            removed_heap_memory_bus,
         } = precompile;
         let air = PowdrAir::new(machine);
         let executor = PowdrExecutor::new(
@@ -157,6 +158,7 @@ impl<P: IntoOpenVm> PowdrChip<P> {
             memory,
             base_config,
             periphery,
+            removed_heap_memory_bus,
         );
 
         Self {

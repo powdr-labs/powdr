@@ -9,7 +9,7 @@ use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::iter::once;
 use symbolic_machine_generator::statements_to_symbolic_machine;
@@ -306,7 +306,7 @@ pub fn build<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: usize,
     opcode: u32,
-) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
+) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>, Vec<usize>), crate::constraint_optimizer::Error> {
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
@@ -316,7 +316,7 @@ pub fn build<T: FieldElement>(
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
 
-    Ok((machine, subs))
+    Ok((machine, subs, removed_memory_bus_interactions))
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

@@ -38,7 +38,7 @@ pub fn optimize<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
     degree_bound: usize,
-) -> Result<(SymbolicMachine<T>, BTreeSet<usize>), crate::constraint_optimizer::Error> {
+) -> Result<(SymbolicMachine<T>, Vec<usize>), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
     let machine = if let Some(opcode) = opcode {
         let machine = optimize_pc_lookup(machine, opcode);
@@ -90,13 +90,52 @@ pub fn optimize<T: FieldElement>(
         compute_orig_mem_bus_int_idx(mem_bus_int_idx, &mut bus_int_optimization_tracker);
 
     tracing::debug!(
-        "mem_bus_int_original_index: {:?}",
+        "mem_bus_int_original_index with length {}: {:?}",
+        mem_bus_int_original_index.len(),
         mem_bus_int_original_index
     );
 
+    #[derive(Copy, Clone)]
+    enum MemoryRecord {
+        NoMatch,
+        CanMatch(usize),
+    }
+
+    let removed_memory_record: Vec<usize> = mem_bus_int_original_index
+        .iter()
+        .scan(MemoryRecord::NoMatch, |state, &orig_idx| {
+            // Make a copy of the *current* state for pattern‐matching
+            let old = *state;
+            let out = match old {
+                MemoryRecord::NoMatch => {
+                    if orig_idx % 2 == 0 {
+                        // schedule a potential match for the *next* element
+                        *state = MemoryRecord::CanMatch(orig_idx);
+                    }
+                    None
+                }
+                MemoryRecord::CanMatch(prev) => {
+                    // we were waiting to see if the next element is prev+1
+                    *state = MemoryRecord::NoMatch; // either way, reset
+                    if orig_idx == prev + 1 {
+                        Some(prev / 2)
+                    } else {
+                        None
+                    }
+                }
+            };
+            // return what we found (or None)
+            Some(out)
+        })
+        // filter_map to drop the Nones
+        .filter_map(|x| x)
+        .collect();
+
+    tracing::debug!("removed memory record: {:?}", removed_memory_record);
+
     return Ok((
         constraint_system_to_symbolic_machine(constraint_system),
-        mem_bus_int_original_index,
+        removed_memory_record,
     ));
 }
 

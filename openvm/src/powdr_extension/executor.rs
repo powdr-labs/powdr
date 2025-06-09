@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, Mutex},
 };
 
@@ -57,6 +57,7 @@ pub struct PowdrExecutor<P: IntoOpenVm> {
     inventory: SdkVmInventory<OpenVmField<P>>,
     number_of_calls: usize,
     periphery: SharedChips,
+    removed_heap_memory_bus: Vec<usize>,
 }
 
 impl<P: IntoOpenVm> PowdrExecutor<P> {
@@ -67,6 +68,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
+        removed_heap_memory_bus: Vec<usize>,
     ) -> Self {
         Self {
             instructions,
@@ -81,6 +83,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .inventory,
             number_of_calls: 0,
             periphery,
+            removed_heap_memory_bus,
         }
     }
 
@@ -130,10 +133,32 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             last_read_write.unwrap_or(to_record_id)
         );
 
-        memory
-            .memory
-            .apc_ranges
-            .push(ApcRange::new(from_record_id, to_record_id, last_read_write));
+        let largest_removed_bus_index = self
+            .removed_heap_memory_bus
+            .iter()
+            .last()
+            .cloned()
+            .unwrap_or(0);
+        // tracing::debug!("record id implied largest removed bus index {} v.s. largest removed bus index {}", (to_record_id - from_record_id) * 2 + 1, largest_removed_bus_index);
+        // tracing::debug!("removed heap bus indices: {:?}", self.removed_heap_memory_bus);
+        assert!((to_record_id - from_record_id) >= largest_removed_bus_index); // record range is greater than max removed index
+
+        tracing::debug!(
+            "removed {} heap memory records",
+            self.removed_heap_memory_bus.len(),
+        );
+
+        // add start to each entry of removed_heap_memory_bus
+        memory.memory.apc_ranges.push(ApcRange::new(
+            from_record_id,
+            to_record_id,
+            last_read_write,
+            self.removed_heap_memory_bus
+                .clone()
+                .into_iter()
+                .map(|x| x + from_record_id)
+                .collect(),
+        ));
 
         res
     }

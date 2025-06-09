@@ -31,7 +31,7 @@ fn test_optimize() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize(
+    let (machine, _) = optimize(
         machine,
         OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
         None, // opcode
@@ -68,7 +68,7 @@ fn test_conflicting_constraints_in_bus_interaction() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize(
+    let (machine, _) = optimize(
         machine,
         OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
         None, // opcode

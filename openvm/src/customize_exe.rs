@@ -40,6 +40,7 @@ type CachedAutoPrecompile<F> = (
     usize,              // powdr opcode
     SymbolicMachine<F>, // autoprecompile
     Vec<Vec<u64>>,      // poly id substitution of original columns
+    Vec<usize>,         // removed heap memory bus interactions
 );
 
 use crate::{PgoConfig, PowdrConfig};
@@ -210,7 +211,7 @@ pub fn customize<P: IntoOpenVm>(
         );
 
         // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
-        let (apc_opcode, autoprecompile, subs) =
+        let (apc_opcode, autoprecompile, subs, removed_heap_memory_bus_interaction) =
             apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
                 generate_apc_cache(
                     acc_block,
@@ -282,6 +283,7 @@ pub fn customize<P: IntoOpenVm>(
                 .map(|(i, air)| (*i, air.clone()))
                 .collect(),
             is_valid_column,
+            removed_heap_memory_bus_interaction,
         ));
     }
 
@@ -470,7 +472,7 @@ fn generate_apc_cache<P: IntoOpenVm>(
     degree_bound: usize,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
-    let (autoprecompile, subs) = generate_autoprecompile(
+    let (autoprecompile, subs, removed_heap_memory_bus) = generate_autoprecompile(
         block,
         airs,
         apc_opcode,
@@ -479,7 +481,7 @@ fn generate_apc_cache<P: IntoOpenVm>(
         branch_opcodes,
     )?;
 
-    Ok((apc_opcode, autoprecompile, subs))
+    Ok((apc_opcode, autoprecompile, subs, removed_heap_memory_bus))
 }
 
 // OpenVM relevant bus ids:
@@ -497,7 +499,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     bus_map: BusMap,
     degree_bound: usize,
     branch_opcodes: &BTreeSet<usize>,
-) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
+) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>, Vec<usize>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
         block.start_idx
@@ -535,7 +537,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         })
         .collect();
 
-    let (precompile, subs) = powdr_autoprecompiles::build(
+    let (precompile, subs, removed_memory_bus_interactions) = powdr_autoprecompiles::build(
         program,
         instruction_kind,
         instruction_machines,
@@ -552,7 +554,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         block.start_idx
     );
 
-    Ok((precompile, subs))
+    Ok((precompile, subs, removed_memory_bus_interactions))
 }
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
