@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use super::simplify_expression;
 use itertools::Itertools;
-use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
@@ -41,11 +40,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((is_valid.clone() + one).into());
 
-        let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
-        if is_loadstore(instr.opcode) {
-            sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
-        }
-
         // Constrain the opcode expression to equal the actual opcode.
         let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
         local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
@@ -78,7 +72,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .map(|expr| {
                 let mut expr = expr.expr.clone();
                 powdr::substitute_algebraic(&mut expr, &sub_map);
-                powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
                 expr = simplify_expression(expr);
                 SymbolicConstraint { expr }
             })
@@ -93,7 +86,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
                 .chain(std::iter::once(&mut link.mult))
                 .for_each(|e| {
                     powdr::substitute_algebraic(e, &sub_map);
-                    powdr::substitute_algebraic(e, &sub_map_loadstore);
                     *e = simplify_expression(e.clone());
                 });
             bus_interactions.push(link);
@@ -156,31 +148,4 @@ fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInt
         .unwrap();
     // TODO assert that r.mult matches -expr
     r
-}
-
-fn is_loadstore(opcode: usize) -> bool {
-    (0x210..=0x215).contains(&opcode)
-}
-
-fn loadstore_chip_info<T: FieldElement>(
-    machine: &SymbolicMachine<T>,
-    opcode: usize,
-) -> BTreeMap<Column, AlgebraicExpression<T>> {
-    let is_load = if opcode == 0x210 || opcode == 0x211 || opcode == 0x212 {
-        T::from(1u32)
-    } else {
-        T::from(0u32)
-    };
-    let is_load = AlgebraicExpression::Number(is_load);
-    let is_load_expr = match &machine.constraints[7].expr {
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, .. }) => left.clone(),
-        _ => panic!("Expected subtraction."),
-    };
-    let is_load_col = if let AlgebraicExpression::Reference(r) = &*is_load_expr {
-        r.into()
-    } else {
-        panic!("expected a single reference")
-    };
-
-    [(is_load_col, is_load)].into()
 }
