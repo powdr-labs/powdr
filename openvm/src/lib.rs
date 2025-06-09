@@ -202,7 +202,9 @@ impl<P: IntoOpenVm> VmConfig<OpenVmField<P>> for SpecializedConfig<P> {
         &self,
     ) -> Result<VmChipComplex<OpenVmField<P>, Self::Executor, Self::Periphery>, VmInventoryError>
     {
+        tracing::info!("create sdk chip");
         let chip = self.sdk_config.create_chip_complex()?;
+        tracing::info!("extend it with extensions");
         let chip = chip.extend(&self.powdr)?;
 
         Ok(chip)
@@ -386,9 +388,17 @@ pub fn compile_exe(
         config.clone(),
         pgo_config,
     );
+
+    tracing::info!("Create SpecializedConfig",);
+
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
+
+    tracing::info!("Export pil",);
+
     export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
+
+    tracing::info!("Done exporting pil",);
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -657,7 +667,11 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
 {
+    tracing::info!("Create chip complex...",);
+
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
+
+    tracing::info!("Chip complex in memory, now export pil",);
 
     let pil = chip_complex
         .inventory

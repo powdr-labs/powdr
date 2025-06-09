@@ -271,6 +271,8 @@ pub fn customize<P: IntoOpenVm>(
             .unique()
             .collect_vec();
 
+        tracing::info!("Create extension");
+
         extensions.push(PowdrPrecompile::new(
             format!("PowdrAutoprecompile_{apc_opcode}"),
             PowdrOpcode {
@@ -287,7 +289,11 @@ pub fn customize<P: IntoOpenVm>(
                 .collect(),
             is_valid_column,
         ));
+
+        tracing::info!("Done");
     }
+
+    tracing::info!("Generated {} autoprecompiles", extensions.len());
 
     (
         exe,

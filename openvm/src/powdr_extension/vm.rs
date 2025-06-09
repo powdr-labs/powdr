@@ -197,6 +197,11 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             .cloned();
 
         for precompile in &self.precompiles {
+            tracing::info!(
+                "Registering precompile: {} with opcode: {}",
+                precompile.name,
+                precompile.opcode.global_opcode()
+            );
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),

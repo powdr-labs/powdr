@@ -1,19 +1,29 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     sync::{Arc, Mutex},
 };
 
-use crate::{traits::OpenVmField, utils::algebraic_to_symbolic, IntoOpenVm};
+use crate::{
+    powdr_extension::executor::{SharedExecutor, SharedPeriphery},
+    traits::OpenVmField,
+    utils::algebraic_to_symbolic,
+    IntoOpenVm,
+};
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
-use openvm_circuit::system::memory::MemoryController;
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
     system::memory::OfflineMemory,
 };
+use openvm_circuit::{
+    arch::{PhantomSubExecutor, VmExtension},
+    system::{memory::MemoryController, phantom::PhantomChip},
+};
+use openvm_circuit_derive::AnyEnum;
 use openvm_circuit_primitives::{
     bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
     var_range::SharedVariableRangeCheckerChip,
@@ -55,9 +65,47 @@ pub struct PowdrChip<P: IntoOpenVm> {
 
 /// The shared chips which can be used by the PowdrChip.
 pub struct SharedChips {
-    bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
+    pub bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
     pub range_checker: SharedVariableRangeCheckerChip,
-    tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
+    pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
+}
+
+impl<F> VmExtension<F> for &SharedChips
+where
+    F: PrimeField32,
+{
+    type Executor = SharedExecutor<F>;
+
+    type Periphery = SharedPeriphery<F>;
+
+    fn build(
+        &self,
+        builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
+    ) -> Result<
+        openvm_circuit::arch::VmInventory<Self::Executor, Self::Periphery>,
+        openvm_circuit::arch::VmInventoryError,
+    > {
+        assert_eq!(builder.find_chip::<RefCell<PhantomChip<F>>>().len(), 1);
+        assert!(builder
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .is_empty());
+        // assert!(builder.find_chip::<SharedVariableRangeCheckerChip>().is_empty());
+        if let Some(tuple_checker) = &self.tuple_range_checker {
+            assert!(builder
+                .find_chip::<SharedRangeTupleCheckerChip<2>>()
+                .is_empty());
+        }
+
+        let mut inventory = openvm_circuit::arch::VmInventory::new();
+        inventory.add_periphery_chip(self.bitwise_lookup_8.clone());
+        // inventory.add_periphery_chip(self.range_checker.clone());
+
+        if let Some(tuple_checker) = &self.tuple_range_checker {
+            inventory.add_periphery_chip(tuple_checker.clone());
+        }
+
+        Ok(inventory)
+    }
 }
 
 impl SharedChips {
