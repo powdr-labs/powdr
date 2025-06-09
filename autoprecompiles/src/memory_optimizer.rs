@@ -11,6 +11,7 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
     NoRangeConstraints, QuadraticSymbolicExpression,
 };
 use powdr_constraint_solver::utils::possible_concrete_values;
+use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator};
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
@@ -24,6 +25,7 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    machine = solve_register_addresses(machine);
     let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     machine.bus_interactions = machine
@@ -33,6 +35,52 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
         .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
         .collect();
     machine.constraints.extend(new_constraints);
+    machine
+}
+
+fn solve_register_addresses<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+) -> SymbolicMachine<T> {
+    for bus_int in &mut machine.bus_interactions {
+        if bus_int.id != 1 {
+            continue;
+        }
+
+        let addr_space = match bus_int.args[0] {
+            AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
+            _ => panic!(
+                "Address space must be a constant but got {}",
+                bus_int.args[0]
+            ),
+        };
+
+        if addr_space != 1 {
+            continue;
+        }
+
+        match bus_int.args[1] {
+            AlgebraicExpression::Number(_) => {}
+            _ => {
+                let Some(arg) = bus_int.args.get_mut(1) else {
+                    panic!("Expected address argument");
+                };
+
+                let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right,
+                }) = arg
+                else {
+                    panic!("Expected binary operation");
+                };
+
+                assert!(matches!(**left, AlgebraicExpression::Number(_)));
+
+                machine.constraints.push((**right).clone().into());
+                *arg = (**left).clone();
+            }
+        };
+    }
     machine
 }
 
