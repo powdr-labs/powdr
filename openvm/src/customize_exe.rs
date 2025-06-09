@@ -151,11 +151,6 @@ pub fn customize<P: IntoOpenVm>(
         blocks.len()
     );
 
-    // print start index of all retained blocks
-    blocks.iter().enumerate().for_each(|(i, block)| {
-        tracing::info!("Block {}: start_idx {}", i, block.start_idx);
-    });
-
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -195,34 +190,43 @@ pub fn customize<P: IntoOpenVm>(
     let mut extensions = Vec::new();
     let n_acc = config.autoprecompiles as usize;
     let n_skip = config.skip_autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles");
+    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
+
+    let apcs = blocks[n_skip..n_skip + n_acc]
+        .par_iter_mut()
+        .enumerate()
+        .map(|(index, acc_block)| {
+            tracing::debug!(
+                "Accelerating block of length {} and start idx {}",
+                acc_block.statements.len(),
+                acc_block.start_idx
+            );
+
+            tracing::debug!(
+                "Acc block: {}",
+                acc_block.pretty_print(openvm_instruction_formatter)
+            );
+
+            let apc_opcode = POWDR_OPCODE + index;
+
+            let (autoprecompile, subs) = generate_autoprecompile(
+                acc_block,
+                airs,
+                apc_opcode,
+                config.bus_map.clone(),
+                config.degree_bound,
+            )
+            .unwrap();
+            (apc_opcode, autoprecompile, subs)
+        })
+        .collect::<Vec<_>>();
+
+    tracing::info!("Adjust the program with the autoprecompiles");
 
     // now the blocks have been sorted by cost
-    for (i, acc_block) in blocks.iter().skip(n_skip).take(n_acc).enumerate() {
-        tracing::debug!(
-            "Accelerating block {i} of length {} and start idx {}",
-            acc_block.statements.len(),
-            acc_block.start_idx
-        );
-
-        tracing::debug!(
-            "Acc block: {}",
-            acc_block.pretty_print(openvm_instruction_formatter)
-        );
-
-        // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
-        let (apc_opcode, autoprecompile, subs) =
-            apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
-                generate_apc_cache(
-                    acc_block,
-                    airs,
-                    POWDR_OPCODE + i,
-                    config.bus_map.clone(),
-                    config.degree_bound,
-                )
-                .expect("Failed to generate autoprecompile")
-            });
-
+    for (acc_block, (apc_opcode, autoprecompile, subs)) in
+        blocks.iter().skip(n_skip).take(n_acc).zip_eq(apcs)
+    {
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
             a: OpenVmField::<P>::ZERO,
@@ -268,7 +272,7 @@ pub fn customize<P: IntoOpenVm>(
             .collect_vec();
 
         extensions.push(PowdrPrecompile::new(
-            format!("PowdrAutoprecompile_{i}"),
+            format!("PowdrAutoprecompile_{apc_opcode}"),
             PowdrOpcode {
                 class_offset: apc_opcode,
             },
@@ -556,6 +560,8 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     config: PowdrConfig,
     opcodes_no_apc: &[usize],
 ) {
+    unimplemented!();
+
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.

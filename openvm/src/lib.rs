@@ -504,13 +504,6 @@ pub fn pgo(
     // print the total and by pc counts at the warn level (default level in powdr-openvm)
     tracing::warn!("Pgo captured {} pc's", pc.len());
 
-    // print pc_index map in descending order of pc_index count
-    let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-    pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-    pc_index_count_sorted.iter().for_each(|(pc, count)| {
-        tracing::warn!("pc_index {}: {}", pc, count);
-    });
-
     Ok(pc_index_count)
 }
 
