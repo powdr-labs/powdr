@@ -959,47 +959,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Too much RAM"]
-    fn keccak_prove_many_apcs() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
-
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
-        prove_recursion(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data.clone()),
-            None,
-        );
-
-        prove_recursion(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin,
-            PgoConfig::Cell(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn keccak_prove_large() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_LARGE);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
-
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
-        prove_recursion(
-            GUEST_KECCAK,
-            config,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-        );
-    }
-
-    #[test]
     fn keccak_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
