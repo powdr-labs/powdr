@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator,
-};
+use powdr_autoprecompiles::legacy_expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_expression::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
+};
 use powdr_number::FieldElement;
 
 pub fn build_circuit<T>(
@@ -163,7 +164,6 @@ where
                             b = self.evaluate_expression(right, false);
                         }
                     },
-                    AlgebraicBinaryOperator::Pow => unimplemented!(),
                 };
                 self.plonk_circuit.add_gate(Gate {
                     q_l,
@@ -193,9 +193,6 @@ where
                     c
                 }
             },
-            _ => {
-                panic!("Unsupported algebraic expression: {algebraic_expr:?}");
-            }
         };
 
         self.cache.insert(algebraic_expr.clone(), result.clone());

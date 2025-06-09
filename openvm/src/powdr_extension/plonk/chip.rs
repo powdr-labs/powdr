@@ -29,7 +29,7 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 
@@ -166,6 +166,8 @@ where
                     a: gate.a.clone(),
                     b: gate.b.clone(),
                     c: gate.c.clone(),
+                    d: gate.d.clone(),
+                    e: gate.e.clone(),
 
                     q_bitwise: gate.q_bitwise.into_openvm_field(),
                     q_memory: gate.q_memory.into_openvm_field(),
@@ -201,6 +203,7 @@ where
                 // TODO: Solve for tmp variables of other columns too.
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
+
                 if let Some(a) = vars.get(&gate.a) {
                     columns.a = a;
                 }
@@ -209,6 +212,12 @@ where
                 }
                 if let Some(c) = vars.get(&gate.c) {
                     columns.c = c;
+                }
+                if let Some(d) = vars.get(&gate.d) {
+                    columns.d = d;
+                }
+                if let Some(e) = vars.get(&gate.e) {
+                    columns.e = e;
                 }
             }
         }

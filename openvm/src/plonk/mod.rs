@@ -56,6 +56,8 @@ pub struct Gate<T, V> {
     pub a: Variable<V>,
     pub b: Variable<V>,
     pub c: Variable<V>,
+    pub d: Variable<V>,
+    pub e: Variable<V>,
 }
 
 impl<T: FieldElement, V> Default for Gate<T, V> {
@@ -76,6 +78,8 @@ impl<T: FieldElement, V> Default for Gate<T, V> {
             a: Variable::Unused,
             b: Variable::Unused,
             c: Variable::Unused,
+            d: Variable::Unused,
+            e: Variable::Unused,
         }
     }
 }
@@ -151,7 +155,7 @@ impl<T: FieldElement, V: Display> Display for Gate<T, V> {
         };
         let rhs = format_product(-self.q_o, &self.c).unwrap_or_else(|| "0".to_string());
         let gate_info = if rhs == "0" && lhs == "0" {
-            format!("{}, {}, {}", self.a, self.b, self.c)
+            format!("{}, {}, {}, {}, {}", self.a, self.b, self.c, self.d, self.e)
         } else {
             format!("{lhs} = {rhs}")
         };
@@ -218,7 +222,7 @@ impl<T, V> PlonkCircuit<T, V> {
         self.gates
             .iter()
             .flat_map(|gate| {
-                [&gate.a, &gate.b, &gate.c]
+                [&gate.a, &gate.b, &gate.c, &gate.d, &gate.e]
                     .iter()
                     .filter_map(|var| match var {
                         Variable::Tmp(id) => Some(*id),
@@ -234,8 +238,9 @@ impl<T, V> PlonkCircuit<T, V> {
 
 #[cfg(test)]
 pub mod test_utils {
-    use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_autoprecompiles::legacy_expression::{
+        AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
+    };
     use powdr_number::BabyBearField;
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
         AlgebraicExpression::Reference(AlgebraicReference {

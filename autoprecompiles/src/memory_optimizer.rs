@@ -1,25 +1,24 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt;
 use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    algebraic_expression_conversion, AlgebraicExpression, AlgebraicReference, Challenge,
-};
-use powdr_constraint_solver::boolean_extractor;
+use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
-use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::utils::possible_concrete_values;
-use powdr_number::FieldElement;
-
-use crate::{
-    word_size_by_memory, MemoryBusInteraction, MemoryOp, MemoryType, SymbolicConstraint,
-    SymbolicMachine,
+use powdr_constraint_solver::quadratic_symbolic_expression::{
+    NoRangeConstraints, QuadraticSymbolicExpression,
 };
+use powdr_constraint_solver::utils::possible_concrete_values;
+use powdr_number::{FieldElement, LargeInt};
+
+use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
+use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, MEMORY_BUS_ID};
+
+/// The memory address space for register memory operations.
+const REGISTER_ADDRESS_SPACE: u32 = 1;
 
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
@@ -49,7 +48,9 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
         })
-        .filter(|mem_int: &MemoryBusInteraction<T>| matches!(mem_int.ty, MemoryType::Register))
+        .filter(|mem_int: &MemoryBusInteraction<T>| {
+            mem_int.address_space == T::from(REGISTER_ADDRESS_SPACE)
+        })
         .map(|mem_int| {
             mem_int.try_addr_u32().unwrap_or_else(|| {
                 panic!(
@@ -63,7 +64,64 @@ pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicM
             map
         });
 
-    count_per_addr.values().all(|&v| v % 2 == 0)
+    count_per_addr.values().all(|&v| v == 2)
+}
+
+#[derive(Clone, Debug)]
+enum MemoryOp {
+    Send,
+    Receive,
+}
+
+#[derive(Clone, Debug)]
+struct MemoryBusInteraction<T> {
+    op: MemoryOp,
+    address_space: T,
+    addr: AlgebraicExpression<T>,
+    data: Vec<AlgebraicExpression<T>>,
+}
+
+impl<T: FieldElement> MemoryBusInteraction<T> {
+    fn try_addr_u32(&self) -> Option<u32> {
+        match self.addr {
+            AlgebraicExpression::Number(n) => n.to_integer().try_into_u32(),
+            _ => None,
+        }
+    }
+}
+
+impl<T: FieldElement> MemoryBusInteraction<T> {
+    /// Tries to convert a `SymbolicBusInteraction` to a `MemoryBusInteraction`.
+    ///
+    /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
+    /// Returns `Err(_)` if the bus interaction is a memory bus interaction but could not be converted properly
+    /// (usually because the multiplicity is not -1 or 1).
+    /// Otherwise returns `Ok(Some(memory_bus_interaction))`
+    fn try_from_symbolic_bus_interaction(
+        bus_interaction: &SymbolicBusInteraction<T>,
+    ) -> Result<Option<Self>, ()> {
+        if bus_interaction.id != MEMORY_BUS_ID {
+            return Ok(None);
+        }
+        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
+        // are in the right order.
+        let AlgebraicExpression::Number(address_space) = bus_interaction.args[0].clone() else {
+            panic!("Address space must be known!")
+        };
+        let op = match bus_interaction.try_multiplicity_to_number() {
+            Some(n) if n == 1.into() => MemoryOp::Send,
+            Some(n) if n == (-1).into() => MemoryOp::Receive,
+            _ => return Err(()),
+        };
+        let addr = bus_interaction.args[1].clone();
+        let data = bus_interaction.args[2..bus_interaction.args.len() - 1].to_vec();
+        Ok(Some(MemoryBusInteraction {
+            op,
+            address_space,
+            addr,
+            data,
+        }))
+    }
 }
 
 /// Tries to find indices of bus interactions that can be removed in the given machine
@@ -74,8 +132,8 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     let address_comparator = MemoryAddressComparator::new(machine);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-    // Address across all memory types.
-    type GlobalAddress<T> = (MemoryType, QuadraticSymbolicExpression<T, Variable>);
+    // Address across all address spaces.
+    type GlobalAddress<T> = (T, QuadraticSymbolicExpression<T, AlgebraicReference>);
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
@@ -97,12 +155,9 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 continue;
             }
         };
-        let Some(word_size) = word_size_by_memory(mem_int.ty) else {
-            continue;
-        };
 
         let addr = (
-            mem_int.ty,
+            mem_int.address_space,
             algebraic_to_quadratic_symbolic_expression(&mem_int.addr),
         );
 
@@ -123,8 +178,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
-                    address_comparator
-                        .are_addrs_known_to_be_different_by_word(&addr, other_addr, word_size)
+                    address_comparator.are_addrs_known_to_be_different(&addr, other_addr)
                 });
                 memory_contents.insert(addr.clone(), (index, mem_int.data.clone()));
             }
@@ -140,12 +194,14 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     (to_remove, new_constraints)
 }
 
+type BooleanExtractedExpression<T, V> =
+    QuadraticSymbolicExpression<T, boolean_extractor::Variable<V>>;
 struct MemoryAddressComparator<T: FieldElement> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
     memory_addresses: HashMap<
-        QuadraticSymbolicExpression<T, Variable>,
-        Vec<QuadraticSymbolicExpression<T, Variable>>,
+        BooleanExtractedExpression<T, AlgebraicReference>,
+        Vec<BooleanExtractedExpression<T, AlgebraicReference>>,
     >,
 }
 
@@ -161,7 +217,12 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
             })
             .map(|bus| algebraic_to_quadratic_symbolic_expression(&bus.addr));
 
-        let constraints = symbolic_to_simplified_constraints(&machine.constraints);
+        let constraints = machine
+            .constraints
+            .iter()
+            .map(|constr| algebraic_to_quadratic_symbolic_expression(&constr.expr))
+            .collect_vec();
+        let constraints = boolean_extractor::to_boolean_extracted_system(&constraints);
         let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: constraints,
             bus_interactions: vec![],
@@ -170,6 +231,7 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
 
         let memory_addresses = addresses
             .map(|addr| {
+                let addr = addr.transform_var_type(&mut |v| v.into());
                 (
                     addr.clone(),
                     find_equivalent_expressions(&addr, &constraint_system),
@@ -180,78 +242,23 @@ impl<T: FieldElement> MemoryAddressComparator<T> {
     }
 
     /// Returns true if we can prove that for two addresses `a` and `b`,
-    /// `a - b` never falls into the range `-3..=3`.
-    pub fn are_addrs_known_to_be_different_by_word(
+    /// `a - b` cannot be 0.
+    pub fn are_addrs_known_to_be_different(
         &self,
-        a: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
-        b: &(MemoryType, QuadraticSymbolicExpression<T, Variable>),
-        word_size: u32,
+        a: &(T, QuadraticSymbolicExpression<T, AlgebraicReference>),
+        b: &(T, QuadraticSymbolicExpression<T, AlgebraicReference>),
     ) -> bool {
         if a.0 != b.0 {
             return true;
         }
 
-        let a_exprs = &self.memory_addresses[&a.1];
-        let b_exprs = &self.memory_addresses[&b.1];
+        let a_exprs = &self.memory_addresses[&a.1.transform_var_type(&mut |v| v.into())];
+        let b_exprs = &self.memory_addresses[&b.1.transform_var_type(&mut |v| v.into())];
+        let range_constraints = RangeConstraintsForBooleans::from(NoRangeConstraints);
         a_exprs
             .iter()
             .cartesian_product(b_exprs)
-            .any(|(a_exprs, b_exprs)| {
-                is_value_known_to_be_different_by_word(
-                    a_exprs,
-                    b_exprs,
-                    word_size,
-                    &RangeConstraintsForBooleans,
-                )
-            })
-    }
-}
-
-/// Converts from SymbolicConstraint to QuadraticSymbolicExpression and
-/// simplifies constraints by introducing boolean variables.
-fn symbolic_to_simplified_constraints<T: FieldElement>(
-    constraints: &[SymbolicConstraint<T>],
-) -> Vec<QuadraticSymbolicExpression<T, Variable>> {
-    let mut counter = 0..;
-    let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
-
-    constraints
-        .iter()
-        .map(|constr| {
-            let constr = algebraic_to_quadratic_symbolic_expression(&constr.expr);
-            boolean_extractor::extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
-        })
-        .collect_vec()
-}
-
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-pub enum Variable {
-    Reference(AlgebraicReference),
-    PublicReference(String),
-    Challenge(Challenge),
-    Boolean(usize),
-}
-
-impl Display for Variable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Variable::Reference(r) => write!(f, "{r}"),
-            Variable::PublicReference(r) => write!(f, "{r}"),
-            Variable::Challenge(c) => write!(f, "{c}"),
-            Variable::Boolean(id) => write!(f, "boolean_{id}"),
-        }
-    }
-}
-
-#[derive(Default)]
-struct RangeConstraintsForBooleans;
-
-impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraintsForBooleans {
-    fn get(&self, variable: &Variable) -> RangeConstraint<T> {
-        match variable {
-            Variable::Boolean(_) => RangeConstraint::from_mask(1),
-            _ => Default::default(),
-        }
+            .any(|(a_expr, b_expr)| is_known_to_be_nonzero(&(a_expr - b_expr), &range_constraints))
     }
 }
 
@@ -284,49 +291,13 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
     exprs
 }
 
-/// Returns true if we can prove that `a - b` never falls into the range `-3..=3`.
-fn is_value_known_to_be_different_by_word<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
-    a: &QuadraticSymbolicExpression<T, V>,
-    b: &QuadraticSymbolicExpression<T, V>,
-    word_size: u32,
+/// Returns true if we can prove that `expr` cannot be 0.
+fn is_known_to_be_nonzero<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
+    expr: &QuadraticSymbolicExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
-    assert!(
-        word_size > 0
-            && word_size < 0x10000
-            && T::Integer::from(2 * word_size as u64) < T::modulus()
-    );
-    let disallowed_range =
-        RangeConstraint::from_range(-T::from(word_size - 1), T::from(word_size - 1));
-    possible_concrete_values(&(a - b), range_constraints, 20)
-        .is_some_and(|mut values| !values.any(|value| disallowed_range.allows_value(value)))
-}
-
-/// Turns an algebraic expression into a quadratic symbolic expression,
-/// assuming all [`AlgebraicReference`]s, public references and challenges
-/// are unknown variables.
-pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> QuadraticSymbolicExpression<T, Variable> {
-    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
-
-    struct TerminalConverter;
-
-    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
-        for TerminalConverter
-    {
-        fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Reference(reference.clone()))
-        }
-        fn convert_public_reference(&mut self, reference: &str) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::PublicReference(reference.to_string()))
-        }
-        fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
-            Qse::from_unknown_variable(Variable::Challenge(*challenge))
-        }
-    }
-
-    algebraic_expression_conversion::convert(expr, &mut TerminalConverter)
+    possible_concrete_values(expr, range_constraints, 20)
+        .is_some_and(|mut values| values.all(|value| !value.is_zero()))
 }
 
 #[cfg(test)]
@@ -335,90 +306,43 @@ mod tests {
 
     use powdr_constraint_solver::{
         quadratic_symbolic_expression::NoRangeConstraints,
+        range_constraint::RangeConstraint,
         test_utils::{constant, var},
     };
+    use powdr_number::GoldilocksField;
 
     #[test]
-    fn difference_for_constants() {
-        assert!(!is_value_known_to_be_different_by_word(
-            &constant(7),
-            &constant(5),
-            4,
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &constant(5),
-            &constant(7),
-            4,
-            &NoRangeConstraints
-        ));
-        assert!(is_value_known_to_be_different_by_word(
-            &constant(4),
-            &constant(0),
-            4,
-            &NoRangeConstraints
-        ));
-        assert!(is_value_known_to_be_different_by_word(
-            &constant(0),
-            &constant(4),
-            4,
-            &NoRangeConstraints
-        ));
-    }
+    fn is_known_to_by_nonzero() {
+        assert!(!is_known_to_be_nonzero(&constant(0), &NoRangeConstraints));
+        assert!(is_known_to_be_nonzero(&constant(1), &NoRangeConstraints));
+        assert!(is_known_to_be_nonzero(&constant(7), &NoRangeConstraints));
+        assert!(is_known_to_be_nonzero(&-constant(1), &NoRangeConstraints));
 
-    #[test]
-    fn difference_for_vars() {
-        assert!(!is_value_known_to_be_different_by_word(
-            &(constant(7) + var("a")),
-            &(constant(5) + var("a")),
-            4,
+        assert!(!is_known_to_be_nonzero(
+            &(constant(42) - constant(2) * var("a")),
             &NoRangeConstraints
         ));
-        assert!(is_value_known_to_be_different_by_word(
-            &(constant(7) + var("a")),
-            &(constant(2) + var("a")),
-            4,
+        assert!(!is_known_to_be_nonzero(
+            &(var("a") - var("b")),
             &NoRangeConstraints
         ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &(constant(7) - var("a")),
-            &(constant(2) + var("a")),
-            4,
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &var("a"),
-            &var("b"),
-            4,
-            &NoRangeConstraints
-        ));
-    }
 
-    #[test]
-    fn smaller_word() {
-        assert!(is_value_known_to_be_different_by_word(
-            &(constant(7) + var("a")),
-            &(constant(6) + var("a")),
-            1,
-            &NoRangeConstraints
+        struct AllVarsThreeOrFour;
+        impl RangeConstraintProvider<GoldilocksField, &'static str> for AllVarsThreeOrFour {
+            fn get(&self, _var: &&'static str) -> RangeConstraint<GoldilocksField> {
+                RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4))
+            }
+        }
+        assert!(is_known_to_be_nonzero(&var("a"), &AllVarsThreeOrFour));
+        assert!(is_known_to_be_nonzero(
+            // Can't be zero for all assignments of a and b.
+            &(var("a") - constant(2) * var("b")),
+            &AllVarsThreeOrFour
         ));
-        assert!(is_value_known_to_be_different_by_word(
-            &(constant(6) + var("a")),
-            &(constant(7) + var("a")),
-            1,
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &(constant(7) + var("a")),
-            &(constant(6) + var("a")),
-            2,
-            &NoRangeConstraints
-        ));
-        assert!(!is_value_known_to_be_different_by_word(
-            &(constant(6) + var("a")),
-            &(constant(7) + var("a")),
-            2,
-            &NoRangeConstraints
+        assert!(!is_known_to_be_nonzero(
+            // Can be zero for a = 4, b = 3.
+            &(constant(3) * var("a") - constant(4) * var("b")),
+            &AllVarsThreeOrFour
         ));
     }
 }
