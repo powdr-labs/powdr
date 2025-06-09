@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -61,7 +62,7 @@ pub fn customize<P: IntoOpenVm>(
     mut exe: VmExe<OpenVmField<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
@@ -161,7 +162,7 @@ pub fn customize<P: IntoOpenVm>(
                 &mut blocks,
                 &mut apc_cache,
                 pgo_program_idx_count,
-                airs,
+                &airs,
                 config.clone(),
                 &opcodes_no_apc,
             );
@@ -211,7 +212,7 @@ pub fn customize<P: IntoOpenVm>(
 
             let (autoprecompile, subs) = generate_autoprecompile(
                 acc_block,
-                airs,
+                &airs,
                 apc_opcode,
                 config.bus_map.clone(),
                 config.degree_bound,
@@ -222,6 +223,8 @@ pub fn customize<P: IntoOpenVm>(
         .collect::<Vec<_>>();
 
     tracing::info!("Adjust the program with the autoprecompiles");
+
+    let airs = Arc::new(airs);
 
     // now the blocks have been sorted by cost
     for (acc_block, (apc_opcode, autoprecompile, subs)) in
@@ -265,12 +268,6 @@ pub fn customize<P: IntoOpenVm>(
             .find(|c| c.name == "is_valid")
             .unwrap();
 
-        let opcodes_in_acc = acc
-            .iter()
-            .map(|x| x.opcode.as_usize())
-            .unique()
-            .collect_vec();
-
         tracing::info!("Create extension");
 
         extensions.push(PowdrPrecompile::new(
@@ -283,10 +280,7 @@ pub fn customize<P: IntoOpenVm>(
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
-            airs.iter()
-                .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, air.clone()))
-                .collect(),
+            airs.clone(),
             is_valid_column,
         ));
 

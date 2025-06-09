@@ -74,7 +74,7 @@ use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachi
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
     instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
+    air_by_opcode_id: Arc<BTreeMap<usize, SymbolicMachine<P>>>,
     is_valid_poly_id: u64,
     inventory: ZeroCostInventory<OpenVmField<P>>,
     number_of_calls: usize,
@@ -84,7 +84,7 @@ pub struct PowdrExecutor<P: IntoOpenVm> {
 impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn new(
         instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
+        air_by_opcode_id: Arc<BTreeMap<usize, SymbolicMachine<P>>>,
         is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,

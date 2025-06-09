@@ -40,8 +40,8 @@ pub struct PlonkChip<P: IntoOpenVm> {
     opcode: PowdrOpcode,
     air: Arc<PlonkAir<OpenVmField<P>>>,
     executor: PowdrExecutor<P>,
-    machine: SymbolicMachine<P>,
     bus_map: BusMap,
+    machine: Arc<SymbolicMachine<P>>,
 }
 
 impl<P: IntoOpenVm> PlonkChip<P> {
