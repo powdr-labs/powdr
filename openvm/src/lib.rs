@@ -383,7 +383,7 @@ pub fn compile_exe(
         &elf_powdr.text_labels,
         &airs,
         config.clone(),
-        pgo_config,
+        pgo_config, 
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
