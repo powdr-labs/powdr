@@ -36,11 +36,12 @@ const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
+// TODO: make this a struct so that we have field names
 type CachedAutoPrecompile<F> = (
     usize,              // powdr opcode
     SymbolicMachine<F>, // autoprecompile
     Vec<Vec<u64>>,      // poly id substitution of original columns
-    Vec<usize>,         // removed heap memory bus interactions
+    Vec<usize>,         // removed heap memory records
 );
 
 use crate::{PgoConfig, PowdrConfig};
@@ -211,7 +212,7 @@ pub fn customize<P: IntoOpenVm>(
         );
 
         // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
-        let (apc_opcode, autoprecompile, subs, removed_heap_memory_bus_interaction) =
+        let (apc_opcode, autoprecompile, subs, removed_heap_memory_record) =
             apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
                 generate_apc_cache(
                     acc_block,
@@ -283,7 +284,7 @@ pub fn customize<P: IntoOpenVm>(
                 .map(|(i, air)| (*i, air.clone()))
                 .collect(),
             is_valid_column,
-            removed_heap_memory_bus_interaction,
+            removed_heap_memory_record,
         ));
     }
 
@@ -472,7 +473,7 @@ fn generate_apc_cache<P: IntoOpenVm>(
     degree_bound: usize,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
-    let (autoprecompile, subs, removed_heap_memory_bus) = generate_autoprecompile(
+    let (autoprecompile, subs, removed_heap_memory_record) = generate_autoprecompile(
         block,
         airs,
         apc_opcode,
@@ -481,7 +482,7 @@ fn generate_apc_cache<P: IntoOpenVm>(
         branch_opcodes,
     )?;
 
-    Ok((apc_opcode, autoprecompile, subs, removed_heap_memory_bus))
+    Ok((apc_opcode, autoprecompile, subs, removed_heap_memory_record))
 }
 
 // OpenVM relevant bus ids:

@@ -75,7 +75,7 @@ pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: Column,
-    pub removed_heap_memory_bus: Vec<usize>,
+    pub removed_heap_memory_record: Vec<usize>,
 }
 
 impl<P: IntoOpenVm> PowdrPrecompile<P> {
@@ -86,7 +86,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
-        removed_heap_memory_bus: Vec<usize>,
+        removed_heap_memory_record: Vec<usize>,
     ) -> Self {
         Self {
             name,
@@ -95,7 +95,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
             original_instructions,
             original_airs,
             is_valid_column,
-            removed_heap_memory_bus,
+            removed_heap_memory_record,
         }
     }
 }

@@ -9,7 +9,7 @@ use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::Children;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::iter::once;
 use symbolic_machine_generator::statements_to_symbolic_machine;
@@ -310,13 +310,13 @@ pub fn build<T: FieldElement>(
     let (machine, subs) =
         statements_to_symbolic_machine(&program, &instruction_kind, &instruction_machines);
 
-    let (machine, removed_memory_bus_interactions) =
+    let (machine, removed_heap_memory_record) =
         optimizer::optimize(machine, bus_interaction_handler, Some(opcode), degree_bound)?;
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
 
-    Ok((machine, subs, removed_memory_bus_interactions))
+    Ok((machine, subs, removed_heap_memory_record))
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

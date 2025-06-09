@@ -23,8 +23,8 @@ use crate::{
     powdr::{self},
     register_optimizer::{check_register_operation_consistency, optimize_register_operations},
     stats_logger::StatsLogger,
-    MemoryBusInteraction, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
-    EXECUTION_BUS_ID, PC_LOOKUP_BUS_ID,
+    SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
+    PC_LOOKUP_BUS_ID,
 };
 
 #[derive(Debug)]
@@ -101,7 +101,7 @@ pub fn optimize<T: FieldElement>(
         CanMatch(usize),
     }
 
-    let removed_memory_record: Vec<usize> = mem_bus_int_original_index
+    let removed_heap_memory_record: Vec<usize> = mem_bus_int_original_index
         .iter()
         .scan(MemoryRecord::NoMatch, |state, &orig_idx| {
             // Make a copy of the *current* state for pattern‐matching
@@ -127,16 +127,19 @@ pub fn optimize<T: FieldElement>(
             // return what we found (or None)
             Some(out)
         })
-        // filter_map to drop the Nones
-        .filter_map(|x| x)
+        // drop the Nones
+        .flatten()
         .collect();
 
-    tracing::debug!("removed memory record: {:?}", removed_memory_record);
+    tracing::debug!(
+        "removed heap memory record: {:?}",
+        removed_heap_memory_record
+    );
 
-    return Ok((
+    Ok((
         constraint_system_to_symbolic_machine(constraint_system),
-        removed_memory_record,
-    ));
+        removed_heap_memory_record,
+    ))
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
@@ -369,7 +372,7 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
 
 fn compute_orig_mem_bus_int_idx(
     mut orig_mem_bus_int_idx: Vec<Option<usize>>,
-    bus_int_optimization_tracker: &mut Vec<BusInteractionOptimization>,
+    bus_int_optimization_tracker: &mut [BusInteractionOptimization],
 ) -> BTreeSet<usize> {
     tracing::debug!(
         "original # of bus interactions: {}",
@@ -390,9 +393,11 @@ fn compute_orig_mem_bus_int_idx(
                     for idx in index.iter().rev() {
                         if *keep {
                             // bus interaction we track are expected to be heap memory bus interactions and thus memory bus interactions
-                            removed_indices.insert(orig_mem_bus_int_idx.remove(*idx).expect(
-                                format!("index {} should be memory bus interaction", idx).as_str(),
-                            ));
+                            removed_indices.insert(
+                                orig_mem_bus_int_idx.remove(*idx).unwrap_or_else(|| {
+                                    panic!("index {idx} should be memory bus interaction")
+                                }),
+                            );
                         } else {
                             // bus interactions we don't keep are expected to be non heap memory bus interactions
                             orig_mem_bus_int_idx.remove(*idx);
@@ -401,7 +406,7 @@ fn compute_orig_mem_bus_int_idx(
                 }
                 BusInteractionOptimization::Append { number_appended } => {
                     // appended bus interactions are not memory bus interactions
-                    orig_mem_bus_int_idx.extend(std::iter::repeat(None).take(*number_appended));
+                    orig_mem_bus_int_idx.extend(std::iter::repeat_n(None, *number_appended));
                 }
             }
         });

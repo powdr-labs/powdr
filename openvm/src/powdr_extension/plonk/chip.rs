@@ -58,7 +58,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             name,
             opcode,
             machine,
-            removed_heap_memory_bus,
+            removed_heap_memory_record,
         } = precompile;
         let air = PlonkAir {
             _marker: std::marker::PhantomData,
@@ -70,7 +70,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             memory,
             base_config,
             periphery,
-            removed_heap_memory_bus,
+            removed_heap_memory_record,
         );
 
         Self {
