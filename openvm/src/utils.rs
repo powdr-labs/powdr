@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::BusMap;
+use crate::IntoOpenVm;
+use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -11,25 +13,20 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
+use powdr_autoprecompiles::legacy_expression::{
+    AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
 };
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_expression::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
+};
+use powdr_number::{BabyBearField, FieldElement};
 
-pub fn to_powdr_field<F: PrimeField32, P: FieldElement>(f: F) -> P {
-    f.as_canonical_u32().into()
-}
-
-pub fn to_ovm_field<F: PrimeField32, P: FieldElement>(f: P) -> F {
-    F::from_canonical_u32(f.to_integer().try_into_u32().unwrap())
-}
-
-pub fn algebraic_to_symbolic<T: PrimeField32>(
-    expr: &AlgebraicExpression<T>,
-) -> SymbolicExpression<T> {
+pub fn algebraic_to_symbolic<P: IntoOpenVm>(
+    expr: &AlgebraicExpression<P>,
+) -> SymbolicExpression<OpenVmField<P>> {
     match expr {
-        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
+        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
                 x: Arc::new(algebraic_to_symbolic(&binary.left)),
@@ -46,31 +43,6 @@ pub fn algebraic_to_symbolic<T: PrimeField32>(
                 y: Arc::new(algebraic_to_symbolic(&binary.right)),
                 degree_multiple: 0,
             },
-            AlgebraicBinaryOperator::Pow => {
-                // Assuming the right operand is a constant number
-                let base = algebraic_to_symbolic(&binary.left);
-                let exp = match *binary.right {
-                    AlgebraicExpression::Number(n) => n,
-                    _ => unimplemented!(),
-                };
-
-                if exp == T::ZERO {
-                    SymbolicExpression::Constant(T::ONE)
-                } else {
-                    let mut result = base.clone();
-                    let mut remaining = exp - T::ONE;
-
-                    while remaining != T::ZERO {
-                        result = SymbolicExpression::Mul {
-                            x: Arc::new(result),
-                            y: Arc::new(base.clone()),
-                            degree_multiple: 0,
-                        };
-                        remaining -= T::ONE;
-                    }
-                    result
-                }
-            }
         },
         AlgebraicExpression::UnaryOperation(unary) => match unary.op {
             AlgebraicUnaryOperator::Minus => SymbolicExpression::Neg {
@@ -96,13 +68,6 @@ pub fn algebraic_to_symbolic<T: PrimeField32>(
                 PolynomialType::Intermediate => todo!(),
             }
         }
-        AlgebraicExpression::PublicReference(_) => {
-            unimplemented!()
-        }
-        AlgebraicExpression::Challenge(ch) => SymbolicExpression::Variable(SymbolicVariable::new(
-            Entry::Challenge,
-            ch.id.try_into().unwrap(),
-        )),
     }
 }
 pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(

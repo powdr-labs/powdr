@@ -82,6 +82,8 @@ jobs:
         test:
           - "1"
           - "2"
+          - "3"
+          - "4"
 
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +105,7 @@ jobs:
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2 --no-tests=warn
+        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/4 --no-tests=warn
         env:
           POWDR_STD: ${{ github.workspace }}/std/
 
@@ -121,57 +123,6 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-
-  test_slow:
-    strategy:
-      matrix:
-        test:
-          - "1"
-          - "2"
-          - "3"
-          - "4"
-          - "5"
-          - "6"
-          - "7"
-          - "8"
-          - "9"
-          - "10"
-          - "11"
-          - "12"
-          - "13"
-          - "14"
-          - "15"
-          - "16"
-          - "17"
-    needs: build
-    runs-on: ubuntu-24.04
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: tests_archive
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Install Rust deps
-        run: rustup install nightly-2025-05-14 --component rust-src
-      - name: Install Rust deps
-        run: rustup install nightly-2025-02-14 --component rust-src
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
-      - uses: taiki-e/install-action@nextest
-      - name: Run slow tests
-        run: |
-          NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/17 --no-tests=warn
-        shell: bash
-        env:
-          POWDR_STD: ${{ github.workspace }}/std/
 
   udeps:
     runs-on: ubuntu-22.04

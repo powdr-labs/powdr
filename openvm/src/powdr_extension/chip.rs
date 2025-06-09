@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::utils::algebraic_to_symbolic;
+use crate::{traits::OpenVmField, utils::algebraic_to_symbolic, IntoOpenVm};
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
@@ -39,16 +39,18 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_ast::analyzed::AlgebraicExpression;
-use powdr_autoprecompiles::powdr::{Column, UniqueColumns};
+use powdr_autoprecompiles::{
+    legacy_expression::AlgebraicExpression,
+    powdr::{Column, UniqueColumns},
+};
 use serde::{Deserialize, Serialize};
 
-pub struct PowdrChip<F: PrimeField32> {
+pub struct PowdrChip<P: IntoOpenVm> {
     pub name: String,
     pub opcode: PowdrOpcode,
     /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<F>,
-    pub air: Arc<PowdrAir<F>>,
+    pub executor: PowdrExecutor<P>,
+    pub air: Arc<PowdrAir<P>>,
 }
 
 /// The shared chips which can be used by the PowdrChip.
@@ -134,10 +136,10 @@ impl SharedChips {
     }
 }
 
-impl<F: PrimeField32> PowdrChip<F> {
+impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        precompile: PowdrPrecompile<P>,
+        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
     ) -> Self {
@@ -149,7 +151,7 @@ impl<F: PrimeField32> PowdrChip<F> {
             name,
             opcode,
         } = precompile;
-        let air: PowdrAir<F> = PowdrAir::new(machine);
+        let air = PowdrAir::new(machine);
         let executor = PowdrExecutor::new(
             original_instructions,
             original_airs,
@@ -168,11 +170,11 @@ impl<F: PrimeField32> PowdrChip<F> {
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
+impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrChip<P> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
+        memory: &mut MemoryController<OpenVmField<P>>,
+        instruction: &Instruction<OpenVmField<P>>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -188,7 +190,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
+impl<P: IntoOpenVm> ChipUsageGetter for PowdrChip<P> {
     fn air_name(&self) -> String {
         format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -197,11 +199,11 @@ impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
     }
 
     fn trace_width(&self) -> usize {
-        self.air.width()
+        <PowdrAir<_> as BaseAir<_>>::width(self.air.as_ref())
     }
 }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PowdrChip<Val<SC>>
+impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for PowdrChip<P>
 where
     Val<SC>: PrimeField32,
 {
@@ -212,27 +214,28 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
+        let width = self.trace_width();
         let trace = self.executor.generate_witness::<SC>(
             &self.air.column_index_by_poly_id,
             &self.air.machine.bus_interactions,
         );
 
-        assert_eq!(trace.width(), self.air.width());
+        assert_eq!(trace.width(), width);
 
         AirProofInput::simple(trace, vec![])
     }
 }
 
-pub struct PowdrAir<F> {
+pub struct PowdrAir<P> {
     /// The columns in arbitrary order
     columns: Vec<Column>,
     /// The mapping from poly_id id to the index in the list of columns.
     /// The values are always unique and contiguous
     column_index_by_poly_id: BTreeMap<u64, usize>,
-    machine: powdr_autoprecompiles::SymbolicMachine<F>,
+    machine: powdr_autoprecompiles::SymbolicMachine<P>,
 }
 
-impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
+impl<P: IntoOpenVm> ColumnsAir<OpenVmField<P>> for PowdrAir<P> {
     fn columns(&self) -> Option<Vec<String>> {
         Some(self.columns.iter().map(|c| c.name.clone()).collect())
     }
@@ -294,8 +297,10 @@ pub struct SymbolicMachine<F> {
     pub bus_interactions: Vec<SymbolicBusInteraction<F>>,
 }
 
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicMachine<F>> for SymbolicMachine<F> {
-    fn from(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
+impl<P: IntoOpenVm> From<powdr_autoprecompiles::SymbolicMachine<P>>
+    for SymbolicMachine<OpenVmField<P>>
+{
+    fn from(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
         let columns = machine.unique_columns().collect();
 
         let powdr_autoprecompiles::SymbolicMachine {
@@ -322,8 +327,10 @@ struct SymbolicConstraint<F> {
     expr: SymbolicExpression<F>,
 }
 
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicConstraint<F>> for SymbolicConstraint<F> {
-    fn from(constraint: powdr_autoprecompiles::SymbolicConstraint<F>) -> Self {
+impl<P: IntoOpenVm> From<powdr_autoprecompiles::SymbolicConstraint<P>>
+    for SymbolicConstraint<OpenVmField<P>>
+{
+    fn from(constraint: powdr_autoprecompiles::SymbolicConstraint<P>) -> Self {
         let powdr_autoprecompiles::SymbolicConstraint { expr } = constraint;
         Self {
             expr: algebraic_to_symbolic(&expr),
@@ -340,10 +347,10 @@ pub struct SymbolicBusInteraction<F> {
     pub count_weight: u32,
 }
 
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicBusInteraction<F>>
-    for SymbolicBusInteraction<F>
+impl<P: IntoOpenVm> From<powdr_autoprecompiles::SymbolicBusInteraction<P>>
+    for SymbolicBusInteraction<OpenVmField<P>>
 {
-    fn from(bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Self {
+    fn from(bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<P>) -> Self {
         let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = bus_interaction;
         let mult = algebraic_to_symbolic(&mult);
         let args = args.iter().map(algebraic_to_symbolic).collect();
@@ -363,12 +370,12 @@ pub struct RangeCheckerSend<F> {
     pub max_bits: SymbolicExpression<F>,
 }
 
-impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
-    for RangeCheckerSend<F>
+impl<P: IntoOpenVm> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<P>>
+    for RangeCheckerSend<OpenVmField<P>>
 {
     type Error = ();
 
-    fn try_from(i: &powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Result<Self, Self::Error> {
+    fn try_from(i: &powdr_autoprecompiles::SymbolicBusInteraction<P>) -> Result<Self, Self::Error> {
         if i.id == 3 {
             assert_eq!(i.args.len(), 2);
             let value = &i.args[0];
@@ -384,8 +391,8 @@ impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
     }
 }
 
-impl<F: PrimeField32> PowdrAir<F> {
-    pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
+impl<P: IntoOpenVm> PowdrAir<P> {
+    pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
             .unique_columns()
             .enumerate()
@@ -400,7 +407,7 @@ impl<F: PrimeField32> PowdrAir<F> {
     }
 }
 
-impl<F: PrimeField32> BaseAir<F> for PowdrAir<F> {
+impl<P: IntoOpenVm> BaseAir<OpenVmField<P>> for PowdrAir<P> {
     fn width(&self) -> usize {
         let res = self.columns.len();
         assert!(res > 0);
@@ -409,12 +416,9 @@ impl<F: PrimeField32> BaseAir<F> for PowdrAir<F> {
 }
 
 // No public values, but the trait is implemented
-impl<F: PrimeField32> BaseAirWithPublicValues<F> for PowdrAir<F> {}
+impl<P: IntoOpenVm> BaseAirWithPublicValues<OpenVmField<P>> for PowdrAir<P> {}
 
-impl<AB: InteractionBuilder> Air<AB> for PowdrAir<AB::F>
-where
-    AB::F: PrimeField32,
-{
+impl<AB: InteractionBuilder, P: IntoOpenVm<Field = AB::F>> Air<AB> for PowdrAir<P> {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let witnesses = main.row_slice(0);
@@ -496,4 +500,4 @@ impl<AB: InteractionBuilder> SymbolicEvaluator<AB::F, AB::Expr> for WitnessEvalu
     }
 }
 
-impl<F: PrimeField32> PartitionedBaseAir<F> for PowdrAir<F> {}
+impl<P: IntoOpenVm> PartitionedBaseAir<OpenVmField<P>> for PowdrAir<P> {}
