@@ -20,6 +20,11 @@ powdr-openvm.workspace = true
 
 eyre = "0.6.12"
 tracing = "0.1.40"
+tracing-subscriber = {
+  version = "0.3",
+  features = ["fmt", "env-filter"]
+}
+once_cell = "1.17"
 
 clap = { version = "^4.3", features = ["derive"] }
 criterion = { version = "0.4" }
