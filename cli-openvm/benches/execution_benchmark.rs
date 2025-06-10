@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -21,13 +21,14 @@ const GUEST_KECCAK_ITER: u32 = 1000;
 const GUEST_KECCAK_APC: u64 = 1;
 const GUEST_KECCAK_SKIP: u64 = 0;
 
+type SpanTimes = Lazy<Arc<Mutex<BTreeMap<String, Vec<Duration>>>>>;
+type SpanParents = Lazy<Arc<Mutex<BTreeMap<String, Option<String>>>>>;
+
 /// Map from span-name to Vec<durations>.
-static SPAN_TIMES: Lazy<Arc<Mutex<HashMap<String, Vec<Duration>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static SPAN_TIMES: SpanTimes = Lazy::new(|| Arc::new(Mutex::new(BTreeMap::new())));
 
 /// Map from span-name to its parent span-name (if any).
-static SPAN_PARENTS: Lazy<Arc<Mutex<HashMap<String, Option<String>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static SPAN_PARENTS: SpanParents = Lazy::new(|| Arc::new(Mutex::new(BTreeMap::new())));
 
 struct Visitor {
     pub id: Option<usize>,
@@ -46,7 +47,7 @@ impl Visit for Visitor {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         if field.name() == "id" {
             // Debug formatting of a usize will be just the digits, so we can parse.
-            if let Ok(n) = format!("{:?}", value).parse::<usize>() {
+            if let Ok(n) = format!("{value:?}").parse::<usize>() {
                 self.id = Some(n);
             }
         }
@@ -93,14 +94,14 @@ where
         attrs.record(&mut visitor);
 
         // turn fields into strings or None
-        let id_str = visitor.id.map(|i| format!("id:{}", i));
-        let air_str = visitor.air_name.map(|a| format!("air:{}", a));
+        let id_str = visitor.id.map(|i| format!("id:{i}"));
+        let air_str = visitor.air_name.map(|a| format!("air:{a}"));
 
         // build the real key: e.g. "dummy trace alu"
         let key = match (air_str, id_str) {
-            (Some(air), Some(id)) => format!("{} [{} {}]", base, air, id),
-            (Some(air), None) => format!("{} [{}]", base, air),
-            (None, Some(id)) => format!("{} [{}]", base, id),
+            (Some(air), Some(id)) => format!("{base} [{air} {id}]"),
+            (Some(air), None) => format!("{base} [{air}]"),
+            (None, Some(id)) => format!("{base} [{id}]"),
             (None, None) => base.to_string(),
         };
 
@@ -108,7 +109,7 @@ where
         let parent_key = ctx
             .current_span()
             .id()
-            .and_then(|pid| ctx.span(&pid))
+            .and_then(|pid| ctx.span(pid))
             .and_then(|parent_span| parent_span.extensions().get::<String>().cloned());
 
         // record parent to child (by key)
@@ -159,7 +160,7 @@ fn print_tree() {
     let times = SPAN_TIMES.lock().unwrap();
 
     // Build name to set of child names
-    let mut tree: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut tree: BTreeMap<String, HashSet<String>> = BTreeMap::new();
     let mut has_parent = HashSet::new();
 
     for (name, parent_opt) in parents.iter() {
@@ -180,8 +181,8 @@ fn print_tree() {
     fn recurse(
         name: &str,
         level: usize,
-        tree: &HashMap<String, HashSet<String>>,
-        times: &HashMap<String, Vec<Duration>>,
+        tree: &BTreeMap<String, HashSet<String>>,
+        times: &BTreeMap<String, Vec<Duration>>,
     ) {
         let durs = times.get(name).map(|v| v.as_slice()).unwrap_or(&[]);
         let count = durs.len() as u32;
@@ -192,7 +193,7 @@ fn print_tree() {
             Duration::ZERO
         };
 
-        println!(
+        tracing::info!(
             "{:indent$}{} → ran {} times, avg = {:?}",
             "",
             name,
@@ -210,7 +211,7 @@ fn print_tree() {
         }
     }
 
-    println!("\nSpan timing breakdown:");
+    tracing::info!("\nSpan timing breakdown:");
     for root in roots {
         recurse(&root, 0, &tree, &times);
     }
