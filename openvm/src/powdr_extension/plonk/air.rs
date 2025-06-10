@@ -30,6 +30,8 @@ pub struct PlonkColumns<T> {
     pub a: T,
     pub b: T,
     pub c: T,
+    pub d: T,
+    pub e: T,
 }
 
 pub struct PlonkAir<F> {
@@ -66,14 +68,16 @@ where
             q_mul,
             q_const,
             q_bitwise,
-            q_memory: _,
+            q_memory,
             q_range_check,
             q_execution,
-            q_pc: _,
+            q_pc,
             q_range_tuple: _,
             a,
             b,
             c,
+            d,
+            e,
         } = (*local).borrow();
 
         let PlonkColumns {
@@ -86,11 +90,13 @@ where
             q_memory: _,
             q_range_check: _,
             q_execution: _,
-            q_pc: _t,
+            q_pc: _,
             q_range_tuple: _,
             a: a_next,
             b: b_next,
-            c: _,
+            c: c_next,
+            d: d_next,
+            e: e_next,
         } = (*local_next).borrow();
 
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
@@ -117,8 +123,26 @@ where
             self.bus_map
                 .get_bus_id(&BusType::BitwiseLookup)
                 .expect("BusType::BitwiseLookup not found in bus_map") as u16,
-            vec![*a, *b, *c, *a_next],
-            *b_next * *q_bitwise,
+            vec![*a, *b, *c, *d],
+            *e * *q_bitwise,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::PcLookup)
+                .expect("BusType::PcLookup not found in bus_map") as u16,
+            vec![*a, *b, *c, *d, *e, *a_next, *b_next, *c_next, *d_next],
+            *q_pc * *e_next,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::Memory)
+                .expect("BusType::PcLookup not found in bus_map") as u16,
+            vec![*a, *b, *c, *d, *e, *a_next, *b_next],
+            *q_memory * *c_next,
             1,
         );
     }

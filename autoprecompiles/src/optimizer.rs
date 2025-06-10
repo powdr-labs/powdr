@@ -19,7 +19,7 @@ use crate::{
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::StatsLogger,
-    SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
+    DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
     PC_LOOKUP_BUS_ID,
 };
 
@@ -27,7 +27,7 @@ pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
     let machine = if let Some(opcode) = opcode {
@@ -59,7 +59,7 @@ pub fn optimize<T: FieldElement>(
 fn optimization_loop_iteration<T: FieldElement>(
     constraint_system: ConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
     let mut constraint_system = JournalledConstraintSystem::from(constraint_system);
