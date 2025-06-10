@@ -6,6 +6,7 @@ use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journalled_constraint_system::JournalledConstraintSystem,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -69,16 +70,11 @@ fn optimization_loop_iteration<T: FieldElement>(
         degree_bound,
         stats_logger,
     )?;
-    // TODO: avoid these conversions
-    // TODO continue here with the journalled system once the memory machen is changed to
-    // ConstraintSystem
-    let machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
-    let machine = optimize_memory(machine);
-    assert!(check_register_operation_consistency(&machine));
-    stats_logger.log("memory optimization", &machine);
+    let constraint_system = optimize_memory(constraint_system, NoRangeConstraints);
+    assert!(check_register_operation_consistency(&constraint_system));
+    stats_logger.log("memory optimization", &constraint_system);
 
-    let system = symbolic_machine_to_constraint_system(machine);
-    let system = optimize_bitwise_lookup(system);
+    let system = optimize_bitwise_lookup(constraint_system);
     stats_logger.log("optimizing bitwise lookup", &system);
 
     Ok(system)

@@ -86,7 +86,7 @@ impl<T: FieldElement, V> From<T> for QuadraticSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
         SymbolicExpression::from_symbol(symbol, rc).into()
     }
@@ -188,7 +188,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
             .unwrap_or_else(|| RangeConstraint::from_value(0.into()))
     }
+}
 
+impl<T: FieldElement, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpression<T, V> {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
@@ -342,6 +344,7 @@ pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
 
+#[derive(Clone, Copy)]
 pub struct NoRangeConstraints;
 impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
     fn get(&self, _var: &V) -> RangeConstraint<T> {
