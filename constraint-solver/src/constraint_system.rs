@@ -26,6 +26,24 @@ impl<T: FieldElement, V> Default for ConstraintSystem<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.algebraic_constraints
+                .iter()
+                .map(|expr| format!("{expr} = 0"))
+                .chain(
+                    self.bus_interactions
+                        .iter()
+                        .map(|bus_inter| format!("{bus_inter}"))
+                )
+                .format("\n")
+        )
+    }
+}
+
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(

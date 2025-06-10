@@ -91,3 +91,9 @@ impl<T: FieldElement, V> JournalledConstraintSystem<T, V> {
         self.system.retain_bus_interactions(f);
     }
 }
+
+impl<T: FieldElement, V: Clone + Ord + Display> Display for JournalledConstraintSystem<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.system)
+    }
+}
