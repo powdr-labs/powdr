@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use crate::plonk::air_to_plonkish::build_circuit;
-use crate::plonk::{Gate, Variable};
+use crate::plonk::{Gate, Variable, NUMBER_OF_WITNESS_COLS};
 use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
@@ -196,6 +196,18 @@ where
                 columns.q_o = gate.q_o;
                 columns.q_mul = gate.q_mul;
                 columns.q_const = gate.q_const;
+
+                // Initializing fixed columns for copy constraints, there are 5 witness columns per gate.
+                columns.a_id =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64);
+                columns.b_id =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 1);
+                columns.c_id =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 2);
+                columns.d_id =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 3);
+                columns.e_id =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 4);
 
                 // We currently assume that:
                 // - We can always solve for temporary variables, by processing the gates in order.

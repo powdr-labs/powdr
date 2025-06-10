@@ -1,4 +1,4 @@
-use crate::plonk::Gate;
+use crate::plonk::{Gate, NUMBER_OF_WITNESS_COLS};
 use crate::{bus_interaction_handler, BusMap};
 use bus_interaction_handler::BusType::{
     BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
@@ -24,8 +24,9 @@ pub fn add_bus_to_plonk_circuit<T>(
 ) where
     T: FieldElement,
 {
-    // There are 5 witness cell per gate to store the bus arguments, therefore divide the number of arguments by 5 to get the number of gates needed.
-    let number_of_gates = (bus_interaction.args.len() as u32).div_ceil(5) as usize;
+    // There are 5 witness cell per gate to store the bus arguments, therefore divide the number of arguments by number of witness cols per gate to get the number of gates needed.
+    let number_of_gates =
+        (bus_interaction.args.len() as u32).div_ceil(NUMBER_OF_WITNESS_COLS as u32) as usize;
     let mut gates: Vec<Gate<T, AlgebraicReference>> =
         (0..number_of_gates).map(|_| Gate::default()).collect();
     match bus_map.bus_type(bus_interaction.id) {

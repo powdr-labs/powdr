@@ -7,6 +7,8 @@ use crate::BusType;
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
 
+pub const NUMBER_OF_WITNESS_COLS: u64 = 5;
+
 /// A variable in a PlonK gate.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Variable<V> {
