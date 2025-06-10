@@ -137,7 +137,7 @@ fn run_command(command: Commands) {
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
-            powdr_openvm::prove(&program, mock, recursion, stdin_from(input)).unwrap();
+            powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
         }
 
         // Run Pgo on the original openvm program (without powdr extension)
