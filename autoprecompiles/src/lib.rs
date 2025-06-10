@@ -176,11 +176,12 @@ pub struct PcLookupBusInteraction<T> {
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
-impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
-    type Error = ();
-
-    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
-        (bus_interaction.id == DEFAULT_PC_LOOKUP)
+impl<T: FieldElement> PcLookupBusInteraction<T> {
+    fn try_from_symbolic_bus_interaction(
+        bus_interaction: &SymbolicBusInteraction<T>,
+        bus_map: &BusMap,
+    ) -> Result<Self, ()> {
+        (bus_interaction.id == bus_map.get_bus_id(&BusType::PcLookup).unwrap())
             .then(|| {
                 let from_pc = bus_interaction.args[0].clone();
                 let op = bus_interaction.args[1].clone();
@@ -189,7 +190,7 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteract
                     from_pc,
                     op,
                     args,
-                    bus_interaction,
+                    bus_interaction: bus_interaction.clone(),
                 }
             })
             .ok_or(())

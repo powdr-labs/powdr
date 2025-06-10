@@ -31,7 +31,9 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let pc_lookup: PcLookupBusInteraction<T> = machine
             .bus_interactions
             .iter()
-            .filter_map(|bus_int| bus_int.clone().try_into().ok())
+            .filter_map(|bus_int| {
+                PcLookupBusInteraction::try_from_symbolic_bus_interaction(bus_int, bus_map).ok()
+            })
             .exactly_one()
             .expect("Expected single pc lookup");
 
