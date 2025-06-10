@@ -52,6 +52,20 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.algebraic_constraints
+                .iter()
+                .map(|expr| expr.to_string())
+                .chain(self.bus_interactions.iter().map(|bi| bi.to_string()))
+                .format("\n")
+        )
+    }
+}
+
 /// A bus interaction.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct BusInteraction<V> {

@@ -43,6 +43,7 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
 pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
     system: &ConstraintSystem<T, V>,
 ) -> bool {
+    println!("{system}");
     let count_per_addr = system
         .bus_interactions
         .iter()
