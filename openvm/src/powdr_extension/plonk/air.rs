@@ -1,15 +1,18 @@
 use crate::{BusMap, BusType};
 use openvm_circuit_primitives::AlignedBorrow;
+use openvm_sdk::F;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
-    p3_air::{Air, BaseAir},
+    p3_air::{Air, AirBuilder, BaseAir},
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
 };
-use std::borrow::Borrow;
+use std::{borrow::Borrow, ops::Neg};
 use struct_reflection::StructReflection;
 use struct_reflection::StructReflectionHelper;
+use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::air_builders::symbolic::symbolic_expression::SymbolicExpression;
 
 #[repr(C)]
 #[derive(AlignedBorrow, StructReflection)]
@@ -26,6 +29,18 @@ pub struct PlonkColumns<T> {
     pub q_execution: T,
     pub q_pc: T,
     pub q_range_tuple: T,
+
+    pub a_id:T,
+    pub b_id: T,
+    pub c_id: T,
+    pub d_id: T,
+    pub e_id: T,
+
+    pub a_perm: T,
+    pub b_perm: T,
+    pub c_perm: T,
+    pub d_perm: T,
+    pub e_perm: T,  
 
     pub a: T,
     pub b: T,
@@ -73,6 +88,16 @@ where
             q_execution,
             q_pc,
             q_range_tuple: _,
+            a_id,
+            b_id,
+            c_id,
+            d_id,
+            e_id,
+            a_perm,
+            b_perm,
+            c_perm,
+            d_perm,
+            e_perm,
             a,
             b,
             c,
@@ -92,6 +117,16 @@ where
             q_execution: _,
             q_pc: _,
             q_range_tuple: _,
+            a_id: _,
+            b_id: _,
+            c_id: _,
+            d_id: _,    
+            e_id: _,
+            a_perm: _,
+            b_perm: _,
+            c_perm: _,
+            d_perm: _,
+            e_perm: _,
             a: a_next,
             b: b_next,
             c: c_next,
@@ -101,6 +136,7 @@ where
 
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
 
+        // OpenVM bus interactions
         builder.push_interaction(
             self.bus_map
                 .get_bus_id(&BusType::ExecutionBridge)
@@ -145,6 +181,23 @@ where
             *q_memory * *c_next,
             1,
         );
+        // copy constraints are active in every row
+        let q_copy_constraint: AB::Expr=AB::F::from_canonical_u64(1 << 32).into();
+
+        // Copy constraints 
+        // find a proper way to define bus index.
+        builder.push_interaction(10, vec![*a,*a_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*b,*b_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*c,*c_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*d,*d_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*e,*e_id], q_copy_constraint.clone(), 1);
+
+        builder.push_interaction(10, vec![*a,*a_perm], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*b,*b_perm], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*c,*c_perm], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*d,*d_perm], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*e,*e_perm], q_copy_constraint, 1);
+
     }
 }
 
