@@ -13,7 +13,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::{
     config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
 };
-use powdr_autoprecompiles::{DegreeBound, SymbolicMachine};
+use powdr_autoprecompiles::{SymbolicMachine};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
     collections::{HashMap, HashSet},
@@ -67,6 +67,7 @@ type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
 pub use traits::IntoOpenVm;
+pub use powdr_autoprecompiles::DegreeBound;
 
 impl IntoOpenVm for PowdrBB {
     type Field = openvm_stark_sdk::p3_baby_bear::BabyBear;
