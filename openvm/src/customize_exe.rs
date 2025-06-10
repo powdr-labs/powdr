@@ -18,6 +18,7 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
     SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
@@ -38,11 +39,12 @@ const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
-type CachedAutoPrecompile<F> = (
-    usize,              // powdr opcode
-    SymbolicMachine<F>, // autoprecompile
-    Vec<Vec<u64>>,      // poly id substitution of original columns
-);
+#[derive(Clone, Debug)]
+pub struct CachedAutoPrecompile<F> {
+    apc_opcode: usize,
+    autoprecompile: SymbolicMachine<F>,
+    subs: Vec<Vec<u64>>,
+}
 
 use crate::{PgoConfig, PowdrConfig};
 
@@ -211,17 +213,20 @@ pub fn customize<P: IntoOpenVm>(
         );
 
         // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
-        let (apc_opcode, autoprecompile, subs) =
-            apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
-                generate_apc_cache(
-                    acc_block,
-                    airs,
-                    POWDR_OPCODE + i,
-                    config.bus_map.clone(),
-                    config.degree_bound,
-                )
-                .expect("Failed to generate autoprecompile")
-            });
+        let CachedAutoPrecompile {
+            apc_opcode,
+            autoprecompile,
+            subs,
+        } = apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
+            generate_apc_cache(
+                acc_block,
+                airs,
+                POWDR_OPCODE + i,
+                config.bus_map.clone(),
+                config.degree_bound,
+            )
+            .expect("Failed to generate autoprecompile")
+        });
 
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
@@ -472,12 +477,16 @@ fn generate_apc_cache<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
     let (autoprecompile, subs) =
         generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
 
-    Ok((apc_opcode, autoprecompile, subs))
+    Ok(CachedAutoPrecompile {
+        apc_opcode,
+        autoprecompile,
+        subs,
+    })
 }
 
 // OpenVM relevant bus ids:
@@ -493,7 +502,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -595,7 +604,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
             .ok()?;
 
             // calculate cells saved per row
-            let apc_cells_per_row = apc_cache_entry.1.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_columns().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()
