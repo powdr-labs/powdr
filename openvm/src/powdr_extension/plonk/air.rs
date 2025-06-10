@@ -1,8 +1,6 @@
 use crate::{BusMap, BusType};
 use openvm_circuit_primitives::AlignedBorrow;
 use openvm_sdk::F;
-use openvm_stark_backend::air_builders::symbolic::symbolic_expression::SymbolicExpression;
-use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
     p3_air::{Air, AirBuilder, BaseAir},
@@ -13,6 +11,8 @@ use openvm_stark_backend::{
 use std::{borrow::Borrow, ops::Neg};
 use struct_reflection::StructReflection;
 use struct_reflection::StructReflectionHelper;
+use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::air_builders::symbolic::symbolic_expression::SymbolicExpression;
 
 #[repr(C)]
 #[derive(AlignedBorrow, StructReflection)]
@@ -30,7 +30,7 @@ pub struct PlonkColumns<T> {
     pub q_pc: T,
     pub q_range_tuple: T,
 
-    pub a_id: T,
+    pub a_id:T,
     pub b_id: T,
     pub c_id: T,
     pub d_id: T,
@@ -40,7 +40,7 @@ pub struct PlonkColumns<T> {
     pub b_perm: T,
     pub c_perm: T,
     pub d_perm: T,
-    pub e_perm: T,
+    pub e_perm: T,  
 
     pub a: T,
     pub b: T,
@@ -120,7 +120,7 @@ where
             a_id: _,
             b_id: _,
             c_id: _,
-            d_id: _,
+            d_id: _,    
             e_id: _,
             a_perm: _,
             b_perm: _,
@@ -182,21 +182,22 @@ where
             1,
         );
         // copy constraints are active in every row
-        let q_copy_constraint: AB::Expr = AB::F::from_canonical_u64(1 << 32).into();
+        let q_copy_constraint: AB::Expr=AB::F::from_canonical_u64(1).into();
 
-        // Copy constraints
-        // find a proper way to define bus index.
-        builder.push_interaction(10, vec![*a, *a_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*b, *b_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*c, *c_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*d, *d_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*e, *e_id], q_copy_constraint.clone(), 1);
+        // Copy constraints 
+        // TODO: find a proper way to define bus index.
+        builder.push_interaction(10, vec![*a,*a_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*b,*b_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*c,*c_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*d,*d_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(10, vec![*e,*e_id], q_copy_constraint.clone(), 1);
 
-        builder.push_interaction(10, vec![*a, *a_perm], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*b, *b_perm], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*c, *c_perm], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*d, *d_perm], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*e, *e_perm], q_copy_constraint, 1);
+        // builder.push_interaction(10, vec![*a,*a_perm], -q_copy_constraint.clone(), 1);
+        // builder.push_interaction(10, vec![*b,*b_perm], -q_copy_constraint.clone(), 1);
+        // builder.push_interaction(10, vec![*c,*c_perm], -q_copy_constraint.clone(), 1);
+        // builder.push_interaction(10, vec![*d,*d_perm], -q_copy_constraint.clone(), 1);
+        // builder.push_interaction(10, vec![*e,*e_perm], -q_copy_constraint, 1);
+
     }
 }
 

@@ -24,6 +24,8 @@ pub const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
 pub const DEFAULT_BITWISE_LOOKUP: u64 = 6;
 pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
 
+pub const COPY_CONSTRAINT_LOOKUP: u64 = 10;
+
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
 pub enum BusType {
     ExecutionBridge,
@@ -33,6 +35,7 @@ pub enum BusType {
     BitwiseLookup,
     TupleRangeChecker,
     Sha,
+    CopyConstraintLookup, 
 }
 
 impl std::fmt::Display for BusType {
@@ -45,6 +48,7 @@ impl std::fmt::Display for BusType {
             BusType::BitwiseLookup => "BITWISE_LOOKUP",
             BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
             BusType::Sha => "SHA",
+            BusType::CopyConstraintLookup => "COPY_CONSTRAINT_LOOKUP",
         };
         write!(f, "{name}")
     }
@@ -67,6 +71,25 @@ impl BusMap {
             ),
             (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
             (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
+        ]
+        .into_iter()
+        .collect();
+
+        Self { bus_ids }
+    }
+
+    pub fn openvm_base_with_copy_constraint() -> Self {
+        let bus_ids = [
+            (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
+            (DEFAULT_MEMORY, BusType::Memory),
+            (DEFAULT_PC_LOOKUP, BusType::PcLookup),
+            (
+                DEFAULT_VARIABLE_RANGE_CHECKER,
+                BusType::VariableRangeChecker,
+            ),
+            (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
+            (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
+            (COPY_CONSTRAINT_LOOKUP,BusType::CopyConstraintLookup),
         ]
         .into_iter()
         .collect();
@@ -152,6 +175,9 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             }
             BusType::TupleRangeChecker => handle_tuple_range_checker(&bus_interaction.payload),
             BusType::Sha => bus_interaction.payload,
+            BusType::CopyConstraintLookup => {
+                unimplemented!("Copy constraint bus handler is not implemented in OpenVM yet")
+            }
         };
         BusInteraction {
             payload: payload_constraints,
@@ -175,6 +201,7 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::BitwiseLookup => false,
             BusType::TupleRangeChecker => false,
             BusType::Sha => false,
+            BusType::CopyConstraintLookup => false,
         }
     }
 }

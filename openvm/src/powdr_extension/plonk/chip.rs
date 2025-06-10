@@ -147,6 +147,12 @@ where
             .enumerate()
             .map(|(index, c)| (c.id.id, index))
             .collect();
+
+        // Create permutation sets for each copy constraint.
+
+        let permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+
+        println!("Column index by poly ID: {column_index_by_poly_id:?}");
         let witness = self
             .executor
             .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
@@ -197,7 +203,7 @@ where
                 columns.q_mul = gate.q_mul;
                 columns.q_const = gate.q_const;
 
-                // Initializing fixed columns for copy constraints, there are 5 witness columns per gate.
+                // Initializing fixed columns for copy constraints
                 columns.a_id =
                     <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64);
                 columns.b_id =
