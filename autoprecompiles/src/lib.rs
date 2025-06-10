@@ -23,6 +23,7 @@ pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub use powdr_constraint_solver::inliner::DegreeBound;
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
     // Wrap powdr_pilopt::simplify_expression, which uses powdr_ast::analyzed::AlgebraicExpression.
@@ -214,7 +215,7 @@ pub struct VmConfig<'a, T: FieldElement, B> {
 pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
     program: Vec<SymbolicInstructionStatement<T>>,
     vm_config: VmConfig<T, B>,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
