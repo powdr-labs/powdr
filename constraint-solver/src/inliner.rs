@@ -53,9 +53,13 @@ pub fn replace_constrained_witness_columns<
         }
     }
 
-    // remove trivial constraints from system, we could also wait for the next
-    // loop iteration.
-    constraint_system.retain_algebraic_constraints(|constraint| constraint != &T::zero().into());
+    // remove inlined constraints from system
+    let mut counter = 0;
+    constraint_system.retain_algebraic_constraints(|_| {
+        let retain = !to_remove_idx.contains(&(counter));
+        counter += 1;
+        retain
+    });
 
     // sanity check
     assert!(constraint_system.expressions().all(|expr| {
