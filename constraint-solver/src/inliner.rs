@@ -179,7 +179,7 @@ mod test {
         .into();
 
         replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
-        assert_eq!(constraint_system.algebraic_constraints.len(), 2);
+        assert_eq!(constraint_system.algebraic_constraints().count(), 2);
     }
 
     #[test]
@@ -253,7 +253,7 @@ mod test {
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, 3);
+        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
         // 1) b + d = 0            => b = -d
         // 2) a * b = c            => a * (-d) = c => a * d + c = 0
         // 3) a + b + c + d = result
@@ -374,7 +374,8 @@ mod test {
                 ],
                 multiplicity: constant(1),
             }],
-        };
+        }
+        .into();
 
         replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
 
