@@ -53,6 +53,10 @@ pub fn replace_constrained_witness_columns<
         }
     }
 
+    // remove trivial constraints from system, we could also wait for the next
+    // loop iteration.
+    constraint_system.retain_algebraic_constraints(|constraint| constraint != &T::zero().into());
+
     // sanity check
     assert!(constraint_system.expressions().all(|expr| {
         expr.referenced_unknown_variables()
