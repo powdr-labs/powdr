@@ -85,8 +85,8 @@ impl IntoOpenVm for PowdrBB {
     }
 }
 
-pub use bus_interaction_handler::{BusMap, BusType};
 pub use openvm_build::GuestOptions;
+pub use powdr_autoprecompiles::{BusMap, BusType};
 
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;

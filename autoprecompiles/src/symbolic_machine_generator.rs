@@ -8,13 +8,14 @@ use powdr_number::{FieldElement, LargeInt};
 use crate::{
     legacy_expression::AlgebraicExpression,
     powdr::{self, Column},
-    PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicInstructionStatement, SymbolicMachine, EXECUTION_BUS_ID, MEMORY_BUS_ID,
+    BusMap, BusType, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicInstructionStatement, SymbolicMachine,
 };
 
 pub fn statements_to_symbolic_machine<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_machines: &BTreeMap<usize, SymbolicMachine<T>>,
+    bus_map: &BusMap,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
@@ -37,7 +38,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
         let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-        let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
+        let is_valid: AlgebraicExpression<T> = exec_receive(&machine, bus_map).mult.clone();
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((is_valid.clone() + one).into());
 
@@ -105,7 +106,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         // we need to look for register memory bus interactions
         // and replace the addr by the first argument of the instruction
         for bus_int in &mut bus_interactions {
-            if bus_int.id != MEMORY_BUS_ID {
+            if bus_int.id != bus_map.get_bus_id(&BusType::Memory).unwrap() {
                 continue;
             }
 
@@ -143,12 +144,15 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
     )
 }
 
-fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInteraction<T> {
+fn exec_receive<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+    bus_map: &BusMap,
+) -> SymbolicBusInteraction<T> {
     let [r, _s] = machine
         .bus_interactions
         .iter()
-        .filter_map(|bus_int| match bus_int.id {
-            EXECUTION_BUS_ID => Some(bus_int.clone()),
+        .filter_map(|bus_int| match bus_map.bus_type(bus_int.id) {
+            BusType::ExecutionBridge => Some(bus_int.clone()),
             _ => None,
         })
         .collect::<Vec<_>>()

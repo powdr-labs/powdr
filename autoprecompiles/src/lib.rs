@@ -180,7 +180,7 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteract
     type Error = ();
 
     fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
-        (bus_interaction.id == PC_LOOKUP_BUS_ID)
+        (bus_interaction.id == DEFAULT_PC_LOOKUP)
             .then(|| {
                 let from_pc = bus_interaction.args[0].clone();
                 let op = bus_interaction.args[1].clone();
@@ -196,12 +196,92 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteract
     }
 }
 
-pub const EXECUTION_BUS_ID: u64 = 0;
-pub const MEMORY_BUS_ID: u64 = 1;
-pub const PC_LOOKUP_BUS_ID: u64 = 2;
-pub const VARIABLE_RANGE_CHECKER_BUS_ID: u64 = 3;
-pub const BITWISE_LOOKUP_BUS_ID: u64 = 6;
-pub const TUPLE_RANGE_CHECKER_BUS_ID: u64 = 7;
+pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
+pub const DEFAULT_MEMORY: u64 = 1;
+pub const DEFAULT_PC_LOOKUP: u64 = 2;
+pub const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
+pub const DEFAULT_BITWISE_LOOKUP: u64 = 6;
+pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
+
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
+pub enum BusType {
+    ExecutionBridge,
+    Memory,
+    PcLookup,
+    VariableRangeChecker,
+    BitwiseLookup,
+    TupleRangeChecker,
+    Sha,
+}
+
+impl std::fmt::Display for BusType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            BusType::ExecutionBridge => "EXECUTION_BRIDGE",
+            BusType::Memory => "MEMORY",
+            BusType::PcLookup => "PC_LOOKUP",
+            BusType::VariableRangeChecker => "VARIABLE_RANGE_CHECKER",
+            BusType::BitwiseLookup => "BITWISE_LOOKUP",
+            BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
+            BusType::Sha => "SHA",
+        };
+        write!(f, "{name}")
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct BusMap {
+    bus_ids: BTreeMap<u64, BusType>,
+}
+
+impl BusMap {
+    pub fn openvm_base() -> Self {
+        let bus_ids = [
+            (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
+            (DEFAULT_MEMORY, BusType::Memory),
+            (DEFAULT_PC_LOOKUP, BusType::PcLookup),
+            (
+                DEFAULT_VARIABLE_RANGE_CHECKER,
+                BusType::VariableRangeChecker,
+            ),
+            (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
+            (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
+        ]
+        .into_iter()
+        .collect();
+
+        Self { bus_ids }
+    }
+
+    pub fn bus_type(&self, bus_id: u64) -> BusType {
+        self.bus_ids[&bus_id]
+    }
+
+    pub fn with_sha(mut self, id: u64) -> Self {
+        self.bus_ids.insert(id, BusType::Sha);
+        self
+    }
+
+    pub fn with_bus_type(mut self, id: u64, bus_type: BusType) -> Self {
+        self.bus_ids.insert(id, bus_type);
+        self
+    }
+
+    pub fn with_bus_map(mut self, bus_map: BusMap) -> Self {
+        self.bus_ids.extend(bus_map.bus_ids);
+        self
+    }
+
+    pub fn inner(&self) -> &BTreeMap<u64, BusType> {
+        &self.bus_ids
+    }
+
+    pub fn get_bus_id(&self, bus_type: &BusType) -> Option<u64> {
+        self.bus_ids
+            .iter()
+            .find_map(|(id, bus)| if bus == bus_type { Some(*id) } else { None })
+    }
+}
 
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, T: FieldElement, B> {
@@ -209,7 +289,8 @@ pub struct VmConfig<'a, T: FieldElement, B> {
     pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
-    // TODO: Add bus map
+    /// The bus map that maps bus id to bus type
+    pub bus_map: BusMap,
 }
 
 pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
@@ -218,17 +299,22 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     degree_bound: DegreeBound,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
-    let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
+    let (machine, subs) = statements_to_symbolic_machine(
+        &program,
+        vm_config.instruction_machines,
+        &vm_config.bus_map,
+    );
 
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
         Some(opcode),
         degree_bound,
+        &vm_config.bus_map,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
+    let machine = add_guards(machine, vm_config.bus_map);
 
     Ok((machine, subs))
 }
@@ -277,7 +363,10 @@ fn add_guards_constraint<T: FieldElement>(
 /// Assumptions:
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
-fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+fn add_guards<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    bus_map: BusMap,
+) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
 
     let max_id = machine
@@ -308,8 +397,8 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
         .iter_mut()
-        .filter_map(|bus_int| match bus_int.id {
-            EXECUTION_BUS_ID => Some(bus_int),
+        .filter_map(|bus_int| match bus_map.bus_type(bus_int.id) {
+            BusType::ExecutionBridge => Some(bus_int),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -323,8 +412,8 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     let [program_bus_send] = machine
         .bus_interactions
         .iter_mut()
-        .filter_map(|bus_int| match bus_int.id {
-            PC_LOOKUP_BUS_ID => Some(bus_int),
+        .filter_map(|bus_int| match bus_map.bus_type(bus_int.id) {
+            BusType::PcLookup => Some(bus_int),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -334,11 +423,11 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
 
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        match b.id {
-            EXECUTION_BUS_ID => {
+        match bus_map.bus_type(b.id) {
+            BusType::ExecutionBridge => {
                 // already handled
             }
-            PC_LOOKUP_BUS_ID => {
+            BusType::PcLookup => {
                 // already handled
             }
             _ => {

@@ -64,11 +64,10 @@ pub fn handle_bitwise_lookup<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{
-        test_utils::*, BusMap, OpenVmBusInteractionHandler, DEFAULT_BITWISE_LOOKUP,
-    };
+    use crate::bus_interaction_handler::{test_utils::*, BusMap, OpenVmBusInteractionHandler};
 
     use super::*;
+    use powdr_autoprecompiles::DEFAULT_BITWISE_LOOKUP;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 

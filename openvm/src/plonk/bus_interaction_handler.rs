@@ -1,10 +1,12 @@
 use crate::plonk::Gate;
-use crate::{bus_interaction_handler, BusMap};
-use bus_interaction_handler::BusType::{
-    BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
-};
 use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::{
+    BusMap,
+    BusType::{
+        BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
+    },
+};
 use powdr_number::FieldElement;
 
 use super::air_to_plonkish::CircuitBuilder;
@@ -79,10 +81,10 @@ pub fn add_bus_to_plonk_circuit<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bus_interaction_handler::DEFAULT_MEMORY;
     use crate::plonk::test_utils::{c, var};
     use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
     use powdr_autoprecompiles::SymbolicBusInteraction;
+    use powdr_autoprecompiles::DEFAULT_MEMORY;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 

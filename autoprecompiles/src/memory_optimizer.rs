@@ -15,7 +15,7 @@ use powdr_number::{FieldElement, LargeInt};
 
 use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
 use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
-use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, MEMORY_BUS_ID};
+use crate::{BusMap, BusType, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
@@ -23,8 +23,11 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
-pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine);
+pub fn optimize_memory<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    bus_map: &BusMap,
+) -> SymbolicMachine<T> {
+    let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine, bus_map);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     machine.bus_interactions = machine
         .bus_interactions
@@ -38,12 +41,15 @@ pub fn optimize_memory<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Symb
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T: FieldElement>(machine: &SymbolicMachine<T>) -> bool {
+pub fn check_register_operation_consistency<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+    bus_map: &BusMap,
+) -> bool {
     let count_per_addr = machine
         .bus_interactions
         .iter()
         .filter_map(|bus_int| {
-            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int)
+            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int, bus_map)
                 .ok()
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
@@ -99,8 +105,9 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
     fn try_from_symbolic_bus_interaction(
         bus_interaction: &SymbolicBusInteraction<T>,
+        bus_map: &BusMap,
     ) -> Result<Option<Self>, ()> {
-        if bus_interaction.id != MEMORY_BUS_ID {
+        if bus_interaction.id != bus_map.get_bus_id(&BusType::Memory).unwrap() {
             return Ok(None);
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
@@ -128,8 +135,9 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement>(
     machine: &SymbolicMachine<T>,
+    bus_map: &BusMap,
 ) -> (Vec<usize>, Vec<SymbolicConstraint<T>>) {
-    let address_comparator = MemoryAddressComparator::new(machine);
+    let address_comparator = MemoryAddressComparator::new(machine, bus_map);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
     // Address across all address spaces.
@@ -143,18 +151,19 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
-        let mem_int = match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int) {
-            Ok(Some(mem_int)) => mem_int,
-            Ok(None) => continue,
-            Err(_) => {
-                // This interaction might be going to memory, but we do not know
-                // the multiplicity. Delete all knowledge.
-                // TODO If we can still clearly determine the memory type, we could
-                // only clear the knowledge for that memory type.
-                memory_contents.clear();
-                continue;
-            }
-        };
+        let mem_int =
+            match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int, bus_map) {
+                Ok(Some(mem_int)) => mem_int,
+                Ok(None) => continue,
+                Err(_) => {
+                    // This interaction might be going to memory, but we do not know
+                    // the multiplicity. Delete all knowledge.
+                    // TODO If we can still clearly determine the memory type, we could
+                    // only clear the knowledge for that memory type.
+                    memory_contents.clear();
+                    continue;
+                }
+            };
 
         let addr = (
             mem_int.address_space,
@@ -206,12 +215,12 @@ struct MemoryAddressComparator<T: FieldElement> {
 }
 
 impl<T: FieldElement> MemoryAddressComparator<T> {
-    fn new(machine: &SymbolicMachine<T>) -> Self {
+    fn new(machine: &SymbolicMachine<T>, bus_map: &BusMap) -> Self {
         let addresses = machine
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus)
+                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus, bus_map)
                     .ok()
                     .flatten()
             })

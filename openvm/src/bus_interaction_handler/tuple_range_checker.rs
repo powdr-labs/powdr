@@ -28,11 +28,10 @@ pub fn handle_tuple_range_checker<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{
-        test_utils::*, BusMap, OpenVmBusInteractionHandler, DEFAULT_TUPLE_RANGE_CHECKER,
-    };
+    use crate::bus_interaction_handler::{test_utils::*, BusMap, OpenVmBusInteractionHandler};
 
     use super::*;
+    use powdr_autoprecompiles::DEFAULT_TUPLE_RANGE_CHECKER;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 
