@@ -160,6 +160,8 @@ mod test {
 
     use super::*;
 
+    use test_log::test;
+
     fn bounds(identities: usize, bus_interactions: usize) -> DegreeBound {
         DegreeBound {
             identities,
