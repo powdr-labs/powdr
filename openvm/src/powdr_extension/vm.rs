@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use derive_more::From;
 
+use crate::powdr_extension::executor::SharedChips;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -32,7 +33,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BusMap, PrecompileImplementation};
 
-use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
@@ -183,19 +183,23 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
 
         let offline_memory = builder.system_base().offline_memory();
 
-        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = *builder
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .first()
-            .unwrap();
         let range_checker = *builder
             .find_chip::<SharedVariableRangeCheckerChip>()
             .first()
             .unwrap();
-        let tuple_range_checker = builder
-            .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .first()
-            .cloned();
+
+        let shared_chips = SharedChips::new(
+            range_checker.clone(),
+            builder
+                .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+                .first()
+                .unwrap()
+                .bus(),
+            builder
+                .find_chip::<SharedRangeTupleCheckerChip<2>>()
+                .first()
+                .map(|chip| *chip.bus()),
+        );
 
         for precompile in &self.precompiles {
             tracing::info!(
@@ -208,22 +212,14 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
+                    shared_chips.clone(),
                 )
                 .into(),
                 PrecompileImplementation::PlonkChip => PlonkChip::new(
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
+                    shared_chips.clone(),
                     self.bus_map.clone(),
                 )
                 .into(),

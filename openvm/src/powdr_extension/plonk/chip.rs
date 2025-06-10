@@ -4,10 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
-use crate::powdr_extension::executor::PowdrExecutor;
+use crate::powdr_extension::executor::{PowdrExecutor, SharedChips};
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
-use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
+use crate::powdr_extension::PowdrPrecompile;
 use crate::{BusMap, IntoOpenVm, OpenVmField};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;

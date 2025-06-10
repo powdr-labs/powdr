@@ -1,57 +1,30 @@
 use std::{
-    alloc::System,
-    any,
-    cell::RefCell,
     collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
 
-use crate::OpenVmField;
+use crate::{
+    powdr_extension::executor::inventory::{DummyChipComplex, DummyInventory},
+    OpenVmField,
+};
 
 use super::{
-    chip::{RangeCheckerSend, RowEvaluator, SharedChips},
+    chip::{RangeCheckerSend, RowEvaluator},
     vm::OriginalInstruction,
 };
-use derive_more::From;
 use itertools::Itertools;
 use openvm_circuit::{
-    arch::{
-        ExecutionState, InstructionExecutor, Result as ExecutionResult, SystemExecutor,
-        SystemPeriphery, VmChipComplex, VmInventoryError,
-    },
-    system::{
-        memory::{
-            online::{ApcRange, MemoryLogEntry},
-            OfflineMemory,
-        },
-        phantom::PhantomChip,
-    },
+    arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
 };
 use openvm_circuit::{
-    arch::{VmConfig, VmInventory},
-    system::memory::MemoryController,
-    utils::next_power_of_two_or_zero,
+    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
+    system::memory::{
+        online::{ApcRange, MemoryLogEntry},
+        OfflineMemory,
+    },
 };
-use openvm_circuit_derive::{AnyEnum, InstructionExecutor};
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::{var_range::SharedVariableRangeCheckerChip, ChipUsageGetter};
-use openvm_circuit_primitives_derive::Chip;
-use openvm_keccak256_circuit::{Keccak256Executor, Keccak256Periphery};
-use openvm_native_circuit::{
-    CastFExtension, CastFExtensionExecutor, CastFExtensionPeriphery, NativeExecutor,
-    NativePeriphery,
-};
-use openvm_rv32im_circuit::{
-    Rv32IConfigExecutor, Rv32IConfigPeriphery, Rv32IExecutor, Rv32IPeriphery,
-};
-use openvm_rv32im_circuit::{Rv32IoExecutor, Rv32IoPeriphery};
-use openvm_rv32im_circuit::{Rv32MExecutor, Rv32MPeriphery};
-use openvm_sdk::{
-    config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
-    Sdk,
-};
-use openvm_sha256_circuit::{Sha256Executor, Sha256Periphery};
+use openvm_native_circuit::CastFExtension;
+use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
 };
@@ -71,12 +44,19 @@ use openvm_stark_backend::{
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
 
+/// The inventory of the PowdrExecutor, which contains the executors for each opcode.
+mod inventory;
+/// The shared periphery chips used by the PowdrExecutor
+mod shared;
+
+pub use shared::SharedChips;
+
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
     instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     air_by_opcode_id: Arc<BTreeMap<usize, SymbolicMachine<P>>>,
     is_valid_poly_id: u64,
-    inventory: ZeroCostInventory<OpenVmField<P>>,
+    inventory: DummyInventory<OpenVmField<P>>,
     number_of_calls: usize,
     periphery: SharedChips,
 }
@@ -396,223 +376,19 @@ fn global_index<F>(
     Ok(*variable_index)
 }
 
-#[derive(ChipUsageGetter, Chip, InstructionExecutor, AnyEnum)]
-pub enum ZeroCostExecutor<F: PrimeField32> {
-    #[any_enum]
-    Sdk(SdkVmConfigExecutor<F>),
-    #[any_enum]
-    Shared(SharedExecutor<F>),
-    #[any_enum]
-    System(SystemExecutor<F>),
-}
-
-impl<F: PrimeField32> From<SharedExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: SharedExecutor<F>) -> Self {
-        ZeroCostExecutor::Shared(executor)
-    }
-}
-
-impl<F: PrimeField32> From<Rv32IExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: Rv32IExecutor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::Rv32i(executor))
-    }
-}
-
-impl<F: PrimeField32> From<Rv32IoExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: Rv32IoExecutor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::Io(executor))
-    }
-}
-
-impl<F: PrimeField32> From<Keccak256Executor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: Keccak256Executor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::Keccak(executor))
-    }
-}
-
-impl<F: PrimeField32> From<Sha256Executor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: Sha256Executor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::Sha256(executor))
-    }
-}
-
-impl<F: PrimeField32> From<CastFExtensionExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: CastFExtensionExecutor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::CastF(executor))
-    }
-}
-
-impl<F: PrimeField32> From<NativeExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: NativeExecutor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::Native(executor))
-    }
-}
-
-impl<F: PrimeField32> From<Rv32MExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: Rv32MExecutor<F>) -> Self {
-        ZeroCostExecutor::Sdk(SdkVmConfigExecutor::Rv32m(executor))
-    }
-}
-
-impl<F> From<SystemExecutor<F>> for ZeroCostExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(system_executor: SystemExecutor<F>) -> Self {
-        ZeroCostExecutor::System(system_executor)
-    }
-}
-
-#[derive(ChipUsageGetter, Chip, AnyEnum)]
-pub enum ZeroCostPeriphery<F: PrimeField32> {
-    #[any_enum]
-    Sdk(SdkVmConfigPeriphery<F>),
-    #[any_enum]
-    Shared(SharedPeriphery<F>),
-    #[any_enum]
-    System(SystemPeriphery<F>),
-}
-
-impl<F: PrimeField32> From<SharedPeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: SharedPeriphery<F>) -> Self {
-        ZeroCostPeriphery::Shared(periphery)
-    }
-}
-
-impl<F: PrimeField32> From<Rv32IPeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: Rv32IPeriphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::Rv32i(periphery))
-    }
-}
-
-impl<F: PrimeField32> From<Rv32IoPeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: Rv32IoPeriphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::Io(periphery))
-    }
-}
-
-impl<F: PrimeField32> From<Keccak256Periphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: Keccak256Periphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::Keccak(periphery))
-    }
-}
-
-impl<F: PrimeField32> From<Sha256Periphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: Sha256Periphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::Sha256(periphery))
-    }
-}
-
-impl<F: PrimeField32> From<CastFExtensionPeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: CastFExtensionPeriphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::CastF(periphery))
-    }
-}
-
-impl<F: PrimeField32> From<NativePeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: NativePeriphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::Native(periphery))
-    }
-}
-
-impl<F: PrimeField32> From<Rv32MPeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: Rv32MPeriphery<F>) -> Self {
-        ZeroCostPeriphery::Sdk(SdkVmConfigPeriphery::Rv32m(periphery))
-    }
-}
-
-impl<F> From<SystemPeriphery<F>> for ZeroCostPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(system_periphery: SystemPeriphery<F>) -> Self {
-        ZeroCostPeriphery::System(system_periphery)
-    }
-}
-
-#[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
-pub enum SharedExecutor<F: PrimeField32> {
-    Phantom(PhantomChip<F>),
-}
-
-#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
-pub enum SharedPeriphery<F: PrimeField32> {
-    BitwiseLookup8(SharedBitwiseOperationLookupChip<8>),
-    RangeChecker(SharedRangeTupleCheckerChip<2>),
-    VariableRangeChecker(SharedVariableRangeCheckerChip),
-    Phantom(PhantomChip<F>),
-}
-
-// pub type ZeroCostInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
-// pub type ZeroCostChipComplex<F> = VmChipComplex<
-//     F,
-//     SdkVmConfigExecutor<F>,
-//     SdkVmConfigPeriphery<F>,
-// >;
-pub type ZeroCostInventory<F> = VmInventory<ZeroCostExecutor<F>, ZeroCostPeriphery<F>>;
-pub type ZeroCostChipComplex<F> = VmChipComplex<F, ZeroCostExecutor<F>, ZeroCostPeriphery<F>>;
-
-// Extracted from openvm, extended to create an inventory with the correct memory
+// Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
 fn create_chip_complex_with_memory<F: PrimeField32>(
     memory: Arc<Mutex<OfflineMemory<F>>>,
     shared_chips: &SharedChips,
     base_config: SdkVmConfig,
-) -> std::result::Result<ZeroCostChipComplex<F>, VmInventoryError> {
+) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
     use openvm_keccak256_circuit::Keccak256;
     use openvm_native_circuit::Native;
     use openvm_rv32im_circuit::{Rv32I, Rv32Io};
     use openvm_sha256_circuit::Sha256;
 
     let this = base_config;
-    let mut complex: ZeroCostChipComplex<F> = this.system.config.create_chip_complex()?.transmute();
+    let mut complex: DummyChipComplex<F> = this.system.config.create_chip_complex()?.transmute();
 
     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
     complex.base.memory_controller.offline_memory = memory.clone();
@@ -651,28 +427,28 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&rv32m)?;
     }
-    // if let Some(bigint) = this.bigint {
-    //     let mut bigint = bigint;
-    //     if let Some(ref rv32m) = this.rv32m {
-    //         bigint.range_tuple_checker_sizes[0] =
-    //             rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
-    //         bigint.range_tuple_checker_sizes[1] =
-    //             rv32m.range_tuple_checker_sizes[1].max(bigint.range_tuple_checker_sizes[1]);
-    //     }
-    //     complex = complex.extend(&bigint)?;
-    // }
-    // if let Some(ref modular) = this.modular {
-    //     complex = complex.extend(modular)?;
-    // }
-    // if let Some(ref fp2) = this.fp2 {
-    //     complex = complex.extend(fp2)?;
-    // }
-    // if let Some(ref pairing) = this.pairing {
-    //     complex = complex.extend(pairing)?;
-    // }
-    // if let Some(ref ecc) = this.ecc {
-    //     complex = complex.extend(ecc)?;
-    // }
+    if let Some(bigint) = this.bigint {
+        let mut bigint = bigint;
+        if let Some(ref rv32m) = this.rv32m {
+            bigint.range_tuple_checker_sizes[0] =
+                rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
+            bigint.range_tuple_checker_sizes[1] =
+                rv32m.range_tuple_checker_sizes[1].max(bigint.range_tuple_checker_sizes[1]);
+        }
+        complex = complex.extend(&bigint)?;
+    }
+    if let Some(ref modular) = this.modular {
+        complex = complex.extend(modular)?;
+    }
+    if let Some(ref fp2) = this.fp2 {
+        complex = complex.extend(fp2)?;
+    }
+    if let Some(ref pairing) = this.pairing {
+        complex = complex.extend(pairing)?;
+    }
+    if let Some(ref ecc) = this.ecc {
+        complex = complex.extend(ecc)?;
+    }
 
     Ok(complex)
 }

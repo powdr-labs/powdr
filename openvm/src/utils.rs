@@ -117,7 +117,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                     panic!("Column index out of bounds: {index}\nColumns: {columns:?}");
                 });
                 AlgebraicExpression::Reference(AlgebraicReference {
-                    name: String::new(),
+                    name: name.clone(),
                     poly_id: PolyID {
                         id: *index as u64,
                         ptype: PolynomialType::Committed,

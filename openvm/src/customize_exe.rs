@@ -552,6 +552,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     SymbolicBusInteraction { id, mult, args }
 }
 
+// Note: This function can lead to OOM since it generates the apc for all blocks
 fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     blocks: &mut Vec<BasicBlock<OpenVmField<P>>>,
     apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
@@ -560,8 +561,6 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     config: PowdrConfig,
     opcodes_no_apc: &[usize],
 ) {
-    unimplemented!();
-
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
