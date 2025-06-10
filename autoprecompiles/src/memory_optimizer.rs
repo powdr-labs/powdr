@@ -97,13 +97,12 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
     fn try_from_bus_interaction(
         bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
     ) -> Result<Option<Self>, ()> {
-        if bus_interaction
-            .bus_id
-            .try_to_number()
-            .is_none_or(|id| id != MEMORY_BUS_ID.into())
-        {
-            return Ok(None);
+        match bus_interaction.bus_id.try_to_number() {
+            None => return Err(()),
+            Some(id) if id == MEMORY_BUS_ID.into() => {}
+            Some(_) => return Ok(None),
         }
+
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
         // are in the right order.
         let Some(address_space) = bus_interaction.payload[0].try_to_number() else {
