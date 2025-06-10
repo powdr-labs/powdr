@@ -1,25 +1,29 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use once_cell::sync::Lazy;
-use tracing::{span, Subscriber};
-use tracing_subscriber::{layer::Context, registry::LookupSpan, EnvFilter, Layer, Registry};
+use tracing::Subscriber;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::{layer::Context, registry::LookupSpan, EnvFilter, Layer, Registry};
 
 use openvm_sdk::StdIn;
 use powdr_openvm::{compile_guest, execute_and_generate, GuestOptions, PgoConfig, PowdrConfig};
 
 const GUEST_KECCAK: &str = "guest-keccak";
-const GUEST_KECCAK_ITER: u32 = 1000;
+const GUEST_KECCAK_ITER: u32 = 10;
 const GUEST_KECCAK_APC: u64 = 1;
 const GUEST_KECCAK_SKIP: u64 = 0;
 
-// GLOBAL: map from span name to all observed durations
+/// Map from span-name to Vec<durations>.
 static SPAN_TIMES: Lazy<Arc<Mutex<HashMap<String, Vec<Duration>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Map from span-name to its parent span-name (if any).
+static SPAN_PARENTS: Lazy<Arc<Mutex<HashMap<String, Option<String>>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// A tracing layer that stamps each span with its enter-time, then on exit
@@ -30,40 +34,121 @@ impl<S> Layer<S> for DurationRecorder
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
+    fn on_new_span(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::Id,
+        ctx: Context<'_, S>,
+    ) {
+        // Get this span's name
+        let name = attrs.metadata().name().to_string();
+
+        // Try to get the *active* parent's name
+        let parent_name = ctx
+            .current_span()
+            .metadata()
+            .map(|m| m.name().to_string());
+
+        // Record it
+        let mut parents = SPAN_PARENTS.lock().unwrap();
+        parents.insert(name.clone(), parent_name);
+    }
+
     fn on_enter(&self, id: &tracing::Id, ctx: Context<'_, S>) {
-        if let Some(span_ref) = ctx.span(id) {
-            let mut extensions = span_ref.extensions_mut();
-            extensions.insert(Instant::now());
+        if let Some(span) = ctx.span(id) {
+            span.extensions_mut().insert(Instant::now());
         }
     }
 
     fn on_exit(&self, id: &tracing::Id, ctx: Context<'_, S>) {
-        if let Some(span_ref) = ctx.span(id) {
-            // same pattern here
-            let extensions = span_ref.extensions();
-            if let Some(start) = extensions.get::<Instant>().copied() {
+        if let Some(span) = ctx.span(id) {
+            let exts = span.extensions();
+            if let Some(start) = exts.get::<Instant>().copied() {
                 let dur = start.elapsed();
-                let name = span_ref.name().to_string();
-                let mut map = SPAN_TIMES.lock().unwrap();
-                map.entry(name).or_default().push(dur);
+                // Name of this span:
+                let name = span.metadata().name().to_string();
+                let mut times = SPAN_TIMES.lock().unwrap();
+                times.entry(name).or_default().push(dur);
             }
         }
     }
 }
 
+// Install the global subscriber once
+static INIT: Lazy<()> = Lazy::new(|| {
+    // This reads RUST_LOG (or defaults to "debug" if unset)
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+
+    Registry::default()
+        .with(filter) // make sure DEBUG spans aren't dropped
+        .with(DurationRecorder) // then our custom layer
+        .init();
+});
+
+/// Build parent to children map and recursively print by name.
+fn print_tree() {
+    let parents = SPAN_PARENTS.lock().unwrap();
+    let times = SPAN_TIMES.lock().unwrap();
+
+    // Build name to set of child names
+    let mut tree: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut has_parent = HashSet::new();
+
+    for (name, parent_opt) in parents.iter() {
+        if let Some(parent) = parent_opt {
+            tree.entry(parent.clone())
+                .or_default()
+                .insert(name.clone());
+            has_parent.insert(name.clone());
+        }
+    }
+
+    // Roots: those names that never appear as a child
+    let mut roots: Vec<_> = parents
+        .keys()
+        .filter(|n| !has_parent.contains(*n))
+        .cloned()
+        .collect();
+    roots.sort();
+
+    fn recurse(
+        name: &str,
+        level: usize,
+        tree: &HashMap<String, HashSet<String>>,
+        times: &HashMap<String, Vec<Duration>>,
+    ) {
+        let durs = times.get(name).map(|v| v.as_slice()).unwrap_or(&[]);
+        let count = durs.len() as u32;
+        let total: Duration = durs.iter().copied().sum();
+        let avg = if count > 0 { total / count } else { Duration::ZERO };
+
+        println!(
+            "{:indent$}{} → ran {:3} times, avg = {:?}",
+            "",
+            name,
+            count,
+            avg,
+            indent = level * 2
+        );
+
+        if let Some(children) = tree.get(name) {
+            let mut kids: Vec<_> = children.iter().cloned().collect();
+            kids.sort();
+            for child in kids {
+                recurse(&child, level + 1, tree, times);
+            }
+        }
+    }
+
+    println!("\nSpan timing breakdown:");
+    for root in roots {
+        recurse(&root, 0, &tree, &times);
+    }
+}
+
+
 fn keccak_benchmark(c: &mut Criterion) {
-    // Install the global subscriber once
-    static INIT: Lazy<()> = Lazy::new(|| {
-        // This reads RUST_LOG (or defaults to "debug" if unset)
-        let filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("debug"));
-    
-        Registry::default()
-            .with(filter)           // make sure DEBUG spans aren't dropped
-            .with(DurationRecorder) // then our custom layer
-            .init();
-    });
-    Lazy::force(&INIT);
+    Lazy::force(&INIT); // required for each function
 
     // To see the component run times (e.g. powdr chip vs non-powdr chip trace gen time, powdr chip dummy trace gen time for each dummy chip)
     // run with RUST_LOG=debug
@@ -88,18 +173,9 @@ fn keccak_benchmark(c: &mut Criterion) {
 
     group.finish();
 
-    // POST‐RUN: print out average for *every* span
-    let map = SPAN_TIMES.lock().unwrap();
-    println!("\nSpan timing averages (95% of observed spans):");
-    for (name, times) in map.iter() {
-        let count = times.len();
-        let total: Duration = times.iter().copied().sum();
-        let avg = total / (count as u32);
-        println!("{:20} ran {:>5} times, avg = {:?}", name, count, avg);
-    }
+    // Print the tree of spans and their durations
+    print_tree();
 }
 
 criterion_group!(execution_benchmarks, keccak_benchmark);
 criterion_main!(execution_benchmarks);
-
-
