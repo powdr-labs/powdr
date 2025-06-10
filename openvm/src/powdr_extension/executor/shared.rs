@@ -2,21 +2,52 @@ use crate::powdr_extension::executor::inventory::{SharedExecutor, SharedPeripher
 use itertools::Itertools;
 use openvm_circuit::arch::VmExtension;
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::{BitwiseOperationLookupBus, SharedBitwiseOperationLookupChip},
-    range_tuple::{RangeTupleCheckerBus, SharedRangeTupleCheckerChip},
+    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
     var_range::SharedVariableRangeCheckerChip,
 };
 use openvm_stark_backend::p3_field::PrimeField32;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
-pub struct SharedChips {
+pub struct SharedPeripheryChipsPair {
+    /// The real chips used for the main execution.
+    pub real: SharedPeripheryChips,
+    /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
+    pub dummy: SharedPeripheryChips,
+}
+
+#[derive(Clone)]
+pub struct SharedPeripheryChips {
     pub bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
     pub range_checker: SharedVariableRangeCheckerChip,
     pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
 }
 
-impl<F> VmExtension<F> for &SharedChips
+impl SharedPeripheryChipsPair {
+    pub(crate) fn new(
+        range_checker: &SharedVariableRangeCheckerChip,
+        bitwise_8: &SharedBitwiseOperationLookupChip<8>,
+        tuple_range_checker: Option<&SharedRangeTupleCheckerChip<2>>,
+    ) -> Self {
+        Self {
+            real: SharedPeripheryChips {
+                bitwise_lookup_8: bitwise_8.clone(),
+                range_checker: range_checker.clone(),
+                tuple_range_checker: tuple_range_checker.cloned(),
+            },
+            dummy: SharedPeripheryChips {
+                bitwise_lookup_8: SharedBitwiseOperationLookupChip::new(bitwise_8.bus()),
+                range_checker: range_checker.clone(),
+                tuple_range_checker: tuple_range_checker.map(|tuple_range_checker| {
+                    SharedRangeTupleCheckerChip::new(*tuple_range_checker.bus())
+                }),
+            },
+        }
+    }
+}
+
+/// We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
+impl<F> VmExtension<F> for SharedPeripheryChips
 where
     F: PrimeField32,
 {
@@ -56,26 +87,7 @@ where
     }
 }
 
-impl SharedChips {
-    /// Creates a new instance of `SharedChips` with a range checker.
-    /// The other chips are instanciated here based on the busses to be shared by all APCs.
-    /// The reasoning is that the range checker is used by memory so we need to use the same instance as the main execution
-    /// The other chips are only used in the APCs and then thrown away, so it's fine to create them here.
-    // TODO: Do we really need the same instance of the range checker?
-    pub(crate) fn new(
-        range_checker: SharedVariableRangeCheckerChip,
-        bitwise_bus: BitwiseOperationLookupBus,
-        range_tuple_checker_bus: Option<RangeTupleCheckerBus<2>>,
-    ) -> SharedChips {
-        SharedChips {
-            bitwise_lookup_8: SharedBitwiseOperationLookupChip::new(bitwise_bus),
-            range_checker,
-            tuple_range_checker: range_tuple_checker_bus.map(SharedRangeTupleCheckerChip::new),
-        }
-    }
-}
-
-impl SharedChips {
+impl SharedPeripheryChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {

@@ -4,7 +4,10 @@ use std::{
 };
 
 use crate::{
-    powdr_extension::executor::inventory::{DummyChipComplex, DummyInventory},
+    powdr_extension::executor::{
+        inventory::{DummyChipComplex, DummyInventory},
+        shared::SharedPeripheryChips,
+    },
     OpenVmField,
 };
 
@@ -49,7 +52,7 @@ mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod shared;
 
-pub use shared::SharedChips;
+pub use shared::SharedPeripheryChipsPair;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
@@ -58,7 +61,7 @@ pub struct PowdrExecutor<P: IntoOpenVm> {
     is_valid_poly_id: u64,
     inventory: DummyInventory<OpenVmField<P>>,
     number_of_calls: usize,
-    periphery: SharedChips,
+    periphery: SharedPeripheryChips,
 }
 
 impl<P: IntoOpenVm> PowdrExecutor<P> {
@@ -68,17 +71,21 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedChips,
+        periphery: SharedPeripheryChipsPair,
     ) -> Self {
         Self {
             instructions,
             air_by_opcode_id,
             is_valid_poly_id: is_valid_column.id.id,
-            inventory: create_chip_complex_with_memory(memory, &periphery, base_config.clone())
-                .unwrap()
-                .inventory,
+            inventory: create_chip_complex_with_memory(
+                memory,
+                periphery.dummy,
+                base_config.clone(),
+            )
+            .unwrap()
+            .inventory,
             number_of_calls: 0,
-            periphery,
+            periphery: periphery.real,
         }
     }
 
@@ -379,7 +386,7 @@ fn global_index<F>(
 // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
 fn create_chip_complex_with_memory<F: PrimeField32>(
     memory: Arc<Mutex<OfflineMemory<F>>>,
-    shared_chips: &SharedChips,
+    shared_chips: SharedPeripheryChips,
     base_config: SdkVmConfig,
 ) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
     use openvm_keccak256_circuit::Keccak256;

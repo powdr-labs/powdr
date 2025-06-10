@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
-use crate::powdr_extension::executor::{PowdrExecutor, SharedChips};
+use crate::powdr_extension::executor::{PowdrExecutor, SharedPeripheryChipsPair};
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
@@ -50,7 +50,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
         precompile: PowdrPrecompile<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedChips,
+        periphery: SharedPeripheryChipsPair,
         bus_map: BusMap,
     ) -> Self {
         let PowdrPrecompile {

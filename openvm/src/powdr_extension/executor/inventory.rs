@@ -26,28 +26,11 @@ use openvm_sdk::config::{SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_sha256_circuit::{Sha256Executor, Sha256Periphery};
 use openvm_stark_backend::p3_field::PrimeField32;
 
-/// Defines `From<T> for DummyExecutor` and `From<T> for DummyPeriphery`
-/// by mapping to the appropriate `SdkVmConfigExecutor` and `SdkVmConfigPeriphery` variant.
-macro_rules! impl_zero_cost_conversions {
-    ($(($variant:ident, $executor_ty:ty, $periphery_ty:ty)),* $(,)?) => {
-        $(
-            impl<F: PrimeField32> From<$executor_ty> for DummyExecutor<F> {
-                fn from(executor: $executor_ty) -> Self {
-                    DummyExecutor::Sdk(SdkVmConfigExecutor::$variant(executor))
-                }
-            }
+/// A dummy inventory used for execution of autoprecompiles
+/// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
+pub type DummyInventory<F> = VmInventory<DummyExecutor<F>, DummyPeriphery<F>>;
+pub type DummyChipComplex<F> = VmChipComplex<F, DummyExecutor<F>, DummyPeriphery<F>>;
 
-            impl<F: PrimeField32> From<$periphery_ty> for DummyPeriphery<F> {
-                fn from(periphery: $periphery_ty) -> Self {
-                    DummyPeriphery::Sdk(SdkVmConfigPeriphery::$variant(periphery))
-                }
-            }
-        )*
-    };
-}
-
-/// A dummy executor used for execution of autoprecompiles.
-/// It extends
 #[allow(clippy::large_enum_variant)]
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, AnyEnum)]
 pub enum DummyExecutor<F: PrimeField32> {
@@ -56,6 +39,8 @@ pub enum DummyExecutor<F: PrimeField32> {
     #[any_enum]
     Shared(SharedExecutor<F>),
     #[any_enum]
+    /// We keep the `SystemExecutor` variant to allow for system-level operations. Failing to do this compiles, but at runtime since the `PhantomChip` cannot be found
+    /// This seems like a bug in openvm, as it breaks abstraction: wrapping an executor should not require the user to know about the system executor.
     System(SystemExecutor<F>),
 }
 
@@ -68,6 +53,7 @@ where
     }
 }
 
+// Here we keep the `SystemExecutor` variant to allow for system-level operations.
 impl<F> From<SystemExecutor<F>> for DummyExecutor<F>
 where
     F: PrimeField32,
@@ -86,33 +72,6 @@ pub enum DummyPeriphery<F: PrimeField32> {
     #[any_enum]
     System(SystemPeriphery<F>),
 }
-
-impl_zero_cost_conversions!(
-    (Rv32i, Rv32IExecutor<F>, Rv32IPeriphery<F>),
-    (Io, Rv32IoExecutor<F>, Rv32IoPeriphery<F>),
-    (Keccak, Keccak256Executor<F>, Keccak256Periphery<F>),
-    (Sha256, Sha256Executor<F>, Sha256Periphery<F>),
-    (Native, NativeExecutor<F>, NativePeriphery<F>),
-    (Rv32m, Rv32MExecutor<F>, Rv32MPeriphery<F>),
-    (BigInt, Int256Executor<F>, Int256Periphery<F>),
-    (
-        Modular,
-        ModularExtensionExecutor<F>,
-        ModularExtensionPeriphery<F>
-    ),
-    (Fp2, Fp2ExtensionExecutor<F>, Fp2ExtensionPeriphery<F>),
-    (
-        Pairing,
-        PairingExtensionExecutor<F>,
-        PairingExtensionPeriphery<F>
-    ),
-    (
-        Ecc,
-        WeierstrassExtensionExecutor<F>,
-        WeierstrassExtensionPeriphery<F>
-    ),
-    (CastF, CastFExtensionExecutor<F>, CastFExtensionPeriphery<F>),
-);
 
 impl<F: PrimeField32> From<SharedPeriphery<F>> for DummyPeriphery<F>
 where
@@ -145,5 +104,50 @@ pub enum SharedPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-pub type DummyInventory<F> = VmInventory<DummyExecutor<F>, DummyPeriphery<F>>;
-pub type DummyChipComplex<F> = VmChipComplex<F, DummyExecutor<F>, DummyPeriphery<F>>;
+/// Defines `From<T> for DummyExecutor` and `From<T> for DummyPeriphery`
+/// by mapping to the appropriate `SdkVmConfigExecutor` and `SdkVmConfigPeriphery` variant.
+/// This cannot be derived because we have a custom implementation of this conversion for the `SystemExecutor`, avoiding this wrapping.
+macro_rules! impl_zero_cost_conversions {
+    ($(($variant:ident, $executor_ty:ty, $periphery_ty:ty)),* $(,)?) => {
+        $(
+            impl<F: PrimeField32> From<$executor_ty> for DummyExecutor<F> {
+                fn from(executor: $executor_ty) -> Self {
+                    DummyExecutor::Sdk(SdkVmConfigExecutor::$variant(executor))
+                }
+            }
+
+            impl<F: PrimeField32> From<$periphery_ty> for DummyPeriphery<F> {
+                fn from(periphery: $periphery_ty) -> Self {
+                    DummyPeriphery::Sdk(SdkVmConfigPeriphery::$variant(periphery))
+                }
+            }
+        )*
+    };
+}
+
+impl_zero_cost_conversions!(
+    (Rv32i, Rv32IExecutor<F>, Rv32IPeriphery<F>),
+    (Io, Rv32IoExecutor<F>, Rv32IoPeriphery<F>),
+    (Keccak, Keccak256Executor<F>, Keccak256Periphery<F>),
+    (Sha256, Sha256Executor<F>, Sha256Periphery<F>),
+    (Native, NativeExecutor<F>, NativePeriphery<F>),
+    (Rv32m, Rv32MExecutor<F>, Rv32MPeriphery<F>),
+    (BigInt, Int256Executor<F>, Int256Periphery<F>),
+    (
+        Modular,
+        ModularExtensionExecutor<F>,
+        ModularExtensionPeriphery<F>
+    ),
+    (Fp2, Fp2ExtensionExecutor<F>, Fp2ExtensionPeriphery<F>),
+    (
+        Pairing,
+        PairingExtensionExecutor<F>,
+        PairingExtensionPeriphery<F>
+    ),
+    (
+        Ecc,
+        WeierstrassExtensionExecutor<F>,
+        WeierstrassExtensionPeriphery<F>
+    ),
+    (CastF, CastFExtensionExecutor<F>, CastFExtensionPeriphery<F>),
+);

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use derive_more::From;
 
-use crate::powdr_extension::executor::SharedChips;
+use crate::powdr_extension::executor::SharedPeripheryChipsPair;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -183,23 +183,21 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
 
         let offline_memory = builder.system_base().offline_memory();
 
+        let bitwise_lookup = *builder
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .first()
+            .unwrap();
         let range_checker = *builder
             .find_chip::<SharedVariableRangeCheckerChip>()
             .first()
             .unwrap();
+        let tuple_range_checker = builder
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .first()
+            .cloned();
 
-        let shared_chips = SharedChips::new(
-            range_checker.clone(),
-            builder
-                .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-                .first()
-                .unwrap()
-                .bus(),
-            builder
-                .find_chip::<SharedRangeTupleCheckerChip<2>>()
-                .first()
-                .map(|chip| *chip.bus()),
-        );
+        let shared_chips =
+            SharedPeripheryChipsPair::new(range_checker, bitwise_lookup, tuple_range_checker);
 
         for precompile in &self.precompiles {
             tracing::info!(
