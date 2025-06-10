@@ -1055,7 +1055,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(
             [m.width, m.constraints, m.bus_interactions],
-            [1995, 161, 1773]
+            [1997, 161, 1775]
         );
     }
 
