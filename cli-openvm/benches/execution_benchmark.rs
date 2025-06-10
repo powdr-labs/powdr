@@ -6,7 +6,10 @@ use std::{
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use once_cell::sync::Lazy;
-use tracing::Subscriber;
+use tracing::{
+    field::{Field, Visit},
+    Subscriber,
+};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{layer::Context, registry::LookupSpan, EnvFilter, Layer, Registry};
 
@@ -26,6 +29,20 @@ static SPAN_TIMES: Lazy<Arc<Mutex<HashMap<String, Vec<Duration>>>>> =
 static SPAN_PARENTS: Lazy<Arc<Mutex<HashMap<String, Option<String>>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+struct IdVisitor {
+    pub id: Option<String>,
+}
+
+impl Visit for IdVisitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "id" {
+            self.id = Some(value.to_string());
+        }
+    }
+    // ignore other type
+    fn record_debug(&mut self, _: &Field, _: &dyn std::fmt::Debug) {}
+}
+
 /// A tracing layer that stamps each span with its enter-time, then on exit
 /// records the elapsed time into SPAN_TIMES under that span's name.
 struct DurationRecorder;
@@ -40,18 +57,33 @@ where
         id: &tracing::Id,
         ctx: Context<'_, S>,
     ) {
-        // Get this span's name
-        let name = attrs.metadata().name().to_string();
+        // pull the literal span name (e.g. "dummy trace")
+        let base = attrs.metadata().name();
+        // visit the fields and extract id
+        let mut visitor = IdVisitor { id: None };
+        attrs.record(&mut visitor);
 
-        // Try to get the *active* parent's name
-        let parent_name = ctx
+        // build the real key: e.g. "dummy trace alu"
+        let key = if let Some(id) = visitor.id {
+            format!("{} {}", base, id)
+        } else {
+            base.to_string()
+        };
+
+        // grab parent’s key from its extensions, if any
+        let parent_key = ctx
             .current_span()
-            .metadata()
-            .map(|m| m.name().to_string());
+            .id()
+            .and_then(|pid| ctx.span(&pid))
+            .and_then(|parent_span| parent_span.extensions().get::<String>().cloned());
 
-        // Record it
-        let mut parents = SPAN_PARENTS.lock().unwrap();
-        parents.insert(name.clone(), parent_name);
+        // record parent to child (by key)
+        SPAN_PARENTS.lock().unwrap().insert(key.clone(), parent_key);
+
+        // stash *this* span’s key so on_exit can reuse it
+        if let Some(span) = ctx.span(id) {
+            span.extensions_mut().insert(key);
+        }
     }
 
     fn on_enter(&self, id: &tracing::Id, ctx: Context<'_, S>) {
@@ -63,12 +95,14 @@ where
     fn on_exit(&self, id: &tracing::Id, ctx: Context<'_, S>) {
         if let Some(span) = ctx.span(id) {
             let exts = span.extensions();
-            if let Some(start) = exts.get::<Instant>().copied() {
+            if let (Some(start), Some(key)) = (exts.get::<Instant>(), exts.get::<String>()) {
                 let dur = start.elapsed();
-                // Name of this span:
-                let name = span.metadata().name().to_string();
-                let mut times = SPAN_TIMES.lock().unwrap();
-                times.entry(name).or_default().push(dur);
+                SPAN_TIMES
+                    .lock()
+                    .unwrap()
+                    .entry(key.clone())
+                    .or_default()
+                    .push(dur);
             }
         }
     }
@@ -96,9 +130,7 @@ fn print_tree() {
 
     for (name, parent_opt) in parents.iter() {
         if let Some(parent) = parent_opt {
-            tree.entry(parent.clone())
-                .or_default()
-                .insert(name.clone());
+            tree.entry(parent.clone()).or_default().insert(name.clone());
             has_parent.insert(name.clone());
         }
     }
@@ -120,7 +152,11 @@ fn print_tree() {
         let durs = times.get(name).map(|v| v.as_slice()).unwrap_or(&[]);
         let count = durs.len() as u32;
         let total: Duration = durs.iter().copied().sum();
-        let avg = if count > 0 { total / count } else { Duration::ZERO };
+        let avg = if count > 0 {
+            total / count
+        } else {
+            Duration::ZERO
+        };
 
         println!(
             "{:indent$}{} → ran {:3} times, avg = {:?}",
@@ -146,7 +182,6 @@ fn print_tree() {
     }
 }
 
-
 fn keccak_benchmark(c: &mut Criterion) {
     Lazy::force(&INIT); // required for each function
 
@@ -161,7 +196,7 @@ fn keccak_benchmark(c: &mut Criterion) {
     let mut stdin = StdIn::default();
     stdin.write(&GUEST_KECCAK_ITER);
 
-    // Default uses 100 samples, which is too many
+    // Default uses 100 samples, which is too many, but 10 samples is the required minimum
     group.sample_size(10);
 
     // Run benchmark
