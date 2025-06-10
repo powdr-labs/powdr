@@ -3,8 +3,8 @@ use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::{
-    instructions::exe::VmExe, InstructionExecutor, Streams, SystemConfig, VirtualMachine,
-    VmChipComplex, VmConfig, VmInventoryError,
+    instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
+    SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
 };
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
@@ -13,10 +13,10 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::{
     config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
 };
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{DegreeBound, SymbolicMachine};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -119,7 +119,7 @@ pub enum PgoConfig {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "P::Field: Field")]
 pub struct SpecializedConfig<P: IntoOpenVm> {
-    sdk_config: SdkVmConfig,
+    pub sdk_config: SdkVmConfig,
     powdr: PowdrExtension<P>,
 }
 
@@ -290,8 +290,8 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Map from bus id to bus type such as Execution, Memory, etc.
     pub bus_map: BusMap,
-    /// The max degree of constraints.
-    pub degree_bound: usize,
+    /// Max degree of constraints.
+    pub degree_bound: DegreeBound,
     /// Implementation of the precompile, i.e., how to compile it to a RAP.
     pub implementation: PrecompileImplementation,
 }
@@ -302,10 +302,10 @@ impl PowdrConfig {
             autoprecompiles,
             skip_autoprecompiles,
             bus_map: BusMap::openvm_base(),
-            // We use OPENVM_DEGREE_BOUND - 1 because LogUp can increase the degree of the
-            // expressions in bus interactions. The `-1` here can be removed once the inliner
-            // accepts two different degree bounds for polynomial constraints and bus interactions.
-            degree_bound: customize_exe::OPENVM_DEGREE_BOUND - 1,
+            degree_bound: DegreeBound {
+                identities: customize_exe::OPENVM_DEGREE_BOUND,
+                bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
+            },
             implementation: PrecompileImplementation::default(),
         }
     }
@@ -321,7 +321,7 @@ impl PowdrConfig {
         Self { bus_map, ..self }
     }
 
-    pub fn with_degree_bound(self, degree_bound: usize) -> Self {
+    pub fn with_degree_bound(self, degree_bound: DegreeBound) -> Self {
         Self {
             degree_bound,
             ..self
@@ -374,8 +374,9 @@ pub fn compile_exe(
         .program
         .instructions_and_debug_infos
         .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode);
-    let airs = instructions_to_airs(sdk_vm_config.clone(), used_instructions);
+        .map(|instr| instr.as_ref().unwrap().0.opcode)
+        .collect();
+    let airs = instructions_to_airs(sdk_vm_config.clone(), &used_instructions);
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -518,8 +519,18 @@ pub fn prove(
     mock: bool,
     recursion: bool,
     inputs: StdIn,
+    segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let CompiledProgram { exe, vm_config } = program;
+    let exe = &program.exe;
+    let mut vm_config = program.vm_config.clone();
+
+    // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
+    if let Some(segment_height) = segment_height {
+        vm_config.sdk_config.system.config.segmentation_strategy = Arc::new(
+            DefaultSegmentationStrategy::new_with_max_segment_len(segment_height),
+        );
+        tracing::debug!("Setting max segment len to {}", segment_height);
+    }
 
     let sdk = Sdk::default();
 
@@ -610,7 +621,7 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
 
 pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
-    used_instructions: impl Iterator<Item = VmOpcode>,
+    used_instructions: &HashSet<VmOpcode>,
 ) -> BTreeMap<usize, SymbolicMachine<P>>
 where
     VC::Executor: Chip<BabyBearSC>,
@@ -622,8 +633,9 @@ where
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
     used_instructions
+        .iter()
         .filter_map(|op| {
-            chip_complex.inventory.get_executor(op).map(|executor| {
+            chip_complex.inventory.get_executor(*op).map(|executor| {
                 let air = executor.air();
 
                 let columns = get_columns(air.clone());
@@ -765,23 +777,66 @@ mod tests {
         recursion: bool,
         stdin: StdIn,
         pgo_config: PgoConfig,
+        segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
-        prove(&program, mock, recursion, stdin)
+        prove(&program, mock, recursion, stdin, segment_height)
     }
 
-    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
-        let result = compile_and_prove(guest, config, false, false, stdin, pgo_config);
+    fn prove_simple(
+        guest: &str,
+        config: PowdrConfig,
+        stdin: StdIn,
+        pgo_config: PgoConfig,
+        segment_height: Option<usize>,
+    ) {
+        let result = compile_and_prove(
+            guest,
+            config,
+            false,
+            false,
+            stdin,
+            pgo_config,
+            segment_height,
+        );
         assert!(result.is_ok());
     }
 
-    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
-        let result = compile_and_prove(guest, config, true, false, stdin, pgo_config);
+    fn prove_mock(
+        guest: &str,
+        config: PowdrConfig,
+        stdin: StdIn,
+        pgo_config: PgoConfig,
+        segment_height: Option<usize>,
+    ) {
+        let result = compile_and_prove(
+            guest,
+            config,
+            true,
+            false,
+            stdin,
+            pgo_config,
+            segment_height,
+        );
         assert!(result.is_ok());
     }
 
-    fn prove_recursion(guest: &str, config: PowdrConfig, stdin: StdIn, pgo_config: PgoConfig) {
-        let result = compile_and_prove(guest, config, false, true, stdin, pgo_config);
+    fn prove_recursion(
+        guest: &str,
+        config: PowdrConfig,
+        stdin: StdIn,
+        pgo_config: PgoConfig,
+        segment_height: Option<usize>,
+    ) {
+        let result = compile_and_prove(
+            guest,
+            config,
+            false,
+            true,
+            stdin,
+            pgo_config,
+            segment_height,
+        );
         assert!(result.is_ok());
     }
 
@@ -792,10 +847,12 @@ mod tests {
     const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
-    const GUEST_KECCAK_ITER: u32 = 1000;
+    const GUEST_KECCAK_ITER: u32 = 1_000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
+    const GUEST_KECCAK_ITER_LARGE: u32 = 25_000;
     const GUEST_KECCAK_APC: u64 = 1;
-    const GUEST_KECCAK_APC_PGO: u64 = 5;
+    const GUEST_KECCAK_APC_PGO: u64 = 10;
+    const GUEST_KECCAK_APC_PGO_LARGE: u64 = 100;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     #[test]
@@ -803,7 +860,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_simple(GUEST, config, stdin, PgoConfig::None);
+        prove_simple(GUEST, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -811,18 +868,17 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_mock(GUEST, config, stdin, PgoConfig::None);
+        prove_mock(GUEST, config, stdin, PgoConfig::None, None);
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
-    #[should_panic = "LogUp multiset equality check failed."]
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST, config, stdin, PgoConfig::None);
+        prove_mock(GUEST, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -832,7 +888,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
         let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
-        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data));
+        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
     #[test]
@@ -840,7 +896,17 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None);
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+    }
+
+    #[test]
+    fn kecak_small_prove_simple_multi_segment() {
+        // Set the default segmentation height to a small value to test multi-segment proving
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        // should create two segments
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
     }
 
     #[test]
@@ -849,7 +915,49 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None);
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn keccak_prove_many_apcs() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER);
+        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
+        prove_recursion(
+            GUEST_KECCAK,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data.clone()),
+            None,
+        );
+
+        prove_recursion(
+            GUEST_KECCAK,
+            config.clone(),
+            stdin,
+            PgoConfig::Cell(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn keccak_prove_large() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_LARGE);
+        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
+        prove_recursion(
+            GUEST_KECCAK,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
     }
 
     #[test]
@@ -858,18 +966,17 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None);
+        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
-    #[should_panic = "LogUp multiset equality check failed."]
     fn keccak_plonk_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None);
+        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -878,7 +985,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None);
+        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
@@ -900,6 +1007,7 @@ mod tests {
             config.clone(),
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone()),
+            None,
         );
         let elapsed = start.elapsed();
         tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
@@ -911,6 +1019,7 @@ mod tests {
             config.clone(),
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
+            None,
         );
         let elapsed = start.elapsed();
         tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
@@ -968,9 +1077,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 14);
+        assert_eq!(m.width, 16);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 3);
+        assert_eq!(m.bus_interactions, 5);
     }
 
     #[test]
