@@ -104,18 +104,19 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
             Some(_) => return Ok(None),
         }
 
-        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
-        // are in the right order.
-        let Some(address_space) = bus_interaction.payload[0].try_to_number() else {
-            panic!("Address space must be known!")
-        };
         let op = match bus_interaction.multiplicity.try_to_number() {
             Some(n) if n == 1.into() => MemoryOp::Send,
             Some(n) if n == (-1).into() => MemoryOp::Receive,
             _ => return Err(()),
         };
-        let [addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
+
+        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
+        // are in the right order.
+        let [address_space, addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
             panic!();
+        };
+        let Some(address_space) = address_space.try_to_number() else {
+            panic!("Address space must be known!");
         };
         Ok(Some(MemoryBusInteraction {
             op,
