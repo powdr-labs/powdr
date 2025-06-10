@@ -92,6 +92,26 @@ impl<T: FieldElement, V> JournalledConstraintSystem<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone + Ord + Hash> JournalledConstraintSystem<T, V> {
+    /// Adds a new algebraic constraints to the system.
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
+    ) {
+        // TODO track
+        self.system.add_algebraic_constraints(constraints);
+    }
+
+    /// Adds a new bus interactions to the system.
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    ) {
+        // TODO track
+        self.system.add_bus_interactions(bus_interactions);
+    }
+}
+
 impl<T: FieldElement, V: Clone + Ord + Display> Display for JournalledConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.system)

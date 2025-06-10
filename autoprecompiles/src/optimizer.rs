@@ -5,8 +5,8 @@ use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journalled_constraint_system::JournalledConstraintSystem,
+    quadratic_symbolic_expression::NoRangeConstraints,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -41,43 +41,47 @@ pub fn optimize<T: FieldElement>(
     let machine = optimize_exec_bus(machine);
     stats_logger.log("exec bus optimization", &machine);
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut constraint_system =
+        JournalledConstraintSystem::from(symbolic_machine_to_constraint_system(machine));
 
     loop {
-        let size = system_size(&constraint_system);
-        constraint_system = optimization_loop_iteration(
-            constraint_system,
+        let size = system_size(constraint_system.system());
+        optimization_loop_iteration(
+            &mut constraint_system,
             bus_interaction_handler.clone(),
             degree_bound,
             &mut stats_logger,
         )?;
-        if system_size(&constraint_system) == size {
-            return Ok(constraint_system_to_symbolic_machine(constraint_system));
+        if system_size(constraint_system.system()) == size {
+            return Ok(constraint_system_to_symbolic_machine(
+                constraint_system.system().clone(),
+            ));
         }
     }
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, AlgebraicReference>,
+    constraint_system: &mut JournalledConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
-) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let mut constraint_system = JournalledConstraintSystem::from(constraint_system);
+) -> Result<(), crate::constraint_optimizer::Error> {
     optimize_constraints(
-        &mut constraint_system,
+        constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     )?;
-    let constraint_system = optimize_memory(constraint_system, NoRangeConstraints);
-    assert!(check_register_operation_consistency(&constraint_system));
-    stats_logger.log("memory optimization", &constraint_system);
+    optimize_memory(constraint_system, NoRangeConstraints);
+    assert!(check_register_operation_consistency(
+        constraint_system.system()
+    ));
+    stats_logger.log("memory optimization", constraint_system.system());
 
-    let system = optimize_bitwise_lookup(constraint_system);
-    stats_logger.log("optimizing bitwise lookup", &system);
+    optimize_bitwise_lookup(constraint_system);
+    stats_logger.log("optimizing bitwise lookup", constraint_system.system());
 
-    Ok(system)
+    Ok(())
 }
 
 fn system_size<T: FieldElement>(

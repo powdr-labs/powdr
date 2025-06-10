@@ -6,6 +6,7 @@ use itertools::Itertools;
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
+use powdr_constraint_solver::journalled_constraint_system::JournalledConstraintSystem;
 use powdr_constraint_solver::quadratic_symbolic_expression::{
     QuadraticSymbolicExpression, RangeConstraintProvider,
 };
@@ -21,21 +22,20 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
-    mut system: ConstraintSystem<T, V>,
+    system: &mut JournalledConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
-) -> ConstraintSystem<T, V> {
+) {
     let (to_remove, new_constraints) =
-        redundant_memory_interactions_indices(&system, range_constraints);
+        redundant_memory_interactions_indices(system.system(), range_constraints);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
-    system.bus_interactions = system
-        .bus_interactions
-        .into_iter()
-        .enumerate()
-        .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
-        .collect();
+    let mut counter = 0;
+    system.retain_bus_interactions(|_| {
+        let retain = !to_remove.contains(&counter);
+        counter += 1;
+        retain
+    });
     // TODO perform substitutions instead
-    system.algebraic_constraints.extend(new_constraints);
-    system
+    system.add_algebraic_constraints(new_constraints);
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.

@@ -4,6 +4,7 @@ use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
+use powdr_constraint_solver::journalled_constraint_system::JournalledConstraintSystem;
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
@@ -12,13 +13,13 @@ use crate::BITWISE_LOOKUP_BUS_ID;
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
-    mut system: ConstraintSystem<T, V>,
-) -> ConstraintSystem<T, V> {
+    system: &mut JournalledConstraintSystem<T, V>,
+) {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
     let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = vec![];
-    system.bus_interactions.retain(|bus_int| {
+    system.retain_bus_interactions(|bus_int| {
         if !is_simple_multiplicity_bitwise_bus_interaction(bus_int) {
             return true;
         }
@@ -66,7 +67,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
-    let already_byte_constrained = all_byte_constrained_expressions(&system)
+    let already_byte_constrained = all_byte_constrained_expressions(system.system())
         .cloned()
         .collect::<HashSet<_>>();
     let mut to_byte_constrain = to_byte_constrain
@@ -85,15 +86,14 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     if to_byte_constrain.len() % 2 != 0 {
         to_byte_constrain.push(T::from(0).into());
     }
-    for (x, y) in to_byte_constrain.into_iter().tuples() {
-        system.bus_interactions.push(BusInteraction {
+    system.add_bus_interactions(to_byte_constrain.into_iter().tuples().map(|(x, y)| {
+        BusInteraction {
             bus_id: T::from(BITWISE_LOOKUP_BUS_ID).into(),
             payload: vec![x.clone(), y.clone(), T::from(0).into(), T::from(0).into()],
             multiplicity: T::from(1).into(),
-        });
-    }
-    system.algebraic_constraints.extend(new_constraints);
-    system
+        }
+    }));
+    system.add_algebraic_constraints(new_constraints);
 }
 
 fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Ord>(

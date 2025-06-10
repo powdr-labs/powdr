@@ -147,6 +147,61 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Hash + Eq + Clone + Ord> IndexedConstraintSystem<T, V> {
+    /// Adds new algebraic constraints to the system.
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: constraints.into_iter().collect(),
+            bus_interactions: Vec::new(),
+        });
+    }
+
+    /// Adds new bus interactions to the system.
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: bus_interactions.into_iter().collect(),
+        });
+    }
+
+    /// Extends the constraint system by the constraints of another system.
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+        // TODO track
+        let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
+        let bus_interactions_count = self.constraint_system.bus_interactions.len();
+        // Compute the occurrences of the variables in the new constraints,
+        // but update their indices.
+        // Iterating over hash map here is fine because we are just extending another hash map.
+        #[allow(clippy::iter_over_hash_type)]
+        for (variable, occurrences) in variable_occurrences(&system) {
+            let occurrences = occurrences.into_iter().map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => {
+                    ConstraintSystemItem::AlgebraicConstraint(i + algebraic_constraint_count)
+                }
+                ConstraintSystemItem::BusInteraction(i) => {
+                    ConstraintSystemItem::BusInteraction(i + bus_interactions_count)
+                }
+            });
+            self.variable_occurrences
+                .entry(variable)
+                .or_default()
+                .extend(occurrences);
+        }
+        self.constraint_system
+            .algebraic_constraints
+            .extend(system.algebraic_constraints);
+        self.constraint_system
+            .bus_interactions
+            .extend(system.bus_interactions);
+    }
+}
+
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables<'a>(
