@@ -17,7 +17,7 @@ use openvm_sdk::StdIn;
 use powdr_openvm::{compile_guest, execute_and_generate, GuestOptions, PgoConfig, PowdrConfig};
 
 const GUEST_KECCAK: &str = "guest-keccak";
-const GUEST_KECCAK_ITER: u32 = 10;
+const GUEST_KECCAK_ITER: u32 = 1000;
 const GUEST_KECCAK_APC: u64 = 1;
 const GUEST_KECCAK_SKIP: u64 = 0;
 
@@ -29,18 +29,44 @@ static SPAN_TIMES: Lazy<Arc<Mutex<HashMap<String, Vec<Duration>>>>> =
 static SPAN_PARENTS: Lazy<Arc<Mutex<HashMap<String, Option<String>>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-struct IdVisitor {
-    pub id: Option<String>,
+struct Visitor {
+    pub id: Option<usize>,
+    pub air_name: Option<String>,
 }
 
-impl Visit for IdVisitor {
+impl Visit for Visitor {
+    // Called for fields recorded as string literals (`air_name = %...`).
     fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "id" {
-            self.id = Some(value.to_string());
+        if field.name() == "air_name" {
+            self.air_name = Some(value.to_string());
         }
     }
-    // ignore other type
-    fn record_debug(&mut self, _: &Field, _: &dyn std::fmt::Debug) {}
+
+    // Called when the macro passes a Debug-able value (`id = id`).
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "id" {
+            // Debug formatting of a usize will be just the digits, so we can parse.
+            if let Ok(n) = format!("{:?}", value).parse::<usize>() {
+                self.id = Some(n);
+            }
+        }
+    }
+
+    // In case it ever comes through as u64 or i64, handle those too
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        if field.name() == "id" {
+            self.id = Some(value as usize);
+        }
+    }
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        if field.name() == "id" && value >= 0 {
+            self.id = Some(value as usize);
+        }
+    }
+
+    // We don’t care about the other types
+    fn record_bool(&mut self, _field: &Field, _value: bool) {}
+    fn record_f64(&mut self, _field: &Field, _value: f64) {}
 }
 
 /// A tracing layer that stamps each span with its enter-time, then on exit
@@ -60,14 +86,22 @@ where
         // pull the literal span name (e.g. "dummy trace")
         let base = attrs.metadata().name();
         // visit the fields and extract id
-        let mut visitor = IdVisitor { id: None };
+        let mut visitor = Visitor {
+            id: None,
+            air_name: None,
+        };
         attrs.record(&mut visitor);
 
+        // turn fields into strings or None
+        let id_str = visitor.id.map(|i| format!("id:{}", i));
+        let air_str = visitor.air_name.map(|a| format!("air:{}", a));
+
         // build the real key: e.g. "dummy trace alu"
-        let key = if let Some(id) = visitor.id {
-            format!("{} {}", base, id)
-        } else {
-            base.to_string()
+        let key = match (air_str, id_str) {
+            (Some(air), Some(id)) => format!("{} [{} {}]", base, air, id),
+            (Some(air), None) => format!("{} [{}]", base, air),
+            (None, Some(id)) => format!("{} [{}]", base, id),
+            (None, None) => base.to_string(),
         };
 
         // grab parent’s key from its extensions, if any
@@ -159,7 +193,7 @@ fn print_tree() {
         };
 
         println!(
-            "{:indent$}{} → ran {:3} times, avg = {:?}",
+            "{:indent$}{} → ran {} times, avg = {:?}",
             "",
             name,
             count,
