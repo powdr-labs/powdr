@@ -458,6 +458,24 @@ pub fn execute(
     Ok(())
 }
 
+pub fn execute_and_generate(
+    program: CompiledProgram<PowdrBB>,
+    inputs: StdIn,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let CompiledProgram { exe, vm_config } = program;
+
+    let app_log_blowup = 2;
+
+    let engine = BabyBearPoseidon2Engine::new(
+        FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup),
+    );
+    let vm = VirtualMachine::new(engine, vm_config.clone());
+    let streams = Streams::from(inputs);
+    let _ = vm.execute_and_generate(exe.clone(), streams).unwrap();
+
+    Ok(())
+}
+
 pub fn pgo(
     program: OriginalCompiledProgram<BabyBearField>,
     inputs: StdIn,
