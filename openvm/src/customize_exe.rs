@@ -293,12 +293,7 @@ pub fn customize<P: IntoOpenVm>(
             airs.clone(),
             is_valid_column,
         ));
-
-        tracing::info!("Done");
     }
-
-    tracing::info!("Generated {} autoprecompiles", extensions.len());
-
     (
         exe,
         PowdrExtension::new(

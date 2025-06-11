@@ -9,7 +9,7 @@ use openvm_stark_backend::p3_field::PrimeField32;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
-pub struct SharedPeripheryChipsPair {
+pub struct PowdrPeripheryInstances {
     /// The real chips used for the main execution.
     pub real: SharedPeripheryChips,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
@@ -23,7 +23,7 @@ pub struct SharedPeripheryChips {
     pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
 }
 
-impl SharedPeripheryChipsPair {
+impl PowdrPeripheryInstances {
     pub(crate) fn new(
         range_checker: &SharedVariableRangeCheckerChip,
         bitwise_8: &SharedBitwiseOperationLookupChip<8>,

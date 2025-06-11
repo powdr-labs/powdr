@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use derive_more::From;
 
-use crate::powdr_extension::executor::SharedPeripheryChipsPair;
+use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -183,6 +183,7 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
 
         let offline_memory = builder.system_base().offline_memory();
 
+        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
         let bitwise_lookup = *builder
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
             .first()
@@ -196,8 +197,9 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             .first()
             .cloned();
 
-        let shared_chips =
-            SharedPeripheryChipsPair::new(range_checker, bitwise_lookup, tuple_range_checker);
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair =
+            PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
 
         for precompile in &self.precompiles {
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
@@ -205,14 +207,14 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    shared_chips.clone(),
+                    shared_chips_pair.clone(),
                 )
                 .into(),
                 PrecompileImplementation::PlonkChip => PlonkChip::new(
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    shared_chips.clone(),
+                    shared_chips_pair.clone(),
                     self.bus_map.clone(),
                 )
                 .into(),

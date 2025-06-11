@@ -6,7 +6,7 @@ use std::{
 use crate::{
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
-        shared::SharedPeripheryChips,
+        periphery::SharedPeripheryChips,
     },
     OpenVmField,
 };
@@ -50,9 +50,9 @@ use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachi
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
-mod shared;
+mod periphery;
 
-pub use shared::SharedPeripheryChipsPair;
+pub use periphery::PowdrPeripheryInstances;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
@@ -71,7 +71,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedPeripheryChipsPair,
+        periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
             instructions,

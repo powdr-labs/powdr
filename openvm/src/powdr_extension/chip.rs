@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    powdr_extension::executor::SharedPeripheryChipsPair, traits::OpenVmField,
+    powdr_extension::executor::PowdrPeripheryInstances, traits::OpenVmField,
     utils::algebraic_to_symbolic, IntoOpenVm,
 };
 
@@ -57,7 +57,7 @@ impl<P: IntoOpenVm> PowdrChip<P> {
         precompile: PowdrPrecompile<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedPeripheryChipsPair,
+        periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
             machine,
