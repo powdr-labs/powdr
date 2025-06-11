@@ -1,6 +1,6 @@
 use crate::constraint_system::ConstraintRef;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::journalled_constraint_system::JournalledConstraintSystem;
+use crate::journaling_constraint_system::JournalingConstraintSystem;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
 use itertools::Itertools;
@@ -22,7 +22,7 @@ pub fn replace_constrained_witness_columns<
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    constraint_system: &mut JournalledConstraintSystem<T, V>,
+    constraint_system: &mut JournalingConstraintSystem<T, V>,
     degree_bound: DegreeBound,
 ) {
     let mut to_remove_idx = HashSet::new();

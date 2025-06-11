@@ -4,7 +4,7 @@ use super::simplify_expression;
 use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    journalled_constraint_system::JournalledConstraintSystem,
+    journaling_constraint_system::JournalingConstraintSystem,
     quadratic_symbolic_expression::NoRangeConstraints,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
@@ -42,7 +42,7 @@ pub fn optimize<T: FieldElement>(
     stats_logger.log("exec bus optimization", &machine);
 
     let mut constraint_system =
-        JournalledConstraintSystem::from(symbolic_machine_to_constraint_system(machine));
+        JournalingConstraintSystem::from(symbolic_machine_to_constraint_system(machine));
 
     loop {
         let size = system_size(constraint_system.system());
@@ -61,7 +61,7 @@ pub fn optimize<T: FieldElement>(
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: &mut JournalledConstraintSystem<T, AlgebraicReference>,
+    constraint_system: &mut JournalingConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,

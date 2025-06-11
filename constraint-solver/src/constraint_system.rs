@@ -8,22 +8,13 @@ use powdr_number::FieldElement;
 use std::{fmt::Display, hash::Hash};
 
 /// Description of a constraint system.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
-}
-
-impl<T: FieldElement, V> Default for ConstraintSystem<T, V> {
-    fn default() -> Self {
-        Self {
-            algebraic_constraints: Vec::new(),
-            bus_interactions: Vec::new(),
-        }
-    }
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {

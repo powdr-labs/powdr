@@ -4,7 +4,7 @@ use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::journalled_constraint_system::JournalledConstraintSystem;
+use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
@@ -13,7 +13,7 @@ use crate::BITWISE_LOOKUP_BUS_ID;
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
-    system: &mut JournalledConstraintSystem<T, V>,
+    system: &mut JournalingConstraintSystem<T, V>,
 ) {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];

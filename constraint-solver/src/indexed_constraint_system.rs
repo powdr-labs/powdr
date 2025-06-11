@@ -77,40 +77,18 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         self.constraint_system.expressions()
     }
-}
 
-impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     /// Removes all constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
         mut f: impl FnMut(&QuadraticSymbolicExpression<T, V>) -> bool,
     ) {
-        let mut counter = 0usize;
-        let mut replacement_map = vec![];
-        self.constraint_system.algebraic_constraints.retain(|c| {
-            let retain = f(c);
-            if retain {
-                replacement_map.push(Some(counter));
-                counter += 1;
-            } else {
-                replacement_map.push(None);
-            }
-            retain
-        });
-        assert_eq!(counter, self.constraint_system.algebraic_constraints.len());
-        self.variable_occurrences
-            .values_mut()
-            .for_each(|occurrences| {
-                *occurrences = occurrences
-                    .iter_mut()
-                    .filter_map(|item| match item {
-                        ConstraintSystemItem::AlgebraicConstraint(i) => {
-                            replacement_map[*i].map(ConstraintSystemItem::AlgebraicConstraint)
-                        }
-                        ConstraintSystemItem::BusInteraction(_) => Some(*item),
-                    })
-                    .collect();
-            });
+        retain(
+            &mut self.constraint_system.algebraic_constraints,
+            &mut self.variable_occurrences,
+            &mut f,
+            ConstraintSystemItem::AlgebraicConstraint,
+        );
     }
 
     /// Removes all bus interactions that do not fulfill the predicate.
@@ -118,33 +96,59 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
         &mut self,
         mut f: impl FnMut(&BusInteraction<QuadraticSymbolicExpression<T, V>>) -> bool,
     ) {
-        let mut counter = 0usize;
-        let mut replacement_map = vec![];
-        self.constraint_system.bus_interactions.retain(|c| {
-            let retain = f(c);
-            if retain {
-                replacement_map.push(Some(counter));
-                counter += 1;
-            } else {
-                replacement_map.push(None);
-            }
-            retain
-        });
-        assert_eq!(counter, self.constraint_system.bus_interactions.len());
-        self.variable_occurrences
-            .values_mut()
-            .for_each(|occurrences| {
-                *occurrences = occurrences
-                    .iter_mut()
-                    .filter_map(|item| match item {
-                        ConstraintSystemItem::BusInteraction(i) => {
-                            replacement_map[*i].map(ConstraintSystemItem::BusInteraction)
-                        }
-                        ConstraintSystemItem::AlgebraicConstraint(_) => Some(*item),
-                    })
-                    .collect();
-            });
+        retain(
+            &mut self.constraint_system.bus_interactions,
+            &mut self.variable_occurrences,
+            &mut f,
+            ConstraintSystemItem::BusInteraction,
+        );
     }
+}
+
+/// Behaves like `list.retain(f)` but also updates the variable occurrences
+/// in `occurrences`. Note that `constraint_kind_constructor` is used to
+/// create the `ConstraintSystemItem` for the occurrences, so it should
+/// match the type of the items in `list`.
+fn retain<V, Item>(
+    list: &mut Vec<Item>,
+    occurrences: &mut HashMap<V, Vec<ConstraintSystemItem>>,
+    mut f: impl FnMut(&Item) -> bool,
+    constraint_kind_constructor: impl Fn(usize) -> ConstraintSystemItem + Copy,
+) {
+    let mut counter = 0usize;
+    let mut replacement_map = vec![];
+    list.retain(|c| {
+        let retain = f(c);
+        if retain {
+            replacement_map.push(Some(counter));
+            counter += 1;
+        } else {
+            replacement_map.push(None);
+        }
+        retain
+    });
+    assert_eq!(counter, list.len());
+    // We call it once on zero just to find out which type it returns
+    // so we know which one to use in the match below.
+    let is_algebraic_constraint = matches!(
+        constraint_kind_constructor(0),
+        ConstraintSystemItem::AlgebraicConstraint(_)
+    );
+    occurrences.values_mut().for_each(|occurrences| {
+        *occurrences = occurrences
+            .iter_mut()
+            .filter_map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) if is_algebraic_constraint => {
+                    replacement_map[*i].map(constraint_kind_constructor)
+                }
+                ConstraintSystemItem::BusInteraction(i) if !is_algebraic_constraint => {
+                    replacement_map[*i].map(constraint_kind_constructor)
+                }
+                ConstraintSystemItem::AlgebraicConstraint(_)
+                | ConstraintSystemItem::BusInteraction(_) => Some(*item),
+            })
+            .collect();
+    });
 }
 
 impl<T: FieldElement, V: Hash + Eq + Clone + Ord> IndexedConstraintSystem<T, V> {
