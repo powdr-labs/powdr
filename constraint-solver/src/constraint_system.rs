@@ -8,13 +8,31 @@ use powdr_number::FieldElement;
 use std::{fmt::Display, hash::Hash};
 
 /// Description of a constraint system.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ConstraintSystem<T: FieldElement, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+}
+
+impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.algebraic_constraints
+                .iter()
+                .map(|expr| format!("{expr} = 0"))
+                .chain(
+                    self.bus_interactions
+                        .iter()
+                        .map(|bus_inter| format!("{bus_inter}"))
+                )
+                .format("\n")
+        )
+    }
 }
 
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
@@ -48,20 +66,6 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
                     .iter_mut()
                     .flat_map(|b| b.fields_mut()),
             ),
-        )
-    }
-}
-
-impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.algebraic_constraints
-                .iter()
-                .map(|expr| expr.to_string())
-                .chain(self.bus_interactions.iter().map(|bi| bi.to_string()))
-                .format("\n")
         )
     }
 }
