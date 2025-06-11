@@ -98,10 +98,7 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     // If all branches agree, return the unique assignment.
     let mut result = first_assignments;
     for assignments in assignments {
-        result = result
-            .into_iter()
-            .filter(|(variable, value)| assignments.get(variable) == Some(value))
-            .collect();
+        result.retain(|variable, value| assignments.get(variable) == Some(value));
         if result.is_empty() {
             return Ok(None);
         }
