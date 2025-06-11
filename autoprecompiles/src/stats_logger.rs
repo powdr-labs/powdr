@@ -3,7 +3,7 @@ use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
-use powdr_constraint_solver::journalled_constraint_system::JournalledConstraintSystem;
+use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_number::FieldElement;
 
 use crate::{
@@ -81,9 +81,9 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn> From<&Constr
 }
 
 impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn>
-    From<&JournalledConstraintSystem<P, V>> for Stats
+    From<&JournalingConstraintSystem<P, V>> for Stats
 {
-    fn from(constraint_system: &JournalledConstraintSystem<P, V>) -> Self {
+    fn from(constraint_system: &JournalingConstraintSystem<P, V>) -> Self {
         Stats::from(constraint_system.system())
     }
 }

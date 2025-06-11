@@ -4,7 +4,7 @@ use super::simplify_expression;
 use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    journalled_constraint_system::JournalledConstraintSystem,
+    journaling_constraint_system::JournalingConstraintSystem,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
@@ -62,7 +62,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let mut constraint_system = JournalledConstraintSystem::from(constraint_system);
+    let mut constraint_system = JournalingConstraintSystem::from(constraint_system);
     optimize_constraints(
         &mut constraint_system,
         bus_interaction_handler.clone(),
@@ -70,7 +70,7 @@ fn optimization_loop_iteration<T: FieldElement>(
         stats_logger,
     )?;
     // TODO: avoid these conversions
-    // TODO continue here with the journalled system once the memory machen is changed to
+    // TODO continue here with the journaling system once the memory machen is changed to
     // ConstraintSystem
     let machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
     let machine = optimize_memory(machine);
