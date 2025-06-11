@@ -33,33 +33,57 @@ pub struct BusMap {
 }
 
 impl BusMap {
+    /// Construct a new `BusMap`, ensuring no duplicate `BusType` values.
     pub fn new(bus_ids: BTreeMap<u64, BusType>) -> Self {
+        // Ensure each BusType appears only once
+        let mut seen: Vec<&BusType> = Vec::new();
+        for bus in bus_ids.values() {
+            if seen.contains(&bus) {
+                panic!("Duplicate BusType `{bus:?}` in initial map");
+            }
+            seen.push(bus);
+        }
         BusMap { bus_ids }
     }
 
+    /// Lookup the `BusType` for a given ID.
     pub fn bus_type(&self, bus_id: u64) -> BusType {
         self.bus_ids[&bus_id]
     }
 
+    /// Insert a new SHA bus with given ID, ensuring uniqueness.
     pub fn with_sha(mut self, id: u64) -> Self {
         self.bus_ids.insert(id, BusType::Sha);
         self
     }
 
+    /// Insert a new bus type under the given ID, ensuring no other ID
+    /// already maps to the same `BusType` value.
     pub fn with_bus_type(mut self, id: u64, bus_type: BusType) -> Self {
+        if let Some(existing) = self.get_bus_id(&bus_type) {
+            panic!("BusType `{bus_type:?}` already exists under ID `{existing}`");
+        }
         self.bus_ids.insert(id, bus_type);
         self
     }
 
-    pub fn with_bus_map(mut self, bus_map: BusMap) -> Self {
-        self.bus_ids.extend(bus_map.bus_ids);
+    /// Extend with another `BusMap`, ensuring no duplicate `BusType`s between them.
+    pub fn with_bus_map(mut self, other: BusMap) -> Self {
+        for bus_type in other.bus_ids.values() {
+            if self.get_bus_id(bus_type).is_some() {
+                panic!("Cannot extend: duplicate BusType `{bus_type:?}` found in both maps");
+            }
+        }
+        self.bus_ids.extend(other.bus_ids);
         self
     }
 
-    pub fn inner(&self) -> &BTreeMap<u64, BusType> {
+    /// View the entire map.
+    pub fn all_types_by_id(&self) -> &BTreeMap<u64, BusType> {
         &self.bus_ids
     }
 
+    /// Find the ID for a given `BusType` (if any), ensuring uniqueness.
     pub fn get_bus_id(&self, bus_type: &BusType) -> Option<u64> {
         self.bus_ids
             .iter()
