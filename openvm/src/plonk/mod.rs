@@ -2,7 +2,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
-use crate::BusType;
+use powdr_autoprecompiles::bus_map::BusType;
 
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
