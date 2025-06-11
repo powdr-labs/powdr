@@ -70,7 +70,7 @@ fn optimization_loop_iteration<T: FieldElement>(
         stats_logger,
     )?;
     // TODO: avoid these conversions
-    // TODO continue here with the journaling system once the memory machen is changed to
+    // TODO continue here with the journaling system once the memory machine is changed to
     // ConstraintSystem
     let machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
     let machine = optimize_memory(machine);
