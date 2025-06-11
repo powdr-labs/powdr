@@ -174,7 +174,7 @@ namespace {name};
 
     pil.push_str(
         &bus_map
-            .inner()
+            .all_types_by_id()
             .iter()
             .map(|(id, bus_type)| format!("    let {bus_type} = {id};"))
             .join("\n"),

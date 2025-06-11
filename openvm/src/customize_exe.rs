@@ -22,11 +22,11 @@ use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
-    SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
+    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 
-use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
+use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
@@ -533,7 +533,8 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 
     let vm_config = VmConfig {
         instruction_machines: airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_map,
     };
 
     let (precompile, subs) =
