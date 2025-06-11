@@ -35,7 +35,7 @@ pub enum BusType {
     BitwiseLookup,
     TupleRangeChecker,
     Sha,
-    CopyConstraintLookup, 
+    CopyConstraintLookup,
 }
 
 impl std::fmt::Display for BusType {
@@ -89,7 +89,7 @@ impl BusMap {
             ),
             (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
             (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
-            (COPY_CONSTRAINT_LOOKUP,BusType::CopyConstraintLookup),
+            (COPY_CONSTRAINT_LOOKUP, BusType::CopyConstraintLookup),
         ]
         .into_iter()
         .collect();

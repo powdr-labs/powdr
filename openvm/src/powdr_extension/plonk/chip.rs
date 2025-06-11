@@ -20,6 +20,7 @@ use openvm_instructions::LocalOpcode;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_air::BaseAir;
 use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::p3_field::PrimeField64;
 use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_stark_backend::p3_matrix::Matrix;
 use openvm_stark_backend::{
@@ -141,18 +142,60 @@ where
         // Get witness in a calls x variables matrix.
         // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
         // which is unnecessary.
-        let column_index_by_poly_id = self
+        let column_index_by_poly_id: BTreeMap<u64, usize> = self
             .machine
             .unique_columns()
             .enumerate()
             .map(|(index, c)| (c.id.id, index))
             .collect();
 
-        // Create permutation sets for each copy constraint.
+        // Create permutation sets for each copy constraint in one call
+        // BTreeMap<poly_id, Vec<position>>
+        let mut permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = column_index_by_poly_id
+            .keys()
+            .map(|&id| (id, vec![]))
+            .collect();
 
-        let permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+        println!("permutation_sets_by_poly_id: {permutation_sets_by_poly_id:?}");
 
-        println!("Column index by poly ID: {column_index_by_poly_id:?}");
+        for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
+            if gate.a.get_poly_id().is_some() {
+                if let Some(poly_id) = gate.a.get_poly_id() {
+                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
+                        vec.push(gate.a.id.as_canonical_u64());
+                    }
+                }
+            }
+            if gate.b.get_poly_id().is_some() {
+                if let Some(poly_id) = gate.b.get_poly_id() {
+                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id.id) {
+                        vec.push(gate.b.id.as_canonical_u64());
+                    }
+                }
+            }
+            if gate.c.get_poly_id().is_some() {
+                if let Some(poly_id) = gate.c.get_poly_id() {
+                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id.id) {
+                        vec.push(gate.c.id.as_canonical_u64());
+                    }
+                }
+            }
+            if gate.d.get_poly_id().is_some() {
+                if let Some(poly_id) = gate.d.get_poly_id() {
+                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id.id) {
+                        vec.push(gate.d.id.as_canonical_u64());
+                    }
+                }
+            }
+            if gate.e.get_poly_id().is_some() {
+                if let Some(poly_id) = gate.e.get_poly_id() {
+                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id.id) {
+                        vec.push(gate.e.id.as_canonical_u64());
+                    }
+                }
+            }
+        }
+
         let witness = self
             .executor
             .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
@@ -204,16 +247,26 @@ where
                 columns.q_const = gate.q_const;
 
                 // Initializing fixed columns for copy constraints
-                columns.a_id =
-                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64);
+                columns.a_id = <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64);
                 columns.b_id =
-                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 1);
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 1);
                 columns.c_id =
-                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 2);
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 2);
                 columns.d_id =
-                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 3);
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 3);
                 columns.e_id =
-                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 4);
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 4);
+
+                columns.a_perm =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64);
+                columns.b_perm =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 1);
+                columns.c_perm =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 2);
+                columns.d_perm =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 3);
+                columns.e_perm =
+                    <Val<SC>>::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 4);
 
                 // We currently assume that:
                 // - We can always solve for temporary variables, by processing the gates in order.
@@ -222,23 +275,76 @@ where
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
 
+                // println!("column a_id: {}", columns.a_id);
+                // println!("column b_id: {}", columns.b_id);
+                // println!("column c_id: {}", columns.c_id);
+                // println!("column d_id: {}", columns.d_id);
+                // println!("column e_id: {}", columns.e_id);
+
                 if let Some(a) = vars.get(&gate.a) {
                     columns.a = a;
+                    if call_index == 0 {
+                        if let Some(poly_id) = gate.a.get_poly_id() {
+                            if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
+                                if poly_id == 201 {
+                                    println!(
+                                        "poly id {} get permutation set: {:?}, gate index is {}",
+                                        poly_id, vec, gate_index
+                                    );
+                                }
+                                vec.push(columns.a_id.as_canonical_u64());
+                            }
+                        }
+                    }
                 }
                 if let Some(b) = vars.get(&gate.b) {
                     columns.b = b;
+                    if call_index == 0 {
+                        if let Some(poly_id) = gate.b.get_poly_id() {
+                            if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
+                                vec.push(columns.b_id.as_canonical_u64());
+                            }
+                        }
+                    }
                 }
                 if let Some(c) = vars.get(&gate.c) {
                     columns.c = c;
+                    if call_index == 0 {
+                        if let Some(poly_id) = gate.c.get_poly_id() {
+                            if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
+                                vec.push(columns.c_id.as_canonical_u64());
+                            }
+                        }
+                    }
                 }
                 if let Some(d) = vars.get(&gate.d) {
                     columns.d = d;
+                    if call_index == 0 {
+                        if let Some(poly_id) = gate.d.get_poly_id() {
+                            if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
+                                vec.push(columns.d_id.as_canonical_u64());
+                            }
+                        }
+                    }
                 }
                 if let Some(e) = vars.get(&gate.e) {
                     columns.e = e;
+                    if call_index == 0 {
+                        if let Some(poly_id) = gate.e.get_poly_id() {
+                            if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
+                                vec.push(columns.e_id.as_canonical_u64());
+                            }
+                        }
+                    }
                 }
             }
+
+            // remove permutation sets that has only one element.
         }
+
+        // based on permutation_sets_by_poly_id, crate permutation columns
+
+        println!("Permutation sets by poly ID: {permutation_sets_by_poly_id:?}");
 
         AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
     }
