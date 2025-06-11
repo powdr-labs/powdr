@@ -19,8 +19,7 @@ use crate::{
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::StatsLogger,
-    DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, EXECUTION_BUS_ID,
-    PC_LOOKUP_BUS_ID,
+    BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
 pub fn optimize<T: FieldElement>(
@@ -28,17 +27,23 @@ pub fn optimize<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     opcode: Option<u32>,
     degree_bound: DegreeBound,
+    bus_map: &BusMap,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
-    let machine = if let Some(opcode) = opcode {
-        let machine = optimize_pc_lookup(machine, opcode);
+    let mut machine = if let (Some(opcode), Some(pc_lookup_bus_id)) =
+        (opcode, bus_map.get_bus_id(&BusType::PcLookup))
+    {
+        let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
         stats_logger.log("PC lookup optimization", &machine);
         machine
     } else {
         machine
     };
-    let machine = optimize_exec_bus(machine);
-    stats_logger.log("exec bus optimization", &machine);
+
+    if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
+        machine = optimize_exec_bus(machine, exec_bus_id);
+        stats_logger.log("exec bus optimization", &machine);
+    }
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
 
@@ -49,6 +54,7 @@ pub fn optimize<T: FieldElement>(
             bus_interaction_handler.clone(),
             degree_bound,
             &mut stats_logger,
+            bus_map,
         )?;
         if system_size(&constraint_system) == size {
             return Ok(constraint_system_to_symbolic_machine(constraint_system));
@@ -61,6 +67,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
+    bus_map: &BusMap,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
     let mut constraint_system = JournalingConstraintSystem::from(constraint_system);
     optimize_constraints(
@@ -72,14 +79,22 @@ fn optimization_loop_iteration<T: FieldElement>(
     // TODO: avoid these conversions
     // TODO continue here with the journaling system once the memory machine is changed to
     // ConstraintSystem
-    let machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
-    let machine = optimize_memory(machine);
-    assert!(check_register_operation_consistency(&machine));
-    stats_logger.log("memory optimization", &machine);
+    let mut machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
+    if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
+        machine = optimize_memory(machine, memory_bus_id);
+        assert!(check_register_operation_consistency(
+            &machine,
+            memory_bus_id
+        ));
+        stats_logger.log("memory optimization", &machine);
+    }
 
-    let system = symbolic_machine_to_constraint_system(machine);
-    let system = optimize_bitwise_lookup(system);
-    stats_logger.log("optimizing bitwise lookup", &system);
+    let mut system = symbolic_machine_to_constraint_system(machine);
+
+    if let Some(bitwise_lookup_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
+        system = optimize_bitwise_lookup(system, bitwise_lookup_id);
+        stats_logger.log("optimizing bitwise lookup", &system);
+    }
 
     Ok(system)
 }
@@ -101,10 +116,11 @@ fn system_size<T: FieldElement>(
 pub fn optimize_pc_lookup<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     opcode: u32,
+    pc_lookup_bus_id: u64,
 ) -> SymbolicMachine<T> {
     let mut first_pc = None;
     machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id == PC_LOOKUP_BUS_ID {
+        if bus_int.id == pc_lookup_bus_id {
             if first_pc.is_none() {
                 first_pc = Some(bus_int.clone());
             }
@@ -128,14 +144,17 @@ pub fn optimize_pc_lookup<T: FieldElement>(
     machine
 }
 
-pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+pub fn optimize_exec_bus<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    exec_bus_id: u64,
+) -> SymbolicMachine<T> {
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
     let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id != EXECUTION_BUS_ID {
+        if bus_int.id != exec_bus_id {
             return true;
         }
 
