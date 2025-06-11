@@ -3,14 +3,18 @@ use std::collections::BTreeMap;
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator,
-};
+use powdr_autoprecompiles::legacy_expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_expression::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
+};
 use powdr_number::FieldElement;
 
-pub fn build_circuit<T>(machine: &SymbolicMachine<T>) -> PlonkCircuit<T, AlgebraicReference>
+pub fn build_circuit<T>(
+    machine: &SymbolicMachine<T>,
+    bus_map: &BusMap,
+) -> PlonkCircuit<T, AlgebraicReference>
 where
     T: FieldElement,
 {
@@ -20,11 +24,7 @@ where
     }
 
     for bus_interaction in &machine.bus_interactions {
-        add_bus_to_plonk_circuit(
-            bus_interaction.clone(),
-            &mut circuit_builder,
-            &BusMap::openvm_base(),
-        );
+        add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder, bus_map);
     }
 
     circuit_builder.build()
@@ -164,7 +164,6 @@ where
                             b = self.evaluate_expression(right, false);
                         }
                     },
-                    AlgebraicBinaryOperator::Pow => unimplemented!(),
                 };
                 self.plonk_circuit.add_gate(Gate {
                     q_l,
@@ -194,9 +193,6 @@ where
                     c
                 }
             },
-            _ => {
-                panic!("Unsupported algebraic expression: {algebraic_expr:?}");
-            }
         };
 
         self.cache.insert(algebraic_expr.clone(), result.clone());
@@ -212,13 +208,16 @@ where
 mod tests {
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::{c, var};
-    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
+    use powdr_autoprecompiles::{
+        openvm::default_openvm_bus_map, SymbolicConstraint, SymbolicMachine,
+    };
     use pretty_assertions::assert_eq;
 
     #[test]
     fn test_air_to_plonkish() {
         let x = var("x", 0);
         let y = var("y", 1);
+        let bus_map = default_openvm_bus_map();
 
         let expr = -(x.clone() * y.clone() - (-x.clone() * (x.clone() + y.clone())));
         let machine = SymbolicMachine {
@@ -227,7 +226,7 @@ mod tests {
         };
 
         assert_eq!(
-            format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine, &bus_map)),
             "bus: none, x * y = tmp_1
 bus: none, -x = tmp_3
 bus: none, x + y = tmp_4
@@ -241,13 +240,14 @@ bus: none, -tmp_0 = 0
     #[test]
     fn only_constants() {
         let expr = c(4) + c(2) * (c(3) - c(5));
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
 
         assert_eq!(
-            format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine, &bus_map)),
             "bus: none, -2 = tmp_1
 bus: none, 2 * tmp_1 = tmp_0
 bus: none, tmp_0 + 4 = 0
@@ -258,13 +258,14 @@ bus: none, tmp_0 + 4 = 0
     #[test]
     fn single_variable() {
         let expr = var("x", 0);
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
 
         assert_eq!(
-            format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine, &bus_map)),
             "bus: none, x = 0
 "
         )
@@ -274,6 +275,7 @@ bus: none, tmp_0 + 4 = 0
     fn constant_and_variables() {
         let x = var("x", 0);
         let y = var("y", 1);
+        let bus_map = default_openvm_bus_map();
         let expr = -(c(3) - c(2) * x.clone() * y.clone()) + c(1);
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
@@ -281,7 +283,7 @@ bus: none, tmp_0 + 4 = 0
         };
 
         assert_eq!(
-            format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine, &bus_map)),
             "bus: none, 2 * x = tmp_3
 bus: none, tmp_3 * y = tmp_2
 bus: none, -tmp_2 + 3 = tmp_1
@@ -294,13 +296,14 @@ bus: none, tmp_0 + 1 = 0
     #[test]
     fn negative_number() {
         let expr = -c(3);
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
 
         assert_eq!(
-            format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine, &bus_map)),
             "bus: none, 3 = tmp_0
 bus: none, -tmp_0 = 0
 "
@@ -312,13 +315,14 @@ bus: none, -tmp_0 = 0
         let x = var("x", 0);
         let y = var("y", 1);
         let expr = x.clone() - (-y.clone());
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
         };
 
         assert_eq!(
-            format!("{}", build_circuit(&machine)),
+            format!("{}", build_circuit(&machine, &bus_map)),
             "bus: none, -y = tmp_0
 bus: none, x + -tmp_0 = 0
 "

@@ -366,3 +366,71 @@ fn binary_flags() {
         ],
     );
 }
+
+// TODO: The solver is not smart enough yet to solve this.
+#[test]
+#[should_panic(expected = "Different set of variables")]
+fn ternary_flags() {
+    // Implementing this logic in the OpenVM load/store chip:
+    // https://github.com/openvm-org/openvm/blob/v1.2.0/extensions/rv32im/circuit/src/loadstore/core.rs#L110-L139
+    let two_inv = Qse::from(GoldilocksField::one() / GoldilocksField::from(2));
+    let neg_one = Qse::from(-GoldilocksField::one());
+    let sum = var("flag0") + var("flag1") + var("flag2") + var("flag3");
+    // The flags must be 0, 1, or 2, and their sum must be 1 or 2.
+    // Given these constraints, there are 14 possible assignments. The following
+    // expressions evaluate to 1 for exactly one of them, and otherwise to 0:
+    let cases = vec![
+        // (2, 0, 0, 0), (0, 2, 0, 0), (0, 0, 2, 0), (0, 0, 0, 2)
+        var("flag0") * (var("flag0") - constant(1)) * two_inv.clone(),
+        var("flag1") * (var("flag1") - constant(1)) * two_inv.clone(),
+        var("flag2") * (var("flag2") - constant(1)) * two_inv.clone(),
+        var("flag3") * (var("flag3") - constant(1)) * two_inv.clone(),
+        // (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)
+        var("flag0") * (sum.clone() - constant(2)) * neg_one.clone(),
+        var("flag1") * (sum.clone() - constant(2)) * neg_one.clone(),
+        var("flag2") * (sum.clone() - constant(2)) * neg_one.clone(),
+        var("flag3") * (sum.clone() - constant(2)) * neg_one.clone(),
+        // (1, 1, 0, 0), (1, 0, 1, 0), (1, 0, 0, 1), (0, 1, 1, 0), (0, 1, 0, 1), (0, 0, 1, 1)
+        var("flag0") * var("flag1"),
+        var("flag0") * var("flag2"),
+        var("flag0") * var("flag3"),
+        var("flag1") * var("flag2"),
+        var("flag1") * var("flag3"),
+        var("flag2") * var("flag3"),
+    ];
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            // All flags are either 0, 1, or 2.
+            var("flag0") * (var("flag0") - constant(1)) * (var("flag0") - constant(2)),
+            var("flag1") * (var("flag1") - constant(1)) * (var("flag1") - constant(2)),
+            var("flag2") * (var("flag2") - constant(1)) * (var("flag2") - constant(2)),
+            var("flag3") * (var("flag3") - constant(1)) * (var("flag3") - constant(2)),
+            // The sum of flags is either 1 or 2.
+            (sum.clone() - constant(1)) * (sum.clone() - constant(2)),
+            // Of the expressions in `cases`, exactly one must evaluate to 1.
+            // From this constraint, it can be derived that it must be one of case 3, 4, 5, or 6.
+            cases[0].clone() * constant(1)
+                + (cases[1].clone() + cases[2].clone()) * constant(2)
+                + (cases[3].clone() + cases[4].clone() + cases[5].clone() + cases[6].clone())
+                    * constant(3)
+                + cases[7].clone() * constant(4)
+                + (cases[8].clone() + cases[9].clone()) * constant(5)
+                + (cases[10].clone() + cases[11].clone() + cases[12].clone() + cases[13].clone())
+                    * constant(6)
+                - constant(3),
+            // We don't know which case is active, but for any of the cases that it could be,
+            // is_load would be 1, so we should be able to solve for it.
+            var("is_load")
+                - (cases[0].clone()
+                    + cases[1].clone()
+                    + cases[2].clone()
+                    + cases[3].clone()
+                    + cases[4].clone()
+                    + cases[5].clone()
+                    + cases[6].clone()),
+        ],
+        bus_interactions: vec![],
+    };
+
+    assert_solve_result(Solver::new(constraint_system), vec![("is_load", 1.into())]);
+}

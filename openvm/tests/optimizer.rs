@@ -1,8 +1,9 @@
-use powdr_autoprecompiles::optimizer::optimize;
+use powdr_autoprecompiles::openvm::default_openvm_bus_map;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
-use powdr_openvm::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
+use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 
 use test_log::test;
 
@@ -33,9 +34,13 @@ fn test_optimize() {
 
     let machine = optimize(
         machine,
-        OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
+        OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
         None, // opcode
-        5,
+        DegreeBound {
+            identities: 5,
+            bus_interactions: 5,
+        },
+        &default_openvm_bus_map(),
     )
     .unwrap();
 
@@ -70,9 +75,13 @@ fn test_conflicting_constraints_in_bus_interaction() {
 
     let machine = optimize(
         machine,
-        OpenVmBusInteractionHandler::new(BusMap::openvm_base()),
+        OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
         None, // opcode
-        5,
+        DegreeBound {
+            identities: 5,
+            bus_interactions: 5,
+        },
+        &default_openvm_bus_map(),
     )
     .unwrap();
 

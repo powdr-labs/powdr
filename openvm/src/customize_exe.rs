@@ -18,12 +18,14 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::DegreeBound;
+use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
-    InstructionKind, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
+    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 
-use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
+use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
@@ -37,11 +39,12 @@ const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
-type CachedAutoPrecompile<F> = (
-    usize,              // powdr opcode
-    SymbolicMachine<F>, // autoprecompile
-    Vec<Vec<u64>>,      // poly id substitution of original columns
-);
+#[derive(Clone, Debug)]
+pub struct CachedAutoPrecompile<F> {
+    apc_opcode: usize,
+    autoprecompile: SymbolicMachine<F>,
+    subs: Vec<Vec<u64>>,
+}
 
 use crate::{PgoConfig, PowdrConfig};
 
@@ -168,7 +171,6 @@ pub fn customize<P: IntoOpenVm>(
                 &airs,
                 config.clone(),
                 &opcodes_no_apc,
-                &branch_opcodes_set,
             );
         }
         PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -213,18 +215,20 @@ pub fn customize<P: IntoOpenVm>(
         );
 
         // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
-        let (apc_opcode, autoprecompile, subs) =
-            apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
-                generate_apc_cache(
-                    acc_block,
-                    &airs,
-                    POWDR_OPCODE + i,
-                    config.bus_map.clone(),
-                    config.degree_bound,
-                    &branch_opcodes_set,
-                )
-                .expect("Failed to generate autoprecompile")
-            });
+        let CachedAutoPrecompile {
+            apc_opcode,
+            autoprecompile,
+            subs,
+        } = apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
+            generate_apc_cache(
+                acc_block,
+                &airs,
+                POWDR_OPCODE + i,
+                config.bus_map.clone(),
+                config.degree_bound,
+            )
+            .expect("Failed to generate autoprecompile")
+        });
 
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
@@ -281,7 +285,12 @@ pub fn customize<P: IntoOpenVm>(
 
     (
         exe,
-        PowdrExtension::new(extensions, base_config, config.implementation),
+        PowdrExtension::new(
+            extensions,
+            base_config,
+            config.implementation,
+            config.bus_map,
+        ),
     )
 }
 
@@ -461,19 +470,16 @@ fn generate_apc_cache<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
-    branch_opcodes: &BTreeSet<usize>,
+    degree_bound: DegreeBound,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
-    let (autoprecompile, subs) = generate_autoprecompile(
-        block,
-        airs,
-        apc_opcode,
-        bus_map,
-        degree_bound,
-        branch_opcodes,
-    )?;
+    let (autoprecompile, subs) =
+        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
 
-    Ok((apc_opcode, autoprecompile, subs))
+    Ok(CachedAutoPrecompile {
+        apc_opcode,
+        autoprecompile,
+        subs,
+    })
 }
 
 // OpenVM relevant bus ids:
@@ -489,54 +495,34 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
-    branch_opcodes: &BTreeSet<usize>,
+    degree_bound: DegreeBound,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
         block.start_idx
     );
-    let mut instruction_kind = BTreeMap::new();
-    let mut instruction_machines = BTreeMap::new();
     let program = block
         .statements
         .iter()
-        .map(|instr| {
-            let instr_name = format!("{}", instr.opcode);
-
-            let symb_machine = airs.get(&instr.opcode.as_usize()).unwrap();
-
-            let symb_instr = SymbolicInstructionStatement {
-                name: instr_name.clone(),
-                opcode: instr.opcode.as_usize(),
-                args: [
-                    instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
-                ]
-                .iter()
-                .map(|f| P::from_openvm_field(*f))
-                .collect(),
-            };
-
-            if branch_opcodes.contains(&instr.opcode.as_usize()) {
-                instruction_kind.insert(instr_name.clone(), InstructionKind::ConditionalBranch);
-            } else {
-                instruction_kind.insert(instr_name.clone(), InstructionKind::Normal);
-            };
-
-            instruction_machines.insert(instr_name.clone(), symb_machine.clone());
-
-            symb_instr
+        .map(|instr| SymbolicInstructionStatement {
+            opcode: instr.opcode.as_usize(),
+            args: [
+                instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
+            ]
+            .iter()
+            .map(|f| P::from_openvm_field(*f))
+            .collect(),
         })
         .collect();
 
-    let (precompile, subs) = powdr_autoprecompiles::build(
-        program,
-        instruction_kind,
-        instruction_machines,
-        OpenVmBusInteractionHandler::new(bus_map),
-        degree_bound,
-        apc_opcode as u32,
-    )?;
+    let vm_config = VmConfig {
+        instruction_machines: airs,
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_map,
+    };
+
+    let (precompile, subs) =
+        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());
@@ -572,7 +558,6 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     opcodes_no_apc: &[usize],
-    branch_opcodes_set: &BTreeSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -606,13 +591,12 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 POWDR_OPCODE + i,
                 config.bus_map.clone(),
                 config.degree_bound,
-                branch_opcodes_set,
             )
             .ok()?;
             apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());
 
             // calculate cells saved per row
-            let apc_cells_per_row = apc_cache_entry.1.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_columns().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()

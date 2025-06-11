@@ -39,8 +39,10 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_ast::analyzed::AlgebraicExpression;
-use powdr_autoprecompiles::powdr::{Column, UniqueColumns};
+use powdr_autoprecompiles::{
+    legacy_expression::AlgebraicExpression,
+    powdr::{Column, UniqueColumns},
+};
 use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<P: IntoOpenVm> {

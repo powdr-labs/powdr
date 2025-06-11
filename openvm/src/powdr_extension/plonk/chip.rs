@@ -8,7 +8,7 @@ use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
-use crate::{IntoOpenVm, OpenVmField};
+use crate::{BusMap, IntoOpenVm, OpenVmField};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -29,7 +29,7 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 
@@ -41,6 +41,7 @@ pub struct PlonkChip<P: IntoOpenVm> {
     air: Arc<PlonkAir<OpenVmField<P>>>,
     executor: PowdrExecutor<P>,
     machine: Arc<SymbolicMachine<P>>,
+    bus_map: BusMap,
 }
 
 impl<P: IntoOpenVm> PlonkChip<P> {
@@ -50,6 +51,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: SharedChips,
+        bus_map: BusMap,
     ) -> Self {
         let PowdrPrecompile {
             original_instructions,
@@ -60,6 +62,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             machine,
         } = precompile;
         let air = PlonkAir {
+            bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         };
         let executor = PowdrExecutor::new(
@@ -77,6 +80,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             air: Arc::new(air),
             executor,
             machine,
+            bus_map,
         }
     }
 }
@@ -125,7 +129,7 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let plonk_circuit = build_circuit(&self.machine);
+        let plonk_circuit = build_circuit(&self.machine, &self.bus_map);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
@@ -158,11 +162,12 @@ where
                 let index = call_index * plonk_circuit.len() + gate_index;
                 let columns: &mut PlonkColumns<_> =
                     values[index * width..(index + 1) * width].borrow_mut();
-
                 let gate = Gate {
                     a: gate.a.clone(),
                     b: gate.b.clone(),
                     c: gate.c.clone(),
+                    d: gate.d.clone(),
+                    e: gate.e.clone(),
 
                     q_bitwise: gate.q_bitwise.into_openvm_field(),
                     q_memory: gate.q_memory.into_openvm_field(),
@@ -179,6 +184,13 @@ where
                 };
 
                 // TODO: These should be pre-processed columns (for soundness and efficiency).
+                columns.q_bitwise = gate.q_bitwise;
+                columns.q_memory = gate.q_memory;
+                columns.q_execution = gate.q_execution;
+                columns.q_pc = gate.q_pc;
+                columns.q_range_tuple = gate.q_range_tuple;
+                columns.q_range_check = gate.q_range_check;
+
                 columns.q_l = gate.q_l;
                 columns.q_r = gate.q_r;
                 columns.q_o = gate.q_o;
@@ -191,6 +203,7 @@ where
                 // TODO: Solve for tmp variables of other columns too.
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
+
                 if let Some(a) = vars.get(&gate.a) {
                     columns.a = a;
                 }
@@ -199,6 +212,12 @@ where
                 }
                 if let Some(c) = vars.get(&gate.c) {
                     columns.c = c;
+                }
+                if let Some(d) = vars.get(&gate.d) {
+                    columns.d = d;
+                }
+                if let Some(e) = vars.get(&gate.e) {
+                    columns.e = e;
                 }
             }
         }
