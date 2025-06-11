@@ -24,6 +24,7 @@ use powdr_autoprecompiles::{
     bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
+use powdr_riscv_elf::debug_info::DebugInfo;
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -63,6 +64,7 @@ pub fn customize<P: IntoOpenVm>(
     mut exe: VmExe<OpenVmField<P>>,
     base_config: SdkVmConfig,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo, // TODO in the future, only provide the terminating pc indices
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
@@ -146,8 +148,13 @@ pub fn customize<P: IntoOpenVm>(
     let labels = add_extra_targets(&exe.program, labels.clone());
     let branch_opcodes_set = branch_opcodes_set();
 
-    let mut blocks =
-        collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
+    let mut blocks = collect_basic_blocks(
+        &exe.program,
+        &labels,
+        &debug_info,
+        &opcodes_no_apc,
+        &branch_opcodes_set,
+    );
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -395,6 +402,7 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo,
     opcodes_no_apc: &[usize],
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
@@ -405,8 +413,16 @@ pub fn collect_basic_blocks<F: PrimeField32>(
     };
     for (i, instr) in program.instructions_and_debug_infos.iter().enumerate() {
         let instr = instr.as_ref().unwrap().0.clone();
+        println!(
+            "Processing instruction at index {}: {}",
+            i,
+            openvm_instruction_formatter(&instr)
+        );
         let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
         let is_target = labels.contains(&adjusted_pc);
+        if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
+            println!("Found label: {}", label);
+        }
         let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.

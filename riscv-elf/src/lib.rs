@@ -33,7 +33,7 @@ use self::debug_info::{DebugInfo, SymbolTable};
 pub const PT_POWDR_PROVER_DATA: u32 = 0x600000da;
 
 pub struct ElfProgram {
-    dbg: DebugInfo,
+    pub dbg: DebugInfo,
     data_map: BTreeMap<u32, Data>,
     pub text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
@@ -196,6 +196,12 @@ pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
             }
         }
     };
+
+    for s in &debug_info.symbols.0 {
+        for sym in s.1 {
+            println!("Symbol: {sym}");
+        }
+    }
 
     ElfProgram {
         dbg: debug_info,

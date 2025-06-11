@@ -425,13 +425,17 @@ fn find_first_idx(slice: &[SourceLocationInfo], addr: u32) -> usize {
 
 /// Index the symbols by their addresses.
 #[derive(Default)]
-pub struct SymbolTable(HashMap<u32, Vec<String>>);
+pub struct SymbolTable(pub HashMap<u32, Vec<String>>);
 
 impl SymbolTable {
     pub fn new(elf: &Elf) -> SymbolTable {
         let mut symbols = read_symbol_table(elf);
 
         dedup_names(&mut symbols);
+
+        for (name, _) in &symbols {
+            println!("Symbol: {name}");
+        }
 
         SymbolTable(
             symbols
