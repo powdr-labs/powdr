@@ -337,16 +337,18 @@ fn add_guards<T: FieldElement>(
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
         // already handled exec and pc lookup bus types
-        if b.id != exec_bus_id && b.id != pc_lookup_bus_id && !satisfies_zero_witness(&b.mult) {
-            // guard the multiplicity by `is_valid`
-            b.mult = is_valid.clone() * b.mult.clone();
-            // TODO this would not have to be cloned if we had *=
-            //c.expr *= guard.clone();
-        } else {
-            // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-            let one = AlgebraicExpression::Number(1u64.into());
-            let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-            is_valid_mults.push(e);
+        if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
+            if !satisfies_zero_witness(&b.mult) {
+                // guard the multiplicity by `is_valid`
+                b.mult = is_valid.clone() * b.mult.clone();
+                // TODO this would not have to be cloned if we had *=
+                //c.expr *= guard.clone();
+            } else {
+                // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                let one = AlgebraicExpression::Number(1u64.into());
+                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                is_valid_mults.push(e);
+            }
         }
     }
 
