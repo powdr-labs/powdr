@@ -149,7 +149,7 @@ where
             .map(|(index, c)| (c.id.id, index))
             .collect();
 
-        // Create permutation sets for Var(poly), each set collects all the cells that have the same value, which the copy constraints apply to
+        // Create permutation sets for Var(poly), each set collects the positions of all the cells that have the same value, which the copy constraints apply to
         // BTreeMap<poly_id, Vec<position in witness matrix>>
         let mut permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = column_index_by_poly_id
             .keys()
@@ -157,38 +157,13 @@ where
             .collect();
 
         for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
-            if gate.a.get_poly_id().is_some() {
-                if let Some(poly_id) = gate.a.get_poly_id() {
+            for (i, witness_col) in [&gate.a, &gate.b, &gate.c, &gate.d, &gate.e]
+                .into_iter()
+                .enumerate()
+            {
+                if let Some(poly_id) = witness_col.get_poly_id() {
                     if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
-                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64);
-                    }
-                }
-            }
-            if gate.b.get_poly_id().is_some() {
-                if let Some(poly_id) = gate.b.get_poly_id() {
-                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
-                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 1);
-                    }
-                }
-            }
-            if gate.c.get_poly_id().is_some() {
-                if let Some(poly_id) = gate.c.get_poly_id() {
-                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
-                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 2);
-                    }
-                }
-            }
-            if gate.d.get_poly_id().is_some() {
-                if let Some(poly_id) = gate.d.get_poly_id() {
-                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
-                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 3);
-                    }
-                }
-            }
-            if gate.e.get_poly_id().is_some() {
-                if let Some(poly_id) = gate.e.get_poly_id() {
-                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
-                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + 4);
+                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + i as u64);
                     }
                 }
             }
@@ -276,111 +251,37 @@ where
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
 
-                if let Some(a) = vars.get(&gate.a) {
-                    columns.a = a;
+                
 
-                    // check if poly has its permutation set
-                    if let Some(poly_id) = &gate.a.get_poly_id() {
-                        if let Some(vec) = permutation_sets_by_poly_id.get(poly_id) {
-                            // If the poly has a permutation set, set a_perm to the next value in the set.
-                            if let Some(pos) = vec.iter().position(|x| {
-                                *x == columns.a_perm.as_canonical_u64()
-                                    - (call_index * plonk_circuit.len()) as u64
-                            }) {
-                            
-                                let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
-                                columns.a_perm = <Val<SC>>::from_canonical_u64(
-                                    vec[next_pos].clone()
-                                        + (call_index * plonk_circuit.len()) as u64,
-                                );
+                for (witness_in_gate, witness_col, witness_perm_col) in [
+                    (&gate.a, &mut columns.a, &mut columns.a_perm),
+                    (&gate.b, &mut columns.b, &mut columns.b_perm),
+                    (&gate.c, &mut columns.c, &mut columns.c_perm),
+                    (&gate.d, &mut columns.d, &mut columns.d_perm),
+                    (&gate.e, &mut columns.e, &mut columns.e_perm),
+                ] {
+                    if let Some(value) = vars.get(witness_in_gate) {
+                        *witness_col = value;
+
+
+                        if let Some(poly_id) = witness_in_gate.get_poly_id() {
+                            if let Some(vec) = permutation_sets_by_poly_id.get(&poly_id) {
+                                // If the poly has a permutation set, set a_perm to the next value in the set.
+                                if let Some(pos) = vec.iter().position(|x| {
+                                    *x == witness_perm_col.as_canonical_u64()
+                                        - (call_index * plonk_circuit.len()) as u64
+                                }) {
+                                    let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
+                                    *witness_perm_col = <Val<SC>>::from_canonical_u64(
+                                        vec[next_pos].clone()
+                                            + (call_index * plonk_circuit.len()) as u64,
+                                    );
+                                }
                             }
                         }
                     }
                 }
-                if let Some(b) = vars.get(&gate.b) {
-                    columns.b = b;
 
-                    if let Some(poly_id) = &gate.b.get_poly_id() {
-                        if let Some(vec) = permutation_sets_by_poly_id.get(poly_id) {
-                            
-                            if let Some(pos) = vec.iter().position(|x| {
-                                *x == columns.b_perm.as_canonical_u64()
-                                    - (call_index * plonk_circuit.len()) as u64
-                            }) {
-                                
-                                let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
-                                columns.b_perm = <Val<SC>>::from_canonical_u64(
-                                    vec[next_pos].clone()
-                                        + (call_index * plonk_circuit.len()) as u64,
-                                );
-                            }
-                        }
-                    }
-                }
-                if let Some(c) = vars.get(&gate.c) {
-                    columns.c = c;
-
-                    if let Some(poly_id) = &gate.c.get_poly_id() {
-                        if let Some(vec) = permutation_sets_by_poly_id.get(poly_id) {
-                            // If the poly has a permutation set, set a_perm to the next value in the set.
-                            if let Some(pos) = vec.iter().position(|x| {
-                                *x == columns.c_perm.as_canonical_u64()
-                                    - (call_index * plonk_circuit.len()) as u64
-                            }) {
-                                
-                                let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
-                                columns.c_perm = <Val<SC>>::from_canonical_u64(
-                                    vec[next_pos].clone()
-                                        + (call_index * plonk_circuit.len()) as u64,
-                                );
-
-                                
-                            }
-                        }
-                    }
-                }
-                if let Some(d) = vars.get(&gate.d) {
-                    columns.d = d;
-
-                    if let Some(poly_id) = &gate.d.get_poly_id() {
-                        if let Some(vec) = permutation_sets_by_poly_id.get(poly_id) {
-                            // If the poly has a permutation set, set a_perm to the next value in the set.
-                            if let Some(pos) = vec.iter().position(|x| {
-                                *x == columns.d_perm.as_canonical_u64()
-                                    - (call_index * plonk_circuit.len()) as u64
-                            }) {
-                                
-                                let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
-                                columns.d_perm = <Val<SC>>::from_canonical_u64(
-                                    vec[next_pos].clone()
-                                        + (call_index * plonk_circuit.len()) as u64,
-                                );
-
-                            }
-                        }
-                    }
-                }
-                if let Some(e) = vars.get(&gate.e) {
-                    columns.e = e;
-
-                    if let Some(poly_id) = &gate.e.get_poly_id() {
-                        if let Some(vec) = permutation_sets_by_poly_id.get(poly_id) {
-                            // If the poly has a permutation set, set a_perm to the next value in the set.
-                            if let Some(pos) = vec.iter().position(|x| {
-                                *x == columns.e_perm.as_canonical_u64()
-                                    - (call_index * plonk_circuit.len()) as u64
-                            }) {
-                                
-                                let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
-                                columns.e_perm = <Val<SC>>::from_canonical_u64(
-                                    vec[next_pos].clone()
-                                        + (call_index * plonk_circuit.len()) as u64,
-                                );
-
-                            }
-                        }
-                    }
-                }
             }
         }
 

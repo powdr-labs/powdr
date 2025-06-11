@@ -3,7 +3,7 @@ use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
-    p3_air::{Air,  BaseAir},
+    p3_air::{Air,BaseAir},
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
