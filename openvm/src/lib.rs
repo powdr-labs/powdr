@@ -13,7 +13,10 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::{
     config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
 };
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, DegreeBound, SymbolicMachine};
+use powdr_autoprecompiles::{
+    openvm::default_openvm_bus_map, openvm::openvm_base_with_copy_constraint, DegreeBound,
+    SymbolicMachine,
+};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
     collections::{HashMap, HashSet},
@@ -314,11 +317,11 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            bus_map: BusMap::openvm_base_with_copy_constraint(),
-            // We use OPENVM_DEGREE_BOUND - 1 because LogUp can increase the degree of the
-            // expressions in bus interactions. The `-1` here can be removed once the inliner
-            // accepts two different degree bounds for polynomial constraints and bus interactions.
-            degree_bound: customize_exe::OPENVM_DEGREE_BOUND - 1,
+            bus_map: openvm_base_with_copy_constraint(),
+            degree_bound: DegreeBound {
+                identities: customize_exe::OPENVM_DEGREE_BOUND,
+                bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
+            },
             implementation: PrecompileImplementation::default(),
         }
     }

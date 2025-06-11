@@ -10,6 +10,7 @@ pub enum BusType {
     BitwiseLookup,
     TupleRangeChecker,
     Sha,
+    CopyConstraintLookup,
 }
 
 impl std::fmt::Display for BusType {
@@ -22,6 +23,7 @@ impl std::fmt::Display for BusType {
             BusType::BitwiseLookup => "BITWISE_LOOKUP",
             BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
             BusType::Sha => "SHA",
+            BusType::CopyConstraintLookup => "COPY_CONSTRAINT_LOOKUP",
         };
         write!(f, "{name}")
     }

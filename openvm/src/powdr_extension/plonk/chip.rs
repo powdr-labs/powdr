@@ -19,8 +19,7 @@ use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_air::BaseAir;
-use openvm_stark_backend::p3_field::FieldAlgebra;
-use openvm_stark_backend::p3_field::PrimeField64;
+use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField64};
 use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_stark_backend::p3_matrix::Matrix;
 use openvm_stark_backend::{
@@ -149,8 +148,8 @@ where
             .map(|(index, c)| (c.id.id, index))
             .collect();
 
-        // Create permutation sets for Var(poly), each set collects the positions of all the cells that have the same value, which the copy constraints apply to
-        // BTreeMap<poly_id, Vec<position in witness matrix>>
+        // Create permutation sets for Witness(poly), each set collects the positions of the cells that have the same value
+        // BTreeMap<poly_id, Vec<position in matrix[a_id, b_id, c_id, d_id, e_id]>>
         let mut permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = column_index_by_poly_id
             .keys()
             .map(|&id| (id, vec![]))
@@ -251,8 +250,6 @@ where
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
 
-                
-
                 for (witness_in_gate, witness_col, witness_perm_col) in [
                     (&gate.a, &mut columns.a, &mut columns.a_perm),
                     (&gate.b, &mut columns.b, &mut columns.b_perm),
@@ -263,7 +260,6 @@ where
                     if let Some(value) = vars.get(witness_in_gate) {
                         *witness_col = value;
 
-
                         if let Some(poly_id) = witness_in_gate.get_poly_id() {
                             if let Some(vec) = permutation_sets_by_poly_id.get(&poly_id) {
                                 // If the poly has a permutation set, set a_perm to the next value in the set.
@@ -273,15 +269,13 @@ where
                                 }) {
                                     let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
                                     *witness_perm_col = <Val<SC>>::from_canonical_u64(
-                                        vec[next_pos].clone()
-                                            + (call_index * plonk_circuit.len()) as u64,
+                                        vec[next_pos] + (call_index * plonk_circuit.len()) as u64,
                                     );
                                 }
                             }
                         }
                     }
                 }
-
             }
         }
 

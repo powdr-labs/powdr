@@ -3,7 +3,7 @@ use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
-    p3_air::{Air,BaseAir},
+    p3_air::{Air, BaseAir},
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
@@ -184,17 +184,87 @@ where
 
         // Copy constraints
         // TODO: find a proper way to define bus index.
-        builder.push_interaction(10, vec![*a, *a_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*b, *b_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*c, *c_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*d, *d_id], q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*e, *e_id], q_copy_constraint.clone(), 1);
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*a, *a_id],
+            q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*b, *b_id],
+            q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*c, *c_id],
+            q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*d, *d_id],
+            q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*e, *e_id],
+            q_copy_constraint.clone(),
+            1,
+        );
 
-        builder.push_interaction(10, vec![*a, *a_perm], -q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*b, *b_perm], -q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*c, *c_perm], -q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*d, *d_perm], -q_copy_constraint.clone(), 1);
-        builder.push_interaction(10, vec![*e, *e_perm], -q_copy_constraint, 1);
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*a, *a_perm],
+            -q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*b, *b_perm],
+            -q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*c, *c_perm],
+            -q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*d, *d_perm],
+            -q_copy_constraint.clone(),
+            1,
+        );
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::CopyConstraintLookup)
+                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            vec![*e, *e_perm],
+            -q_copy_constraint,
+            1,
+        );
     }
 }
 
