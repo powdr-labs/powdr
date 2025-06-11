@@ -1014,10 +1014,10 @@ mod tests {
         let a = Qse::from_unknown_variable("A");
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let t: Qse = x * y - a + b;
-        assert_eq!(t.to_string(), "(X) * (Y) + -A + B");
+        assert_eq!(t.to_string(), "(X) * (Y) - A + B");
         assert_eq!(
             (t.clone() + t).to_string(),
-            "(X) * (Y) + (X) * (Y) + -2 * A + (B + B)"
+            "(X) * (Y) + (X) * (Y) - 2 * A + (B + B)"
         );
     }
 
@@ -1539,11 +1539,11 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
             expr.try_solve_for(&"x").unwrap().to_string(),
-            "-w + -3 * y + -5"
+            "-(w + 3 * y + 5)"
         );
         assert_eq!(
             expr.try_solve_for(&"y").unwrap().to_string(),
-            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+            "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert!(expr.try_solve_for(&"t").is_none());
     }
@@ -1554,11 +1554,11 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
             expr.try_solve_for_expr(&var("x")).unwrap().to_string(),
-            "-w + -3 * y + -5"
+            "-(w + 3 * y + 5)"
         );
         assert_eq!(
             expr.try_solve_for_expr(&var("y")).unwrap().to_string(),
-            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+            "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert_eq!(
             expr.try_solve_for_expr(&-(constant(3) * var("y")))
@@ -1576,7 +1576,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             expr.try_solve_for_expr(&(var("x") + constant(3) * var("y") + constant(2)))
                 .unwrap()
                 .to_string(),
-            "-w + -3"
+            "-(w + 3)"
         );
         // We cannot solve these because the constraint does not contain a linear multiple
         // of the expression.
