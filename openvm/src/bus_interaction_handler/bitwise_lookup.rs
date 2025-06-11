@@ -64,10 +64,10 @@ pub fn handle_bitwise_lookup<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{test_utils::*, BusMap, OpenVmBusInteractionHandler};
+    use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler};
 
     use super::*;
-    use powdr_autoprecompiles::DEFAULT_BITWISE_LOOKUP;
+    use powdr_autoprecompiles::openvm::{default_openvm_bus_map, DEFAULT_BITWISE_LOOKUP};
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 
@@ -77,7 +77,7 @@ mod tests {
         z: RangeConstraint<BabyBearField>,
         op: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(BusMap::openvm_base());
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(default_openvm_bus_map());
 
         let bus_interaction = BusInteraction {
             bus_id: RangeConstraint::from_value(DEFAULT_BITWISE_LOOKUP.into()),

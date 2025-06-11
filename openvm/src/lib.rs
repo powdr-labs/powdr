@@ -13,7 +13,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::{
     config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
 };
-use powdr_autoprecompiles::{DegreeBound, SymbolicMachine};
+use powdr_autoprecompiles::{openvm::default_openvm_bus_map, DegreeBound, SymbolicMachine};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use std::{
     collections::HashMap,
@@ -86,7 +86,7 @@ impl IntoOpenVm for PowdrBB {
 }
 
 pub use openvm_build::GuestOptions;
-pub use powdr_autoprecompiles::{BusMap, BusType};
+pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
@@ -301,7 +301,7 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            bus_map: BusMap::openvm_base(),
+            bus_map: default_openvm_bus_map(),
             degree_bound: DegreeBound {
                 identities: customize_exe::OPENVM_DEGREE_BOUND,
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,

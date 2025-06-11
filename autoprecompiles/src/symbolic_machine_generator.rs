@@ -32,7 +32,11 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .bus_interactions
             .iter()
             .filter_map(|bus_int| {
-                PcLookupBusInteraction::try_from_symbolic_bus_interaction(bus_int, bus_map).ok()
+                PcLookupBusInteraction::try_from_symbolic_bus_interaction(
+                    bus_int,
+                    bus_map.get_bus_id(&BusType::PcLookup).unwrap(),
+                )
+                .ok()
             })
             .exactly_one()
             .expect("Expected single pc lookup");
@@ -40,7 +44,12 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
         let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-        let is_valid: AlgebraicExpression<T> = exec_receive(&machine, bus_map).mult.clone();
+        let is_valid: AlgebraicExpression<T> = exec_receive(
+            &machine,
+            bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap(),
+        )
+        .mult
+        .clone();
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((is_valid.clone() + one).into());
 
@@ -148,20 +157,17 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
 
 fn exec_receive<T: FieldElement>(
     machine: &SymbolicMachine<T>,
-    bus_map: &BusMap,
+    exec_bus_id: u64,
 ) -> SymbolicBusInteraction<T> {
     let [r, _s] = machine
         .bus_interactions
         .iter()
-        .filter_map(|bus_int| match bus_map.bus_type(bus_int.id) {
-            BusType::ExecutionBridge => Some(bus_int.clone()),
-            _ => None,
-        })
+        .filter(|bus_int| bus_int.id == exec_bus_id)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
     // TODO assert that r.mult matches -expr
-    r
+    r.clone()
 }
 
 fn is_loadstore(opcode: usize) -> bool {

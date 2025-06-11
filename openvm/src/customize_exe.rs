@@ -20,7 +20,7 @@ use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
-    BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
+    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 

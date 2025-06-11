@@ -15,7 +15,7 @@ use powdr_number::{FieldElement, LargeInt};
 
 use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
 use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
-use crate::{BusMap, BusType, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
@@ -25,9 +25,10 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
-    bus_map: &BusMap,
+    memory_bus_id: u64,
 ) -> SymbolicMachine<T> {
-    let (to_remove, new_constraints) = redundant_memory_interactions_indices(&machine, bus_map);
+    let (to_remove, new_constraints) =
+        redundant_memory_interactions_indices(&machine, memory_bus_id);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     machine.bus_interactions = machine
         .bus_interactions
@@ -43,13 +44,13 @@ pub fn optimize_memory<T: FieldElement>(
 // Assumption: all register memory bus interactions feature a concrete address.
 pub fn check_register_operation_consistency<T: FieldElement>(
     machine: &SymbolicMachine<T>,
-    bus_map: &BusMap,
+    memory_bus_id: u64,
 ) -> bool {
     let count_per_addr = machine
         .bus_interactions
         .iter()
         .filter_map(|bus_int| {
-            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int, bus_map)
+            MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int, memory_bus_id)
                 .ok()
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
@@ -105,9 +106,9 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
     fn try_from_symbolic_bus_interaction(
         bus_interaction: &SymbolicBusInteraction<T>,
-        bus_map: &BusMap,
+        memory_bus_id: u64,
     ) -> Result<Option<Self>, ()> {
-        if bus_interaction.id != bus_map.get_bus_id(&BusType::Memory).unwrap() {
+        if bus_interaction.id != memory_bus_id {
             return Ok(None);
         }
         // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
@@ -135,9 +136,9 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement>(
     machine: &SymbolicMachine<T>,
-    bus_map: &BusMap,
+    memory_bus_id: u64,
 ) -> (Vec<usize>, Vec<SymbolicConstraint<T>>) {
-    let address_comparator = MemoryAddressComparator::new(machine, bus_map);
+    let address_comparator = MemoryAddressComparator::new(machine, memory_bus_id);
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
     // Address across all address spaces.
@@ -152,7 +153,7 @@ fn redundant_memory_interactions_indices<T: FieldElement>(
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in machine.bus_interactions.iter().enumerate() {
         let mem_int =
-            match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int, bus_map) {
+            match MemoryBusInteraction::try_from_symbolic_bus_interaction(bus_int, memory_bus_id) {
                 Ok(Some(mem_int)) => mem_int,
                 Ok(None) => continue,
                 Err(_) => {
@@ -215,12 +216,12 @@ struct MemoryAddressComparator<T: FieldElement> {
 }
 
 impl<T: FieldElement> MemoryAddressComparator<T> {
-    fn new(machine: &SymbolicMachine<T>, bus_map: &BusMap) -> Self {
+    fn new(machine: &SymbolicMachine<T>, memory_bus_id: u64) -> Self {
         let addresses = machine
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus, bus_map)
+                MemoryBusInteraction::try_from_symbolic_bus_interaction(bus, memory_bus_id)
                     .ok()
                     .flatten()
             })

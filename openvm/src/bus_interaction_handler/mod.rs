@@ -1,6 +1,9 @@
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
-use powdr_autoprecompiles::{constraint_optimizer::IsBusStateful, BusMap, BusType};
+use powdr_autoprecompiles::{
+    bus_map::{BusMap, BusType},
+    constraint_optimizer::IsBusStateful,
+};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,

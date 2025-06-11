@@ -1,3 +1,4 @@
+use crate::bus_map::{BusMap, BusType};
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
 use legacy_expression::ast_compatibility::CompatibleWithAstExpression;
@@ -16,9 +17,11 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 mod bitwise_lookup_optimizer;
+pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod legacy_expression;
 pub mod memory_optimizer;
+pub mod openvm;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
@@ -179,9 +182,9 @@ pub struct PcLookupBusInteraction<T> {
 impl<T: FieldElement> PcLookupBusInteraction<T> {
     fn try_from_symbolic_bus_interaction(
         bus_interaction: &SymbolicBusInteraction<T>,
-        bus_map: &BusMap,
+        pc_lookup_bus_id: u64,
     ) -> Result<Self, ()> {
-        (bus_interaction.id == bus_map.get_bus_id(&BusType::PcLookup).unwrap())
+        (bus_interaction.id == pc_lookup_bus_id)
             .then(|| {
                 let from_pc = bus_interaction.args[0].clone();
                 let op = bus_interaction.args[1].clone();
@@ -194,93 +197,6 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
                 }
             })
             .ok_or(())
-    }
-}
-
-pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
-pub const DEFAULT_MEMORY: u64 = 1;
-pub const DEFAULT_PC_LOOKUP: u64 = 2;
-pub const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
-pub const DEFAULT_BITWISE_LOOKUP: u64 = 6;
-pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
-
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
-pub enum BusType {
-    ExecutionBridge,
-    Memory,
-    PcLookup,
-    VariableRangeChecker,
-    BitwiseLookup,
-    TupleRangeChecker,
-    Sha,
-}
-
-impl std::fmt::Display for BusType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = match self {
-            BusType::ExecutionBridge => "EXECUTION_BRIDGE",
-            BusType::Memory => "MEMORY",
-            BusType::PcLookup => "PC_LOOKUP",
-            BusType::VariableRangeChecker => "VARIABLE_RANGE_CHECKER",
-            BusType::BitwiseLookup => "BITWISE_LOOKUP",
-            BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
-            BusType::Sha => "SHA",
-        };
-        write!(f, "{name}")
-    }
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct BusMap {
-    bus_ids: BTreeMap<u64, BusType>,
-}
-
-impl BusMap {
-    pub fn openvm_base() -> Self {
-        let bus_ids = [
-            (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
-            (DEFAULT_MEMORY, BusType::Memory),
-            (DEFAULT_PC_LOOKUP, BusType::PcLookup),
-            (
-                DEFAULT_VARIABLE_RANGE_CHECKER,
-                BusType::VariableRangeChecker,
-            ),
-            (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
-            (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
-        ]
-        .into_iter()
-        .collect();
-
-        Self { bus_ids }
-    }
-
-    pub fn bus_type(&self, bus_id: u64) -> BusType {
-        self.bus_ids[&bus_id]
-    }
-
-    pub fn with_sha(mut self, id: u64) -> Self {
-        self.bus_ids.insert(id, BusType::Sha);
-        self
-    }
-
-    pub fn with_bus_type(mut self, id: u64, bus_type: BusType) -> Self {
-        self.bus_ids.insert(id, bus_type);
-        self
-    }
-
-    pub fn with_bus_map(mut self, bus_map: BusMap) -> Self {
-        self.bus_ids.extend(bus_map.bus_ids);
-        self
-    }
-
-    pub fn inner(&self) -> &BTreeMap<u64, BusType> {
-        &self.bus_ids
-    }
-
-    pub fn get_bus_id(&self, bus_type: &BusType) -> Option<u64> {
-        self.bus_ids
-            .iter()
-            .find_map(|(id, bus)| if bus == bus_type { Some(*id) } else { None })
     }
 }
 
@@ -369,6 +285,8 @@ fn add_guards<T: FieldElement>(
     bus_map: BusMap,
 ) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
+    let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
+    let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
     let max_id = machine
         .unique_columns()
@@ -398,10 +316,7 @@ fn add_guards<T: FieldElement>(
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
         .iter_mut()
-        .filter_map(|bus_int| match bus_map.bus_type(bus_int.id) {
-            BusType::ExecutionBridge => Some(bus_int),
-            _ => None,
-        })
+        .filter(|bus_int| bus_int.id == exec_bus_id)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -413,10 +328,7 @@ fn add_guards<T: FieldElement>(
     let [program_bus_send] = machine
         .bus_interactions
         .iter_mut()
-        .filter_map(|bus_int| match bus_map.bus_type(bus_int.id) {
-            BusType::PcLookup => Some(bus_int),
-            _ => None,
-        })
+        .filter(|bus_int| bus_int.id == pc_lookup_bus_id)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -424,26 +336,17 @@ fn add_guards<T: FieldElement>(
 
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        match bus_map.bus_type(b.id) {
-            BusType::ExecutionBridge => {
-                // already handled
-            }
-            BusType::PcLookup => {
-                // already handled
-            }
-            _ => {
-                if !satisfies_zero_witness(&b.mult) {
-                    // guard the multiplicity by `is_valid`
-                    b.mult = is_valid.clone() * b.mult.clone();
-                    // TODO this would not have to be cloned if we had *=
-                    //c.expr *= guard.clone();
-                } else {
-                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-                    let one = AlgebraicExpression::Number(1u64.into());
-                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                    is_valid_mults.push(e);
-                }
-            }
+        // already handled exec and pc lookup bus types
+        if b.id != exec_bus_id && b.id != pc_lookup_bus_id && !satisfies_zero_witness(&b.mult) {
+            // guard the multiplicity by `is_valid`
+            b.mult = is_valid.clone() * b.mult.clone();
+            // TODO this would not have to be cloned if we had *=
+            //c.expr *= guard.clone();
+        } else {
+            // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+            let one = AlgebraicExpression::Number(1u64.into());
+            let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+            is_valid_mults.push(e);
         }
     }
 
