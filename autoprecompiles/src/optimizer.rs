@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use super::simplify_expression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    journaling_constraint_system::JournalingConstraintSystem,
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
@@ -67,14 +68,17 @@ fn optimization_loop_iteration<T: FieldElement>(
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = optimize_constraints(
-        constraint_system,
+    let mut constraint_system = JournalingConstraintSystem::from(constraint_system);
+    optimize_constraints(
+        &mut constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     )?;
     // TODO: avoid these conversions
-    let mut machine = constraint_system_to_symbolic_machine(constraint_system);
+    // TODO continue here with the journaling system once the memory machine is changed to
+    // ConstraintSystem
+    let mut machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
     if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
         machine = optimize_memory(machine, memory_bus_id);
         assert!(check_register_operation_consistency(
