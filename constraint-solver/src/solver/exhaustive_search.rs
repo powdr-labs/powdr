@@ -85,32 +85,28 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     rc: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<Option<BTreeMap<V, T>>, Error> {
-    let assignments = get_all_possible_assignments(variables.iter().cloned(), &rc)
-        .filter_map(|assignments| {
+    let mut assignments =
+        get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
             constraint_system
                 .derive_more_assignments(assignments, &rc, bus_interaction_handler)
                 .ok()
-        })
-        .collect::<Vec<_>>();
-    if assignments.is_empty() {
+        });
+    let Some(first_assignments) = assignments.next() else {
         // No assignment satisfied the constraint system.
         return Err(Error::ExhaustiveSearchError);
-    }
+    };
     // If all branches agree, return the unique assignment.
-    let assignments = assignments[0]
-        .clone()
-        .into_iter()
-        .filter(|(variable, value)| {
-            assignments
-                .iter()
-                .all(|assignment| assignment.get(variable) == Some(value))
-        })
-        .collect::<BTreeMap<_, _>>();
-    if assignments.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(assignments))
+    let mut result = first_assignments;
+    for assignments in assignments {
+        result = result
+            .into_iter()
+            .filter(|(variable, value)| assignments.get(variable) == Some(value))
+            .collect();
+        if result.is_empty() {
+            return Ok(None);
+        }
     }
+    Ok(Some(result))
 }
 
 /// Returns all unique sets of variables that appear together in an identity
