@@ -148,7 +148,7 @@ pub struct PowdrAir<P> {
     /// The mapping from poly_id id to the index in the list of columns.
     /// The values are always unique and contiguous
     column_index_by_poly_id: BTreeMap<u64, usize>,
-    machine: Arc<powdr_autoprecompiles::SymbolicMachine<P>>,
+    machine: powdr_autoprecompiles::SymbolicMachine<P>,
 }
 
 impl<P: IntoOpenVm> ColumnsAir<OpenVmField<P>> for PowdrAir<P> {
@@ -308,7 +308,7 @@ impl<P: IntoOpenVm> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<P>>
 }
 
 impl<P: IntoOpenVm> PowdrAir<P> {
-    pub fn new(machine: Arc<powdr_autoprecompiles::SymbolicMachine<P>>) -> Self {
+    pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
             .unique_columns()
             .enumerate()

@@ -92,8 +92,8 @@ pub enum SharedPeriphery<F: PrimeField32> {
 mod from_implementations {
 
     use super::{DummyExecutor, DummyPeriphery};
-    use openvm_stark_backend::p3_field::PrimeField32;
     use openvm_sdk::config::{SdkVmConfigExecutor, SdkVmConfigPeriphery};
+    use openvm_stark_backend::p3_field::PrimeField32;
 
     // Import all the relevant executor and periphery types
     use openvm_algebra_circuit::{

@@ -73,7 +73,7 @@ impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
 pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub machine: Arc<SymbolicMachine<P>>,
+    pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub original_airs: Arc<BTreeMap<usize, SymbolicMachine<P>>>,
     pub is_valid_column: Column,
@@ -91,7 +91,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         Self {
             name,
             opcode,
-            machine: Arc::new(machine),
+            machine,
             original_instructions,
             original_airs,
             is_valid_column,
