@@ -51,12 +51,6 @@ impl BusMap {
         self.bus_ids[&bus_id]
     }
 
-    /// Insert a new SHA bus with given ID, ensuring uniqueness.
-    pub fn with_sha(mut self, id: u64) -> Self {
-        self.bus_ids.insert(id, BusType::Sha);
-        self
-    }
-
     /// Insert a new bus type under the given ID, ensuring no other ID
     /// already maps to the same `BusType` value.
     pub fn with_bus_type(mut self, id: u64, bus_type: BusType) -> Self {
@@ -69,12 +63,9 @@ impl BusMap {
 
     /// Extend with another `BusMap`, ensuring no duplicate `BusType`s between them.
     pub fn with_bus_map(mut self, other: BusMap) -> Self {
-        for bus_type in other.bus_ids.values() {
-            if self.get_bus_id(bus_type).is_some() {
-                panic!("Cannot extend: duplicate BusType `{bus_type:?}` found in both maps");
-            }
+        for (id, bus_type) in other.bus_ids.into_iter() {
+            self = self.with_bus_type(id, bus_type);
         }
-        self.bus_ids.extend(other.bus_ids);
         self
     }
 
@@ -83,7 +74,7 @@ impl BusMap {
         &self.bus_ids
     }
 
-    /// Find the ID for a given `BusType` (if any), ensuring uniqueness.
+    /// Find the ID for a given `BusType` (if any).
     pub fn get_bus_id(&self, bus_type: &BusType) -> Option<u64> {
         self.bus_ids
             .iter()

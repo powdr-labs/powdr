@@ -1,4 +1,4 @@
-// To support an abstracted autoprecompile layer, this module stores type implementations specific to OpenVM
+//! To support an abstracted autoprecompile layer, this module stores type implementations specific to OpenVM
 use crate::bus_map::{BusMap, BusType};
 
 pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
