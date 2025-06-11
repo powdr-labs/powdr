@@ -50,6 +50,14 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
             ),
         )
     }
+
+    /// Extends the constraint system by the constraints of another system.
+    /// No de-duplication is performed.
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+        self.algebraic_constraints
+            .extend(system.algebraic_constraints);
+        self.bus_interactions.extend(system.bus_interactions);
+    }
 }
 
 /// A bus interaction.

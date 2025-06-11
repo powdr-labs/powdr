@@ -119,12 +119,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
                 .or_default()
                 .extend(occurrences);
         }
-        self.constraint_system
-            .algebraic_constraints
-            .extend(system.algebraic_constraints);
-        self.constraint_system
-            .bus_interactions
-            .extend(system.bus_interactions);
+        self.constraint_system.extend(system)
     }
 }
 
