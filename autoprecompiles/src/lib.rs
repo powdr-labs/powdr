@@ -23,6 +23,7 @@ pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub mod symbolic_instruction_builder;
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
