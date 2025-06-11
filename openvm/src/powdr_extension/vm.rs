@@ -200,11 +200,6 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             SharedPeripheryChipsPair::new(range_checker, bitwise_lookup, tuple_range_checker);
 
         for precompile in &self.precompiles {
-            tracing::info!(
-                "Registering precompile: {} with opcode: {}",
-                precompile.name,
-                precompile.opcode.global_opcode()
-            );
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
