@@ -12,18 +12,20 @@ use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
+use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
-    SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
+    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
 use powdr_number::FieldElement;
 
-use crate::bus_interaction_handler::{BusMap, OpenVmBusInteractionHandler};
+use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
@@ -37,11 +39,12 @@ const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
-type CachedAutoPrecompile<F> = (
-    usize,              // powdr opcode
-    SymbolicMachine<F>, // autoprecompile
-    Vec<Vec<u64>>,      // poly id substitution of original columns
-);
+#[derive(Clone, Debug)]
+pub struct CachedAutoPrecompile<F> {
+    apc_opcode: usize,
+    autoprecompile: SymbolicMachine<F>,
+    subs: Vec<Vec<u64>>,
+}
 
 use crate::{PgoConfig, PowdrConfig};
 
@@ -150,11 +153,6 @@ pub fn customize<P: IntoOpenVm>(
         blocks.len()
     );
 
-    // print start index of all retained blocks
-    blocks.iter().enumerate().for_each(|(i, block)| {
-        tracing::info!("Block {}: start_idx {}", i, block.start_idx);
-    });
-
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -194,33 +192,50 @@ pub fn customize<P: IntoOpenVm>(
     let mut extensions = Vec::new();
     let n_acc = config.autoprecompiles as usize;
     let n_skip = config.skip_autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles");
+    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    // now the blocks have been sorted by cost
-    for (i, acc_block) in blocks.iter().skip(n_skip).take(n_acc).enumerate() {
-        tracing::debug!(
-            "Accelerating block {i} of length {} and start idx {}",
-            acc_block.statements.len(),
-            acc_block.start_idx
-        );
+    let apcs = blocks[n_skip..n_skip + n_acc]
+        .par_iter_mut()
+        .enumerate()
+        .map(|(index, acc_block)| {
+            tracing::debug!(
+                "Accelerating block of length {} and start idx {}",
+                acc_block.statements.len(),
+                acc_block.start_idx
+            );
 
-        tracing::debug!(
-            "Acc block: {}",
-            acc_block.pretty_print(openvm_instruction_formatter)
-        );
+            tracing::debug!(
+                "Acc block: {}",
+                acc_block.pretty_print(openvm_instruction_formatter)
+            );
 
-        // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
-        let (apc_opcode, autoprecompile, subs) =
-            apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
+            let apc_opcode = POWDR_OPCODE + index;
+
+            (
+                acc_block.start_idx,
                 generate_apc_cache(
                     acc_block,
                     airs,
-                    POWDR_OPCODE + i,
+                    apc_opcode,
                     config.bus_map.clone(),
                     config.degree_bound,
                 )
-                .expect("Failed to generate autoprecompile")
-            });
+                .unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    apc_cache.extend(apcs);
+
+    tracing::info!("Adjust the program with the autoprecompiles");
+
+    // now the blocks have been sorted by cost
+    for acc_block in blocks.iter().skip(n_skip).take(n_acc) {
+        let CachedAutoPrecompile {
+            apc_opcode,
+            autoprecompile,
+            subs,
+        } = apc_cache.remove(&acc_block.start_idx).unwrap();
 
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
@@ -267,7 +282,7 @@ pub fn customize<P: IntoOpenVm>(
             .collect_vec();
 
         extensions.push(PowdrPrecompile::new(
-            format!("PowdrAutoprecompile_{i}"),
+            format!("PowdrAutoprecompile_{apc_opcode}"),
             PowdrOpcode {
                 class_offset: apc_opcode,
             },
@@ -283,7 +298,6 @@ pub fn customize<P: IntoOpenVm>(
             is_valid_column,
         ));
     }
-
     (
         exe,
         PowdrExtension::new(
@@ -471,12 +485,16 @@ fn generate_apc_cache<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
     let (autoprecompile, subs) =
         generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
 
-    Ok((apc_opcode, autoprecompile, subs))
+    Ok(CachedAutoPrecompile {
+        apc_opcode,
+        autoprecompile,
+        subs,
+    })
 }
 
 // OpenVM relevant bus ids:
@@ -492,7 +510,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -514,7 +532,8 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 
     let vm_config = VmConfig {
         instruction_machines: airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_map,
     };
 
     let (precompile, subs) =
@@ -547,6 +566,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     SymbolicBusInteraction { id, mult, args }
 }
 
+// Note: This function can lead to OOM since it generates the apc for all blocks
 fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     blocks: &mut Vec<BasicBlock<OpenVmField<P>>>,
     apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
@@ -577,8 +597,11 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
 
     // generate apc and cache it for all basic blocks
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-    let cells_saved_per_row_by_bb: HashMap<_, _> = blocks
-        .iter()
+    let (cells_saved_per_row_by_bb, new_apc_cache): (
+        HashMap<_, _>,
+        HashMap<usize, CachedAutoPrecompile<P>>,
+    ) = blocks
+        .par_iter()
         .enumerate()
         .filter_map(|(i, acc_block)| {
             let apc_cache_entry = generate_apc_cache(
@@ -589,10 +612,9 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 config.degree_bound,
             )
             .ok()?;
-            apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());
 
             // calculate cells saved per row
-            let apc_cells_per_row = apc_cache_entry.1.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_columns().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()
@@ -610,9 +632,14 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 cells_saved_per_row
             );
 
-            Some((acc_block.start_idx, cells_saved_per_row))
+            Some((
+                (acc_block.start_idx, cells_saved_per_row),
+                (acc_block.start_idx, apc_cache_entry),
+            ))
         })
-        .collect();
+        .unzip();
+
+    apc_cache.extend(new_apc_cache);
 
     // filter out the basic blocks where the apc generation errored out
     blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
