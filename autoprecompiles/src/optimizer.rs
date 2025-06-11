@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use super::simplify_expression;
-use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
@@ -17,7 +16,7 @@ use crate::{
     },
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
-    stats_logger::StatsLogger,
+    stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
@@ -47,7 +46,7 @@ pub fn optimize<T: FieldElement>(
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
 
     loop {
-        let size = system_size(&constraint_system);
+        let size = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimization_loop_iteration(
             constraint_system,
             bus_interaction_handler.clone(),
@@ -55,7 +54,7 @@ pub fn optimize<T: FieldElement>(
             &mut stats_logger,
             bus_map,
         )?;
-        if system_size(&constraint_system) == size {
+        if size == stats_logger::Stats::from(&constraint_system) {
             return Ok(constraint_system_to_symbolic_machine(constraint_system));
         }
     }
@@ -93,20 +92,6 @@ fn optimization_loop_iteration<T: FieldElement>(
     }
 
     Ok(system)
-}
-
-fn system_size<T: FieldElement>(
-    constraint_system: &ConstraintSystem<T, AlgebraicReference>,
-) -> [usize; 3] {
-    [
-        constraint_system.algebraic_constraints.len(),
-        constraint_system.bus_interactions.len(),
-        constraint_system
-            .expressions()
-            .flat_map(|expr| expr.referenced_variables())
-            .unique()
-            .count(),
-    ]
 }
 
 pub fn optimize_pc_lookup<T: FieldElement>(

@@ -33,6 +33,7 @@ impl StatsLogger {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stats {
     num_constraints: usize,
     num_bus_interactions: usize,
