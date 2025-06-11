@@ -1,9 +1,4 @@
 use derive_more::From;
-use openvm_algebra_circuit::{
-    Fp2ExtensionExecutor, Fp2ExtensionPeriphery, ModularExtensionExecutor,
-    ModularExtensionPeriphery,
-};
-use openvm_bigint_circuit::{Int256Executor, Int256Periphery};
 use openvm_circuit::{
     arch::{SystemExecutor, SystemPeriphery, VmChipComplex, VmInventory},
     system::phantom::PhantomChip,
@@ -13,17 +8,7 @@ use openvm_circuit_primitives::{
     bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
     var_range::SharedVariableRangeCheckerChip, Chip, ChipUsageGetter,
 };
-use openvm_ecc_circuit::{WeierstrassExtensionExecutor, WeierstrassExtensionPeriphery};
-use openvm_keccak256_circuit::{Keccak256Executor, Keccak256Periphery};
-use openvm_native_circuit::{
-    CastFExtensionExecutor, CastFExtensionPeriphery, NativeExecutor, NativePeriphery,
-};
-use openvm_pairing_circuit::{PairingExtensionExecutor, PairingExtensionPeriphery};
-use openvm_rv32im_circuit::{
-    Rv32IExecutor, Rv32IPeriphery, Rv32IoExecutor, Rv32IoPeriphery, Rv32MExecutor, Rv32MPeriphery,
-};
 use openvm_sdk::config::{SdkVmConfigExecutor, SdkVmConfigPeriphery};
-use openvm_sha256_circuit::{Sha256Executor, Sha256Periphery};
 use openvm_stark_backend::p3_field::PrimeField32;
 
 /// A dummy inventory used for execution of autoprecompiles
@@ -104,50 +89,75 @@ pub enum SharedPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-/// Defines `From<T> for DummyExecutor` and `From<T> for DummyPeriphery`
-/// by mapping to the appropriate `SdkVmConfigExecutor` and `SdkVmConfigPeriphery` variant.
-/// This cannot be derived because we have a custom implementation of this conversion for the `SystemExecutor`, avoiding this wrapping.
-macro_rules! impl_zero_cost_conversions {
-    ($(($variant:ident, $executor_ty:ty, $periphery_ty:ty)),* $(,)?) => {
-        $(
-            impl<F: PrimeField32> From<$executor_ty> for DummyExecutor<F> {
-                fn from(executor: $executor_ty) -> Self {
-                    DummyExecutor::Sdk(SdkVmConfigExecutor::$variant(executor))
-                }
-            }
+mod from_implementations {
 
-            impl<F: PrimeField32> From<$periphery_ty> for DummyPeriphery<F> {
-                fn from(periphery: $periphery_ty) -> Self {
-                    DummyPeriphery::Sdk(SdkVmConfigPeriphery::$variant(periphery))
-                }
-            }
-        )*
+    use super::{DummyExecutor, DummyPeriphery};
+    use openvm_stark_backend::p3_field::PrimeField32;
+    use openvm_sdk::config::{SdkVmConfigExecutor, SdkVmConfigPeriphery};
+
+    // Import all the relevant executor and periphery types
+    use openvm_algebra_circuit::{
+        Fp2ExtensionExecutor, Fp2ExtensionPeriphery, ModularExtensionExecutor,
+        ModularExtensionPeriphery,
     };
-}
+    use openvm_bigint_circuit::{Int256Executor, Int256Periphery};
+    use openvm_ecc_circuit::{WeierstrassExtensionExecutor, WeierstrassExtensionPeriphery};
+    use openvm_keccak256_circuit::{Keccak256Executor, Keccak256Periphery};
+    use openvm_native_circuit::{
+        CastFExtensionExecutor, CastFExtensionPeriphery, NativeExecutor, NativePeriphery,
+    };
+    use openvm_pairing_circuit::{PairingExtensionExecutor, PairingExtensionPeriphery};
+    use openvm_rv32im_circuit::{
+        Rv32IExecutor, Rv32IPeriphery, Rv32IoExecutor, Rv32IoPeriphery, Rv32MExecutor,
+        Rv32MPeriphery,
+    };
+    use openvm_sha256_circuit::{Sha256Executor, Sha256Periphery};
 
-impl_zero_cost_conversions!(
-    (Rv32i, Rv32IExecutor<F>, Rv32IPeriphery<F>),
-    (Io, Rv32IoExecutor<F>, Rv32IoPeriphery<F>),
-    (Keccak, Keccak256Executor<F>, Keccak256Periphery<F>),
-    (Sha256, Sha256Executor<F>, Sha256Periphery<F>),
-    (Native, NativeExecutor<F>, NativePeriphery<F>),
-    (Rv32m, Rv32MExecutor<F>, Rv32MPeriphery<F>),
-    (BigInt, Int256Executor<F>, Int256Periphery<F>),
-    (
-        Modular,
-        ModularExtensionExecutor<F>,
-        ModularExtensionPeriphery<F>
-    ),
-    (Fp2, Fp2ExtensionExecutor<F>, Fp2ExtensionPeriphery<F>),
-    (
-        Pairing,
-        PairingExtensionExecutor<F>,
-        PairingExtensionPeriphery<F>
-    ),
-    (
-        Ecc,
-        WeierstrassExtensionExecutor<F>,
-        WeierstrassExtensionPeriphery<F>
-    ),
-    (CastF, CastFExtensionExecutor<F>, CastFExtensionPeriphery<F>),
-);
+    /// Defines `From<T> for DummyExecutor` and `From<T> for DummyPeriphery`
+    /// by mapping to the appropriate `SdkVmConfigExecutor` and `SdkVmConfigPeriphery` variant.
+    /// This cannot be derived because we have a custom implementation of this conversion for the `SystemExecutor`, avoiding this wrapping.
+    macro_rules! impl_zero_cost_conversions {
+        ($(($variant:ident, $executor_ty:ty, $periphery_ty:ty)),* $(,)?) => {
+            $(
+                impl<F: PrimeField32> From<$executor_ty> for DummyExecutor<F> {
+                    fn from(executor: $executor_ty) -> Self {
+                        DummyExecutor::Sdk(SdkVmConfigExecutor::$variant(executor))
+                    }
+                }
+
+                impl<F: PrimeField32> From<$periphery_ty> for DummyPeriphery<F> {
+                    fn from(periphery: $periphery_ty) -> Self {
+                        DummyPeriphery::Sdk(SdkVmConfigPeriphery::$variant(periphery))
+                    }
+                }
+            )*
+        };
+    }
+
+    impl_zero_cost_conversions!(
+        (Rv32i, Rv32IExecutor<F>, Rv32IPeriphery<F>),
+        (Io, Rv32IoExecutor<F>, Rv32IoPeriphery<F>),
+        (Keccak, Keccak256Executor<F>, Keccak256Periphery<F>),
+        (Sha256, Sha256Executor<F>, Sha256Periphery<F>),
+        (Native, NativeExecutor<F>, NativePeriphery<F>),
+        (Rv32m, Rv32MExecutor<F>, Rv32MPeriphery<F>),
+        (BigInt, Int256Executor<F>, Int256Periphery<F>),
+        (
+            Modular,
+            ModularExtensionExecutor<F>,
+            ModularExtensionPeriphery<F>
+        ),
+        (Fp2, Fp2ExtensionExecutor<F>, Fp2ExtensionPeriphery<F>),
+        (
+            Pairing,
+            PairingExtensionExecutor<F>,
+            PairingExtensionPeriphery<F>
+        ),
+        (
+            Ecc,
+            WeierstrassExtensionExecutor<F>,
+            WeierstrassExtensionPeriphery<F>
+        ),
+        (CastF, CastFExtensionExecutor<F>, CastFExtensionPeriphery<F>),
+    );
+}
