@@ -892,7 +892,7 @@ mod tests {
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
+        let config = PowdrConfig::new_plonk(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
         prove_mock(GUEST, config, stdin, PgoConfig::None, None);
     }
@@ -1087,16 +1087,16 @@ mod tests {
 
     #[test]
     fn guest_machine_plonk() {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
+        let config = PowdrConfig::new_plonk(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
         let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 16);
+        assert_eq!(m.width, 26);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 5);
+        assert_eq!(m.bus_interactions, 15);
     }
 
     #[test]

@@ -179,11 +179,9 @@ where
             *q_memory * *c_next,
             1,
         );
-        // copy constraints are active in every row
+        // copy constraints are active in every row, so the multiplicity is always 1 or -1.
         let q_copy_constraint: AB::Expr = AB::F::from_canonical_u64(1).into();
 
-        // Copy constraints
-        // TODO: find a proper way to define bus index.
         builder.push_interaction(
             self.bus_map
                 .get_bus_id(&BusType::CopyConstraintLookup)
