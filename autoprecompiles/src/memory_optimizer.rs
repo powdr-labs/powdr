@@ -12,7 +12,6 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
-
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
 
