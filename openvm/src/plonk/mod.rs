@@ -1,11 +1,7 @@
 use itertools::Itertools;
 use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
-use powdr_constraint_solver::test_utils::Var;
 use powdr_number::FieldElement;
-use std::{
-    fmt::{self, Display},
-    option,
-};
+use std::fmt::{self, Display};
 
 use crate::BusType;
 

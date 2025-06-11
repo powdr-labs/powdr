@@ -149,14 +149,12 @@ where
             .map(|(index, c)| (c.id.id, index))
             .collect();
 
-        // Create permutation sets for each copy constraint in one call
-        // BTreeMap<poly_id, Vec<position>>
+        // Create permutation sets for Var(poly), each set collects all the cells that have the same value, which the copy constraints apply to
+        // BTreeMap<poly_id, Vec<position in witness matrix>>
         let mut permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = column_index_by_poly_id
             .keys()
             .map(|&id| (id, vec![]))
             .collect();
-
-        println!("permutation_sets_by_poly_id: {permutation_sets_by_poly_id:?}");
 
         for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
             if gate.a.get_poly_id().is_some() {
@@ -196,12 +194,8 @@ where
             }
         }
 
-        println!("permutation_sets_by_poly_id after built: {permutation_sets_by_poly_id:?}");
-
         // remove permutation sets that has only one element.
         permutation_sets_by_poly_id.retain(|_, v| v.len() > 1);
-
-        println!("permutation_sets_by_poly_id after built: {permutation_sets_by_poly_id:?}");
 
         let witness = self
             .executor
@@ -282,12 +276,6 @@ where
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
 
-                // println!("column a_id: {}", columns.a_id);
-                // println!("column b_id: {}", columns.b_id);
-                // println!("column c_id: {}", columns.c_id);
-                // println!("column d_id: {}", columns.d_id);
-                // println!("column e_id: {}", columns.e_id);
-
                 if let Some(a) = vars.get(&gate.a) {
                     columns.a = a;
 
@@ -299,16 +287,12 @@ where
                                 *x == columns.a_perm.as_canonical_u64()
                                     - (call_index * plonk_circuit.len()) as u64
                             }) {
-                                //println!("a perm before setting: {}", columns.a_perm);
+                            
                                 let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
                                 columns.a_perm = <Val<SC>>::from_canonical_u64(
                                     vec[next_pos].clone()
                                         + (call_index * plonk_circuit.len()) as u64,
                                 );
-
-                                //println!("poly id is {}, value of a: {}", poly_id, a);
-
-                                //println!("a perm afer setting: {}", columns.a_perm);
                             }
                         }
                     }
@@ -318,21 +302,17 @@ where
 
                     if let Some(poly_id) = &gate.b.get_poly_id() {
                         if let Some(vec) = permutation_sets_by_poly_id.get(poly_id) {
-                            // If the poly has a permutation set, set a_perm to the next value in the set.
+                            
                             if let Some(pos) = vec.iter().position(|x| {
                                 *x == columns.b_perm.as_canonical_u64()
                                     - (call_index * plonk_circuit.len()) as u64
                             }) {
-                                //println!("a perm before setting: {}", columns.a_perm);
+                                
                                 let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
                                 columns.b_perm = <Val<SC>>::from_canonical_u64(
                                     vec[next_pos].clone()
                                         + (call_index * plonk_circuit.len()) as u64,
                                 );
-
-                                //println!("poly id is {}, value of a: {}", poly_id, a);
-
-                                //println!("a perm afer setting: {}", columns.a_perm);
                             }
                         }
                     }
@@ -347,16 +327,14 @@ where
                                 *x == columns.c_perm.as_canonical_u64()
                                     - (call_index * plonk_circuit.len()) as u64
                             }) {
-                                //println!("a perm before setting: {}", columns.a_perm);
+                                
                                 let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
                                 columns.c_perm = <Val<SC>>::from_canonical_u64(
                                     vec[next_pos].clone()
                                         + (call_index * plonk_circuit.len()) as u64,
                                 );
 
-                                //println!("poly id is {}, value of a: {}", poly_id, a);
-
-                                //println!("a perm afer setting: {}", columns.a_perm);
+                                
                             }
                         }
                     }
@@ -371,16 +349,13 @@ where
                                 *x == columns.d_perm.as_canonical_u64()
                                     - (call_index * plonk_circuit.len()) as u64
                             }) {
-                                //println!("a perm before setting: {}", columns.a_perm);
+                                
                                 let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
                                 columns.d_perm = <Val<SC>>::from_canonical_u64(
                                     vec[next_pos].clone()
                                         + (call_index * plonk_circuit.len()) as u64,
                                 );
 
-                                //println!("poly id is {}, value of a: {}", poly_id, a);
-
-                                //println!("a perm afer setting: {}", columns.a_perm);
                             }
                         }
                     }
@@ -395,26 +370,19 @@ where
                                 *x == columns.e_perm.as_canonical_u64()
                                     - (call_index * plonk_circuit.len()) as u64
                             }) {
-                                //println!("a perm before setting: {}", columns.a_perm);
+                                
                                 let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
                                 columns.e_perm = <Val<SC>>::from_canonical_u64(
                                     vec[next_pos].clone()
                                         + (call_index * plonk_circuit.len()) as u64,
                                 );
 
-                                //println!("poly id is {}, value of a: {}", poly_id, a);
-
-                                //println!("a perm afer setting: {}", columns.a_perm);
                             }
                         }
                     }
                 }
             }
         }
-
-        // based on permutation_sets_by_poly_id, crate permutation columns
-
-        println!("Permutation sets by poly ID: {permutation_sets_by_poly_id:?}");
 
         AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
     }

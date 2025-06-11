@@ -359,7 +359,6 @@ pub fn compile_guest(
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
-    println!("compile openvm done");
     compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_config)
 }
 
@@ -373,7 +372,6 @@ pub fn compile_exe(
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
-    println!("start compile_exe");
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
 
     // Point to our local guest
@@ -391,7 +389,6 @@ pub fn compile_exe(
         .iter()
         .map(|instr| instr.as_ref().unwrap().0.opcode);
     let airs = instructions_to_airs(sdk_vm_config.clone(), used_instructions);
-    println!("start customize_exe");
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -402,11 +399,8 @@ pub fn compile_exe(
         pgo_config,
     );
     // Generate the custom config based on the generated instructions
-    println!("finish customize_exe");
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    println!("export pil start");
     export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
-    println!("export pil done");
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -796,9 +790,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("start compilation");
         let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
-        println!("compilation is done");
         prove(&program, mock, recursion, stdin, segment_height)
     }
 

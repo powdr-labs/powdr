@@ -1,16 +1,14 @@
 use crate::{BusMap, BusType};
 use openvm_circuit_primitives::AlignedBorrow;
-use openvm_sdk::F;
-use openvm_stark_backend::air_builders::symbolic::symbolic_expression::SymbolicExpression;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
-    p3_air::{Air, AirBuilder, BaseAir},
+    p3_air::{Air,  BaseAir},
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
 };
-use std::{borrow::Borrow, ops::Neg};
+use std::borrow::Borrow;
 use struct_reflection::StructReflection;
 use struct_reflection::StructReflectionHelper;
 
