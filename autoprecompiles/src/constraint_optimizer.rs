@@ -3,7 +3,7 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 use inliner::DegreeBound;
 use powdr_constraint_solver::{
     constraint_system::BusInteractionHandler, inliner,
-    journalled_constraint_system::JournalledConstraintSystem,
+    journaling_constraint_system::JournalingConstraintSystem,
     quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -32,7 +32,7 @@ pub fn optimize_constraints<
     P: FieldElement,
     V: Ord + Clone + Eq + Hash + Display + IsWitnessColumn,
 >(
-    constraint_system: &mut JournalledConstraintSystem<P, V>,
+    constraint_system: &mut JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
@@ -59,7 +59,7 @@ pub fn optimize_constraints<
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &mut JournalledConstraintSystem<T, V>,
+    constraint_system: &mut JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<(), Error> {
     let result = Solver::new(constraint_system.system().clone())
@@ -82,7 +82,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &mut JournalledConstraintSystem<T, V>,
+    constraint_system: &mut JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T>,
 ) {
     // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
@@ -132,7 +132,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq>(
-    constraint_system: &mut JournalledConstraintSystem<P, V>,
+    constraint_system: &mut JournalingConstraintSystem<P, V>,
 ) {
     let zero = QuadraticSymbolicExpression::from(P::zero());
     constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
@@ -141,14 +141,14 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq>(
 }
 
 fn remove_equal_constraints<P: FieldElement, V: Eq + Hash + Clone>(
-    constraint_system: &mut JournalledConstraintSystem<P, V>,
+    constraint_system: &mut JournalingConstraintSystem<P, V>,
 ) {
     let mut seen = HashSet::new();
     constraint_system.retain_algebraic_constraints(|constraint| seen.insert(constraint.clone()));
 }
 
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
-    symbolic_machine: &mut JournalledConstraintSystem<P, V>,
+    symbolic_machine: &mut JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
 ) {
     let mut seen = HashSet::new();

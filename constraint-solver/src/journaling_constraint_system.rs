@@ -7,21 +7,21 @@ use powdr_number::FieldElement;
 use std::{fmt::Display, hash::Hash};
 
 /// A wrapper around `ConstraintSystem` that keeps track of changes.
-pub struct JournalledConstraintSystem<T: FieldElement, V> {
+pub struct JournalingConstraintSystem<T: FieldElement, V> {
     system: IndexedConstraintSystem<T, V>,
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash> From<ConstraintSystem<T, V>>
-    for JournalledConstraintSystem<T, V>
+impl<T: FieldElement, V: Clone + Ord + Hash, C: Into<IndexedConstraintSystem<T, V>>> From<C>
+    for JournalingConstraintSystem<T, V>
 {
-    fn from(system: ConstraintSystem<T, V>) -> Self {
+    fn from(system: C) -> Self {
         Self {
             system: system.into(),
         }
     }
 }
 
-impl<T: FieldElement, V: Hash> JournalledConstraintSystem<T, V> {
+impl<T: FieldElement, V: Hash> JournalingConstraintSystem<T, V> {
     /// Returns the underlying `ConstraintSystem`.
     pub fn system(&self) -> &ConstraintSystem<T, V> {
         self.system.system()
@@ -50,7 +50,7 @@ impl<T: FieldElement, V: Hash> JournalledConstraintSystem<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalledConstraintSystem<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalingConstraintSystem<T, V> {
     /// Applies multiple substitutions to the constraint system in an efficient manner.
     pub fn apply_substitutions(
         &mut self,
@@ -72,7 +72,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalledConstraint
     }
 }
 
-impl<T: FieldElement, V> JournalledConstraintSystem<T, V> {
+impl<T: FieldElement, V> JournalingConstraintSystem<T, V> {
     /// Removes all algebraic constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
@@ -92,7 +92,7 @@ impl<T: FieldElement, V> JournalledConstraintSystem<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for JournalledConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display> Display for JournalingConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.system)
     }
