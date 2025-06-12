@@ -1,3 +1,4 @@
+use crate::bus_map::{BusMap, BusType};
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
 use legacy_expression::ast_compatibility::CompatibleWithAstExpression;
@@ -16,13 +17,16 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 mod bitwise_lookup_optimizer;
+pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod legacy_expression;
 pub mod memory_optimizer;
+pub mod openvm;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub use powdr_constraint_solver::inliner::DegreeBound;
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
     // Wrap powdr_pilopt::simplify_expression, which uses powdr_ast::analyzed::AlgebraicExpression.
@@ -175,11 +179,12 @@ pub struct PcLookupBusInteraction<T> {
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
-impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
-    type Error = ();
-
-    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
-        (bus_interaction.id == PC_LOOKUP_BUS_ID)
+impl<T: FieldElement> PcLookupBusInteraction<T> {
+    fn try_from_symbolic_bus_interaction(
+        bus_interaction: &SymbolicBusInteraction<T>,
+        pc_lookup_bus_id: u64,
+    ) -> Result<Self, ()> {
+        (bus_interaction.id == pc_lookup_bus_id)
             .then(|| {
                 let from_pc = bus_interaction.args[0].clone();
                 let op = bus_interaction.args[1].clone();
@@ -188,19 +193,12 @@ impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteract
                     from_pc,
                     op,
                     args,
-                    bus_interaction,
+                    bus_interaction: bus_interaction.clone(),
                 }
             })
             .ok_or(())
     }
 }
-
-pub const EXECUTION_BUS_ID: u64 = 0;
-pub const MEMORY_BUS_ID: u64 = 1;
-pub const PC_LOOKUP_BUS_ID: u64 = 2;
-pub const VARIABLE_RANGE_CHECKER_BUS_ID: u64 = 3;
-pub const BITWISE_LOOKUP_BUS_ID: u64 = 6;
-pub const TUPLE_RANGE_CHECKER_BUS_ID: u64 = 7;
 
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, T: FieldElement, B> {
@@ -208,26 +206,32 @@ pub struct VmConfig<'a, T: FieldElement, B> {
     pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
-    // TODO: Add bus map
+    /// The bus map that maps bus id to bus type
+    pub bus_map: BusMap,
 }
 
 pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
     program: Vec<SymbolicInstructionStatement<T>>,
     vm_config: VmConfig<T, B>,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
-    let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
+    let (machine, subs) = statements_to_symbolic_machine(
+        &program,
+        vm_config.instruction_machines,
+        &vm_config.bus_map,
+    );
 
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
         Some(opcode),
         degree_bound,
+        &vm_config.bus_map,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
+    let machine = add_guards(machine, vm_config.bus_map);
 
     Ok((machine, subs))
 }
@@ -276,8 +280,13 @@ fn add_guards_constraint<T: FieldElement>(
 /// Assumptions:
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
-fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+fn add_guards<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    bus_map: BusMap,
+) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
+    let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
+    let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
     let max_id = machine
         .unique_columns()
@@ -307,10 +316,7 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
         .iter_mut()
-        .filter_map(|bus_int| match bus_int.id {
-            EXECUTION_BUS_ID => Some(bus_int),
-            _ => None,
-        })
+        .filter(|bus_int| bus_int.id == exec_bus_id)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -322,10 +328,7 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     let [program_bus_send] = machine
         .bus_interactions
         .iter_mut()
-        .filter_map(|bus_int| match bus_int.id {
-            PC_LOOKUP_BUS_ID => Some(bus_int),
-            _ => None,
-        })
+        .filter(|bus_int| bus_int.id == pc_lookup_bus_id)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -333,25 +336,18 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
 
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        match b.id {
-            EXECUTION_BUS_ID => {
-                // already handled
-            }
-            PC_LOOKUP_BUS_ID => {
-                // already handled
-            }
-            _ => {
-                if !satisfies_zero_witness(&b.mult) {
-                    // guard the multiplicity by `is_valid`
-                    b.mult = is_valid.clone() * b.mult.clone();
-                    // TODO this would not have to be cloned if we had *=
-                    //c.expr *= guard.clone();
-                } else {
-                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-                    let one = AlgebraicExpression::Number(1u64.into());
-                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                    is_valid_mults.push(e);
-                }
+        // already handled exec and pc lookup bus types
+        if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
+            if !satisfies_zero_witness(&b.mult) {
+                // guard the multiplicity by `is_valid`
+                b.mult = is_valid.clone() * b.mult.clone();
+                // TODO this would not have to be cloned if we had *=
+                //c.expr *= guard.clone();
+            } else {
+                // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                let one = AlgebraicExpression::Number(1u64.into());
+                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                is_valid_mults.push(e);
             }
         }
     }
