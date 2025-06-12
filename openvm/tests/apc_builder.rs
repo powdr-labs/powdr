@@ -1,24 +1,36 @@
+use openvm_instructions::VmOpcode;
+use openvm_sdk::config::SdkVmConfig;
+use powdr_autoprecompiles::openvm::ALL_OPCODES;
 use powdr_autoprecompiles::{
     build, openvm::default_openvm_bus_map, symbolic_instruction_builder::prelude::*, DegreeBound,
     SymbolicInstructionStatement, SymbolicMachine, VmConfig,
 };
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::{OPENVM_DEGREE_BOUND, POWDR_OPCODE};
-use std::collections::BTreeMap;
-
-fn build_airs(airs_path: String) -> BTreeMap<usize, SymbolicMachine<BabyBearField>> {
-    let file = std::fs::File::open(airs_path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    serde_cbor::from_reader(reader).unwrap()
-}
+use powdr_openvm::{instructions_to_airs, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use std::collections::{BTreeMap, HashSet};
 
 fn compile(
     program: Vec<SymbolicInstructionStatement<BabyBearField>>,
 ) -> (SymbolicMachine<BabyBearField>, Vec<Vec<u64>>) {
+    let sdk_vm_config = SdkVmConfig::builder()
+        .system(Default::default())
+        .rv32i(Default::default())
+        .rv32m(Default::default())
+        .io(Default::default())
+        .keccak(Default::default())
+        .build();
+
+    let all_instructions = ALL_OPCODES
+        .iter()
+        .map(|&opcode| VmOpcode::from_usize(opcode as usize))
+        .collect::<HashSet<_>>();
+
+    let airs = instructions_to_airs(sdk_vm_config, &all_instructions);
+
     // Build VmConfig with an airs.cbor that should contain map from all possible opcodes to symbolic machines.
     let vm_config = VmConfig {
-        instruction_machines: &build_airs("tests/airs.cbor".to_string()),
+        instruction_machines: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),

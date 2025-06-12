@@ -1,4 +1,5 @@
 //! Builds SymbolicInstructionStatement to create input program for testing powdr_autoprecompile::build
+use crate::openvm::prelude::*;
 use crate::SymbolicInstructionStatement;
 use powdr_number::FieldElement;
 
@@ -88,51 +89,51 @@ macro_rules! ls_ops {
 
 // 5-arg instructions
 build_instr5!(
-    (beq, 544),
-    (bne, 545),
-    (blt, 549),
-    (bltu, 550),
-    (bge, 551),
-    (bgeu, 552),
-    (jal, 560),
-    (lui, 561),
-    (jalr, 565),
-    (auipc, 576),
-    (mul, 592),
-    (mulh, 593),
-    (mulhsu, 594),
-    (mulhu, 595),
-    (div_, 596),
-    (divu, 597),
-    (rem, 598),
-    (remu, 599),
-    (hint_storew, 608),
-    (hint_buffer, 609)
+    (beq, OPCODE_BEQ),
+    (bne, OPCODE_BNE),
+    (blt, OPCODE_BLT),
+    (bltu, OPCODE_BLTU),
+    (bge, OPCODE_BGE),
+    (bgeu, OPCODE_BGEU),
+    (jal, OPCODE_JAL),
+    (lui, OPCODE_LUI),
+    (jalr, OPCODE_JALR),
+    (auipc, OPCODE_AUIPC),
+    (mul, OPCODE_MUL),
+    (mulh, OPCODE_MULH),
+    (mulhsu, OPCODE_MULHSU),
+    (mulhu, OPCODE_MULHU),
+    (div_, OPCODE_DIV),
+    (divu, OPCODE_DIVU),
+    (rem, OPCODE_REM),
+    (remu, OPCODE_REMU),
+    (hint_storew, OPCODE_HINT_STOREW),
+    (hint_buffer, OPCODE_HINT_BUFFER)
 );
 
 // Use macros to define ALU and LS ops
 alu_ops!(
-    (add, 512),
-    (sub, 513),
-    (xor_, 514),
-    (or_, 515),
-    (and_, 516),
-    (sll, 517),
-    (srl, 518),
-    (sra, 519),
-    (slt, 520),
-    (sltu, 521)
+    (add, OPCODE_ADD),
+    (sub, OPCODE_SUB),
+    (xor_, OPCODE_XOR),
+    (or_, OPCODE_OR),
+    (and_, OPCODE_AND),
+    (sll, OPCODE_SLL),
+    (srl, OPCODE_SRL),
+    (sra, OPCODE_SRA),
+    (slt, OPCODE_SLT),
+    (sltu, OPCODE_SLTU)
 );
 
 ls_ops!(
-    (loadw, 528),
-    (loadbu, 529),
-    (loadhu, 530),
-    (storew, 531),
-    (storeh, 532),
-    (storeb, 533),
-    (loadb, 534),
-    (loadh, 535)
+    (loadw, OPCODE_LOADW),
+    (loadbu, OPCODE_LOADBU),
+    (loadhu, OPCODE_LOADHU),
+    (storew, OPCODE_STOREW),
+    (storeh, OPCODE_STOREH),
+    (storeb, OPCODE_STOREB),
+    (loadb, OPCODE_LOADB),
+    (loadh, OPCODE_LOADH)
 );
 
 // Prelude module re-exporting all instruction builders
