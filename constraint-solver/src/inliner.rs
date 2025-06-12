@@ -22,9 +22,9 @@ pub fn replace_constrained_witness_columns<
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    constraint_system: &mut JournalingConstraintSystem<T, V>,
+    mut constraint_system: JournalingConstraintSystem<T, V>,
     degree_bound: DegreeBound,
-) {
+) -> JournalingConstraintSystem<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
     let constraint_count = constraint_system
@@ -66,6 +66,8 @@ pub fn replace_constrained_witness_columns<
         expr.referenced_unknown_variables()
             .all(|var| !inlined_vars.contains(var))
     }));
+
+    constraint_system
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
@@ -179,7 +181,7 @@ mod test {
 
     #[test]
     fn test_no_substitution() {
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("a") * var("b") + var("c") * var("d"),
                 var("e") * var("e") - constant(2),
@@ -188,7 +190,8 @@ mod test {
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
+        let constraint_system =
+            replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         assert_eq!(constraint_system.algebraic_constraints().count(), 2);
     }
 
@@ -201,7 +204,7 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("a") + var("b") + var("c"),
                 var("b") + var("d") - constant(1),
@@ -211,7 +214,8 @@ mod test {
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
+        let constraint_system =
+            replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) a + b + c = 0        => a = -b - c
         // 2) b + d - 1 = 0        => d = -b + 1
         // 3) c + b + a + d = result
@@ -257,13 +261,14 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: identities,
             bus_interactions,
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
+        let constraint_system =
+            replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) b + d = 0            => b = -d
         // 2) a * b = c            => a * (-d) = c => a * d + c = 0
         // 3) a + b + c + d = result
@@ -301,13 +306,14 @@ mod test {
         identities.push(expr_constraint);
 
         // no columns to keep
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: identities,
             bus_interactions: vec![],
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
+        let constraint_system =
+            replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) b + d = 0        => b = -d
         // 2) c * d = e        => e = c * d
         // 3) a + b + c + d + e = result
@@ -334,7 +340,7 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("y") - (var("x") + constant(3)),
                 var("z") - (var("y") + constant(2)),
@@ -344,7 +350,8 @@ mod test {
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
+        let constraint_system =
+            replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) y = x + 3
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
         // 3) result = z + 1 ⇒ result = (x + 5) + 1 = x + 6
@@ -361,7 +368,7 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("a") - (var("b") + constant(1)),
                 var("c") - (var("a") * var("a")),
@@ -387,7 +394,8 @@ mod test {
         }
         .into();
 
-        replace_constrained_witness_columns(&mut constraint_system, bounds(3, 3));
+        let constraint_system =
+            replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
         let constraints = constraint_system.algebraic_constraints().collect_vec();
         let [identity] = &constraints[..] else {
@@ -452,22 +460,23 @@ mod test {
         suboptimal_order_identities.push(constraint2.clone()); // b = c + d
         suboptimal_order_identities.push(constraint4.clone()); // c = d * d
 
-        let mut optimal_system = ConstraintSystem {
+        let optimal_system = ConstraintSystem {
             algebraic_constraints: optimal_order_identities,
             bus_interactions: vec![],
         }
         .into();
 
-        let mut suboptimal_system = ConstraintSystem {
+        let suboptimal_system = ConstraintSystem {
             algebraic_constraints: suboptimal_order_identities,
             bus_interactions: vec![],
         }
         .into();
 
         // Apply the same optimization to both systems
-        replace_constrained_witness_columns(&mut optimal_system, bounds(5, 5));
+        let optimal_system = replace_constrained_witness_columns(optimal_system, bounds(5, 5));
 
-        replace_constrained_witness_columns(&mut suboptimal_system, bounds(5, 5));
+        let suboptimal_system =
+            replace_constrained_witness_columns(suboptimal_system, bounds(5, 5));
 
         // Assert the difference in optimization results
         assert_eq!(optimal_system.algebraic_constraints().count(), 3);
