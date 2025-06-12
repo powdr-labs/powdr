@@ -183,9 +183,7 @@ where
         let q_copy_constraint: AB::Expr = AB::F::from_canonical_u64(1).into();
 
         builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::CopyConstraintLookup)
-                .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+            10,
             vec![*a, *a_id],
             q_copy_constraint.clone(),
             1,
