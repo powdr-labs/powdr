@@ -63,6 +63,8 @@ use tracing_subscriber::{
     Layer,
 };
 
+mod termination_analysis;
+
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 

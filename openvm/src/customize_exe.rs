@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::termination_analysis::analyze_basic_blocks;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use itertools::Itertools;
@@ -36,7 +37,7 @@ use crate::{
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 // TODO: read this from program
-const OPENVM_INIT_PC: u32 = 0x0020_0800;
+pub const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 const POWDR_OPCODE: usize = 0x10ff;
 
@@ -159,6 +160,8 @@ pub fn customize<P: IntoOpenVm>(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+
+    analyze_basic_blocks(&blocks, std::iter::empty());
 
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
@@ -386,7 +389,7 @@ pub struct BasicBlock<F> {
 }
 
 impl<F: PrimeField32> BasicBlock<F> {
-    fn pretty_print(&self, instr_formatter: impl Fn(&Instruction<F>) -> String) -> String {
+    pub fn pretty_print(&self, instr_formatter: impl Fn(&Instruction<F>) -> String) -> String {
         format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
             + &self
                 .statements
