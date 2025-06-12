@@ -1,12 +1,19 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use inliner::DegreeBound;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler, inliner,
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    inliner,
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    solver::Solver,
 };
 use powdr_number::FieldElement;
+use std::fmt;
 
 use crate::stats_logger::{IsWitnessColumn, StatsLogger};
 
@@ -62,18 +69,100 @@ pub fn optimize_constraints<
     Ok(constraint_system)
 }
 
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+enum Variable<V> {
+    Variable(V),
+    BusInteractionArg(usize, usize),
+}
+
+impl<V: Display> fmt::Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Variable(v) => write!(f, "{v}"),
+            Variable::BusInteractionArg(bus_index, field_index) => {
+                write!(f, "BusInteractionArg({bus_index}, {field_index})")
+            }
+        }
+    }
+}
+
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
-    let result = Solver::new(constraint_system.system().clone())
+    let mut new_constraints = Vec::new();
+    let mut bus_interaction_vars = BTreeMap::new();
+    let bus_interactions = constraint_system
+        .system()
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .map(|(bus_interaction_index, bus_interaction)| {
+            BusInteraction::from_iter(bus_interaction.fields().enumerate().map(
+                |(field_index, expr)| {
+                    let transformed_expr =
+                        expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
+                    let v = Variable::BusInteractionArg(bus_interaction_index, field_index);
+                    new_constraints.push(
+                        transformed_expr
+                            - QuadraticSymbolicExpression::from_unknown_variable(v.clone()),
+                    );
+                    bus_interaction_vars.insert(v.clone(), expr.clone());
+                    QuadraticSymbolicExpression::from_unknown_variable(v)
+                },
+            ))
+        })
+        .collect();
+    let raw_constraint_system = ConstraintSystem {
+        algebraic_constraints: constraint_system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
+            .collect(),
+        bus_interactions,
+    };
+    let result = Solver::new(raw_constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in result.assignments.iter() {
         log::trace!("  {var} = {value}");
     }
-    constraint_system.apply_substitutions(result.assignments);
+    // If a bus interaction field is equal to a constant, replace the definition by the constant.
+    for (var, value) in result.assignments.iter() {
+        if let Variable::BusInteractionArg(..) = var {
+            if let Some(value) = value.try_to_number() {
+                bus_interaction_vars.insert(var.clone(), value.into());
+            }
+        }
+    }
+    for (var, mut value) in result.assignments.into_iter() {
+        if let Variable::Variable(v) = var {
+            // Replace all bus interaction values with their definitions. Afterwards, there should not be any
+            // `Variable::BusInteractionArg` left.
+            // TODO: This loop seems inefficient.
+            for (bus_interaction_var, value2) in bus_interaction_vars.iter() {
+                value.substitute_by_unknown(
+                    bus_interaction_var,
+                    &value2.transform_var_type(&mut |v| Variable::Variable(v.clone())),
+                );
+            }
+            // Unwrap the original variables.
+            let value = value.transform_var_type(&mut |v| match v {
+                Variable::Variable(v) => v.clone(),
+                Variable::BusInteractionArg(..) => unreachable!(),
+            });
+            constraint_system.substitute_by_unknown(&v, &value);
+        }
+    }
+    for (bus_interaction_var, value) in bus_interaction_vars {
+        if let Variable::BusInteractionArg(bus_index, field_index) = bus_interaction_var {
+            constraint_system.replace_bus_interaction_field(bus_index, field_index, value);
+        } else {
+            unreachable!();
+        }
+    }
     Ok(constraint_system)
 }
 
