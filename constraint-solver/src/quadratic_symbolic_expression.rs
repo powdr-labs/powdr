@@ -924,34 +924,64 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
 
 impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let formatted = self
-            .quadratic
+        let (sign, s) = self.to_signed_string();
+        if sign {
+            write!(f, "-({s})")
+        } else {
+            write!(f, "{s}")
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
+    fn to_signed_string(&self) -> (bool, String) {
+        self.quadratic
             .iter()
-            .map(|(a, b)| format!("({a}) * ({b})"))
+            .map(|(a, b)| {
+                let (a_sign, a) = a.to_signed_string();
+                let (b_sign, b) = b.to_signed_string();
+                (a_sign ^ b_sign, format!("({a}) * ({b})"))
+            })
             .chain(
                 self.linear
                     .iter()
                     .map(|(var, coeff)| match coeff.try_to_number() {
-                        Some(k) if k == 1.into() => format!("{var}"),
-                        Some(k) if k == (-1).into() => format!("-{var}"),
-                        _ => format!("{coeff} * {var}"),
+                        Some(k) if k == 1.into() => (false, format!("{var}")),
+                        Some(k) if k == (-1).into() => (true, format!("{var}")),
+                        _ => {
+                            let (sign, coeff) = Self::symbolic_expression_to_signed_string(coeff);
+                            (sign, format!("{coeff} * {var}"))
+                        }
                     }),
             )
             .chain(match self.constant.try_to_number() {
                 Some(k) if k == T::zero() => None,
-                _ => Some(format!("{}", self.constant)),
+                _ => Some(Self::symbolic_expression_to_signed_string(&self.constant)),
             })
-            .format(" + ")
-            .to_string();
-        write!(
-            f,
-            "{}",
-            if formatted.is_empty() {
-                "0".to_string()
-            } else {
-                formatted
+            .reduce(|(n1, p1), (n2, p2)| {
+                (
+                    n1,
+                    if n1 == n2 {
+                        format!("{p1} + {p2}")
+                    } else {
+                        format!("{p1} - {p2}")
+                    },
+                )
+            })
+            .unwrap_or((false, "0".to_string()))
+    }
+
+    fn symbolic_expression_to_signed_string(value: &SymbolicExpression<T, V>) -> (bool, String) {
+        match value.try_to_number() {
+            Some(k) => {
+                if k.is_in_lower_half() {
+                    (false, format!("{k}"))
+                } else {
+                    (true, format!("{}", -k))
+                }
             }
-        )
+            _ => (false, value.to_string()),
+        }
     }
 }
 
@@ -984,10 +1014,10 @@ mod tests {
         let a = Qse::from_unknown_variable("A");
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let t: Qse = x * y - a + b;
-        assert_eq!(t.to_string(), "(X) * (Y) + -A + B");
+        assert_eq!(t.to_string(), "(X) * (Y) - A + B");
         assert_eq!(
             (t.clone() + t).to_string(),
-            "(X) * (Y) + (X) * (Y) + -2 * A + (B + B)"
+            "(X) * (Y) + (X) * (Y) - 2 * A + (B + B)"
         );
     }
 
@@ -1509,11 +1539,11 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
             expr.try_solve_for(&"x").unwrap().to_string(),
-            "-w + -3 * y + -5"
+            "-(w + 3 * y + 5)"
         );
         assert_eq!(
             expr.try_solve_for(&"y").unwrap().to_string(),
-            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+            "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert!(expr.try_solve_for(&"t").is_none());
     }
@@ -1524,11 +1554,11 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
             expr.try_solve_for_expr(&var("x")).unwrap().to_string(),
-            "-w + -3 * y + -5"
+            "-(w + 3 * y + 5)"
         );
         assert_eq!(
             expr.try_solve_for_expr(&var("y")).unwrap().to_string(),
-            "6148914689804861440 * w + 6148914689804861440 * x + -6148914689804861442"
+            "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert_eq!(
             expr.try_solve_for_expr(&-(constant(3) * var("y")))
@@ -1546,7 +1576,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             expr.try_solve_for_expr(&(var("x") + constant(3) * var("y") + constant(2)))
                 .unwrap()
                 .to_string(),
-            "-w + -3"
+            "-(w + 3)"
         );
         // We cannot solve these because the constraint does not contain a linear multiple
         // of the expression.
