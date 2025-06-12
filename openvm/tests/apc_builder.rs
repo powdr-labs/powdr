@@ -8,7 +8,7 @@ use powdr_autoprecompiles::{
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::{instructions_to_airs, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
 fn compile(
     program: Vec<SymbolicInstructionStatement<BabyBearField>>,
