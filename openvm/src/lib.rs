@@ -9,14 +9,22 @@ use air_builder::AirKeygenBuilder;
 use derive_more::From;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
+use openvm_algebra_circuit::{Fp2ExtensionPeriphery, ModularExtensionPeriphery};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
     SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
 };
+use openvm_circuit::system::phantom::PhantomChip;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
+use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
+use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
+use openvm_ecc_circuit::WeierstrassExtensionPeriphery;
 use openvm_instructions::VmOpcode;
+use openvm_keccak256_circuit::Keccak256Periphery;
+use openvm_native_circuit::CastFExtensionPeriphery;
+use openvm_pairing_circuit::PairingExtensionPeriphery;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
@@ -40,7 +48,7 @@ use openvm_stark_sdk::openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear;
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, SymbolicMachine};
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
@@ -617,15 +625,184 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn get_airs_and_bus_map<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
-    vm_config: VC,
+fn get_bus_map<F: PrimeField32, E>(
+    chip_complex: &VmChipComplex<F, E, SdkVmConfigPeriphery<F>>,
+) -> BusMap {
+    enum ExtractionError {
+        NoBus,
+        #[allow(dead_code)]
+        Unimplemented(&'static str),
+    }
+
+    // Define how to extract bus information from the chips we know
+    fn extract_bitwise_lookup_bus(
+        chip: &SharedBitwiseOperationLookupChip<8>,
+    ) -> Result<(u64, BusType), ExtractionError> {
+        Ok((chip.bus().inner.index as u64, BusType::BitwiseLookup))
+    }
+    fn extract_range_tuple_checker_bus(
+        chip: &SharedRangeTupleCheckerChip<2>,
+    ) -> Result<(u64, BusType), ExtractionError> {
+        Ok((chip.bus().inner.index as u64, BusType::TupleRangeChecker))
+    }
+    fn extract_phantom_bus<G>(_: &PhantomChip<G>) -> Result<(u64, BusType), ExtractionError> {
+        Err(ExtractionError::NoBus)
+    }
+
+    BusMap::from_id_type_pairs(
+        {
+            let base = &chip_complex.base;
+            [
+                (
+                    base.execution_bus().inner.index as u64,
+                    BusType::ExecutionBridge,
+                ),
+                (base.memory_bus().inner.index as u64, BusType::Memory),
+                (
+                    base.range_checker_bus().inner.index as u64,
+                    BusType::VariableRangeChecker,
+                ),
+                (base.program_bus().inner.index as u64, BusType::PcLookup),
+            ]
+        }
+        .into_iter()
+        .chain(
+            chip_complex
+                .inventory
+                .periphery()
+                .iter()
+                .map(|chip| match chip {
+                    SdkVmConfigPeriphery::System(system_periphery) => match system_periphery {
+                        openvm_circuit::arch::SystemPeriphery::Poseidon2(_) => {
+                            Err(ExtractionError::Unimplemented(
+                                "Poseidon2PeripheryAir does not expose its LookupBus",
+                            ))
+                        }
+                    },
+                    SdkVmConfigPeriphery::Rv32i(rv32_i_periphery) => match rv32_i_periphery {
+                        openvm_rv32im_circuit::Rv32IPeriphery::BitwiseOperationLookup(
+                            shared_bitwise_operation_lookup_chip,
+                        ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                        openvm_rv32im_circuit::Rv32IPeriphery::Phantom(phantom_chip) => {
+                            extract_phantom_bus(phantom_chip)
+                        }
+                    },
+                    SdkVmConfigPeriphery::Io(rv32_io_periphery) => match rv32_io_periphery {
+                        openvm_rv32im_circuit::Rv32IoPeriphery::BitwiseOperationLookup(
+                            shared_bitwise_operation_lookup_chip,
+                        ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                        openvm_rv32im_circuit::Rv32IoPeriphery::Phantom(phantom_chip) => {
+                            extract_phantom_bus(phantom_chip)
+                        }
+                    },
+                    SdkVmConfigPeriphery::Keccak(keccak256_periphery) => {
+                        match keccak256_periphery {
+                            Keccak256Periphery::BitwiseOperationLookup(
+                                shared_bitwise_operation_lookup_chip,
+                            ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                            Keccak256Periphery::Phantom(phantom_chip) => {
+                                extract_phantom_bus(phantom_chip)
+                            }
+                        }
+                    }
+                    SdkVmConfigPeriphery::Sha256(sha256_periphery) => match sha256_periphery {
+                        openvm_sha256_circuit::Sha256Periphery::BitwiseOperationLookup(
+                            shared_bitwise_operation_lookup_chip,
+                        ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                        openvm_sha256_circuit::Sha256Periphery::Phantom(phantom_chip) => {
+                            extract_phantom_bus(phantom_chip)
+                        }
+                    },
+                    SdkVmConfigPeriphery::Native(native_periphery) => match native_periphery {
+                        openvm_native_circuit::NativePeriphery::Phantom(phantom_chip) => {
+                            extract_phantom_bus(phantom_chip)
+                        }
+                    },
+                    SdkVmConfigPeriphery::Rv32m(rv32_m_periphery) => match rv32_m_periphery {
+                        openvm_rv32im_circuit::Rv32MPeriphery::BitwiseOperationLookup(
+                            shared_bitwise_operation_lookup_chip,
+                        ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                        openvm_rv32im_circuit::Rv32MPeriphery::RangeTupleChecker(
+                            shared_range_tuple_checker_chip,
+                        ) => extract_range_tuple_checker_bus(shared_range_tuple_checker_chip),
+                        openvm_rv32im_circuit::Rv32MPeriphery::Phantom(phantom_chip) => {
+                            extract_phantom_bus(phantom_chip)
+                        }
+                    },
+                    SdkVmConfigPeriphery::BigInt(int256_periphery) => match int256_periphery {
+                        openvm_bigint_circuit::Int256Periphery::BitwiseOperationLookup(
+                            shared_bitwise_operation_lookup_chip,
+                        ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                        openvm_bigint_circuit::Int256Periphery::RangeTupleChecker(
+                            range_tuple_checker_chip,
+                        ) => extract_range_tuple_checker_bus(range_tuple_checker_chip),
+                        openvm_bigint_circuit::Int256Periphery::Phantom(phantom_chip) => {
+                            extract_phantom_bus(phantom_chip)
+                        }
+                    },
+                    SdkVmConfigPeriphery::Modular(modular_extension_periphery) => {
+                        match modular_extension_periphery {
+                            ModularExtensionPeriphery::BitwiseOperationLookup(
+                                shared_bitwise_operation_lookup_chip,
+                            ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                            ModularExtensionPeriphery::Phantom(phantom_chip) => {
+                                extract_phantom_bus(phantom_chip)
+                            }
+                        }
+                    }
+                    SdkVmConfigPeriphery::Fp2(fp2_extension_periphery) => {
+                        match fp2_extension_periphery {
+                            Fp2ExtensionPeriphery::BitwiseOperationLookup(
+                                shared_bitwise_operation_lookup_chip,
+                            ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                            Fp2ExtensionPeriphery::Phantom(phantom_chip) => {
+                                extract_phantom_bus(phantom_chip)
+                            }
+                        }
+                    }
+                    SdkVmConfigPeriphery::Pairing(pairing_extension_periphery) => {
+                        match pairing_extension_periphery {
+                            PairingExtensionPeriphery::BitwiseOperationLookup(
+                                shared_bitwise_operation_lookup_chip,
+                            ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                            PairingExtensionPeriphery::Phantom(phantom_chip) => {
+                                extract_phantom_bus(phantom_chip)
+                            }
+                        }
+                    }
+                    SdkVmConfigPeriphery::Ecc(weierstrass_extension_periphery) => {
+                        match weierstrass_extension_periphery {
+                            WeierstrassExtensionPeriphery::BitwiseOperationLookup(
+                                shared_bitwise_operation_lookup_chip,
+                            ) => extract_bitwise_lookup_bus(shared_bitwise_operation_lookup_chip),
+                            WeierstrassExtensionPeriphery::Phantom(phantom_chip) => {
+                                extract_phantom_bus(phantom_chip)
+                            }
+                        }
+                    }
+                    SdkVmConfigPeriphery::CastF(cast_fextension_periphery) => {
+                        match cast_fextension_periphery {
+                            CastFExtensionPeriphery::Placeholder(_) => {
+                                Err(ExtractionError::Unimplemented(
+                                    "Unsure how to handle Placeholder CastFExtensionPeriphery",
+                                ))
+                            }
+                        }
+                    }
+                })
+                // silently ignore all extraction errors
+                .filter_map(Result::ok),
+        ),
+    )
+}
+
+pub fn get_airs_and_bus_map<P: IntoOpenVm>(
+    vm_config: SdkVmConfig,
     used_instructions: &HashSet<VmOpcode>,
-) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap)
-where
-    VC::Executor: Chip<BabyBearSC>,
-    VC::Periphery: Chip<BabyBearSC>,
-{
+) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap) {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
+
+    let bus_map = get_bus_map(&chip_complex);
 
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
@@ -662,9 +839,7 @@ where
                 })
             })
             .collect(),
-        // TODO: We always return the default map here, which is only correct for a subset of the possible `vm_config`.
-        // Instead, the bus map should be generated from the VM config by inspecting the chip complex above
-        default_openvm_bus_map(),
+        bus_map,
     )
 }
 
