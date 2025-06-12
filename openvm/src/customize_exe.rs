@@ -198,8 +198,10 @@ pub fn customize<P: IntoOpenVm>(
     let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    let apcs = blocks[n_skip..n_skip + n_acc]
+    let apcs = blocks
         .par_iter_mut()
+        .skip(n_skip)
+        .take(n_acc)
         .enumerate()
         .map(|(index, acc_block)| {
             tracing::debug!(
