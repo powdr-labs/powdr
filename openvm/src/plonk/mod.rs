@@ -44,7 +44,7 @@ impl Variable<AlgebraicReference> {
 
     pub fn get_temp_id(&self) -> Option<u64> {
         match self {
-            Variable::Tmp(v) => Some(v.clone() as u64),
+            Variable::Tmp(v) => Some(*v as u64),
             _ => None,
         }
     }
