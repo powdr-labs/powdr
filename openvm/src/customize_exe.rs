@@ -331,9 +331,6 @@ fn branch_opcodes() -> Vec<usize> {
         openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
             .global_opcode()
             .as_usize(),
-        openvm_rv32im_transpiler::Rv32JalLuiOpcode::LUI
-            .global_opcode()
-            .as_usize(),
         openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
             .global_opcode()
             .as_usize(),
