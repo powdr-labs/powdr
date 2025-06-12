@@ -1,6 +1,5 @@
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::SdkVmConfig;
-use powdr_autoprecompiles::openvm::ALL_OPCODES;
 use powdr_autoprecompiles::{
     build, openvm::default_openvm_bus_map, symbolic_instruction_builder::prelude::*, DegreeBound,
     SymbolicInstructionStatement, SymbolicMachine, VmConfig,
@@ -10,6 +9,7 @@ use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::{instructions_to_airs, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use std::collections::HashSet;
 
+// A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
 fn compile(
     program: Vec<SymbolicInstructionStatement<BabyBearField>>,
 ) -> (SymbolicMachine<BabyBearField>, Vec<Vec<u64>>) {
@@ -21,14 +21,13 @@ fn compile(
         .keccak(Default::default())
         .build();
 
-    let all_instructions = ALL_OPCODES
+    let program_instructions = program
         .iter()
-        .map(|&opcode| VmOpcode::from_usize(opcode as usize))
+        .map(|instr| VmOpcode::from_usize(instr.opcode))
         .collect::<HashSet<_>>();
 
-    let airs = instructions_to_airs(sdk_vm_config, &all_instructions);
+    let airs = instructions_to_airs(sdk_vm_config, &program_instructions);
 
-    // Build VmConfig with an airs.cbor that should contain map from all possible opcodes to symbolic machines.
     let vm_config = VmConfig {
         instruction_machines: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
