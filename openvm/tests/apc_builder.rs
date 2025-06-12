@@ -69,7 +69,7 @@ fn simple_program() {
     let (machine, _) = compile(program);
 
     println!("machine: ");
-    println!("{}", machine.to_string());
+    println!("{machine}");
 
     // assert_eq!(machine.to_string(), "<TODO>");
 }
