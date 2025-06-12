@@ -1,5 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 
+use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -26,6 +27,7 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
     let mut queue = blocks.iter().collect::<VecDeque<_>>();
     while let Some(block) = queue.pop_front() {
         println!("{}", block.pretty_print(openvm_instruction_formatter));
+        let successors = successors(block);
     }
     todo!();
 }
@@ -41,7 +43,7 @@ impl<F> From<&BasicBlock<F>> for BasicBlockIdentifier {
 
 /// Returns the indices of the successors of this basic block or
 /// an error if we cannot determine the successors for certain.
-fn successors<F>(block: &BasicBlock<F>) -> Result<Vec<usize>, ()> {
+fn successors<F: PrimeField32>(block: &BasicBlock<F>) -> Result<Vec<F>, ()> {
     block
         .statements
         .iter()
@@ -49,83 +51,111 @@ fn successors<F>(block: &BasicBlock<F>) -> Result<Vec<usize>, ()> {
         .collect()
 }
 
-/// Returns `Ok(Some(offset))` where `offset` is the pc offset of the instruction this
+/// Returns `Ok(Some(offset))` where `offset` is the relative pc offset of the instruction this
 /// instruction might jump to. Returns `Ok(None)` if this is not a jump instruction
 /// and returns an error if we cannot determine the jump destination for certain.
-fn jump_destination<F>(instruction: &Instruction<F>) -> Result<Option<usize>, ()> {
+fn jump_destination<F: PrimeField32>(instruction: &Instruction<F>) -> Result<Option<F>, ()> {
+    println!(
+        "Analyzing instruction: {}",
+        openvm_instruction_formatter(instruction)
+    );
     let opcode = instruction.opcode.as_usize();
-    if opcode
-        == openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
-            .global_opcode()
-            .as_usize()
-    {
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchEqualOpcode::BNE
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::Rv32JalLuiOpcode::LUI
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else {
-        todo!()
-    };
-    // TODO also handle those
-    // // The instructions below are structs so we cannot call `global_opcode()` on them without
-    // // an instnace, so we manually build the global opcodes.
-    // Rv32BranchEqual256Opcode::CLASS_OFFSET
-    //     + openvm_rv32im_transpiler::BranchEqualOpcode::BEQ.local_usize(),
-    // Rv32BranchEqual256Opcode::CLASS_OFFSET
-    //     + openvm_rv32im_transpiler::BranchEqualOpcode::BNE.local_usize(),
-    // Rv32BranchLessThan256Opcode::CLASS_OFFSET
-    //     + openvm_rv32im_transpiler::BranchLessThanOpcode::BLT.local_usize(),
-    // Rv32BranchLessThan256Opcode::CLASS_OFFSET
-    //     + openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU.local_usize(),
-    // Rv32BranchLessThan256Opcode::CLASS_OFFSET
-    //     + openvm_rv32im_transpiler::BranchLessThanOpcode::BGE.local_usize(),
-    // Rv32BranchLessThan256Opcode::CLASS_OFFSET
-    //     + openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU.local_usize(),
-    todo!()
+    Ok(Some(
+        if opcode
+            == openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
+                .global_opcode()
+                .as_usize()
+        {
+            todo!()
+        } else if opcode
+            == openvm_rv32im_transpiler::BranchEqualOpcode::BNE
+                .global_opcode()
+                .as_usize()
+        {
+            todo!()
+        } else if opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
+                .global_opcode()
+                .as_usize()
+        {
+            todo!()
+        } else if opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU
+                .global_opcode()
+                .as_usize()
+        {
+            todo!()
+        } else if opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
+                .global_opcode()
+                .as_usize()
+        {
+            todo!()
+        } else if opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
+                .global_opcode()
+                .as_usize()
+        {
+            println!("-> {}", instruction.c);
+            instruction.c
+        } else if opcode
+            == openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
+                .global_opcode()
+                .as_usize()
+        {
+            // TODO we might treat JAL the same way as a conditional jump.
+            // is this correct? If the destination always panics, then we do not continue here.
+            
+
+            todo!()
+        } else if opcode
+            == openvm_rv32im_transpiler::Rv32JalLuiOpcode::LUI
+                .global_opcode()
+                .as_usize()
+        {
+            // TODO why marked as jump?
+            return Ok(None);
+        } else if opcode
+            == openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
+                .global_opcode()
+                .as_usize()
+        {
+            // dynamic jump, TODO but might be static if we use register 0?
+            return Err(());
+        } else if opcode
+            == Rv32BranchEqual256Opcode::CLASS_OFFSET
+                + openvm_rv32im_transpiler::BranchEqualOpcode::BEQ.local_usize()
+        {
+            todo!()
+        } else if opcode
+            == Rv32BranchEqual256Opcode::CLASS_OFFSET
+                + openvm_rv32im_transpiler::BranchEqualOpcode::BNE.local_usize()
+        {
+            todo!()
+        } else if opcode
+            == Rv32BranchLessThan256Opcode::CLASS_OFFSET
+                + openvm_rv32im_transpiler::BranchLessThanOpcode::BLT.local_usize()
+        {
+            todo!()
+        } else if opcode
+            == Rv32BranchLessThan256Opcode::CLASS_OFFSET
+                + openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU.local_usize()
+        {
+            todo!()
+        } else if opcode
+            == Rv32BranchLessThan256Opcode::CLASS_OFFSET
+                + openvm_rv32im_transpiler::BranchLessThanOpcode::BGE.local_usize()
+        {
+            todo!()
+        } else if opcode
+            == Rv32BranchLessThan256Opcode::CLASS_OFFSET
+                + openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU.local_usize()
+        {
+            todo!()
+        } else {
+            return Ok(None);
+        },
+    ))
 }
 
 fn adjusted_pc(i: usize) -> u32 {
