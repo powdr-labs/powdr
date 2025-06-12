@@ -155,6 +155,12 @@ where
             .map(|&id| (id, vec![]))
             .collect();
 
+        // Create permutation sets for temp variables.
+        let mut permutation_sets_by_tmp_id: BTreeMap<u64, Vec<u64>> = (0..plonk_circuit
+            .num_tmp_vars())
+            .map(|id| (id as u64, vec![]))
+            .collect();
+
         for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
             for (i, witness_col) in [&gate.a, &gate.b, &gate.c, &gate.d, &gate.e]
                 .into_iter()
@@ -165,8 +171,15 @@ where
                         vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + i as u64);
                     }
                 }
+                if let Variable::Tmp(id) = witness_col {
+                    if let Some(vec) = permutation_sets_by_tmp_id.get_mut(&(*id as u64)) {
+                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + i as u64);
+                    }
+                }
             }
         }
+
+        println!("permutation sets by temp id: {permutation_sets_by_tmp_id:?}");
 
         // remove permutation sets that has only one element.
         permutation_sets_by_poly_id.retain(|_, v| v.len() > 1);
@@ -274,6 +287,21 @@ where
                                 }
                             }
                         }
+
+                        // if let Some(Variable::Tmp(id)) = witness_in_gate.get_temp_id() {
+                        //     if let Some(vec) = permutation_sets_by_tmp_id.get_mut(&id) {
+                        //         // If the tmp variable has a permutation set, set a_perm to the next value in the set.
+                        //         if let Some(pos) = vec.iter().position(|x| {
+                        //             *x == witness_perm_col.as_canonical_u64()
+                        //                 - (call_index * plonk_circuit.len()) as u64
+                        //         }) {
+                        //             let next_pos = (pos + 1) % vec.len(); // wraps to 0 if at the end
+                        //             *witness_perm_col = <Val<SC>>::from_canonical_u64(
+                        //                 vec[next_pos] + (call_index * plonk_circuit.len()) as u64,
+                        //             );
+                        //         }
+                        //     }
+                        // }
                     }
                 }
             }

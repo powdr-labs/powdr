@@ -41,6 +41,13 @@ impl Variable<AlgebraicReference> {
             _ => None,
         }
     }
+
+    pub fn get_temp_id(&self) -> Option<u64> {
+        match self {
+            Variable::Tmp(v) => Some(v.clone() as u64),
+            _ => None,
+        }
+    }
 }
 
 /// A PlonK gate. For each gate, the following equation must hold:
