@@ -1,7 +1,8 @@
+//! Builds SymbolicInstructionStatement to create input program for testing powdr_autoprecompile::build
 use crate::SymbolicInstructionStatement;
 use powdr_number::FieldElement;
 
-// Unified builder for all 5-argument instructions
+// Unified builder for all 5-argument instructions (padded to 7 args)
 macro_rules! build_instr5 {
     ($(($name:ident, $code:expr)),+) => {
         $(
@@ -20,6 +21,8 @@ macro_rules! build_instr5 {
                         T::from(c),
                         T::from(d),
                         T::from(e),
+                        T::zero(),
+                        T::zero(),
                     ],
                 }
             }
@@ -131,3 +134,51 @@ ls_ops!(
     (loadb, 534),
     (loadh, 535)
 );
+
+// Prelude module re-exporting all instruction builders
+pub mod prelude {
+    //! Convenient import of all generated instruction functions
+    pub use super::{
+        // ALU ops
+        add,
+        and_,
+        auipc,
+        // 5-arg ops: branches, jumps, multiply/divide, hints
+        beq,
+        bge,
+        bgeu,
+        blt,
+        bltu,
+        bne,
+        div_,
+        divu,
+        hint_buffer,
+        hint_storew,
+        jal,
+        jalr,
+        loadb,
+        loadbu,
+        loadh,
+        loadhu,
+        // Load/Store ops
+        loadw,
+        lui,
+        mul,
+        mulh,
+        mulhsu,
+        mulhu,
+        or_,
+        rem,
+        remu,
+        sll,
+        slt,
+        sltu,
+        sra,
+        srl,
+        storeb,
+        storeh,
+        storew,
+        sub,
+        xor_,
+    };
+}
