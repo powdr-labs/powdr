@@ -98,15 +98,16 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     // Intersect all assignments.
     // A special case of this is that only one of the possible assignments satisfies the constraint system,
     // but even if there are multiple, they might agree on a subset of their assignments.
-    let mut result = first_assignments;
-    for assignments in assignments {
-        result.retain(|variable, value| assignments.get(variable) == Some(value));
-        // Exiting early here is crucial for performance.
-        if result.is_empty() {
-            return Ok(None);
-        }
-    }
-    Ok(Some(result))
+    Ok(assignments
+        .try_fold(first_assignments, |mut acc, assignments| {
+            acc.retain(|variable, value| assignments.get(variable) == Some(value));
+            if acc.is_empty() {
+                // Exiting early here is crucial for performance.
+                return Err(());
+            }
+            Ok(acc)
+        })
+        .ok())
 }
 
 /// Returns all unique sets of variables that appear together in an identity
