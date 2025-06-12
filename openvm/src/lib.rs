@@ -40,7 +40,7 @@ use openvm_stark_sdk::openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear;
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, DegreeBound, SymbolicMachine};
+use powdr_autoprecompiles::{openvm::default_openvm_bus_map, SymbolicMachine};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
@@ -67,6 +67,7 @@ mod utils;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
+pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
 impl IntoOpenVm for PowdrBB {

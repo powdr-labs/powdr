@@ -69,9 +69,9 @@ fn optimization_loop_iteration<T: FieldElement>(
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let mut constraint_system = JournalingConstraintSystem::from(constraint_system);
-    optimize_constraints(
-        &mut constraint_system,
+    let constraint_system = JournalingConstraintSystem::from(constraint_system);
+    let constraint_system = optimize_constraints(
+        constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
