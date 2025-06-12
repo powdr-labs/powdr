@@ -95,10 +95,13 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
         // No assignment satisfied the constraint system.
         return Err(Error::ExhaustiveSearchError);
     };
-    // If all branches agree, return the unique assignment.
+    // Intersect all assignments.
+    // A special case of this is that only one of the possible assignments satisfies the constraint system,
+    // but even if there are multiple, they might agree on a subset of their assignments.
     let mut result = first_assignments;
     for assignments in assignments {
         result.retain(|variable, value| assignments.get(variable) == Some(value));
+        // Exiting early here is critical for performance.
         if result.is_empty() {
             return Ok(None);
         }

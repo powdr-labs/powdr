@@ -218,10 +218,15 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     }
 }
 
+/// The provided assignments lead to a contradiction in the constraint system.
 pub struct ContradictingConstraint;
 
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSystem<T, V> {
-    // TODO: Add documentation.
+    /// Given a list of assignments, tries to extend it with more assignments, based on the
+    /// constraints in the constraint system.
+    /// Fails if any of the assignments *directly* contradicts the any of the constraints.
+    /// Note that getting an OK(_) here does not mean that there is no contradiction, as
+    /// this function only does one step of the derivation.
     pub fn derive_more_assignments(
         &self,
         assignments: BTreeMap<V, T>,
@@ -239,8 +244,8 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     }
                     identity
                         .solve(range_constraints)
-                        .map_err(|_| ContradictingConstraint)
                         .map(|result| result.effects)
+                        .map_err(|_| ContradictingConstraint)
                 }
                 ConstraintRef::BusInteraction(bus_interaction) => {
                     let mut bus_interaction = bus_interaction.clone();
@@ -257,8 +262,10 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                         .map_err(|_| ContradictingConstraint)
                 }
             })
+            // Early return if any constraint leads to a contradiction.
             .collect::<Result<Vec<_>, _>>()?;
-        let new_assignments = effects
+
+        effects
             .into_iter()
             .flatten()
             .filter_map(|effect| {
@@ -268,11 +275,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     None
                 }
             })
-            .collect::<Vec<_>>();
-
-        new_assignments.into_iter().chain(assignments).try_fold(
-            BTreeMap::new(),
-            |mut map, (variable, value)| {
+            .chain(assignments)
+            // Union of all unique assignments, but returning an error if there are any contradictions.
+            .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
                 match map.entry(variable) {
                     Entry::Vacant(e) => {
                         e.insert(value);
@@ -284,8 +289,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     }
                 }
                 Ok(map)
-            },
-        )
+            })
     }
 }
 
