@@ -140,11 +140,9 @@ ls_ops!(
 pub mod prelude {
     //! Convenient import of all generated instruction functions
     pub use super::{
-        // ALU ops
         add,
         and_,
         auipc,
-        // 5-arg ops: branches, jumps, multiply/divide, hints
         beq,
         bge,
         bgeu,
@@ -161,7 +159,6 @@ pub mod prelude {
         loadbu,
         loadh,
         loadhu,
-        // Load/Store ops
         loadw,
         lui,
         mul,
