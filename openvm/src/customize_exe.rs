@@ -422,6 +422,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
         let is_target = labels.contains(&adjusted_pc);
         if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
             println!("Found label: {}", label);
+            //   panic!();
         }
         let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());
 
