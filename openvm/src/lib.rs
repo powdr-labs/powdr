@@ -1,4 +1,12 @@
-use crate::traits::OpenVmField;
+use std::collections::BTreeMap;
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+
+use air_builder::AirKeygenBuilder;
+use derive_more::From;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
@@ -6,52 +14,36 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
     SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
 };
-use openvm_instructions::VmOpcode;
-use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
-};
-use openvm_stark_sdk::{
-    config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
-};
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, DegreeBound, SymbolicMachine};
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-use utils::get_pil;
-
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
-use crate::utils::symbolic_to_algebraic;
+use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
+use openvm_instructions::VmOpcode;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
     prover::AggStarkProver,
     Sdk, StdIn,
 };
-use openvm_stark_backend::{config::StarkGenericConfig, Chip};
+use openvm_stark_backend::{
+    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, engine::StarkEngine,
+    rap::AnyRap, Chip,
+};
 use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{config_from_perm, default_perm, BabyBearPoseidon2Engine},
+    baby_bear_poseidon2::{
+        config_from_perm, default_perm, BabyBearPoseidon2Config, BabyBearPoseidon2Engine,
+    },
+    fri_params::SecurityParameters,
     FriParameters,
 };
-use openvm_stark_sdk::{
-    config::baby_bear_poseidon2::BabyBearPoseidon2Config,
-    openvm_stark_backend::{
-        config::Val,
-        p3_field::{Field, PrimeField32},
-    },
+use openvm_stark_sdk::engine::StarkFriEngine;
+use openvm_stark_sdk::openvm_stark_backend::{
+    config::Val,
+    p3_field::{Field, PrimeField32},
 };
+use openvm_stark_sdk::p3_baby_bear;
+use powdr_autoprecompiles::{openvm::default_openvm_bus_map, DegreeBound, SymbolicMachine};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-mod air_builder;
-use air_builder::AirKeygenBuilder;
-use derive_more::From;
-use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-mod utils;
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -62,6 +54,15 @@ use tracing_subscriber::{
     registry::{LookupSpan, Registry},
     Layer,
 };
+
+use utils::get_pil;
+
+use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::traits::OpenVmField;
+use crate::utils::symbolic_to_algebraic;
+
+mod air_builder;
+mod utils;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
