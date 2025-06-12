@@ -44,11 +44,24 @@ impl<F> From<&BasicBlock<F>> for BasicBlockIdentifier {
 /// Returns the indices of the successors of this basic block or
 /// an error if we cannot determine the successors for certain.
 fn successors<F: PrimeField32>(block: &BasicBlock<F>) -> Result<Vec<F>, ()> {
-    block
+    Ok(block
         .statements
         .iter()
-        .flat_map(|instr| jump_destination(instr).transpose())
-        .collect()
+        .enumerate()
+        .flat_map(|(i, instr)| (i, jump_destination(instr)?.transpose()?))
+        .collect::<Result<Vec<_>, ()>>()?
+        .into_iter()
+        .map(|(i, offset)| offset.map(|o| block.start_idx + i * 4 + o))
+        .collect())
+}
+
+enum InstructionJumpBehaviour {
+    /// Might go anywhere.
+    Unknown,
+    /// Only continues on the next instruction.
+    ContinueNext,
+    UnconditionalJump(i64),
+    ConditionalJump(i64),
 }
 
 /// Returns `Ok(Some(offset))` where `offset` is the relative pc offset of the instruction this
@@ -105,7 +118,6 @@ fn jump_destination<F: PrimeField32>(instruction: &Instruction<F>) -> Result<Opt
         {
             // TODO we might treat JAL the same way as a conditional jump.
             // is this correct? If the destination always panics, then we do not continue here.
-            
 
             todo!()
         } else if opcode
