@@ -36,7 +36,7 @@ pub const OPENVM_DEGREE_BOUND: usize = 5;
 // TODO: read this from program
 const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
-const POWDR_OPCODE: usize = 0x10ff;
+pub const POWDR_OPCODE: usize = 0x10ff;
 
 #[derive(Clone, Debug)]
 pub struct CachedAutoPrecompile<F> {

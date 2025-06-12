@@ -91,7 +91,7 @@ pub use openvm_build::GuestOptions;
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::customize;
+pub use customize_exe::{customize, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
@@ -247,7 +247,7 @@ pub fn compile_openvm(
         .rv32i(Default::default())
         .rv32m(Default::default())
         .io(Default::default())
-        .keccak(Default::default())
+        // .keccak(Default::default())
         .build();
 
     let sdk = Sdk::default();
@@ -377,6 +377,12 @@ pub fn compile_exe(
         .map(|instr| instr.as_ref().unwrap().0.opcode)
         .collect();
     let airs = instructions_to_airs(sdk_vm_config.clone(), &used_instructions);
+
+    if let Ok(airs_path) = std::env::var("AIRS_EXPORT") {
+        let file_name = format!("{airs_path}.cbor");
+        log::info!("Exporting airs for all instructions to {file_name}");
+        serde_cbor::to_writer(std::fs::File::create(file_name).unwrap(), &airs).unwrap();
+    }
 
     let (exe, extension) = customize_exe::customize(
         exe,
@@ -629,10 +635,19 @@ where
 {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
 
+    let all_instructions = vec![
+        512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534, 535,
+        544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597, 598, 599,
+        608, 609,
+    ]
+    .into_iter()
+    .map(VmOpcode::from_usize)
+    .collect::<HashSet<_>>();
+
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
-    used_instructions
+    all_instructions
         .iter()
         .filter_map(|op| {
             chip_complex.inventory.get_executor(*op).map(|executor| {
