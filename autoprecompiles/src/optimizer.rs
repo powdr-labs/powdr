@@ -47,7 +47,7 @@ pub fn optimize<T: FieldElement>(
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
 
     loop {
-        let size = stats_logger::Stats::from(&constraint_system);
+        let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimization_loop_iteration(
             constraint_system,
             bus_interaction_handler.clone(),
@@ -55,7 +55,7 @@ pub fn optimize<T: FieldElement>(
             &mut stats_logger,
             bus_map,
         )?;
-        if size == stats_logger::Stats::from(&constraint_system) {
+        if stats == stats_logger::Stats::from(&constraint_system) {
             return Ok(constraint_system_to_symbolic_machine(constraint_system));
         }
     }
