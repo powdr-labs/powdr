@@ -37,13 +37,6 @@ pub fn make_bool<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpr
     expr.clone() * (expr - one)
 }
 
-pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
-    match expr {
-        AlgebraicExpression::Number(n) => *n == T::zero(),
-        _ => false,
-    }
-}
-
 pub fn has_ref<T: Clone + std::cmp::PartialEq>(
     expr: &AlgebraicExpression<T>,
     r: &AlgebraicExpression<T>,
