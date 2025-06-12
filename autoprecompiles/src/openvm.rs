@@ -19,8 +19,6 @@ pub fn default_openvm_bus_map() -> BusMap {
         ),
         (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
         (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
-    ]
-    .into_iter()
-    .collect();
-    BusMap::new(bus_ids)
+    ];
+    BusMap::from_id_type_pairs(bus_ids)
 }
