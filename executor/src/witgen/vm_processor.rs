@@ -193,6 +193,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
                     log::log!(
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
+                        
                     );
 
                     self.degree = compute_size_and_log(
