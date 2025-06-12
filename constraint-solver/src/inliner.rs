@@ -340,7 +340,7 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("y") - (var("x") + constant(3)),
                 var("z") - (var("y") + constant(2)),
@@ -368,7 +368,7 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        let mut constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: vec![
                 var("a") - (var("b") + constant(1)),
                 var("c") - (var("a") * var("a")),
@@ -460,13 +460,13 @@ mod test {
         suboptimal_order_identities.push(constraint2.clone()); // b = c + d
         suboptimal_order_identities.push(constraint4.clone()); // c = d * d
 
-        let mut optimal_system = ConstraintSystem {
+        let optimal_system = ConstraintSystem {
             algebraic_constraints: optimal_order_identities,
             bus_interactions: vec![],
         }
         .into();
 
-        let mut suboptimal_system = ConstraintSystem {
+        let suboptimal_system = ConstraintSystem {
             algebraic_constraints: suboptimal_order_identities,
             bus_interactions: vec![],
         }
