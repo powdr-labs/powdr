@@ -84,6 +84,8 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     addr: QuadraticSymbolicExpression<T, V>,
     data: Vec<QuadraticSymbolicExpression<T, V>>,
     #[allow(dead_code)]
+    // TODO: The timestamp is currently ignored. At some point, we should use it
+    // to assert that the bus interactions are in the right order.
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
@@ -110,8 +112,6 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
             _ => return Err(()),
         };
 
-        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
-        // are in the right order.
         let [address_space, addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
             panic!();
         };
