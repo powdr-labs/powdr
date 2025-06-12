@@ -235,7 +235,7 @@ fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> boo
     let mut zeroed_expr = expr.clone();
     powdr::make_refs_zero(&mut zeroed_expr);
     let zeroed_expr = algebraic_to_quadratic_symbolic_expression(&zeroed_expr);
-    zeroed_expr.try_to_number().is_some_and(|n| n.is_zero())
+    zeroed_expr.try_to_number().unwrap().is_zero()
 }
 
 /// Adds `is_valid` guards to constraints without increasing its degree.
