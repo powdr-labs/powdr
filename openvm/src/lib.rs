@@ -1046,9 +1046,7 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 31);
+        assert_eq!([m.width, m.constraints, m.bus_interactions], [53, 22, 31]);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
@@ -1058,9 +1056,10 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 2011);
-        assert_eq!(m.constraints, 166);
-        assert_eq!(m.bus_interactions, 1783);
+        assert_eq!(
+            [m.width, m.constraints, m.bus_interactions],
+            [2011, 166, 1783]
+        );
     }
 
     #[test]
