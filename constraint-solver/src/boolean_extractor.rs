@@ -129,6 +129,6 @@ mod tests {
         let result = extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
         let result = result.unwrap();
-        assert_eq!(result.to_string(), "a + b + -10 * z + 10");
+        assert_eq!(result.to_string(), "a + b - 10 * z + 10");
     }
 }
