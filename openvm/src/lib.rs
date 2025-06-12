@@ -247,7 +247,7 @@ pub fn compile_openvm(
         .rv32i(Default::default())
         .rv32m(Default::default())
         .io(Default::default())
-        // .keccak(Default::default())
+        .keccak(Default::default())
         .build();
 
     let sdk = Sdk::default();
