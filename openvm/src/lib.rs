@@ -62,7 +62,7 @@ use crate::traits::OpenVmField;
 use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
-mod bus_map;
+pub mod bus_map;
 mod utils;
 
 pub use bus_map::default_openvm_bus_map;
