@@ -57,7 +57,7 @@ pub use periphery::PowdrPeripheryInstances;
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
     instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    air_by_opcode_id: Arc<BTreeMap<usize, SymbolicMachine<P>>>,
+    air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
     is_valid_poly_id: u64,
     inventory: DummyInventory<OpenVmField<P>>,
     number_of_calls: usize,
@@ -67,7 +67,7 @@ pub struct PowdrExecutor<P: IntoOpenVm> {
 impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn new(
         instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        air_by_opcode_id: Arc<BTreeMap<usize, SymbolicMachine<P>>>,
+        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
@@ -424,6 +424,7 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     if this.castf.is_some() {
         complex = complex.extend(&CastFExtension)?;
     }
+
     if let Some(rv32m) = this.rv32m {
         let mut rv32m = rv32m;
         if let Some(ref bigint) = this.bigint {
