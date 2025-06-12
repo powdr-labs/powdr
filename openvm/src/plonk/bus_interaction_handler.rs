@@ -1,7 +1,9 @@
 use crate::plonk::Gate;
-use crate::{bus_interaction_handler, BusMap};
-use bus_interaction_handler::BusType::{
-    BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
+use powdr_autoprecompiles::bus_map::{
+    BusMap,
+    BusType::{
+        BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
+    },
 };
 use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
@@ -79,16 +81,16 @@ pub fn add_bus_to_plonk_circuit<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bus_interaction_handler::DEFAULT_MEMORY;
     use crate::plonk::test_utils::{c, var};
     use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
+    use powdr_autoprecompiles::openvm::{default_openvm_bus_map, DEFAULT_MEMORY};
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
     #[test]
     fn test_add_memory_bus_to_plonk_circuit() {
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
 
         let x = var("x", 0);
         let y = var("y", 1);
