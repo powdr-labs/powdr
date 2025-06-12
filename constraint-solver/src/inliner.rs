@@ -234,7 +234,7 @@ mod test {
             panic!();
         };
         assert_eq!(result.to_string(), "result");
-        assert_eq!(b.to_string(), "-result + 1");
+        assert_eq!(b.to_string(), "-(result - 1)");
     }
 
     #[test]
@@ -281,7 +281,7 @@ mod test {
 
         let constraints = constraint_system.algebraic_constraints().collect_vec();
         assert_eq!(constraints.len(), 1);
-        assert_eq!(constraints[0].to_string(), "(c + -result) * (-d) + c");
+        assert_eq!(constraints[0].to_string(), "-((c - result) * (d) - c)");
     }
 
     #[test]
@@ -327,7 +327,7 @@ mod test {
         assert_eq!(constraints.len(), 1);
         assert_eq!(
             constraints[0].to_string(),
-            "((c) * (d) + c + -result) * (-d) + c"
+            "-(((c) * (d) + c - result) * (d) - c)"
         );
     }
 
@@ -363,7 +363,7 @@ mod test {
             panic!();
         };
         assert_eq!(result.to_string(), "z + 1");
-        assert_eq!(x.to_string(), "z + -5");
+        assert_eq!(x.to_string(), "z - 5");
     }
 
     #[test]
@@ -416,7 +416,7 @@ mod test {
         // In-lining c would violate the degree bound, so it is kept as a symbol
         // with a constraint to enforce the equality.
         assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "(-b + -1) * (b + 1) + c");
+        assert_eq!(identity.to_string(), "-((b + 1) * (b + 1) - c)");
         // From third identity: d = c * a
         assert_eq!(d.to_string(), "(c) * (b + 1)");
         // From fourth identity: e = d * a

@@ -376,10 +376,7 @@ mod tests {
 
         s.substitute_by_unknown(&"x", &Qse::from_unknown_variable("z"));
 
-        assert_eq!(
-            format_system(&s),
-            "y + z  |  0  |  y + -z  |  z: y * [y, z]"
-        );
+        assert_eq!(format_system(&s), "y + z  |  0  |  y - z  |  z: y * [y, z]");
 
         s.substitute_by_unknown(
             &"z",
@@ -389,7 +386,7 @@ mod tests {
 
         assert_eq!(
             format_system(&s),
-            "x + y + 7  |  0  |  -x + y + -7  |  x + 7: y * [y, x + 7]"
+            "x + y + 7  |  0  |  -(x - y + 7)  |  x + 7: y * [y, x + 7]"
         );
     }
 
@@ -446,7 +443,7 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_x, "x + -z, x: x * [x, x]");
+        assert_eq!(items_with_x, "x - z, x: x * [x, x]");
 
         let items_with_z = s
             .constraints_referencing_variables(["z"].into_iter())
@@ -463,6 +460,6 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_z, "x + -z");
+        assert_eq!(items_with_z, "x - z");
     }
 }
