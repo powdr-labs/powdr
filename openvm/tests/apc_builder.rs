@@ -1,9 +1,9 @@
 use powdr_autoprecompiles::{
-    build, symbolic_instruction_builder::prelude::*, DegreeBound, SymbolicInstructionStatement,
-    SymbolicMachine, VmConfig,
+    build, openvm::default_openvm_bus_map, symbolic_instruction_builder::prelude::*, DegreeBound,
+    SymbolicInstructionStatement, SymbolicMachine, VmConfig,
 };
 use powdr_number::BabyBearField;
-use powdr_openvm::{bus_interaction_handler::OpenVmBusInteractionHandler, BusMap};
+use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::{OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use std::collections::BTreeMap;
 
@@ -20,8 +20,9 @@ fn compile(
     let vm_config = VmConfig {
         instruction_machines: &build_airs("tests/airs.cbor".to_string()),
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
-            BusMap::openvm_base(),
+            default_openvm_bus_map(),
         ),
+        bus_map: default_openvm_bus_map(),
     };
 
     let degree_bound = DegreeBound {
