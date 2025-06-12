@@ -290,8 +290,6 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
-    /// Map from bus id to bus type such as Execution, Memory, etc.
-    pub bus_map: BusMap,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// Implementation of the precompile, i.e., how to compile it to a RAP.
@@ -303,7 +301,6 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            bus_map: default_openvm_bus_map(),
             degree_bound: DegreeBound {
                 identities: customize_exe::OPENVM_DEGREE_BOUND,
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
@@ -317,10 +314,6 @@ impl PowdrConfig {
             autoprecompiles,
             ..self
         }
-    }
-
-    pub fn with_bus_map(self, bus_map: BusMap) -> Self {
-        Self { bus_map, ..self }
     }
 
     pub fn with_degree_bound(self, degree_bound: DegreeBound) -> Self {
@@ -347,15 +340,14 @@ pub fn compile_guest(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
-    compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_config)
+    let original_program = compile_openvm(guest, guest_opts.clone())?;
+    compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
 
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    exe: VmExe<p3_baby_bear::BabyBear>,
-    sdk_vm_config: SdkVmConfig,
+    original_program: OriginalCompiledProgram<BabyBearField>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
@@ -372,25 +364,29 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let used_instructions = exe
+    let used_instructions = original_program
+        .exe
         .program
         .instructions_and_debug_infos
         .iter()
         .map(|instr| instr.as_ref().unwrap().0.opcode)
         .collect();
-    let airs = instructions_to_airs(sdk_vm_config.clone(), &used_instructions);
+    let (airs, bus_map) =
+        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions);
+
+    let sdk_vm_config = original_program.sdk_vm_config.clone();
 
     let (exe, extension) = customize_exe::customize(
-        exe,
-        sdk_vm_config.clone(),
+        original_program,
         &elf_powdr.text_labels,
         &airs,
         config.clone(),
+        bus_map.clone(),
         pgo_config,
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
+    export_pil(vm_config.clone(), "debug.pil", 1000, &bus_map);
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -621,10 +617,10 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
+pub fn get_airs_and_bus_map<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
     used_instructions: &HashSet<VmOpcode>,
-) -> BTreeMap<usize, SymbolicMachine<P>>
+) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap)
 where
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
@@ -634,37 +630,42 @@ where
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
-    used_instructions
-        .iter()
-        .filter_map(|op| {
-            chip_complex.inventory.get_executor(*op).map(|executor| {
-                let air = executor.air();
+    (
+        used_instructions
+            .iter()
+            .filter_map(|op| {
+                chip_complex.inventory.get_executor(*op).map(|executor| {
+                    let air = executor.air();
 
-                let columns = get_columns(air.clone());
+                    let columns = get_columns(air.clone());
 
-                let constraints = get_constraints(air);
+                    let constraints = get_constraints(air);
 
-                let powdr_exprs = constraints
-                    .constraints
-                    .iter()
-                    .map(|expr| symbolic_to_algebraic(expr, &columns).into())
-                    .collect::<Vec<_>>();
+                    let powdr_exprs = constraints
+                        .constraints
+                        .iter()
+                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
+                        .collect::<Vec<_>>();
 
-                let powdr_bus_interactions = constraints
-                    .interactions
-                    .iter()
-                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                    .collect();
+                    let powdr_bus_interactions = constraints
+                        .interactions
+                        .iter()
+                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                        .collect();
 
-                let symb_machine = SymbolicMachine {
-                    constraints: powdr_exprs,
-                    bus_interactions: powdr_bus_interactions,
-                };
+                    let symb_machine = SymbolicMachine {
+                        constraints: powdr_exprs,
+                        bus_interactions: powdr_bus_interactions,
+                    };
 
-                (op.as_usize(), symb_machine)
+                    (op.as_usize(), symb_machine)
+                })
             })
-        })
-        .collect()
+            .collect(),
+        // TODO: We always return the default map here, which is only correct for a subset of the possible `vm_config`.
+        // Instead, the bus map should be generated from the VM config by inspecting the chip complex above
+        default_openvm_bus_map(),
+    )
 }
 
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(

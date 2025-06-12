@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::IntoOpenVm;
 use crate::OpenVmField;
+use crate::OriginalCompiledProgram;
 use itertools::Itertools;
 use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
@@ -10,7 +11,6 @@ use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program
 use openvm_instructions::{LocalOpcode, SystemOpcode};
 use openvm_keccak256_transpiler::Rv32KeccakOpcode;
 use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
-use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
 use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
@@ -60,11 +60,14 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
 }
 
 pub fn customize<P: IntoOpenVm>(
-    mut exe: VmExe<OpenVmField<P>>,
-    base_config: SdkVmConfig,
+    OriginalCompiledProgram {
+        mut exe,
+        sdk_vm_config,
+    }: OriginalCompiledProgram<P>,
     labels: &BTreeSet<u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
+    bus_map: BusMap,
     pgo_config: PgoConfig,
 ) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
     // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
@@ -165,6 +168,7 @@ pub fn customize<P: IntoOpenVm>(
                 pgo_program_idx_count,
                 airs,
                 config.clone(),
+                bus_map.clone(),
                 &opcodes_no_apc,
             );
         }
@@ -217,7 +221,7 @@ pub fn customize<P: IntoOpenVm>(
                     acc_block,
                     airs,
                     apc_opcode,
-                    config.bus_map.clone(),
+                    bus_map.clone(),
                     config.degree_bound,
                 )
                 .unwrap(),
@@ -300,12 +304,7 @@ pub fn customize<P: IntoOpenVm>(
     }
     (
         exe,
-        PowdrExtension::new(
-            extensions,
-            base_config,
-            config.implementation,
-            config.bus_map,
-        ),
+        PowdrExtension::new(extensions, sdk_vm_config, config.implementation, bus_map),
     )
 }
 
@@ -573,6 +572,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     pgo_program_idx_count: HashMap<u32, u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
+    bus_map: BusMap,
     opcodes_no_apc: &[usize],
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
@@ -608,7 +608,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 acc_block,
                 airs,
                 POWDR_OPCODE + i,
-                config.bus_map.clone(),
+                bus_map.clone(),
                 config.degree_bound,
             )
             .ok()?;
