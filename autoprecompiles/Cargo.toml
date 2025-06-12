@@ -10,7 +10,6 @@ repository.workspace = true
 powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-pil-analyzer.workspace = true
-powdr-pilopt.workspace = true
 powdr-constraint-solver.workspace = true
 
 itertools = "0.13"
