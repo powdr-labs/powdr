@@ -65,7 +65,7 @@ mod air_builder;
 pub mod bus_map;
 mod utils;
 
-pub use bus_map::default_openvm_bus_map;
+use bus_map::default_openvm_bus_map;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
