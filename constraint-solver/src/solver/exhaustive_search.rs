@@ -101,7 +101,7 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     let mut result = first_assignments;
     for assignments in assignments {
         result.retain(|variable, value| assignments.get(variable) == Some(value));
-        // Exiting early here is critical for performance.
+        // Exiting early here is crucial for performance.
         if result.is_empty() {
             return Ok(None);
         }
