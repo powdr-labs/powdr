@@ -1,12 +1,14 @@
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{
-    build, openvm::default_openvm_bus_map, symbolic_instruction_builder::*, DegreeBound,
-    SymbolicInstructionStatement, SymbolicMachine, VmConfig,
+    build, DegreeBound, SymbolicInstructionStatement, SymbolicMachine, VmConfig,
 };
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::{instructions_to_airs, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use powdr_openvm::{
+    bus_map::default_openvm_bus_map, get_airs_and_bus_map, symbolic_instruction_builder::*,
+    OPENVM_DEGREE_BOUND, POWDR_OPCODE,
+};
 use std::collections::HashSet;
 
 // A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
@@ -25,14 +27,14 @@ fn compile(
         .map(|instr| VmOpcode::from_usize(instr.opcode))
         .collect::<HashSet<_>>();
 
-    let airs = instructions_to_airs(sdk_vm_config, &program_instructions);
+    let (airs, bus_map) = get_airs_and_bus_map(sdk_vm_config, &program_instructions);
 
     let vm_config = VmConfig {
         instruction_machines: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
-        bus_map: default_openvm_bus_map(),
+        bus_map,
     };
 
     let degree_bound = DegreeBound {

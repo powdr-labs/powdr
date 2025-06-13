@@ -63,6 +63,8 @@ use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
 pub mod bus_map;
+pub mod opcode;
+pub mod symbolic_instruction_builder;
 mod utils;
 
 use bus_map::default_openvm_bus_map;

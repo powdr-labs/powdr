@@ -1,6 +1,6 @@
 //! Builds SymbolicInstructionStatement to create input program for testing powdr_autoprecompile::build
-use crate::openvm::*;
-use crate::SymbolicInstructionStatement;
+use crate::opcode::*;
+use powdr_autoprecompiles::SymbolicInstructionStatement;
 use powdr_number::FieldElement;
 
 // Unified builder for all 5-argument instructions (padded to 7 args)

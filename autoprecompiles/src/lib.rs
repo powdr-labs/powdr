@@ -24,7 +24,6 @@ pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
-pub mod symbolic_instruction_builder;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
