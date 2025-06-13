@@ -35,6 +35,9 @@ impl PowdrPeripheryInstances {
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.cloned(),
             },
+            // Bitwise lookup and tuple range checker do not need to be shared with the main execution:
+            // If we did share, we'd have to roll back the side effects of execution and apply the side effects from the apc air onto the main periphery.
+            // By not sharing them, we can throw away the dummy ones after execution and only apply the side effects from the apc air onto the main periphery.
             dummy: SharedPeripheryChips {
                 bitwise_lookup_8: SharedBitwiseOperationLookupChip::new(bitwise_8.bus()),
                 range_checker: range_checker.clone(),

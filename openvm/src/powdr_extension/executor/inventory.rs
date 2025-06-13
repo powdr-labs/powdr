@@ -17,7 +17,7 @@ pub type DummyInventory<F> = VmInventory<DummyExecutor<F>, DummyPeriphery<F>>;
 pub type DummyChipComplex<F> = VmChipComplex<F, DummyExecutor<F>, DummyPeriphery<F>>;
 
 #[allow(clippy::large_enum_variant)]
-#[derive(ChipUsageGetter, Chip, InstructionExecutor, AnyEnum)]
+#[derive(ChipUsageGetter, Chip, InstructionExecutor, AnyEnum, From)]
 pub enum DummyExecutor<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigExecutor<F>),
@@ -29,26 +29,7 @@ pub enum DummyExecutor<F: PrimeField32> {
     System(SystemExecutor<F>),
 }
 
-impl<F: PrimeField32> From<SharedExecutor<F>> for DummyExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(executor: SharedExecutor<F>) -> Self {
-        DummyExecutor::Shared(executor)
-    }
-}
-
-// Here we keep the `SystemExecutor` variant to allow for system-level operations.
-impl<F> From<SystemExecutor<F>> for DummyExecutor<F>
-where
-    F: PrimeField32,
-{
-    fn from(system_executor: SystemExecutor<F>) -> Self {
-        DummyExecutor::System(system_executor)
-    }
-}
-
-#[derive(ChipUsageGetter, Chip, AnyEnum)]
+#[derive(ChipUsageGetter, Chip, AnyEnum, From)]
 pub enum DummyPeriphery<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigPeriphery<F>),
@@ -56,24 +37,6 @@ pub enum DummyPeriphery<F: PrimeField32> {
     Shared(SharedPeriphery<F>),
     #[any_enum]
     System(SystemPeriphery<F>),
-}
-
-impl<F: PrimeField32> From<SharedPeriphery<F>> for DummyPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(periphery: SharedPeriphery<F>) -> Self {
-        DummyPeriphery::Shared(periphery)
-    }
-}
-
-impl<F> From<SystemPeriphery<F>> for DummyPeriphery<F>
-where
-    F: PrimeField32,
-{
-    fn from(system_periphery: SystemPeriphery<F>) -> Self {
-        DummyPeriphery::System(system_periphery)
-    }
 }
 
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
