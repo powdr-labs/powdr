@@ -63,6 +63,8 @@ use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
 pub mod bus_map;
+pub mod opcode;
+pub mod symbolic_instruction_builder;
 mod utils;
 
 use bus_map::default_openvm_bus_map;
@@ -96,7 +98,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::customize;
+pub use customize_exe::{customize, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
