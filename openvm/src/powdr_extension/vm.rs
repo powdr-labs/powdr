@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::iter::once;
 
 use derive_more::From;
-
+use powdr_autoprecompiles::bus_map::BusType;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -183,17 +183,22 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
         let offline_memory = builder.system_base().offline_memory();
 
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = *builder
+        let bitwise_lookup = builder
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .first()
-            .unwrap();
-        let range_checker = *builder
+            .into_iter()
+            .next()
+            .cloned()
+            .expect("bitwise chip not found");
+        let range_checker = builder
             .find_chip::<SharedVariableRangeCheckerChip>()
-            .first()
-            .unwrap();
+            .into_iter()
+            .next()
+            .cloned()
+            .expect("bitwise chip not found");
         let tuple_range_checker = builder
             .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .first()
+            .into_iter()
+            .next()
             .cloned();
 
         for precompile in &self.precompiles {
@@ -205,22 +210,29 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                     SharedChips::new(
                         bitwise_lookup.clone(),
                         range_checker.clone(),
-                        tuple_range_checker.cloned(),
+                        tuple_range_checker.clone(),
                     ),
                 )
                 .into(),
-                PrecompileImplementation::PlonkChip => PlonkChip::new(
-                    precompile.clone(),
-                    offline_memory.clone(),
-                    self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
-                    self.bus_map.clone(),
-                )
-                .into(),
+                PrecompileImplementation::PlonkChip => {
+                    let new_bus_ids: BTreeMap<_, _> =
+                        [(builder.new_bus_idx() as u64, BusType::CopyConstraintLookup)]
+                            .into_iter()
+                            .collect();
+
+                    PlonkChip::new(
+                        precompile.clone(),
+                        offline_memory.clone(),
+                        self.base_config.clone(),
+                        SharedChips::new(
+                            bitwise_lookup.clone(),
+                            range_checker.clone(),
+                            tuple_range_checker.clone(),
+                        ),
+                        self.bus_map.clone().with_bus_map(BusMap::new(new_bus_ids)),
+                    )
+                    .into()
+                }
             };
 
             inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;

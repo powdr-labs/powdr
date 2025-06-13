@@ -66,7 +66,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             BusType::TupleRangeChecker => handle_tuple_range_checker(&bus_interaction.payload),
             BusType::Sha => bus_interaction.payload,
             BusType::CopyConstraintLookup => {
-                unimplemented!("Copy constraint bus handler is not implemented in OpenVM yet")
+                unimplemented!("CopyConstraintLookup is not implemented yet")
             }
         };
         BusInteraction {
@@ -90,8 +90,8 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::VariableRangeChecker => false,
             BusType::BitwiseLookup => false,
             BusType::TupleRangeChecker => false,
-            BusType::Sha => false,
             BusType::CopyConstraintLookup => false,
+            BusType::Sha => false,
         }
     }
 }

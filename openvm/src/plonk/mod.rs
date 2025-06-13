@@ -11,7 +11,7 @@ pub mod bus_interaction_handler;
 pub const NUMBER_OF_WITNESS_COLS: u64 = 5;
 
 /// A variable in a PlonK gate.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, Eq, Hash)]
 pub enum Variable<V> {
     /// A variable from the input constraint system.
     /// At run-time, we can get the concrete values from the APC witness generation.
