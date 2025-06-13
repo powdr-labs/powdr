@@ -13,9 +13,6 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
-use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
-use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
-use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
@@ -24,8 +21,9 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
-    mut system: ConstraintSystem<T, V>,
+    mut system: JournalingConstraintSystem<T, V>,
     memory_bus_id: u64,
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices(system.system(), range_constraints, memory_bus_id);
@@ -36,14 +34,13 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
         counter += 1;
         retain
     });
-    // TODO perform substitutions instead
     system.add_algebraic_constraints(new_constraints);
     system
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Hash + Display>(
+pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
     system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
 ) -> bool {
@@ -93,7 +90,7 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> MemoryBusInteraction<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> {
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
@@ -142,8 +139,6 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     let address_comparator = MemoryAddressComparator::new(system, memory_bus_id);
     let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = Vec::new();
 
-    // Address across all memory types.
-    type GlobalAddress<T, V> = (T, QuadraticSymbolicExpression<T, V>);
     // Address across all memory types.
     type GlobalAddress<T, V> = (T, QuadraticSymbolicExpression<T, V>);
     // Track memory contents by memory type while we go through bus interactions.

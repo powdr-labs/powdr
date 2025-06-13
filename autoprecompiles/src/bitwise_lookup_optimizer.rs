@@ -11,9 +11,9 @@ use powdr_number::FieldElement;
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
-    system: &mut JournalingConstraintSystem<T, V>,
+    mut system: JournalingConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
-) {
+) -> JournalingConstraintSystem<T, V> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
@@ -66,9 +66,10 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
-    let already_byte_constrained = all_byte_constrained_expressions(system.system(), bitwise_lookup_bus_id)
-        .cloned()
-        .collect::<HashSet<_>>();
+    let already_byte_constrained =
+        all_byte_constrained_expressions(system.system(), bitwise_lookup_bus_id)
+            .cloned()
+            .collect::<HashSet<_>>();
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
         .filter(|expr| {
@@ -93,6 +94,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
         }
     }));
     system.add_algebraic_constraints(new_constraints);
+    system
 }
 
 fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Ord>(

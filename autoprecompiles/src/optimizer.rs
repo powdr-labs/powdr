@@ -4,7 +4,7 @@ use super::simplify_expression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::{NoRangeConstraints, {NoRangeConstraints, QuadraticSymbolicExpression}, RangeConstraintProvider},
+    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -49,8 +49,8 @@ pub fn optimize<T: FieldElement>(
 
     loop {
         let stats = stats_logger::Stats::from(constraint_system.system());
-        optimization_loop_iteration(
-            &mut constraint_system,
+        constraint_system = optimization_loop_iteration(
+            constraint_system,
             bus_interaction_handler.clone(),
             degree_bound,
             &mut stats_logger,
@@ -65,25 +65,23 @@ pub fn optimize<T: FieldElement>(
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: &mut JournalingConstraintSystem<T, AlgebraicReference>,
+    constraint_system: JournalingConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
-) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystem::from(constraint_system);
+) -> Result<JournalingConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     )?;
-    let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
         let constraint_system =
             optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
         assert!(check_register_operation_consistency(
-            &constraint_system,
+            constraint_system.system(),
             memory_bus_id
         ));
         stats_logger.log("memory optimization", &constraint_system);
@@ -102,8 +100,6 @@ fn optimization_loop_iteration<T: FieldElement>(
 
     Ok(system)
 }
-
-
 
 pub fn optimize_pc_lookup<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
