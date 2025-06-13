@@ -1,5 +1,5 @@
 //! To support an abstracted autoprecompile layer, this module stores type implementations specific to OpenVM
-use crate::bus_map::{BusMap, BusType};
+use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 
 pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
 pub const DEFAULT_MEMORY: u64 = 1;

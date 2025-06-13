@@ -55,7 +55,7 @@ use serde::{Deserialize, Serialize};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
-use tracing::{Event, Subscriber};
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     layer::Context,
     prelude::*,
@@ -70,7 +70,12 @@ use crate::traits::OpenVmField;
 use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
+pub mod bus_map;
+pub mod opcode;
+pub mod symbolic_instruction_builder;
 mod utils;
+
+use bus_map::default_openvm_bus_map;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
@@ -101,7 +106,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::customize;
+pub use customize_exe::{customize, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
@@ -505,17 +510,19 @@ pub fn pgo(
 
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc.iter().min().unwrap();
-    tracing::info!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
 
-    // print the total and by pc counts at the warn level (default level in powdr-openvm)
-    tracing::warn!("Pgo captured {} pc's", pc.len());
+    // print the total and by pc counts
+    tracing::debug!("Pgo captured {} pc's", pc.len());
 
-    // print pc_index map in descending order of pc_index count
-    let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-    pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-    pc_index_count_sorted.iter().for_each(|(pc, count)| {
-        tracing::warn!("pc_index {}: {}", pc, count);
-    });
+    if tracing::enabled!(Level::DEBUG) {
+        // print pc_index map in descending order of pc_index count
+        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
+        pc_index_count_sorted.iter().for_each(|(pc, count)| {
+            tracing::debug!("pc_index {}: {}", pc, count);
+        });
+    }
 
     Ok(pc_index_count)
 }
@@ -1188,7 +1195,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Instruction took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -1200,7 +1207,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
     }
 
     // #[test]
@@ -1221,9 +1228,7 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 31);
+        assert_eq!([m.width, m.constraints, m.bus_interactions], [53, 22, 31]);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
@@ -1233,9 +1238,10 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 2011);
-        assert_eq!(m.constraints, 166);
-        assert_eq!(m.bus_interactions, 1783);
+        assert_eq!(
+            [m.width, m.constraints, m.bus_interactions],
+            [2011, 166, 1783]
+        );
     }
 
     #[test]

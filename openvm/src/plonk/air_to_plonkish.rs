@@ -206,11 +206,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::bus_map::default_openvm_bus_map;
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::{c, var};
-    use powdr_autoprecompiles::{
-        openvm::default_openvm_bus_map, SymbolicConstraint, SymbolicMachine,
-    };
+    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use pretty_assertions::assert_eq;
 
     #[test]

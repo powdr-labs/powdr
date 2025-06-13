@@ -4,7 +4,7 @@ use super::simplify_expression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -75,25 +75,27 @@ fn optimization_loop_iteration<T: FieldElement>(
         degree_bound,
         stats_logger,
     )?;
-    // TODO: avoid these conversions
-    // TODO continue here with the journaling system once the memory machine is changed to
-    // ConstraintSystem
-    let mut machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
-    if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        machine = optimize_memory(machine, memory_bus_id);
+    let constraint_system = constraint_system.system().clone();
+    let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
+        let constraint_system =
+            optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
         assert!(check_register_operation_consistency(
-            &machine,
+            &constraint_system,
             memory_bus_id
         ));
-        stats_logger.log("memory optimization", &machine);
-    }
+        stats_logger.log("memory optimization", &constraint_system);
+        constraint_system
+    } else {
+        constraint_system
+    };
 
-    let mut system = symbolic_machine_to_constraint_system(machine);
-
-    if let Some(bitwise_lookup_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
-        system = optimize_bitwise_lookup(system, bitwise_lookup_id);
+    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
+        let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
         stats_logger.log("optimizing bitwise lookup", &system);
-    }
+        system
+    } else {
+        constraint_system
+    };
 
     Ok(system)
 }
