@@ -13,7 +13,6 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
-
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
 
@@ -26,7 +25,7 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
     let (to_remove, new_constraints) =
-        redundant_memory_interactions_indices(system.system(), range_constraints, memory_bus_id);
+        redundant_memory_interactions_indices(system.system(), memory_bus_id, range_constraints);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     let mut counter = 0;
     system.retain_bus_interactions(|_| {
@@ -133,8 +132,8 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
     system: &ConstraintSystem<T, V>,
-    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
     memory_bus_id: u64,
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
 ) -> (Vec<usize>, Vec<QuadraticSymbolicExpression<T, V>>) {
     let address_comparator = MemoryAddressComparator::new(system, memory_bus_id);
     let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = Vec::new();
