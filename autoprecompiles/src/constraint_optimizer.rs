@@ -132,9 +132,18 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     }
     // If a bus interaction field is equal to a constant, replace the definition by the constant.
     for (var, value) in result.assignments.iter() {
-        if let Variable::BusInteractionArg(..) = var {
-            if let Some(value) = value.try_to_number() {
-                bus_interaction_vars.insert(var.clone(), value.into());
+        if let Some(value) = value.try_to_number() {
+            match var {
+                Variable::BusInteractionArg(..) => {
+                    bus_interaction_vars.insert(var.clone(), value.into());
+                }
+                Variable::Variable(var) => {
+                    // TODO: Inefficient
+                    for value2 in bus_interaction_vars.values_mut() {
+                        value2
+                            .substitute_by_unknown(var, &QuadraticSymbolicExpression::from(value));
+                    }
+                }
             }
         }
     }
