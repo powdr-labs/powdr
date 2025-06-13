@@ -134,6 +134,7 @@ pub fn air_stacking<P: IntoOpenVm>(
         let mut stacked_constraints = join_constraints(stacked_constraints);
         stacked_constraints.sort();
         println!("after joining constraints: {}", stacked_constraints.len());
+        println!("max degree constraints: {}", stacked_constraints.iter().map(|c| c.expr.degree()).max().unwrap_or(0));
 
         // enforce only one is_valid is active
         let one = AlgebraicExpression::Number(P::ONE);
@@ -153,6 +154,14 @@ pub fn air_stacking<P: IntoOpenVm>(
         };
 
         println!("interaction count: {}", machine.bus_interactions.len());
+        println!("max degree interaction args: {}", machine.bus_interactions.iter()
+            .map(|i| i.args.iter().map(|a| a.degree()).max().unwrap_or(0))
+            .max()
+                 .unwrap_or(0));
+        println!("max degree interaction multiplicity:{}", machine.bus_interactions.iter()
+            .map(|i| i.mult.degree())
+            .max()
+                 .unwrap_or(0));
 
         println!("stacked width: {}", machine.unique_columns().count());
 
