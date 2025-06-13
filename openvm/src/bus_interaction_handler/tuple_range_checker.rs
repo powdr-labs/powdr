@@ -31,7 +31,7 @@ mod tests {
     use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler};
 
     use super::*;
-    use powdr_autoprecompiles::openvm::{default_openvm_bus_map, DEFAULT_TUPLE_RANGE_CHECKER};
+    use crate::bus_map::{default_openvm_bus_map, DEFAULT_TUPLE_RANGE_CHECKER};
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 

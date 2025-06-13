@@ -151,6 +151,55 @@ fn retain<V, Item>(
     });
 }
 
+impl<T: FieldElement, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
+    /// Adds new algebraic constraints to the system.
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: constraints.into_iter().collect(),
+            bus_interactions: Vec::new(),
+        });
+    }
+
+    /// Adds new bus interactions to the system.
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: bus_interactions.into_iter().collect(),
+        });
+    }
+
+    /// Extends the constraint system by the constraints of another system.
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+        let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
+        let bus_interactions_count = self.constraint_system.bus_interactions.len();
+        // Compute the occurrences of the variables in the new constraints,
+        // but update their indices.
+        // Iterating over hash map here is fine because we are just extending another hash map.
+        #[allow(clippy::iter_over_hash_type)]
+        for (variable, occurrences) in variable_occurrences(&system) {
+            let occurrences = occurrences.into_iter().map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => {
+                    ConstraintSystemItem::AlgebraicConstraint(i + algebraic_constraint_count)
+                }
+                ConstraintSystemItem::BusInteraction(i) => {
+                    ConstraintSystemItem::BusInteraction(i + bus_interactions_count)
+                }
+            });
+            self.variable_occurrences
+                .entry(variable)
+                .or_default()
+                .extend(occurrences);
+        }
+        self.constraint_system.extend(system)
+    }
+}
+
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables<'a>(
@@ -376,10 +425,7 @@ mod tests {
 
         s.substitute_by_unknown(&"x", &Qse::from_unknown_variable("z"));
 
-        assert_eq!(
-            format_system(&s),
-            "y + z  |  0  |  y + -z  |  z: y * [y, z]"
-        );
+        assert_eq!(format_system(&s), "y + z  |  0  |  y - z  |  z: y * [y, z]");
 
         s.substitute_by_unknown(
             &"z",
@@ -389,7 +435,7 @@ mod tests {
 
         assert_eq!(
             format_system(&s),
-            "x + y + 7  |  0  |  -x + y + -7  |  x + 7: y * [y, x + 7]"
+            "x + y + 7  |  0  |  -(x - y + 7)  |  x + 7: y * [y, x + 7]"
         );
     }
 
@@ -446,7 +492,7 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_x, "x + -z, x: x * [x, x]");
+        assert_eq!(items_with_x, "x - z, x: x * [x, x]");
 
         let items_with_z = s
             .constraints_referencing_variables(["z"].into_iter())
@@ -463,6 +509,6 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_z, "x + -z");
+        assert_eq!(items_with_z, "x - z");
     }
 }

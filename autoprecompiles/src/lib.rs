@@ -21,7 +21,6 @@ pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod legacy_expression;
 pub mod memory_optimizer;
-pub mod openvm;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
