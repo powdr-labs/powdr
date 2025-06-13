@@ -24,14 +24,8 @@ impl DurationRecorderLayer {
         }
     }
 
-    /// Clear all collected statistics.
-    pub fn clear(&self) {
-        self.span_times.lock().unwrap().clear();
-        self.span_parents.lock().unwrap().clear();
-    }
-
     /// Print the hierarchical timing breakdown, preserving insertion order with `IndexMap`.
-    pub fn print_tree(&self) {
+    pub fn print_tree_and_clear(&self) {
         let parents = self.span_parents.lock().unwrap();
         let times = self.span_times.lock().unwrap();
 
@@ -81,6 +75,10 @@ impl DurationRecorderLayer {
         for root in roots {
             recurse(&root, 0, &tree, &times);
         }
+
+        // Clear all collected statistics.
+        self.span_times.lock().unwrap().clear();
+        self.span_parents.lock().unwrap().clear();
     }
 }
 

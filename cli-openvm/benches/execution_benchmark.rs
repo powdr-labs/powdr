@@ -38,9 +38,8 @@ fn keccak_benchmark(c: &mut Criterion) {
 
     group.finish();
 
-    // Print the tree of spans and their durations
-    collector.print_tree();
-    collector.clear(); // not necessarily needed in this example, but need to clear the collector in between benchmarks when we run multiple with the same collector
+    // Print the tree of spans and their durations, clear the time collection layer for next benchmark
+    collector.print_tree_and_clear();
 }
 
 criterion_group!(execution_benchmarks, keccak_benchmark);
