@@ -1,5 +1,9 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    fmt::{self, Display},
+};
 
+use itertools::Itertools;
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
@@ -28,15 +32,47 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         .iter()
         .map(|b| (BasicBlockIdentifier::from(b), b))
         .collect::<HashMap<_, _>>();
+    println!("=============== blocks =================");
+    for (id, block) in basic_blocks_by_identifier
+        .iter()
+        .sorted_by_key(|(id, _)| *id)
+    {
+        println!(
+            "{id} (known {}to panic):\n{}",
+            if known_to_panic.contains(id) {
+                ""
+            } else {
+                "not "
+            },
+            block.pretty_print(openvm_instruction_formatter)
+        )
+    }
+    println!("=============== =================");
     let mut queue = blocks.iter().collect::<VecDeque<_>>();
     while let Some(block) = queue.pop_front() {
         println!("{}", block.pretty_print(openvm_instruction_formatter));
         let successors = successors(block);
+        match successors {
+            Ok(successors) => {
+                for s in &successors {
+                    assert!(
+                        basic_blocks_by_identifier.contains_key(&s),
+                        "Successor {} not found in basic blocks",
+                        s
+                    );
+                }
+
+                println!(" -> {}", successors.iter().format(", "));
+            }
+            Err(_) => {
+                println!("Unknown jump dest");
+            }
+        }
     }
     todo!();
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 struct BasicBlockIdentifier(usize);
 
 impl<F> From<&BasicBlock<F>> for BasicBlockIdentifier {
@@ -45,21 +81,39 @@ impl<F> From<&BasicBlock<F>> for BasicBlockIdentifier {
     }
 }
 
+impl BasicBlockIdentifier {
+    /// Returns the identifier of the basic block that starts at the given address.
+    pub fn from_address(address: u32) -> Self {
+        assert!(address % 4 == 0, "Address must be a multiple of 4");
+        BasicBlockIdentifier((address / 4) as usize)
+    }
+
+    pub fn to_address(&self) -> u64 {
+        self.0 as u64 * 4
+    }
+}
+
+impl Display for BasicBlockIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Returns the identifiers of successors of this basic block or
 /// an error if we cannot determine the successors for certain.
 fn successors<F: PrimeField32>(block: &BasicBlock<F>) -> Result<Vec<BasicBlockIdentifier>, ()> {
     // TODO assert that all statements except for the last one are "InstructionJumpBehaviour::ContinueNext"
     let last = block.statements.last().unwrap();
-    let addr = F::from_canonical_u64((block.start_idx + (block.statements.len() - 1) * 4) as u64);
-    let next_block = BasicBlockIdentifier(block.start_idx + (block.statements.len() * 4));
+    let addr = F::from_canonical_u64(((block.start_idx + block.statements.len() - 1) * 4) as u64);
+    let next_block = BasicBlockIdentifier(block.start_idx + block.statements.len());
     match jump_destination(addr, last) {
         InstructionJumpBehaviour::Unknown => Err(()),
         InstructionJumpBehaviour::ContinueNext => Ok(vec![next_block]),
         InstructionJumpBehaviour::UnconditionalJump(addr) => {
-            Ok(vec![BasicBlockIdentifier(addr as usize)])
+            Ok(vec![BasicBlockIdentifier::from_address(addr)])
         }
         InstructionJumpBehaviour::ConditionalJump(addr) => {
-            Ok(vec![BasicBlockIdentifier(addr as usize), next_block])
+            Ok(vec![BasicBlockIdentifier::from_address(addr), next_block])
         }
     }
 }
@@ -83,24 +137,21 @@ fn jump_destination<F: PrimeField32>(
     address: F,
     instruction: &Instruction<F>,
 ) -> InstructionJumpBehaviour {
-    println!(
-        "Analyzing instruction: {}",
-        openvm_instruction_formatter(instruction)
-    );
     let opcode = instruction.opcode.as_usize();
 
+    // TODO group them
     if opcode
         == openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
             .global_opcode()
             .as_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == openvm_rv32im_transpiler::BranchEqualOpcode::BNE
             .global_opcode()
             .as_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
             .global_opcode()
@@ -112,19 +163,18 @@ fn jump_destination<F: PrimeField32>(
             .global_opcode()
             .as_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
             .global_opcode()
             .as_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
             .global_opcode()
             .as_usize()
     {
-        println!("-> {}", instruction.c);
         InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
@@ -134,7 +184,7 @@ fn jump_destination<F: PrimeField32>(
         // TODO we might treat JAL the same way as a conditional jump.
         // is this correct? If the destination always panics, then we do not continue here.
 
-        todo!()
+        InstructionJumpBehaviour::Unknown
     } else if opcode
         == openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
             .global_opcode()
