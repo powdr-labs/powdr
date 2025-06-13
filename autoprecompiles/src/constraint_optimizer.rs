@@ -119,6 +119,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
             .algebraic_constraints
             .iter()
             .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
+            .chain(new_constraints.into_iter())
             .collect(),
         bus_interactions,
     };
