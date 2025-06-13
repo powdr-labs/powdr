@@ -955,7 +955,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
         }
     }
 
-    pub fn transform_signed_simplified<S>(&self) -> (bool, S)
+    fn transform_signed_simplified<S>(&self) -> (bool, S)
     where
         S: From<V>
             + From<SymbolicExpression<T, V>>
@@ -978,26 +978,35 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
                         Some(k) if k == 1.into() => (false, var.clone().into()),
                         Some(k) if k == (-1).into() => (true, var.clone().into()),
                         _ => {
-                            let (sign, coeff) = match coeff.try_to_number() {
-                                Some(k) => {
-                                    if k.is_in_lower_half() {
-                                        (false, coeff.clone())
-                                    } else {
-                                        (true, -coeff)
-                                    }
-                                }
-                                _ => (false, coeff.clone()),
-                            };
+                            let (sign, coeff) = symbolic_expression_to_signed_simplified(coeff);
                             (sign, S::from(coeff) * S::from(var.clone()))
                         }
                     }),
             )
             .chain(match self.constant.try_to_number() {
                 Some(k) if k == T::zero() => None,
-                _ => Some((false, self.constant.clone().into())),
+                _ => {
+                    let (sign, coeff) = symbolic_expression_to_signed_simplified(&self.constant);
+                    Some((sign, coeff.into()))
+                }
             })
             .reduce(|(n1, p1), (n2, p2)| (n1, if n1 == n2 { p1 + p2 } else { p1 - p2 }))
             .unwrap_or((false, Default::default()))
+    }
+}
+
+fn symbolic_expression_to_signed_simplified<T: FieldElement, V: Clone + Ord + Display>(
+    expr: &SymbolicExpression<T, V>,
+) -> (bool, SymbolicExpression<T, V>) {
+    match expr.try_to_number() {
+        Some(k) => {
+            if k.is_in_lower_half() {
+                (false, expr.clone())
+            } else {
+                (true, -expr)
+            }
+        }
+        _ => (false, expr.clone()),
     }
 }
 
@@ -1052,16 +1061,12 @@ impl Mul for PrettyPrintedQuadraticSymbolicExpression {
     fn mul(self, rhs: Self) -> Self::Output {
         let s1 = self.to_string();
         let s2 = rhs.to_string();
-        let s1 = if s1.contains('+') || s1.contains('-') {
-            // If the first expression contains a space, we need to parenthesize it
-            // to avoid ambiguity.
+        let s1 = if s1.contains(" + ") || s1.contains(" - ") {
             format!("({s1})")
         } else {
             s1
         };
-        let s2 = if s2.contains('+') || s2.contains('-') {
-            // If the second expression contains a space, we need to parenthesize it
-            // to avoid ambiguity.
+        let s2 = if s2.contains(" + ") || s2.contains(" - ") {
             format!("({s2})")
         } else {
             s2
@@ -1073,8 +1078,13 @@ impl Mul for PrettyPrintedQuadraticSymbolicExpression {
 impl Neg for PrettyPrintedQuadraticSymbolicExpression {
     type Output = Self;
     fn neg(self) -> Self::Output {
-        // TODO parentheses?
-        PrettyPrintedQuadraticSymbolicExpression(format!("-{}", self.to_string()))
+        let s = self.to_string();
+        let s = if s.contains(" + ") || s.contains(" - ") || s.contains(" * ") {
+            format!("-({s})")
+        } else {
+            format!("-{s}")
+        };
+        PrettyPrintedQuadraticSymbolicExpression(s)
     }
 }
 
@@ -1121,7 +1131,7 @@ mod tests {
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
+        assert_eq!(t.to_string(), "B * X * Y + (A * B)");
     }
 
     #[test]
@@ -1142,13 +1152,13 @@ mod tests {
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
+        assert_eq!(t.to_string(), "B * X * Y + A * B");
         t.substitute_by_known(
             &"B",
             &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
         );
         assert!(t.is_quadratic());
-        assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
+        assert_eq!(t.to_string(), "7 * X * Y + A * 7");
         t.substitute_by_known(
             &"X",
             &SymbolicExpression::from_symbol("X", RangeConstraint::from_range(1.into(), 2.into())),
@@ -1197,7 +1207,10 @@ mod tests {
             &(SymbolicExpression::from_symbol("B", Default::default())
                 + SymbolicExpression::from(GoldilocksField::from(1))),
         );
-        assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
+        assert_eq!(
+            t.to_string(),
+            "((A * (B + 1))) * X + ((B + 1)) * Y + (B + 1)"
+        );
         t.substitute_by_known(
             &"B",
             &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
@@ -1566,7 +1579,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn test_complex_expression_multiple_substitution() {
         let mut expr = (var("x") * var("w")) + var("x") + constant(3) * var("y") + constant(5);
-        assert_eq!(expr.to_string(), "(x) * (w) + x + 3 * y + 5");
+        assert_eq!(expr.to_string(), "x * w + x + 3 * y + 5");
 
         let subst = var("a") * var("b") + constant(1);
 
@@ -1577,7 +1590,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
 
         assert_eq!(
             expr.to_string(),
-            "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
+            "((a) * (b) + 1) * (w) + a * b + 3 * y + 6"
         );
         // Structural validation
         assert_eq!(quadratic.len(), 2);
@@ -1609,7 +1622,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
 
-        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
+        assert_eq!(expr.to_string(), "2 * x * y + 7");
 
         assert_eq!(quadratic.len(), 1);
         assert_eq!(quadratic[0].0.to_string(), "2 * x");

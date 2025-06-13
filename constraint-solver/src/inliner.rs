@@ -327,7 +327,7 @@ mod test {
         assert_eq!(constraints.len(), 1);
         assert_eq!(
             constraints[0].to_string(),
-            "-(((c) * (d) + c - result) * (d) - c)"
+            "-((c * d + c - result) * d - c)"
         );
     }
 
