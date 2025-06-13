@@ -21,7 +21,6 @@ pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod legacy_expression;
 pub mod memory_optimizer;
-pub mod openvm;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
@@ -125,7 +124,7 @@ pub struct SymbolicMachine<T> {
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for constraint in &self.constraints {
-            writeln!(f, "{constraint}")?;
+            writeln!(f, "{constraint} = 0 ")?;
         }
         for bus_interaction in &self.bus_interactions {
             writeln!(f, "{bus_interaction}")?;

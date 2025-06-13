@@ -37,7 +37,7 @@ pub const OPENVM_DEGREE_BOUND: usize = 5;
 // TODO: read this from program
 const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
-const POWDR_OPCODE: usize = 0x10ff;
+pub const POWDR_OPCODE: usize = 0x10ff;
 
 #[derive(Clone, Debug)]
 pub struct CachedAutoPrecompile<F> {
@@ -581,7 +581,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
         pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
     });
 
-    tracing::info!(
+    tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
@@ -625,7 +625,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 .sum();
             let cells_saved_per_row = original_cells_per_row - apc_cells_per_row;
             assert!(cells_saved_per_row > 0);
-            tracing::info!(
+            tracing::debug!(
                 "Basic block start_idx: {}, cells saved per row: {}",
                 acc_block.start_idx,
                 cells_saved_per_row
@@ -661,7 +661,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
         let count = pgo_program_idx_count[&(start_idx as u32)];
         let cost = count * cells_saved as u32;
 
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
             start_idx,
             cost,
@@ -682,7 +682,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
     });
 
-    tracing::info!(
+    tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
@@ -700,7 +700,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         let count = pgo_program_idx_count[&(start_idx as u32)];
         let cost = count * (block.statements.len() as u32);
 
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
             start_idx,
             cost,
@@ -717,7 +717,7 @@ fn sort_blocks_by_length<F: PrimeField32>(blocks: &mut Vec<BasicBlock<F>>) {
     // Debug print blocks by descending cost
     for block in blocks {
         let start_idx = block.start_idx;
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, number_of_instructions: {}",
             start_idx,
             block.statements.len(),
