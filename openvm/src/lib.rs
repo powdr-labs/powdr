@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
-use tracing::{Event, Subscriber};
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     layer::Context,
     prelude::*,
@@ -502,17 +502,19 @@ pub fn pgo(
 
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc.iter().min().unwrap();
-    tracing::info!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
 
-    // print the total and by pc counts at the warn level (default level in powdr-openvm)
-    tracing::warn!("Pgo captured {} pc's", pc.len());
+    // print the total and by pc counts
+    tracing::debug!("Pgo captured {} pc's", pc.len());
 
-    // print pc_index map in descending order of pc_index count
-    let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-    pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-    pc_index_count_sorted.iter().for_each(|(pc, count)| {
-        tracing::warn!("pc_index {}: {}", pc, count);
-    });
+    if tracing::enabled!(Level::DEBUG) {
+        // print pc_index map in descending order of pc_index count
+        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
+        pc_index_count_sorted.iter().for_each(|(pc, count)| {
+            tracing::debug!("pc_index {}: {}", pc, count);
+        });
+    }
 
     Ok(pc_index_count)
 }
@@ -1018,7 +1020,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Instruction took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -1030,7 +1032,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
     }
 
     // #[test]
