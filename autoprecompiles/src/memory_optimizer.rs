@@ -13,7 +13,9 @@ use powdr_constraint_solver::quadratic_symbolic_expression::{
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
-use crate::MEMORY_BUS_ID;
+use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
+use crate::optimizer::algebraic_to_quadratic_symbolic_expression;
+use crate::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
@@ -22,11 +24,12 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
-    system: &mut JournalingConstraintSystem<T, V>,
+    system: JournalingConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
-) {
+    memory_bus_id: u64,
+) -> JournalingConstraintSystem<T, V> {
     let (to_remove, new_constraints) =
-        redundant_memory_interactions_indices(system.system(), range_constraints);
+        redundant_memory_interactions_indices(system.system(), range_constraints, memory_bus_id);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     let mut counter = 0;
     system.retain_bus_interactions(|_| {
@@ -40,14 +43,15 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
+pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Hash + Display>(
     system: &ConstraintSystem<T, V>,
+    memory_bus_id: u64,
 ) -> bool {
     let count_per_addr = system
         .bus_interactions
         .iter()
         .filter_map(|bus_int| {
-            MemoryBusInteraction::try_from_bus_interaction(bus_int)
+            MemoryBusInteraction::try_from_bus_interaction(bus_int, memory_bus_id)
                 .ok()
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
@@ -87,7 +91,7 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> MemoryBusInteraction<T, V> {
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
@@ -96,10 +100,11 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
     fn try_from_bus_interaction(
         bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
+        memory_bus_id: u64,
     ) -> Result<Option<Self>, ()> {
         match bus_interaction.bus_id.try_to_number() {
             None => return Err(()),
-            Some(id) if id == MEMORY_BUS_ID.into() => {}
+            Some(id) if id == memory_bus_id.into() => {}
             Some(_) => return Ok(None),
         }
 
@@ -132,8 +137,9 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> 
 fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
     system: &ConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
+    memory_bus_id: u64,
 ) -> (Vec<usize>, Vec<QuadraticSymbolicExpression<T, V>>) {
-    let address_comparator = MemoryAddressComparator::new(system);
+    let address_comparator = MemoryAddressComparator::new(system, memory_bus_id);
     let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = Vec::new();
 
     // Address across all memory types.
@@ -149,7 +155,7 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in system.bus_interactions.iter().enumerate() {
-        let mem_int = match MemoryBusInteraction::try_from_bus_interaction(bus_int) {
+        let mem_int = match MemoryBusInteraction::try_from_bus_interaction(bus_int, memory_bus_id) {
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
             Err(_) => {
@@ -211,12 +217,12 @@ struct MemoryAddressComparator<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressComparator<T, V> {
-    fn new(system: &ConstraintSystem<T, V>) -> Self {
+    fn new(system: &ConstraintSystem<T, V>, memory_bus_id: u64) -> Self {
         let addresses = system
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                MemoryBusInteraction::try_from_bus_interaction(bus)
+                MemoryBusInteraction::try_from_bus_interaction(bus, memory_bus_id)
                     .ok()
                     .flatten()
             })

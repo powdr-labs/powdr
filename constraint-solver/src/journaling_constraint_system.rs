@@ -11,7 +11,7 @@ pub struct JournalingConstraintSystem<T: FieldElement, V> {
     system: IndexedConstraintSystem<T, V>,
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash, C: Into<IndexedConstraintSystem<T, V>>> From<C>
+impl<T: FieldElement, V, C: Into<IndexedConstraintSystem<T, V>>> From<C>
     for JournalingConstraintSystem<T, V>
 {
     fn from(system: C) -> Self {

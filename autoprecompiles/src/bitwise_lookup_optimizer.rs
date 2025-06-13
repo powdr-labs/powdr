@@ -8,19 +8,18 @@ use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintS
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
-use crate::BITWISE_LOOKUP_BUS_ID;
-
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
     system: &mut JournalingConstraintSystem<T, V>,
+    bitwise_lookup_bus_id: u64,
 ) {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
     let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = vec![];
     system.retain_bus_interactions(|bus_int| {
-        if !is_simple_multiplicity_bitwise_bus_interaction(bus_int) {
+        if !is_simple_multiplicity_bitwise_bus_interaction(bus_int, bitwise_lookup_bus_id) {
             return true;
         }
         // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/bitwise_op_lookup/bus.rs
@@ -67,7 +66,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
-    let already_byte_constrained = all_byte_constrained_expressions(system.system())
+    let already_byte_constrained = all_byte_constrained_expressions(system.system(), bitwise_lookup_bus_id)
         .cloned()
         .collect::<HashSet<_>>();
     let mut to_byte_constrain = to_byte_constrain
@@ -88,7 +87,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     }
     system.add_bus_interactions(to_byte_constrain.into_iter().tuples().map(|(x, y)| {
         BusInteraction {
-            bus_id: T::from(BITWISE_LOOKUP_BUS_ID).into(),
+            bus_id: T::from(bitwise_lookup_bus_id).into(),
             payload: vec![x.clone(), y.clone(), T::from(0).into(), T::from(0).into()],
             multiplicity: T::from(1).into(),
         }
@@ -98,8 +97,9 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
 
 fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Ord>(
     bus_int: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
+    bitwise_lookup_bus_id: u64,
 ) -> bool {
-    bus_int.bus_id == T::from(BITWISE_LOOKUP_BUS_ID).into()
+    bus_int.bus_id == T::from(bitwise_lookup_bus_id).into()
         && bus_int.multiplicity == T::from(1).into()
 }
 
@@ -107,11 +107,14 @@ fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Ord>(
 /// The list does not have to be exhaustive.
 fn all_byte_constrained_expressions<T: FieldElement, V: Clone + Ord + Hash>(
     machine: &ConstraintSystem<T, V>,
+    bitwise_lookup_bus_id: u64,
 ) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
     machine
         .bus_interactions
         .iter()
-        .filter(|bus_int| is_simple_multiplicity_bitwise_bus_interaction(bus_int))
+        .filter(move |bus_int| {
+            is_simple_multiplicity_bitwise_bus_interaction(bus_int, bitwise_lookup_bus_id)
+        })
         .flat_map(|bus_int| {
             let [x, y, z, op] = &bus_int.payload[..] else {
                 panic!();
