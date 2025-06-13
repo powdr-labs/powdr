@@ -151,51 +151,6 @@ where
             .map(|(index, c)| (c.id.id, index))
             .collect();
 
-        // Create permutation sets for Witness(poly), each set collects the positions of the cells that have the same value
-        // BTreeMap<poly_id, Vec<position in matrix[a_id, b_id, c_id, d_id, e_id]>>
-        let mut permutation_sets_by_poly_id: BTreeMap<u64, Vec<u64>> = column_index_by_poly_id
-            .keys()
-            .map(|&id| (id, vec![]))
-            .collect();
-
-        for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
-            for (i, witness_col) in [&gate.a, &gate.b, &gate.c, &gate.d, &gate.e]
-                .into_iter()
-                .enumerate()
-            {
-                if let Some(poly_id) = witness_col.get_poly_id() {
-                    if let Some(vec) = permutation_sets_by_poly_id.get_mut(&poly_id) {
-                        vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + i as u64);
-                    }
-                }
-            }
-        }
-
-        let mut permutation_sets_by_variable: HashMap<&Variable<AlgebraicReference>, Vec<u64>> =
-            plonk_circuit
-                .gates()
-                .iter()
-                .flat_map(|gate| [&gate.a, &gate.b, &gate.c, &gate.d, &gate.e])
-                .filter(|var| !matches!(var, Variable::Unused))
-                .unique()
-                .map(|variable| (variable, vec![]))
-                .collect::<HashMap<_, _>>();
-
-        for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
-            for (i, variable) in [&gate.a, &gate.b, &gate.c, &gate.d, &gate.e]
-                .into_iter()
-                .enumerate()
-            {
-                if let Some(vec) = permutation_sets_by_variable.get_mut(variable) {
-                    vec.push(NUMBER_OF_WITNESS_COLS * gate_index as u64 + i as u64);
-                }
-            }
-        }
-
-        // remove permutation sets that has only one element.
-        permutation_sets_by_poly_id.retain(|_, v| v.len() > 1);
-        permutation_sets_by_variable.retain(|_, v| v.len() > 1);
-
         let witness = self
             .executor
             .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
@@ -267,10 +222,9 @@ where
             }
         }
 
-        generate_permutation_columns::<SC, P>(
+        generate_permutation_columns::<Val<SC>, P>(
             &mut values,
             &plonk_circuit,
-            &permutation_sets_by_variable,
             number_of_calls,
             width,
         );

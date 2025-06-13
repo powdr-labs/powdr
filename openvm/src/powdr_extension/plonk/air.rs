@@ -176,7 +176,8 @@ where
             builder.push_interaction(
                 self.bus_map
                     .get_bus_id(&BusType::CopyConstraintLookup)
-                    .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+                    .expect("BusType::CopyConstraintLookup not found in bus_map")
+                    as u16,
                 vec![*column, *id],
                 q_copy_constraint.clone(),
                 1,
@@ -184,7 +185,8 @@ where
             builder.push_interaction(
                 self.bus_map
                     .get_bus_id(&BusType::CopyConstraintLookup)
-                    .expect("BusType::CopyConstraintLookup not found in bus_map") as u16,
+                    .expect("BusType::CopyConstraintLookup not found in bus_map")
+                    as u16,
                 vec![*column, *perm],
                 -q_copy_constraint.clone(),
                 1,

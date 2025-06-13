@@ -3,9 +3,8 @@
 use std::collections::BTreeMap;
 use std::iter::once;
 
-use derive_more::From;
-use powdr_autoprecompiles::bus_map::BusType;
 use crate::{IntoOpenVm, OpenVmField};
+use derive_more::From;
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
     arch::{VmExtension, VmInventory},
@@ -25,6 +24,7 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     Chip,
 };
+use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
