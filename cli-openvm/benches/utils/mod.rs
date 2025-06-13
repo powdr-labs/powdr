@@ -24,9 +24,6 @@ impl BenchmarkCollector {
         Self { layer }
     }
 
-    /// Install the subscriber globally. Call once before any spans are created.
-    pub fn install(&mut self) {}
-
     /// Print the timing tree for all collected spans and clear any previously collected data.
     pub fn print_tree_and_clear(&self) {
         self.layer.print_tree_and_clear();

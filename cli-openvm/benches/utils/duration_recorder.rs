@@ -26,8 +26,8 @@ impl DurationRecorderLayer {
 
     /// Print the hierarchical timing breakdown, preserving insertion order with `IndexMap`.
     pub fn print_tree_and_clear(&self) {
-        let parents = self.span_parents.lock().unwrap();
-        let times = self.span_times.lock().unwrap();
+        let mut parents = self.span_parents.lock().unwrap();
+        let mut times = self.span_times.lock().unwrap();
 
         // build parent -> children map
         let mut tree: IndexMap<String, Vec<String>> = IndexMap::new();
@@ -77,8 +77,8 @@ impl DurationRecorderLayer {
         }
 
         // Clear all collected statistics.
-        self.span_times.lock().unwrap().clear();
-        self.span_parents.lock().unwrap().clear();
+        times.clear();
+        parents.clear();
     }
 }
 

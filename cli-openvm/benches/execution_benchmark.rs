@@ -6,14 +6,13 @@ use openvm_sdk::StdIn;
 use powdr_openvm::{compile_guest, execute_and_generate, GuestOptions, PgoConfig, PowdrConfig};
 
 const GUEST_KECCAK: &str = "guest-keccak";
-const GUEST_KECCAK_ITER: u32 = 10;
+const GUEST_KECCAK_ITER: u32 = 1000;
 const GUEST_KECCAK_APC: u64 = 1;
 const GUEST_KECCAK_SKIP: u64 = 0;
 
 fn keccak_benchmark(c: &mut Criterion) {
     // create a fresh collector for this benchmark
-    let mut collector = BenchmarkCollector::new();
-    collector.install();
+    let collector = BenchmarkCollector::new();
 
     // To see the component run times (e.g. powdr chip vs non-powdr chip trace gen time, powdr chip dummy trace gen time for each dummy chip)
     // run with RUST_LOG=debug
