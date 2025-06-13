@@ -34,6 +34,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, 
         )
     }
 }
+
 impl<T: FieldElement, V> ConstraintSystem<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(
