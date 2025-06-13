@@ -40,7 +40,7 @@ use openvm_stark_sdk::openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear;
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, SymbolicMachine};
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
@@ -62,7 +62,10 @@ use crate::traits::OpenVmField;
 use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
+pub mod bus_map;
 mod utils;
+
+use bus_map::default_openvm_bus_map;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
