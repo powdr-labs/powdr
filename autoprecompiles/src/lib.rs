@@ -126,7 +126,7 @@ pub struct SymbolicMachine<T> {
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for constraint in &self.constraints {
-            writeln!(f, "{constraint}")?;
+            writeln!(f, "{constraint} = 0 ")?;
         }
         for bus_interaction in &self.bus_interactions {
             writeln!(f, "{bus_interaction}")?;

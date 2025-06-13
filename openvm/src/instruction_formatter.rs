@@ -1,6 +1,6 @@
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_backend::p3_field::PrimeField32;
-use powdr_autoprecompiles::openvm::prelude::*;
+use powdr_autoprecompiles::openvm::*;
 
 pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F>) -> String {
     let Instruction {

@@ -1,7 +1,7 @@
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{
-    build, openvm::default_openvm_bus_map, symbolic_instruction_builder::prelude::*, DegreeBound,
+    build, openvm::default_openvm_bus_map, symbolic_instruction_builder::*, DegreeBound,
     SymbolicInstructionStatement, SymbolicMachine, VmConfig,
 };
 use powdr_number::BabyBearField;
@@ -18,7 +18,6 @@ fn compile(
         .rv32i(Default::default())
         .rv32m(Default::default())
         .io(Default::default())
-        .keccak(Default::default())
         .build();
 
     let program_instructions = program
@@ -52,40 +51,40 @@ fn guest_top_block() {
     // SymbolicInstructionStatement { opcode: 576, args: [BabyBearField(4), BabyBearField(0), BabyBearField(0), BabyBearField(1), BabyBearField(0), BabyBearField(0), BabyBearField(0)] }
     // SymbolicInstructionStatement { opcode: 565, args: [BabyBearField(4), BabyBearField(4), BabyBearField(1780), BabyBearField(1), BabyBearField(0), BabyBearField(1), BabyBearField(0)] }
 
-    let program = vec![
+    let program = [
         add(8, 8, 16777200, 0),
         storew(4, 8, 12, 2, 1, 0),
         auipc(4, 0, 0, 1, 0),
         blt(4, 4, 1780, 1, 0),
     ];
 
-    let (machine, _) = compile(program);
+    let (machine, _) = compile(program.to_vec());
 
-    let expected = r#"(7864320 * rs1_data__0_1 + 125829121 * is_valid - 7864320 * writes_aux__prev_data__0_0) * (7864320 * rs1_data__0_1 + 125829120 - 7864320 * writes_aux__prev_data__0_0)
-(30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 491521 * is_valid - (30720 * writes_aux__prev_data__0_0 + 7864320 * writes_aux__prev_data__1_0)) * (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 491520 - (30720 * writes_aux__prev_data__0_0 + 7864320 * writes_aux__prev_data__1_0))
-(120 * rs1_data__0_1 + 30720 * rs1_data__1_1 + 7864320 * rs1_data__2_1 + 1921 * is_valid - (120 * writes_aux__prev_data__0_0 + 30720 * writes_aux__prev_data__1_0 + 7864320 * writes_aux__prev_data__2_0)) * (120 * rs1_data__0_1 + 30720 * rs1_data__1_1 + 7864320 * rs1_data__2_1 + 1920 - (120 * writes_aux__prev_data__0_0 + 30720 * writes_aux__prev_data__1_0 + 7864320 * writes_aux__prev_data__2_0))
-(943718400 * writes_aux__prev_data__0_0 + 120 * rs1_data__1_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 - (120 * writes_aux__prev_data__1_0 + 30720 * writes_aux__prev_data__2_0 + 7864320 * writes_aux__prev_data__3_0 + 943718400 * rs1_data__0_1 + 1006632952 * is_valid)) * (943718400 * writes_aux__prev_data__0_0 + 120 * rs1_data__1_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 - (120 * writes_aux__prev_data__1_0 + 30720 * writes_aux__prev_data__2_0 + 7864320 * writes_aux__prev_data__3_0 + 943718400 * rs1_data__0_1 + 1006632953))
-(30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 368640 * is_valid)) * (30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 368641))
-(943718400 * rs1_data__0_1 + 30720 * mem_ptr_limbs__1_1 - (120 * rs1_data__1_1 + 943718400 * mem_ptr_limbs__0_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 + 754974726 * is_valid)) * (943718400 * rs1_data__0_1 + 30720 * mem_ptr_limbs__1_1 - (120 * rs1_data__1_1 + 943718400 * mem_ptr_limbs__0_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 + 754974727))
-(7864320 * a__1_3 - 7864320 * pc_limbs__0_2) * (7864320 * a__1_3 - (7864320 * pc_limbs__0_2 + 1))
-(7864320 * a__2_3 + 30720 * a__1_3 - (30720 * pc_limbs__0_2 + 7864320 * pc_limbs__1_2)) * (7864320 * a__2_3 + 30720 * a__1_3 - (30720 * pc_limbs__0_2 + 7864320 * pc_limbs__1_2 + 1))
-(943718400 * from_state__pc_0 + 7864320 * b__3_3 + 30720 * a__2_3 + 120 * a__1_3 - (943718400 * a__0_3 + 503316484 * is_valid)) * (943718400 * from_state__pc_0 + 7864320 * b__3_3 + 30720 * a__2_3 + 120 * a__1_3 - (943718400 * a__0_3 + 503316485))
-cmp_lt_3 * (cmp_lt_3 - 1)
-(b__3_3 - a_msb_f_3) * (a_msb_f_3 + 256 - b__3_3)
-(b__3_3 - b_msb_f_3) * (b_msb_f_3 + 256 - b__3_3)
-diff_marker__3_3 * (diff_marker__3_3 - 1)
-(1 - diff_marker__3_3) * ((b_msb_f_3 - a_msb_f_3) * (2 * cmp_lt_3 - 1))
-diff_marker__3_3 * ((a_msb_f_3 - b_msb_f_3) * (2 * cmp_lt_3 - 1) + diff_val_3)
-diff_marker__2_3 * (diff_marker__2_3 - 1)
-diff_marker__2_3 * diff_val_3
-diff_marker__1_3 * (diff_marker__1_3 - 1)
-diff_marker__1_3 * diff_val_3
-diff_marker__0_3 * (diff_marker__0_3 - 1)
-diff_marker__0_3 * diff_val_3
-(diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3) * (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3 - 1)
-(1 - (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3)) * cmp_lt_3
-(1 - is_valid) * (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3)
-is_valid * (is_valid - 1)
+    let expected = r#"(7864320 * rs1_data__0_1 + 125829121 * is_valid - 7864320 * writes_aux__prev_data__0_0) * (7864320 * rs1_data__0_1 + 125829120 - 7864320 * writes_aux__prev_data__0_0) = 0 
+(30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 491521 * is_valid - (30720 * writes_aux__prev_data__0_0 + 7864320 * writes_aux__prev_data__1_0)) * (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 491520 - (30720 * writes_aux__prev_data__0_0 + 7864320 * writes_aux__prev_data__1_0)) = 0 
+(120 * rs1_data__0_1 + 30720 * rs1_data__1_1 + 7864320 * rs1_data__2_1 + 1921 * is_valid - (120 * writes_aux__prev_data__0_0 + 30720 * writes_aux__prev_data__1_0 + 7864320 * writes_aux__prev_data__2_0)) * (120 * rs1_data__0_1 + 30720 * rs1_data__1_1 + 7864320 * rs1_data__2_1 + 1920 - (120 * writes_aux__prev_data__0_0 + 30720 * writes_aux__prev_data__1_0 + 7864320 * writes_aux__prev_data__2_0)) = 0 
+(943718400 * writes_aux__prev_data__0_0 + 120 * rs1_data__1_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 - (120 * writes_aux__prev_data__1_0 + 30720 * writes_aux__prev_data__2_0 + 7864320 * writes_aux__prev_data__3_0 + 943718400 * rs1_data__0_1 + 1006632952 * is_valid)) * (943718400 * writes_aux__prev_data__0_0 + 120 * rs1_data__1_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 - (120 * writes_aux__prev_data__1_0 + 30720 * writes_aux__prev_data__2_0 + 7864320 * writes_aux__prev_data__3_0 + 943718400 * rs1_data__0_1 + 1006632953)) = 0 
+(30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 368640 * is_valid)) * (30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 368641)) = 0 
+(943718400 * rs1_data__0_1 + 30720 * mem_ptr_limbs__1_1 - (120 * rs1_data__1_1 + 943718400 * mem_ptr_limbs__0_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 + 754974726 * is_valid)) * (943718400 * rs1_data__0_1 + 30720 * mem_ptr_limbs__1_1 - (120 * rs1_data__1_1 + 943718400 * mem_ptr_limbs__0_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 + 754974727)) = 0 
+(7864320 * a__1_3 - 7864320 * pc_limbs__0_2) * (7864320 * a__1_3 - (7864320 * pc_limbs__0_2 + 1)) = 0 
+(7864320 * a__2_3 + 30720 * a__1_3 - (30720 * pc_limbs__0_2 + 7864320 * pc_limbs__1_2)) * (7864320 * a__2_3 + 30720 * a__1_3 - (30720 * pc_limbs__0_2 + 7864320 * pc_limbs__1_2 + 1)) = 0 
+(943718400 * from_state__pc_0 + 7864320 * b__3_3 + 30720 * a__2_3 + 120 * a__1_3 - (943718400 * a__0_3 + 503316484 * is_valid)) * (943718400 * from_state__pc_0 + 7864320 * b__3_3 + 30720 * a__2_3 + 120 * a__1_3 - (943718400 * a__0_3 + 503316485)) = 0 
+cmp_lt_3 * (cmp_lt_3 - 1) = 0 
+(b__3_3 - a_msb_f_3) * (a_msb_f_3 + 256 - b__3_3) = 0 
+(b__3_3 - b_msb_f_3) * (b_msb_f_3 + 256 - b__3_3) = 0 
+diff_marker__3_3 * (diff_marker__3_3 - 1) = 0 
+(1 - diff_marker__3_3) * ((b_msb_f_3 - a_msb_f_3) * (2 * cmp_lt_3 - 1)) = 0 
+diff_marker__3_3 * ((a_msb_f_3 - b_msb_f_3) * (2 * cmp_lt_3 - 1) + diff_val_3) = 0 
+diff_marker__2_3 * (diff_marker__2_3 - 1) = 0 
+diff_marker__2_3 * diff_val_3 = 0 
+diff_marker__1_3 * (diff_marker__1_3 - 1) = 0 
+diff_marker__1_3 * diff_val_3 = 0 
+diff_marker__0_3 * (diff_marker__0_3 - 1) = 0 
+diff_marker__0_3 * diff_val_3 = 0 
+(diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3) * (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3 - 1) = 0 
+(1 - (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3)) * cmp_lt_3 = 0 
+(1 - is_valid) * (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3) = 0 
+is_valid * (is_valid - 1) = 0 
 (id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17])
 (id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12])
 (id=1, mult=is_valid * 2013265920, args=[1, 8, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 8)])

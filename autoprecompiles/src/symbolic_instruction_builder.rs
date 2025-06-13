@@ -1,5 +1,5 @@
 //! Builds SymbolicInstructionStatement to create input program for testing powdr_autoprecompile::build
-use crate::openvm::prelude::*;
+use crate::openvm::*;
 use crate::SymbolicInstructionStatement;
 use powdr_number::FieldElement;
 
@@ -103,7 +103,7 @@ build_instr5!(
     (mulh, OPCODE_MULH),
     (mulhsu, OPCODE_MULHSU),
     (mulhu, OPCODE_MULHU),
-    (div_, OPCODE_DIV),
+    (div, OPCODE_DIV),
     (divu, OPCODE_DIVU),
     (rem, OPCODE_REM),
     (remu, OPCODE_REMU),
@@ -115,9 +115,9 @@ build_instr5!(
 alu_ops!(
     (add, OPCODE_ADD),
     (sub, OPCODE_SUB),
-    (xor_, OPCODE_XOR),
-    (or_, OPCODE_OR),
-    (and_, OPCODE_AND),
+    (xor, OPCODE_XOR),
+    (or, OPCODE_OR),
+    (and, OPCODE_AND),
     (sll, OPCODE_SLL),
     (srl, OPCODE_SRL),
     (sra, OPCODE_SRA),
@@ -135,48 +135,3 @@ ls_ops!(
     (loadb, OPCODE_LOADB),
     (loadh, OPCODE_LOADH)
 );
-
-// Prelude module re-exporting all instruction builders
-pub mod prelude {
-    //! Convenient import of all generated instruction functions
-    pub use super::{
-        add,
-        and_,
-        auipc,
-        beq,
-        bge,
-        bgeu,
-        blt,
-        bltu,
-        bne,
-        div_,
-        divu,
-        hint_buffer,
-        hint_storew,
-        jal,
-        jalr,
-        loadb,
-        loadbu,
-        loadh,
-        loadhu,
-        loadw,
-        lui,
-        mul,
-        mulh,
-        mulhsu,
-        mulhu,
-        or_,
-        rem,
-        remu,
-        sll,
-        slt,
-        sltu,
-        sra,
-        srl,
-        storeb,
-        storeh,
-        storew,
-        sub,
-        xor_,
-    };
-}
