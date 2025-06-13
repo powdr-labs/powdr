@@ -927,64 +927,154 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
 
 impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (sign, s) = self.to_signed_string();
-        if sign {
-            write!(f, "-({s})")
-        } else {
-            write!(f, "{s}")
-        }
+        write!(
+            f,
+            "{}",
+            self.transform_simplified::<PrettyPrintedQuadraticSymbolicExpression>()
+                .to_string()
+        )
     }
 }
 
 impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
-    fn to_signed_string(&self) -> (bool, String) {
+    pub fn transform_simplified<S>(&self) -> S
+    where
+        S: From<V>
+            + From<SymbolicExpression<T, V>>
+            + Add<Output = S>
+            + Sub<Output = S>
+            + Mul<Output = S>
+            + Neg<Output = S>
+            + Default,
+    {
+        let (sign, s) = self.transform_signed_simplified::<S>();
+        if sign {
+            -s
+        } else {
+            s
+        }
+    }
+
+    pub fn transform_signed_simplified<S>(&self) -> (bool, S)
+    where
+        S: From<V>
+            + From<SymbolicExpression<T, V>>
+            + Add<Output = S>
+            + Sub<Output = S>
+            + Mul<Output = S>
+            + Default,
+    {
         self.quadratic
             .iter()
             .map(|(a, b)| {
-                let (a_sign, a) = a.to_signed_string();
-                let (b_sign, b) = b.to_signed_string();
-                (a_sign ^ b_sign, format!("({a}) * ({b})"))
+                let (a_sign, a): (bool, S) = a.transform_signed_simplified();
+                let (b_sign, b) = b.transform_signed_simplified();
+                (a_sign ^ b_sign, a * b)
             })
             .chain(
                 self.linear
                     .iter()
                     .map(|(var, coeff)| match coeff.try_to_number() {
-                        Some(k) if k == 1.into() => (false, format!("{var}")),
-                        Some(k) if k == (-1).into() => (true, format!("{var}")),
+                        Some(k) if k == 1.into() => (false, var.clone().into()),
+                        Some(k) if k == (-1).into() => (true, var.clone().into()),
                         _ => {
-                            let (sign, coeff) = Self::symbolic_expression_to_signed_string(coeff);
-                            (sign, format!("{coeff} * {var}"))
+                            let (sign, coeff) = match coeff.try_to_number() {
+                                Some(k) => {
+                                    if k.is_in_lower_half() {
+                                        (false, coeff.clone())
+                                    } else {
+                                        (true, -coeff)
+                                    }
+                                }
+                                _ => (false, coeff.clone()),
+                            };
+                            (sign, S::from(coeff) * S::from(var.clone()))
                         }
                     }),
             )
             .chain(match self.constant.try_to_number() {
                 Some(k) if k == T::zero() => None,
-                _ => Some(Self::symbolic_expression_to_signed_string(&self.constant)),
+                _ => Some((false, self.constant.clone().into())),
             })
-            .reduce(|(n1, p1), (n2, p2)| {
-                (
-                    n1,
-                    if n1 == n2 {
-                        format!("{p1} + {p2}")
-                    } else {
-                        format!("{p1} - {p2}")
-                    },
-                )
-            })
-            .unwrap_or((false, "0".to_string()))
+            .reduce(|(n1, p1), (n2, p2)| (n1, if n1 == n2 { p1 + p2 } else { p1 - p2 }))
+            .unwrap_or((false, Default::default()))
     }
+}
 
-    fn symbolic_expression_to_signed_string(value: &SymbolicExpression<T, V>) -> (bool, String) {
-        match value.try_to_number() {
-            Some(k) => {
-                if k.is_in_lower_half() {
-                    (false, format!("{k}"))
-                } else {
-                    (true, format!("{}", -k))
-                }
-            }
-            _ => (false, value.to_string()),
-        }
+/// A pretty-printed version of a quadratic symbolic expression for use with
+/// `QuadraticSymbolicExpression::transform_simplified`.
+/// Note that the point where we required parentheses is highly dependent
+/// on the way this is used inside that function.
+struct PrettyPrintedQuadraticSymbolicExpression(String);
+
+impl PrettyPrintedQuadraticSymbolicExpression {
+    fn to_string(&self) -> String {
+        self.0.to_string()
+    }
+}
+
+impl<V: Display> From<V> for PrettyPrintedQuadraticSymbolicExpression {
+    fn from(v: V) -> Self {
+        PrettyPrintedQuadraticSymbolicExpression(v.to_string())
+    }
+}
+
+impl Default for PrettyPrintedQuadraticSymbolicExpression {
+    fn default() -> Self {
+        PrettyPrintedQuadraticSymbolicExpression("0".to_string())
+    }
+}
+
+impl Add for PrettyPrintedQuadraticSymbolicExpression {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        PrettyPrintedQuadraticSymbolicExpression(format!(
+            "{} + {}",
+            self.to_string(),
+            rhs.to_string()
+        ))
+    }
+}
+
+impl Sub for PrettyPrintedQuadraticSymbolicExpression {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        PrettyPrintedQuadraticSymbolicExpression(format!(
+            "{} - {}",
+            self.to_string(),
+            rhs.to_string()
+        ))
+    }
+}
+
+impl Mul for PrettyPrintedQuadraticSymbolicExpression {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self::Output {
+        let s1 = self.to_string();
+        let s2 = rhs.to_string();
+        let s1 = if s1.contains('+') || s1.contains('-') {
+            // If the first expression contains a space, we need to parenthesize it
+            // to avoid ambiguity.
+            format!("({s1})")
+        } else {
+            s1
+        };
+        let s2 = if s2.contains('+') || s2.contains('-') {
+            // If the second expression contains a space, we need to parenthesize it
+            // to avoid ambiguity.
+            format!("({s2})")
+        } else {
+            s2
+        };
+        PrettyPrintedQuadraticSymbolicExpression(format!("{s1} * {s2}"))
+    }
+}
+
+impl Neg for PrettyPrintedQuadraticSymbolicExpression {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        // TODO parentheses?
+        PrettyPrintedQuadraticSymbolicExpression(format!("-{}", self.to_string()))
     }
 }
 
