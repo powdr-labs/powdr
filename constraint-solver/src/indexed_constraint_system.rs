@@ -151,7 +151,7 @@ fn retain<V, Item>(
     });
 }
 
-impl<T: FieldElement, V: Hash + Eq + Clone + Ord> IndexedConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
     /// Adds new algebraic constraints to the system.
     pub fn add_algebraic_constraints(
         &mut self,
@@ -176,7 +176,6 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord> IndexedConstraintSystem<T, V> 
 
     /// Extends the constraint system by the constraints of another system.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
-        // TODO track
         let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
         let bus_interactions_count = self.constraint_system.bus_interactions.len();
         // Compute the occurrences of the variables in the new constraints,
@@ -197,12 +196,7 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord> IndexedConstraintSystem<T, V> 
                 .or_default()
                 .extend(occurrences);
         }
-        self.constraint_system
-            .algebraic_constraints
-            .extend(system.algebraic_constraints);
-        self.constraint_system
-            .bus_interactions
-            .extend(system.bus_interactions);
+        self.constraint_system.extend(system)
     }
 }
 
@@ -431,10 +425,7 @@ mod tests {
 
         s.substitute_by_unknown(&"x", &Qse::from_unknown_variable("z"));
 
-        assert_eq!(
-            format_system(&s),
-            "y + z  |  0  |  y + -z  |  z: y * [y, z]"
-        );
+        assert_eq!(format_system(&s), "y + z  |  0  |  y - z  |  z: y * [y, z]");
 
         s.substitute_by_unknown(
             &"z",
@@ -444,7 +435,7 @@ mod tests {
 
         assert_eq!(
             format_system(&s),
-            "x + y + 7  |  0  |  -x + y + -7  |  x + 7: y * [y, x + 7]"
+            "x + y + 7  |  0  |  -(x - y + 7)  |  x + 7: y * [y, x + 7]"
         );
     }
 
@@ -501,7 +492,7 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_x, "x + -z, x: x * [x, x]");
+        assert_eq!(items_with_x, "x - z, x: x * [x, x]");
 
         let items_with_z = s
             .constraints_referencing_variables(["z"].into_iter())
@@ -518,6 +509,6 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_z, "x + -z");
+        assert_eq!(items_with_z, "x - z");
     }
 }

@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
 
 use super::simplify_expression;
-use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider},
+    quadratic_symbolic_expression::{NoRangeConstraints, {NoRangeConstraints, QuadraticSymbolicExpression}, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -18,7 +17,7 @@ use crate::{
     },
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
-    stats_logger::StatsLogger,
+    stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
@@ -49,7 +48,7 @@ pub fn optimize<T: FieldElement>(
         JournalingConstraintSystem::from(symbolic_machine_to_constraint_system(machine));
 
     loop {
-        let size = system_size(constraint_system.system());
+        let stats = stats_logger::Stats::from(constraint_system.system());
         optimization_loop_iteration(
             &mut constraint_system,
             bus_interaction_handler.clone(),
@@ -57,7 +56,7 @@ pub fn optimize<T: FieldElement>(
             &mut stats_logger,
             bus_map,
         )?;
-        if system_size(constraint_system.system()) == size {
+        if stats == stats_logger::Stats::from(constraint_system.system()) {
             return Ok(constraint_system_to_symbolic_machine(
                 constraint_system.system().clone(),
             ));
@@ -71,45 +70,40 @@ fn optimization_loop_iteration<T: FieldElement>(
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
-) -> Result<(), crate::constraint_optimizer::Error> {
-    optimize_constraints(
+) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
+    let constraint_system = JournalingConstraintSystem::from(constraint_system);
+    let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     )?;
-    let system =if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let system = optimize_memory(constraint_system, NoRangeConstraints, memory_bus_id);
+    let constraint_system = constraint_system.system().clone();
+    let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
+        let constraint_system =
+            optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
         assert!(check_register_operation_consistency(
-            &system.system(),
+            &constraint_system,
             memory_bus_id
         ));
-        stats_logger.log("memory optimization", &machine);
-    }
-
-    let mut system = symbolic_machine_to_constraint_system(machine);
-
-    if let Some(bitwise_lookup_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
-        system = optimize_bitwise_lookup(system, bitwise_lookup_id);
-        stats_logger.log("optimizing bitwise lookup", &system);
-    }
-
-    Ok(())
-}
-
-fn system_size<T: FieldElement>(
-    constraint_system: &ConstraintSystem<T, AlgebraicReference>,
-) -> [usize; 3] {
-    [
-        constraint_system.algebraic_constraints.len(),
-        constraint_system.bus_interactions.len(),
+        stats_logger.log("memory optimization", &constraint_system);
         constraint_system
-            .expressions()
-            .flat_map(|expr| expr.referenced_variables())
-            .unique()
-            .count(),
-    ]
+    } else {
+        constraint_system
+    };
+
+    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
+        let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
+        stats_logger.log("optimizing bitwise lookup", &system);
+        system
+    } else {
+        constraint_system
+    };
+
+    Ok(system)
 }
+
+
 
 pub fn optimize_pc_lookup<T: FieldElement>(
     mut machine: SymbolicMachine<T>,

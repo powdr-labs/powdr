@@ -1,9 +1,10 @@
-use powdr_autoprecompiles::openvm::default_openvm_bus_map;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
-use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
+use powdr_openvm::{
+    bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
+};
 
 use test_log::test;
 

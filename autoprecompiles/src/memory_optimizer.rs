@@ -24,8 +24,7 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
-    system: JournalingConstraintSystem<T, V>,
-    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
+    mut system: ConstraintSystem<T, V>,
     memory_bus_id: u64,
 ) -> JournalingConstraintSystem<T, V> {
     let (to_remove, new_constraints) =
@@ -39,6 +38,7 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
     });
     // TODO perform substitutions instead
     system.add_algebraic_constraints(new_constraints);
+    system
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
@@ -88,6 +88,8 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     addr: QuadraticSymbolicExpression<T, V>,
     data: Vec<QuadraticSymbolicExpression<T, V>>,
     #[allow(dead_code)]
+    // TODO: The timestamp is currently ignored. At some point, we should use it
+    // to assert that the bus interactions are in the right order.
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
@@ -114,8 +116,6 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> MemoryBusInteraction
             _ => return Err(()),
         };
 
-        // TODO: Timestamp is ignored, we could use it to assert that the bus interactions
-        // are in the right order.
         let [address_space, addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
             panic!();
         };
@@ -142,6 +142,8 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     let address_comparator = MemoryAddressComparator::new(system, memory_bus_id);
     let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = Vec::new();
 
+    // Address across all memory types.
+    type GlobalAddress<T, V> = (T, QuadraticSymbolicExpression<T, V>);
     // Address across all memory types.
     type GlobalAddress<T, V> = (T, QuadraticSymbolicExpression<T, V>);
     // Track memory contents by memory type while we go through bus interactions.

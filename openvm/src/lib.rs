@@ -1,4 +1,12 @@
-use crate::traits::OpenVmField;
+use std::collections::BTreeMap;
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+
+use air_builder::AirKeygenBuilder;
+use derive_more::From;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
@@ -6,56 +14,40 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
     SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
 };
-use openvm_instructions::VmOpcode;
-use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, engine::StarkEngine, rap::AnyRap,
-};
-use openvm_stark_sdk::{
-    config::fri_params::SecurityParameters, engine::StarkFriEngine, p3_baby_bear,
-};
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, DegreeBound, SymbolicMachine};
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-use utils::get_pil;
-
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
-use crate::utils::symbolic_to_algebraic;
+use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
+use openvm_instructions::VmOpcode;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
     prover::AggStarkProver,
     Sdk, StdIn,
 };
-use openvm_stark_backend::{config::StarkGenericConfig, Chip};
+use openvm_stark_backend::{
+    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, engine::StarkEngine,
+    rap::AnyRap, Chip,
+};
 use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{config_from_perm, default_perm, BabyBearPoseidon2Engine},
+    baby_bear_poseidon2::{
+        config_from_perm, default_perm, BabyBearPoseidon2Config, BabyBearPoseidon2Engine,
+    },
+    fri_params::SecurityParameters,
     FriParameters,
 };
-use openvm_stark_sdk::{
-    config::baby_bear_poseidon2::BabyBearPoseidon2Config,
-    openvm_stark_backend::{
-        config::Val,
-        p3_field::{Field, PrimeField32},
-    },
+use openvm_stark_sdk::engine::StarkFriEngine;
+use openvm_stark_sdk::openvm_stark_backend::{
+    config::Val,
+    p3_field::{Field, PrimeField32},
 };
+use openvm_stark_sdk::p3_baby_bear;
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-mod air_builder;
-use air_builder::AirKeygenBuilder;
-use derive_more::From;
-use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-mod utils;
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
-use tracing::{Event, Subscriber};
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     layer::Context,
     prelude::*,
@@ -63,9 +55,24 @@ use tracing_subscriber::{
     Layer,
 };
 
+use utils::get_pil;
+
+use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::traits::OpenVmField;
+use crate::utils::symbolic_to_algebraic;
+
+mod air_builder;
+pub mod bus_map;
+pub mod opcode;
+pub mod symbolic_instruction_builder;
+mod utils;
+
+use bus_map::default_openvm_bus_map;
+
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
+pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
 impl IntoOpenVm for PowdrBB {
@@ -91,7 +98,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::customize;
+pub use customize_exe::{customize, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
@@ -288,8 +295,6 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
-    /// Map from bus id to bus type such as Execution, Memory, etc.
-    pub bus_map: BusMap,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// Implementation of the precompile, i.e., how to compile it to a RAP.
@@ -301,7 +306,6 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            bus_map: default_openvm_bus_map(),
             degree_bound: DegreeBound {
                 identities: customize_exe::OPENVM_DEGREE_BOUND,
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
@@ -315,10 +319,6 @@ impl PowdrConfig {
             autoprecompiles,
             ..self
         }
-    }
-
-    pub fn with_bus_map(self, bus_map: BusMap) -> Self {
-        Self { bus_map, ..self }
     }
 
     pub fn with_degree_bound(self, degree_bound: DegreeBound) -> Self {
@@ -345,15 +345,14 @@ pub fn compile_guest(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts.clone())?;
-    compile_exe(guest, guest_opts, exe, sdk_vm_config, config, pgo_config)
+    let original_program = compile_openvm(guest, guest_opts.clone())?;
+    compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
 
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    exe: VmExe<p3_baby_bear::BabyBear>,
-    sdk_vm_config: SdkVmConfig,
+    original_program: OriginalCompiledProgram<BabyBearField>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
@@ -370,25 +369,29 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let used_instructions = exe
+    let used_instructions = original_program
+        .exe
         .program
         .instructions_and_debug_infos
         .iter()
         .map(|instr| instr.as_ref().unwrap().0.opcode)
         .collect();
-    let airs = instructions_to_airs(sdk_vm_config.clone(), &used_instructions);
+    let (airs, bus_map) =
+        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions);
+
+    let sdk_vm_config = original_program.sdk_vm_config.clone();
 
     let (exe, extension) = customize_exe::customize(
-        exe,
-        sdk_vm_config.clone(),
+        original_program,
         &elf_powdr.text_labels,
         &airs,
         config.clone(),
+        bus_map.clone(),
         pgo_config,
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", 1000, &config.bus_map);
+    export_pil(vm_config.clone(), "debug.pil", 1000, &bus_map);
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -499,17 +502,19 @@ pub fn pgo(
 
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc.iter().min().unwrap();
-    tracing::info!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
 
-    // print the total and by pc counts at the warn level (default level in powdr-openvm)
-    tracing::warn!("Pgo captured {} pc's", pc.len());
+    // print the total and by pc counts
+    tracing::debug!("Pgo captured {} pc's", pc.len());
 
-    // print pc_index map in descending order of pc_index count
-    let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-    pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-    pc_index_count_sorted.iter().for_each(|(pc, count)| {
-        tracing::warn!("pc_index {}: {}", pc, count);
-    });
+    if tracing::enabled!(Level::DEBUG) {
+        // print pc_index map in descending order of pc_index count
+        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
+        pc_index_count_sorted.iter().for_each(|(pc, count)| {
+            tracing::debug!("pc_index {}: {}", pc, count);
+        });
+    }
 
     Ok(pc_index_count)
 }
@@ -619,10 +624,10 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
-pub fn instructions_to_airs<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
+pub fn get_airs_and_bus_map<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
     used_instructions: &HashSet<VmOpcode>,
-) -> BTreeMap<usize, SymbolicMachine<P>>
+) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap)
 where
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
@@ -632,37 +637,42 @@ where
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
-    used_instructions
-        .iter()
-        .filter_map(|op| {
-            chip_complex.inventory.get_executor(*op).map(|executor| {
-                let air = executor.air();
+    (
+        used_instructions
+            .iter()
+            .filter_map(|op| {
+                chip_complex.inventory.get_executor(*op).map(|executor| {
+                    let air = executor.air();
 
-                let columns = get_columns(air.clone());
+                    let columns = get_columns(air.clone());
 
-                let constraints = get_constraints(air);
+                    let constraints = get_constraints(air);
 
-                let powdr_exprs = constraints
-                    .constraints
-                    .iter()
-                    .map(|expr| symbolic_to_algebraic(expr, &columns).into())
-                    .collect::<Vec<_>>();
+                    let powdr_exprs = constraints
+                        .constraints
+                        .iter()
+                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
+                        .collect::<Vec<_>>();
 
-                let powdr_bus_interactions = constraints
-                    .interactions
-                    .iter()
-                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                    .collect();
+                    let powdr_bus_interactions = constraints
+                        .interactions
+                        .iter()
+                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                        .collect();
 
-                let symb_machine = SymbolicMachine {
-                    constraints: powdr_exprs,
-                    bus_interactions: powdr_bus_interactions,
-                };
+                    let symb_machine = SymbolicMachine {
+                        constraints: powdr_exprs,
+                        bus_interactions: powdr_bus_interactions,
+                    };
 
-                (op.as_usize(), symb_machine)
+                    (op.as_usize(), symb_machine)
+                })
             })
-        })
-        .collect()
+            .collect(),
+        // TODO: We always return the default map here, which is only correct for a subset of the possible `vm_config`.
+        // Instead, the bus map should be generated from the VM config by inspecting the chip complex above
+        default_openvm_bus_map(),
+    )
 }
 
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
@@ -1010,7 +1020,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Instruction took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -1022,7 +1032,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
     }
 
     // #[test]
@@ -1055,7 +1065,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(
             [m.width, m.constraints, m.bus_interactions],
-            [1997, 161, 1775]
+            [2011, 166, 1783]
         );
     }
 
