@@ -50,10 +50,12 @@ pub fn handle_memory<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler};
+    use crate::{
+        bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
+        bus_map::{default_openvm_bus_map, DEFAULT_MEMORY},
+    };
 
     use super::*;
-    use powdr_autoprecompiles::openvm::{default_openvm_bus_map, DEFAULT_MEMORY};
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 
