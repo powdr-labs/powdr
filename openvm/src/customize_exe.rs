@@ -413,6 +413,11 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
             }
+            // Push the instruction itself
+            blocks.push(BasicBlock {
+                start_idx: i,
+                statements: vec![instr.clone()],
+            });
             // Skip the instrucion and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_idx: i + 1,
