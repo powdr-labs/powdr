@@ -265,6 +265,23 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
                 .extend(items.iter().cloned());
         }
     }
+
+    pub fn replace_bus_interaction_field(
+        &mut self,
+        bus_interaction_index: usize,
+        field_index: usize,
+        new_field: QuadraticSymbolicExpression<T, V>,
+    ) {
+        let bus_interaction = &mut self.constraint_system.bus_interactions[bus_interaction_index];
+        // TODO: Hacky
+        if field_index == 0 {
+            bus_interaction.bus_id = new_field;
+        } else if field_index == 1 {
+            bus_interaction.multiplicity = new_field;
+        } else {
+            bus_interaction.payload[field_index - 2] = new_field;
+        }
+    }
 }
 
 /// The provided assignments lead to a contradiction in the constraint system.

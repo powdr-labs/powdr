@@ -70,6 +70,17 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalingConstraint
         // We do not track substitutions yet, but we could.
         self.system.substitute_by_unknown(variable, substitution);
     }
+
+    pub fn replace_bus_interaction_field(
+        &mut self,
+        bus_interaction_index: usize,
+        field_index: usize,
+        new_field: QuadraticSymbolicExpression<T, V>,
+    ) {
+        // We do not track replacements yet, but we could.
+        self.system
+            .replace_bus_interaction_field(bus_interaction_index, field_index, new_field);
+    }
 }
 
 impl<T: FieldElement, V> JournalingConstraintSystem<T, V> {
