@@ -633,6 +633,7 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
 /// Given a VM configuration and a set of used instructions, computes:
 /// - The opcode -> AIR map
 /// - The bus map
+///
 /// Returns an error if the conversion from the OpenVM expression type fails.
 pub fn get_airs_and_bus_map<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
