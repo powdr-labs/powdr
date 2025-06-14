@@ -85,23 +85,29 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     rc: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<Option<BTreeMap<V, T>>, Error> {
-    match get_all_possible_assignments(variables.iter().cloned(), &rc)
-        .filter(|assignments| {
-            !constraint_system.is_assignment_conflicting(assignments, &rc, bus_interaction_handler)
-        })
-        .exactly_one()
-    {
-        Ok(assignments) => Ok(Some(assignments)),
-        Err(mut iter) => {
-            if iter.next().is_some() {
-                // There are at least two assignments, so there is no unique assignment.
-                Ok(None)
-            } else {
-                // No assignment satisfied the constraint system.
-                Err(Error::ExhaustiveSearchError)
+    let mut assignments =
+        get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
+            constraint_system
+                .derive_more_assignments(assignments, &rc, bus_interaction_handler)
+                .ok()
+        });
+    let Some(first_assignments) = assignments.next() else {
+        // No assignment satisfied the constraint system.
+        return Err(Error::ExhaustiveSearchError);
+    };
+    // Intersect all assignments.
+    // A special case of this is that only one of the possible assignments satisfies the constraint system,
+    // but even if there are multiple, they might agree on a subset of their assignments.
+    Ok(assignments
+        .try_fold(first_assignments, |mut acc, assignments| {
+            acc.retain(|variable, value| assignments.get(variable) == Some(value));
+            if acc.is_empty() {
+                // Exiting early here is crucial for performance.
+                return Err(());
             }
-        }
-    }
+            Ok(acc)
+        })
+        .ok())
 }
 
 /// Returns all unique sets of variables that appear together in an identity
