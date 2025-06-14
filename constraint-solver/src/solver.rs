@@ -23,6 +23,7 @@ pub struct SolveResult<T: FieldElement, V> {
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
     pub assignments: Vec<(V, QuadraticSymbolicExpression<T, V>)>,
+    pub bus_arg_assignments: BTreeMap<(usize, usize), T>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -126,7 +127,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
 
-        // TODO: Return the new bus interaction arguments as well.
         let assignments = self
             .assignments
             .into_iter()
@@ -144,8 +144,21 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
                 Variable::BusInteractionArg(..) => None,
             })
             .collect();
+        let bus_arg_assignments = self
+            .bus_interaction_vars
+            .into_iter()
+            .filter_map(|(v, expr)| match (v, expr.try_to_number()) {
+                (Variable::BusInteractionArg(bus_index, field_index), Some(value)) => {
+                    Some(((bus_index, field_index), value))
+                }
+                _ => None,
+            })
+            .collect();
 
-        Ok(SolveResult { assignments })
+        Ok(SolveResult {
+            assignments,
+            bus_arg_assignments,
+        })
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
@@ -285,10 +298,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
 
         if let Variable::BusInteractionArg(..) = variable {
             // TODO: Can there be more complex expressions here?
-            if let Some(value) = expr.try_to_number() {
-                self.bus_interaction_vars
-                    .insert(variable.clone(), value.into());
-            }
+            let value = expr.try_to_number().unwrap();
+            self.bus_interaction_vars
+                .insert(variable.clone(), value.into());
         }
 
         // TODO we could check if the variable already has an assignment,
