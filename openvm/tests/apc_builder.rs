@@ -28,7 +28,7 @@ fn compile(
         .map(|instr| VmOpcode::from_usize(instr.opcode))
         .collect::<HashSet<_>>();
 
-    let (airs, bus_map) = get_airs_and_bus_map(sdk_vm_config, &program_instructions);
+    let (airs, bus_map) = get_airs_and_bus_map(sdk_vm_config, &program_instructions).unwrap();
 
     let vm_config = VmConfig {
         instruction_machines: &airs,
