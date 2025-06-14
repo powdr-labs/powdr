@@ -98,7 +98,7 @@ is_valid * (is_valid - 1) = 0
 (id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
 (id=0, mult=is_valid, args=[from_state__pc_0 + 4, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 2])
 "#;
-    assert_eq!(machine.to_string(), expected);
+    assert_eq!(expected, machine.to_string());
 }
 
 #[test]
@@ -138,7 +138,7 @@ is_valid * (is_valid - 1) = 0
 (id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
 (id=0, mult=is_valid, args=[from_state__pc_0 + 4, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 2])
 "#;
-    assert_eq!(machine.to_string(), expected);
+    assert_eq!(expected, machine.to_string());
 }
 
 #[test]
