@@ -35,7 +35,16 @@ pub fn handle_memory<T: FieldElement>(
         // By the assumption that all data written to registers or memory are range-checked,
         // we can return a byte range constraint for the data.
         (false, Some(RV32_REGISTER_AS)) | (false, Some(RV32_MEMORY_AS)) => {
-            let data = data.iter().map(|_| byte_constraint()).collect::<Vec<_>>();
+            let data = if address_space_value == Some(RV32_REGISTER_AS)
+                && pointer.try_to_single_value() == Some(T::zero())
+            {
+                // Register 0 should always return zero.
+                data.iter()
+                    .map(|_| RangeConstraint::from_value(T::zero()))
+                    .collect::<Vec<_>>()
+            } else {
+                data.iter().map(|_| byte_constraint()).collect::<Vec<_>>()
+            };
 
             vec![address_space.clone(), pointer.clone()]
                 .into_iter()
