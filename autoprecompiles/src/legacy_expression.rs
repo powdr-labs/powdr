@@ -68,7 +68,7 @@ impl Hash for AlgebraicReference {
     }
 }
 
-/// Tries to converts a `powdr_expression::AlgebraicExpression<T, R>` to a
+/// Tries to convert a `powdr_expression::AlgebraicExpression<T, R>` into a
 /// `powdr_expression::AlgebraicExpression<T, AlgebraicReference>`.
 pub fn try_convert<T, R: TryInto<AlgebraicReference>>(
     expr: powdr_expression::AlgebraicExpression<T, R>,
