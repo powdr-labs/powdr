@@ -12,12 +12,12 @@ use crate::stats_logger::{IsWitnessColumn, StatsLogger};
 
 #[derive(Debug)]
 pub enum Error {
-    ConstraintSolverError,
+    ConstraintSolverError(powdr_constraint_solver::solver::Error),
 }
 
 impl From<powdr_constraint_solver::solver::Error> for Error {
-    fn from(_err: powdr_constraint_solver::solver::Error) -> Self {
-        Error::ConstraintSolverError
+    fn from(err: powdr_constraint_solver::solver::Error) -> Self {
+        Error::ConstraintSolverError(err)
     }
 }
 
