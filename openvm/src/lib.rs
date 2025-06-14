@@ -1,10 +1,4 @@
-use std::collections::BTreeMap;
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-
+use crate::utils::UnsupportedOpenVmReferenceError;
 use air_builder::AirKeygenBuilder;
 use derive_more::From;
 use eyre::Result;
@@ -45,6 +39,12 @@ use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -382,7 +382,8 @@ pub fn compile_exe(
         .filter(|opcode| !blacklist.contains(&opcode.as_usize()))
         .collect();
     let (airs, bus_map) =
-        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions);
+        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions)
+            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
 
     let sdk_vm_config = original_program.sdk_vm_config.clone();
 
@@ -629,10 +630,14 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs).unwrap()
 }
 
+/// Given a VM configuration and a set of used instructions, computes:
+/// - The opcode -> AIR map
+/// - The bus map
+/// Returns an error if the conversion from the OpenVM expression type fails.
 pub fn get_airs_and_bus_map<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
     vm_config: VC,
     used_instructions: &HashSet<VmOpcode>,
-) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap)
+) -> Result<(BTreeMap<usize, SymbolicMachine<P>>, BusMap), UnsupportedOpenVmReferenceError>
 where
     VC::Executor: Chip<BabyBearSC>,
     VC::Periphery: Chip<BabyBearSC>,
@@ -642,48 +647,39 @@ where
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
-    (
+    Ok((
         used_instructions
             .iter()
-            .filter_map(|op| {
-                chip_complex.inventory.get_executor(*op).map(|executor| {
-                    let air = executor.air();
-                    let columns = get_columns(air.clone());
-                    let constraints = get_constraints(air);
+            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(*op)?)))
+            .map(|(op, executor)| {
+                let air = executor.air();
+                let columns = get_columns(air.clone());
+                let constraints = get_constraints(air);
 
-                    // Note that the unwrap() calls on the results of try_convert and openvm_bus_interaction_to_powdr
-                    // are safe as long as `used_instructions` does not contain any opcodes that are not supported
-                    // by the autoprecompile pipeline (which should be blacklisted).
+                let powdr_exprs = constraints
+                    .constraints
+                    .iter()
+                    .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| {
-                            try_convert(symbolic_to_algebraic(expr, &columns))
-                                .unwrap()
-                                .into()
-                        })
-                        .collect::<Vec<_>>();
+                let powdr_bus_interactions = constraints
+                    .interactions
+                    .iter()
+                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                    .collect::<Result<_, _>>()?;
 
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns).unwrap())
-                        .collect();
+                let symb_machine = SymbolicMachine {
+                    constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                    bus_interactions: powdr_bus_interactions,
+                };
 
-                    let symb_machine = SymbolicMachine {
-                        constraints: powdr_exprs,
-                        bus_interactions: powdr_bus_interactions,
-                    };
-
-                    (op.as_usize(), symb_machine)
-                })
+                Ok((op.as_usize(), symb_machine))
             })
-            .collect(),
+            .collect::<Result<_, _>>()?,
         // TODO: We always return the default map here, which is only correct for a subset of the possible `vm_config`.
         // Instead, the bus map should be generated from the VM config by inspecting the chip complex above
         default_openvm_bus_map(),
-    )
+    ))
 }
 
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(

@@ -43,13 +43,18 @@ impl fmt::Display for OpenVmReference {
     }
 }
 
+/// An unsupported OpenVM reference appeared, i.e., a non-zero offset or a reference to
+/// is_first_row, is_last_row, or is_transition.
+#[derive(Debug)]
+pub struct UnsupportedOpenVmReferenceError;
+
 impl TryFrom<OpenVmReference> for AlgebraicReference {
-    type Error = ();
+    type Error = UnsupportedOpenVmReferenceError;
 
     fn try_from(value: OpenVmReference) -> Result<Self, Self::Error> {
         match value {
             OpenVmReference::WitnessColumn(reference, false) => Ok(reference),
-            _ => Err(()),
+            _ => Err(UnsupportedOpenVmReferenceError),
         }
     }
 }

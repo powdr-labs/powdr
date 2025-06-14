@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::instruction_blacklist;
+use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
@@ -494,7 +495,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
     columns: &[String],
-) -> Result<SymbolicBusInteraction<P>, ()> {
+) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
     let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
