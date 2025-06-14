@@ -50,6 +50,7 @@ pub struct Solver<T: FieldElement, V, BusInterHandler> {
     range_constraints: RangeConstraints<T, Variable<V>>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
+    #[allow(clippy::type_complexity)]
     assignments: Vec<(Variable<V>, QuadraticSymbolicExpression<T, Variable<V>>)>,
     bus_interaction_vars: BTreeMap<Variable<V>, QuadraticSymbolicExpression<T, V>>,
 }
@@ -90,7 +91,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
                 .algebraic_constraints
                 .iter()
                 .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
-                .chain(new_constraints.into_iter())
+                .chain(new_constraints)
                 .collect(),
             bus_interactions,
         };
