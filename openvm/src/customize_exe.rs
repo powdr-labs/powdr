@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 use crate::instruction_blacklist;
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -494,7 +495,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
-    columns: &[String],
+    columns: &[Arc<String>],
 ) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
