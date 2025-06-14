@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 
 use super::simplify_expression;
 use itertools::Itertools;
-use powdr_expression::AlgebraicBinaryOperation;
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::{
     expression::{AlgebraicExpression, AlgebraicReference},
@@ -52,12 +51,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((is_valid.clone() + one).into());
 
-        let mut sub_map_loadstore: BTreeMap<AlgebraicReference, AlgebraicExpression<T>> =
-            Default::default();
-        if is_loadstore(instr.opcode) {
-            sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
-        }
-
         // Constrain the opcode expression to equal the actual opcode.
         let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
         local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
@@ -90,7 +83,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .map(|expr| {
                 let mut expr = expr.expr.clone();
                 powdr::substitute_algebraic(&mut expr, &sub_map);
-                powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
                 expr = simplify_expression(expr);
                 SymbolicConstraint { expr }
             })
@@ -105,45 +97,12 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
                 .chain(std::iter::once(&mut link.mult))
                 .for_each(|e| {
                     powdr::substitute_algebraic(e, &sub_map);
-                    powdr::substitute_algebraic(e, &sub_map_loadstore);
                     *e = simplify_expression(e.clone());
                 });
             bus_interactions.push(link);
         }
 
         col_subs.push(subs);
-
-        // after the first round of simplifying,
-        // we need to look for register memory bus interactions
-        // and replace the addr by the first argument of the instruction
-        for bus_int in &mut bus_interactions {
-            if bus_int.id != bus_map.get_bus_id(&BusType::Memory).unwrap() {
-                continue;
-            }
-
-            let addr_space = match bus_int.args[0] {
-                AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
-                _ => panic!(
-                    "Address space must be a constant but got {}",
-                    bus_int.args[0]
-                ),
-            };
-
-            if addr_space != 1 {
-                continue;
-            }
-
-            match bus_int.args[1] {
-                AlgebraicExpression::Number(_) => {}
-                _ => {
-                    if let Some(arg) = bus_int.args.get_mut(1) {
-                        *arg = instr.args[0].into();
-                    } else {
-                        panic!("Expected address argument");
-                    }
-                }
-            };
-        }
     }
 
     (
@@ -168,31 +127,4 @@ fn exec_receive<T: FieldElement>(
         .unwrap();
     // TODO assert that r.mult matches -expr
     r.clone()
-}
-
-fn is_loadstore(opcode: usize) -> bool {
-    (0x210..=0x215).contains(&opcode)
-}
-
-fn loadstore_chip_info<T: FieldElement>(
-    machine: &SymbolicMachine<T>,
-    opcode: usize,
-) -> BTreeMap<AlgebraicReference, AlgebraicExpression<T>> {
-    let is_load = if opcode == 0x210 || opcode == 0x211 || opcode == 0x212 {
-        T::from(1u32)
-    } else {
-        T::from(0u32)
-    };
-    let is_load = AlgebraicExpression::Number(is_load);
-    let is_load_expr = match &machine.constraints[7].expr {
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, .. }) => left.clone(),
-        _ => panic!("Expected subtraction."),
-    };
-    let is_load_col = if let AlgebraicExpression::Reference(r) = &*is_load_expr {
-        r.clone()
-    } else {
-        panic!("expected a single reference")
-    };
-
-    [(is_load_col, is_load)].into()
 }
