@@ -8,15 +8,13 @@ use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
 use openvm_sha256_transpiler::Rv32Sha256Opcode;
 
 /// The following opcodes shall never be accelerated and therefore always put in its own basic block.
-/// Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
-/// which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
-/// We don't want these opcodes because they create air constraints with next references, which powdr-openvm does not support yet.
 pub fn instruction_blacklist() -> HashSet<usize> {
     [
         Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32LoadStoreOpcode::LOADB.global_opcode().as_usize(),
         Rv32LoadStoreOpcode::LOADH.global_opcode().as_usize(),
+        // Precompiles
         Rv32WeierstrassOpcode::EC_ADD_NE.global_opcode().as_usize(),
         Rv32WeierstrassOpcode::SETUP_EC_ADD_NE
             .global_opcode()
