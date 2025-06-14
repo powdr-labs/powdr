@@ -90,7 +90,6 @@ pub struct Column {
 
 impl From<&AlgebraicReference> for Column {
     fn from(r: &AlgebraicReference) -> Self {
-        assert!(!r.next);
         Column {
             name: r.name.clone(),
             id: r.poly_id,

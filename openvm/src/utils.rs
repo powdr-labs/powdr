@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::BusMap;
@@ -13,17 +14,48 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::legacy_expression::{
-    AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-};
+use powdr_autoprecompiles::legacy_expression::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_expression::AlgebraicExpression;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
 };
 use powdr_number::{BabyBearField, FieldElement};
 
+pub enum OpenVmReference {
+    /// Reference to a witness column. The boolean indicates if the reference is to the next row.
+    WitnessColumn(AlgebraicReference, bool),
+    IsFirstRow,
+    IsLastRow,
+    IsTransition,
+}
+
+impl fmt::Display for OpenVmReference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpenVmReference::WitnessColumn(reference, next) => {
+                write!(f, "{}{}", reference.name, if *next { "'" } else { "" })
+            }
+            OpenVmReference::IsFirstRow => write!(f, "is_first_row"),
+            OpenVmReference::IsLastRow => write!(f, "is_last_row"),
+            OpenVmReference::IsTransition => write!(f, "is_transition"),
+        }
+    }
+}
+
+impl TryFrom<OpenVmReference> for AlgebraicReference {
+    type Error = ();
+
+    fn try_from(value: OpenVmReference) -> Result<Self, Self::Error> {
+        match value {
+            OpenVmReference::WitnessColumn(reference, false) => Ok(reference),
+            _ => Err(()),
+        }
+    }
+}
+
 pub fn algebraic_to_symbolic<P: IntoOpenVm>(
-    expr: &AlgebraicExpression<P>,
+    expr: &AlgebraicExpression<P, AlgebraicReference>,
 ) -> SymbolicExpression<OpenVmField<P>> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
@@ -52,17 +84,16 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
         },
         AlgebraicExpression::Reference(algebraic_reference) => {
             let poly_id = algebraic_reference.poly_id;
-            let next = algebraic_reference.next as usize;
             match poly_id.ptype {
                 PolynomialType::Committed => SymbolicExpression::Variable(SymbolicVariable::new(
                     Entry::Main {
                         part_index: 0,
-                        offset: next,
+                        offset: 0,
                     },
                     poly_id.id as usize,
                 )),
                 PolynomialType::Constant => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Preprocessed { offset: next },
+                    Entry::Preprocessed { offset: 0 },
                     poly_id.id as usize,
                 )),
                 PolynomialType::Intermediate => todo!(),
@@ -73,7 +104,7 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
 pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
     expr: &SymbolicExpression<T>,
     columns: &[String],
-) -> AlgebraicExpression<P> {
+) -> AlgebraicExpression<P, OpenVmReference> {
     match expr {
         SymbolicExpression::Constant(c) => {
             AlgebraicExpression::Number(P::from_bytes_le(&c.as_canonical_u32().to_le_bytes()))
@@ -108,49 +139,34 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
         SymbolicExpression::Variable(SymbolicVariable { entry, index, .. }) => match entry {
             Entry::Main { offset, part_index } => {
                 assert_eq!(*part_index, 0);
-                let next = match offset {
+                let next = match *offset {
                     0 => false,
                     1 => true,
-                    _ => unimplemented!(),
+                    _ => panic!("Unexpected offset: {offset}"),
                 };
                 let name = columns.get(*index).unwrap_or_else(|| {
                     panic!("Column index out of bounds: {index}\nColumns: {columns:?}");
                 });
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name: name.clone(),
-                    poly_id: PolyID {
-                        id: *index as u64,
-                        ptype: PolynomialType::Committed,
+                AlgebraicExpression::Reference(OpenVmReference::WitnessColumn(
+                    AlgebraicReference {
+                        name: name.clone(),
+                        poly_id: PolyID {
+                            id: *index as u64,
+                            ptype: PolynomialType::Committed,
+                        },
                     },
                     next,
-                })
+                ))
             }
             _ => unimplemented!(),
         },
-        SymbolicExpression::IsFirstRow => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_first_row".to_string(),
-            poly_id: PolyID {
-                id: 0,
-                ptype: PolynomialType::Constant,
-            },
-            next: false,
-        }),
-        SymbolicExpression::IsLastRow => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_last_row".to_string(),
-            poly_id: PolyID {
-                id: 1,
-                ptype: PolynomialType::Constant,
-            },
-            next: false,
-        }),
-        SymbolicExpression::IsTransition => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_transition".to_string(),
-            poly_id: PolyID {
-                id: 2,
-                ptype: PolynomialType::Constant,
-            },
-            next: false,
-        }),
+        SymbolicExpression::IsFirstRow => {
+            AlgebraicExpression::Reference(OpenVmReference::IsFirstRow)
+        }
+        SymbolicExpression::IsLastRow => AlgebraicExpression::Reference(OpenVmReference::IsLastRow),
+        SymbolicExpression::IsTransition => {
+            AlgebraicExpression::Reference(OpenVmReference::IsTransition)
+        }
     }
 }
 

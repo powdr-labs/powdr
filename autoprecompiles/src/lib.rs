@@ -298,7 +298,6 @@ fn add_guards<T: FieldElement>(
             ptype: PolynomialType::Committed,
             id: max_id,
         },
-        next: false,
     });
 
     machine.constraints = machine
