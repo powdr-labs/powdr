@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
 use powdr_number::FieldElement;
 use std::fmt::{self, Display};
 
@@ -30,15 +29,6 @@ impl<V: Display> Display for Variable<V> {
             Variable::Witness(v) => write!(f, "{v}"),
             Variable::Tmp(id) => write!(f, "tmp_{id}"),
             Variable::Unused => write!(f, "Unused"),
-        }
-    }
-}
-
-impl Variable<AlgebraicReference> {
-    pub fn get_poly_id(&self) -> Option<u64> {
-        match self {
-            Variable::Witness(ref v) => Some(v.poly_id.id),
-            _ => None,
         }
     }
 }

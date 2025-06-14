@@ -13,8 +13,7 @@ pub fn generate_permutation_columns<F, P>(
     plonk_circuit: &PlonkCircuit<P, AlgebraicReference>,
     number_of_calls: usize,
     width: usize,
-) -> ()
-where
+) where
     F: FieldAlgebra + PrimeField32,
 {
     let mut permutation_sets_by_variable: HashMap<&Variable<AlgebraicReference>, Vec<u64>> =
@@ -57,12 +56,12 @@ where
             columns.d_perm = F::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 3);
             columns.e_perm = F::from_canonical_u64(NUMBER_OF_WITNESS_COLS * index as u64 + 4);
 
-            for (witness_in_gate, witness_col, witness_perm_col) in [
-                (&gate.a, &mut columns.a, &mut columns.a_perm),
-                (&gate.b, &mut columns.b, &mut columns.b_perm),
-                (&gate.c, &mut columns.c, &mut columns.c_perm),
-                (&gate.d, &mut columns.d, &mut columns.d_perm),
-                (&gate.e, &mut columns.e, &mut columns.e_perm),
+            for (witness_in_gate, witness_perm_col) in [
+                (&gate.a, &mut columns.a_perm),
+                (&gate.b, &mut columns.b_perm),
+                (&gate.c, &mut columns.c_perm),
+                (&gate.d, &mut columns.d_perm),
+                (&gate.e, &mut columns.e_perm),
             ] {
                 if let Some(vec) = permutation_sets_by_variable.get(witness_in_gate) {
                     // If the poly has a permutation set, set a_perm to the next value in the set.
@@ -89,7 +88,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::plonk::air_to_plonkish::build_circuit;
-    use crate::plonk::test_utils::{c, var};
+    use crate::plonk::test_utils::var;
     use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
     use crate::powdr_extension::plonk::copy_constraint::FieldAlgebra;
     use crate::powdr_extension::plonk::copy_constraint::PrimeField32;
@@ -141,7 +140,7 @@ mod tests {
             vec![45, 46, 47, 48, 49, 42, 46, 47, 48, 49],
         ];
 
-        for row in 0..height {
+        for (row, vec) in expected.iter().enumerate().take(height) {
             let start = row * width + 11;
             let end = row * width + 21;
             let actual: Vec<i32> = values[start..end]
@@ -149,11 +148,7 @@ mod tests {
                 .map(|v| v.as_canonical_u32() as i32)
                 .collect();
 
-            assert_eq!(
-                actual, expected[row],
-                "Mismatch at row {}: {:?}",
-                row, actual
-            );
+            assert_eq!(actual, *vec, "Mismatch at row {}: {:?}", row, actual);
         }
 
         assert_eq!(

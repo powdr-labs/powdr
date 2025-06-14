@@ -1,10 +1,9 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::plonk::air_to_plonkish::build_circuit;
-use crate::plonk::{Gate, Variable, NUMBER_OF_WITNESS_COLS};
+use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::PowdrExecutor;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
@@ -20,9 +19,8 @@ use openvm_circuit::{
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_sdk::config::SdkVmConfig;
-use openvm_stark_backend::interaction::BusIndex;
 use openvm_stark_backend::p3_air::BaseAir;
-use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField64};
+use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_stark_backend::p3_matrix::Matrix;
 use openvm_stark_backend::{

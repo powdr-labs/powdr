@@ -1,7 +1,6 @@
 use crate::{BusMap, BusType};
 use itertools::Itertools;
 use openvm_circuit_primitives::AlignedBorrow;
-use openvm_stark_backend::interaction::BusIndex;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
