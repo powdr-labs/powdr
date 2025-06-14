@@ -1053,7 +1053,7 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!([m.width, m.constraints, m.bus_interactions], [53, 22, 31]);
+        assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
