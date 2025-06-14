@@ -367,7 +367,6 @@ fn binary_flags() {
     );
 }
 
-// TODO: The solver is not smart enough yet to solve this.
 #[test]
 fn ternary_flags() {
     // Implementing this logic in the OpenVM load/store chip:
