@@ -240,11 +240,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
         value: T,
     ) {
         let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
-        let field = bus_interaction
-            .fields_mut()
-            .skip(field_index)
-            .next()
-            .unwrap();
+        let field = bus_interaction.fields_mut().nth(field_index).unwrap();
         *field = value.into();
     }
 
