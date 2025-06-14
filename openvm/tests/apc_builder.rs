@@ -142,6 +142,31 @@ is_valid * (is_valid - 1) = 0
 }
 
 #[test]
+fn single_srl() {
+    // Instruction 416 from the largest basic block of the Keccak guest program.
+    let program = [srl(68, 40, 25, 0)];
+    let (machine, _) = compile(program.to_vec());
+
+    // Note that this does not have any polynomial constraints, because the bit / byte shift flags can be solved at compile time.
+    let expected = r#"is_valid * (is_valid - 1) = 0 
+(id=3, mult=is_valid * 1, args=[bit_shift_carry__3_0, 1])
+(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 40, b__0_0, b__1_0, b__2_0, b__3_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 2)])
+(id=1, mult=is_valid * 1, args=[1, 40, b__0_0, b__1_0, b__2_0, b__3_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=3, mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 68, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0])
+(id=1, mult=is_valid * 1, args=[1, 68, 1006632960 * bit_shift_carry__3_0 - 1006632960 * b__3_0, 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1])
+(id=0, mult=-is_valid, args=[from_state__pc_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
+(id=0, mult=is_valid, args=[from_state__pc_0 + 4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2])
+(id=6, mult=is_valid * 1, args=[1006632960 * bit_shift_carry__3_0 - 1006632960 * b__3_0, 0, 0, 0])
+"#;
+    assert_eq!(expected, machine.to_string());
+}
+
+#[test]
 fn guest_top_block() {
     // Top block from `guest` with `--pgo cell`, with 4 instructions:
     // SymbolicInstructionStatement { opcode: 512, args: [BabyBearField(8), BabyBearField(8), BabyBearField(16777200), BabyBearField(1), BabyBearField(0), BabyBearField(0), BabyBearField(0)] }
