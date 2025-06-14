@@ -47,6 +47,28 @@ fn compile(
 }
 
 #[test]
+fn single_add_0() {
+    let program = [
+        // [x0] = [x0] + 0
+        add(0, 0, 0, 0),
+    ];
+
+    let (machine, _) = compile(program.to_vec());
+    let expected = r#"is_valid * (is_valid - 1) = 0 
+(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 2)])
+(id=3, mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1])
+(id=0, mult=-is_valid, args=[from_state__pc_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
+(id=0, mult=is_valid, args=[from_state__pc_0 + 4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2])
+"#;
+    assert_eq!(expected, machine.to_string());
+}
+
+#[test]
 fn guest_top_block() {
     // Top block from `guest` with `--pgo cell`, with 4 instructions:
     // SymbolicInstructionStatement { opcode: 512, args: [BabyBearField(8), BabyBearField(8), BabyBearField(16777200), BabyBearField(1), BabyBearField(0), BabyBearField(0), BabyBearField(0)] }
@@ -117,5 +139,5 @@ is_valid * (is_valid - 1) = 0
 (id=6, mult=is_valid * 1, args=[b_msb_f_3 + 128, 0, 0, 0])
 "#;
 
-    assert_eq!(machine.to_string(), expected);
+    assert_eq!(expected, machine.to_string());
 }
