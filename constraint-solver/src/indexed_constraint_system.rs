@@ -233,6 +233,17 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
         }
     }
 
+    pub fn apply_bus_arg_assignment(
+        &mut self,
+        interaction_index: usize,
+        field_index: usize,
+        value: T,
+    ) {
+        let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
+        let field = bus_interaction.fields_mut().nth(field_index).unwrap();
+        *field = value.into();
+    }
+
     /// Substitute an unknown variable by a QuadraticSymbolicExpression in the whole system.
     ///
     /// Note this does NOT work properly if the variable is used inside a
