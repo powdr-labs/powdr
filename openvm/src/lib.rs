@@ -391,7 +391,13 @@ pub fn compile_exe(
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", &["KeccakVmAir"], &bus_map);
+    let bus_ids: BTreeMap<_, _> = [(8, BusType::CopyConstraintLookup)].into_iter().collect();
+    export_pil(
+        vm_config.clone(),
+        "debug.pil",
+        &["KeccakVmAir"],
+        &bus_map.with_bus_map(BusMap::new(bus_ids)),
+    );
 
     Ok(CompiledProgram { exe, vm_config })
 }

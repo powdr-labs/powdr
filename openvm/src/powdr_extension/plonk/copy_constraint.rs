@@ -87,15 +87,14 @@ pub fn generate_permutation_columns<F, P>(
 
 #[cfg(test)]
 mod tests {
+    use crate::default_openvm_bus_map;
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::var;
     use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
     use crate::powdr_extension::plonk::copy_constraint::FieldAlgebra;
     use crate::powdr_extension::plonk::copy_constraint::PrimeField32;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
-    use powdr_autoprecompiles::{
-        openvm::default_openvm_bus_map, SymbolicConstraint, SymbolicMachine,
-    };
+    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
