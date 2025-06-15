@@ -81,9 +81,9 @@ pub fn add_bus_to_plonk_circuit<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bus_map::{default_openvm_bus_map, DEFAULT_MEMORY};
     use crate::plonk::test_utils::{c, var};
     use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
-    use powdr_autoprecompiles::openvm::{default_openvm_bus_map, DEFAULT_MEMORY};
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;

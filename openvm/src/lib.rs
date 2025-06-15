@@ -40,14 +40,14 @@ use openvm_stark_sdk::openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear;
-use powdr_autoprecompiles::{openvm::default_openvm_bus_map, SymbolicMachine};
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
-use tracing::{Event, Subscriber};
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     layer::Context,
     prelude::*,
@@ -62,7 +62,12 @@ use crate::traits::OpenVmField;
 use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
+pub mod bus_map;
+pub mod opcode;
+pub mod symbolic_instruction_builder;
 mod utils;
+
+use bus_map::default_openvm_bus_map;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
@@ -93,7 +98,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::customize;
+pub use customize_exe::{customize, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
@@ -386,13 +391,7 @@ pub fn compile_exe(
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    let bus_ids: BTreeMap<_, _> = [(8, BusType::CopyConstraintLookup)].into_iter().collect();
-    export_pil(
-        vm_config.clone(),
-        "debug.pil",
-        1000,
-        &bus_map.with_bus_map(BusMap::new(bus_ids)),
-    );
+    export_pil(vm_config.clone(), "debug.pil", &["KeccakVmAir"], &bus_map);
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -503,17 +502,19 @@ pub fn pgo(
 
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc.iter().min().unwrap();
-    tracing::info!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
 
-    // print the total and by pc counts at the warn level (default level in powdr-openvm)
-    tracing::warn!("Pgo captured {} pc's", pc.len());
+    // print the total and by pc counts
+    tracing::debug!("Pgo captured {} pc's", pc.len());
 
-    // print pc_index map in descending order of pc_index count
-    let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-    pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-    pc_index_count_sorted.iter().for_each(|(pc, count)| {
-        tracing::warn!("pc_index {}: {}", pc, count);
-    });
+    if tracing::enabled!(Level::DEBUG) {
+        // print pc_index map in descending order of pc_index count
+        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
+        pc_index_count_sorted.iter().for_each(|(pc, count)| {
+            tracing::debug!("pc_index {}: {}", pc, count);
+        });
+    }
 
     Ok(pc_index_count)
 }
@@ -677,7 +678,7 @@ where
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     vm_config: VC,
     path: &str,
-    max_width: usize,
+    blacklist: &[&str],
     bus_map: &BusMap,
 ) where
     VC::Executor: Chip<BabyBearSC>,
@@ -691,11 +692,10 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
         .iter()
         .filter_map(|executor| {
             let air = executor.air();
-            let width = air.width();
             let name = air.name();
 
-            if width > max_width {
-                log::warn!("Skipping {name} (width: {width})");
+            if blacklist.contains(&name.as_str()) {
+                log::warn!("Skipping blacklisted AIR: {name}");
                 return None;
             }
 
@@ -1019,7 +1019,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Instruction took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Instruction took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -1031,7 +1031,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::info!("Proving with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
     }
 
     // #[test]
@@ -1052,9 +1052,7 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 53);
-        assert_eq!(m.constraints, 22);
-        assert_eq!(m.bus_interactions, 31);
+        assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
@@ -1064,9 +1062,10 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 2011);
-        assert_eq!(m.constraints, 166);
-        assert_eq!(m.bus_interactions, 1783);
+        assert_eq!(
+            [m.width, m.constraints, m.bus_interactions],
+            [2011, 166, 1783]
+        );
     }
 
     #[test]

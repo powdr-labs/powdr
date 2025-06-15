@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 
-use super::simplify_expression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -12,9 +11,10 @@ use powdr_number::FieldElement;
 use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    legacy_expression::{
-        ast_compatibility::CompatibleWithAstExpression, AlgebraicExpression, AlgebraicReference,
+    expression_conversion::{
+        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
     },
+    legacy_expression::{AlgebraicExpression, AlgebraicReference},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
@@ -75,25 +75,27 @@ fn optimization_loop_iteration<T: FieldElement>(
         degree_bound,
         stats_logger,
     )?;
-    // TODO: avoid these conversions
-    // TODO continue here with the journaling system once the memory machine is changed to
-    // ConstraintSystem
-    let mut machine = constraint_system_to_symbolic_machine(constraint_system.system().clone());
-    if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        machine = optimize_memory(machine, memory_bus_id);
+    let constraint_system = constraint_system.system().clone();
+    let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
+        let constraint_system =
+            optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
         assert!(check_register_operation_consistency(
-            &machine,
+            &constraint_system,
             memory_bus_id
         ));
-        stats_logger.log("memory optimization", &machine);
-    }
+        stats_logger.log("memory optimization", &constraint_system);
+        constraint_system
+    } else {
+        constraint_system
+    };
 
-    let mut system = symbolic_machine_to_constraint_system(machine);
-
-    if let Some(bitwise_lookup_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
-        system = optimize_bitwise_lookup(system, bitwise_lookup_id);
+    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
+        let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
         stats_logger.log("optimizing bitwise lookup", &system);
-    }
+        system
+    } else {
+        constraint_system
+    };
 
     Ok(system)
 }
@@ -282,31 +284,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
     }
 }
 
-/// Turns an algebraic expression into a quadratic symbolic expression,
-/// assuming all [`AlgebraicReference`]s are unknown variables.
-pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> QuadraticSymbolicExpression<T, AlgebraicReference> {
-    powdr_expression::conversion::convert(expr, &mut |reference| {
-        QuadraticSymbolicExpression::from_unknown_variable(reference.clone())
-    })
-}
-
-/// Turns a quadratic symbolic expression back into an algebraic expression.
-/// Tries to simplify the expression wrt negation and constant factors
-/// to aid human readability.
-pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
-    expr: &QuadraticSymbolicExpression<T, AlgebraicReference>,
-) -> AlgebraicExpression<T> {
-    // Wrap `powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic`, which
-    // works on a `powdr_ast::analyzed::AlgebraicExpression`.
-    let expr = expr.transform_var_type(&mut |algebraic_reference| {
-        powdr_pilopt::qse_opt::Variable::Reference(algebraic_reference.clone().into())
-    });
-    // This is where the core conversion is implemented, including the simplification.
-    let ast_algebraic_expression =
-        powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic(&expr);
-    // Unwrap should be fine, because by construction we don't have challenges or public references,
-    // and quadratic_symbolic_expression_to_algebraic should not introduce any exponentiations.
-    AlgebraicExpression::try_from_ast_expression(ast_algebraic_expression).unwrap()
+pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
 }

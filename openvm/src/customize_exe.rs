@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::IntoOpenVm;
@@ -37,7 +38,7 @@ pub const OPENVM_DEGREE_BOUND: usize = 5;
 // TODO: read this from program
 const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
-const POWDR_OPCODE: usize = 0x10ff;
+pub const POWDR_OPCODE: usize = 0x10ff;
 
 #[derive(Clone, Debug)]
 pub struct CachedAutoPrecompile<F> {
@@ -79,7 +80,7 @@ pub fn customize<P: IntoOpenVm>(
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
     // We don't want these opcodes because they create air constraints with next references, which powdr-openvm does not support yet.
-    let opcodes_no_apc = vec![
+    let opcodes_no_apc: HashSet<_> = [
         Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32LoadStoreOpcode::LOADB.global_opcode().as_usize(),
@@ -144,17 +145,27 @@ pub fn customize<P: IntoOpenVm>(
         1033,
         1027,
         1029,
-    ];
+    ]
+    .into_iter()
+    .collect();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
     let branch_opcodes_set = branch_opcodes_set();
 
-    let mut blocks =
-        collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
+    let blocks = collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+
+    let mut blocks = blocks
+        .into_iter()
+        .filter(|b| {
+            !b.statements
+                .iter()
+                .any(|instr| opcodes_no_apc.contains(&instr.opcode.as_usize()))
+        })
+        .collect::<Vec<_>>();
 
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
@@ -198,8 +209,10 @@ pub fn customize<P: IntoOpenVm>(
     let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    let apcs = blocks[n_skip..n_skip + n_acc]
+    let apcs = blocks
         .par_iter_mut()
+        .skip(n_skip)
+        .take(n_acc)
         .enumerate()
         .map(|(index, acc_block)| {
             tracing::debug!(
@@ -391,7 +404,7 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
-    opcodes_no_apc: &[usize],
+    opcodes_no_apc: &HashSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
@@ -411,6 +424,11 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
             }
+            // Push the instruction itself
+            blocks.push(BasicBlock {
+                start_idx: i,
+                statements: vec![instr.clone()],
+            });
             // Skip the instrucion and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_idx: i + 1,
@@ -570,7 +588,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     bus_map: BusMap,
-    opcodes_no_apc: &[usize],
+    opcodes_no_apc: &HashSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -579,7 +597,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
         pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
     });
 
-    tracing::info!(
+    tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
@@ -623,7 +641,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 .sum();
             let cells_saved_per_row = original_cells_per_row - apc_cells_per_row;
             assert!(cells_saved_per_row > 0);
-            tracing::info!(
+            tracing::debug!(
                 "Basic block start_idx: {}, cells saved per row: {}",
                 acc_block.start_idx,
                 cells_saved_per_row
@@ -659,7 +677,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
         let count = pgo_program_idx_count[&(start_idx as u32)];
         let cost = count * cells_saved as u32;
 
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
             start_idx,
             cost,
@@ -680,7 +698,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
     });
 
-    tracing::info!(
+    tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
@@ -698,7 +716,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         let count = pgo_program_idx_count[&(start_idx as u32)];
         let cost = count * (block.statements.len() as u32);
 
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
             start_idx,
             cost,
@@ -715,7 +733,7 @@ fn sort_blocks_by_length<F: PrimeField32>(blocks: &mut Vec<BasicBlock<F>>) {
     // Debug print blocks by descending cost
     for block in blocks {
         let start_idx = block.start_idx;
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, number_of_instructions: {}",
             start_idx,
             block.statements.len(),
