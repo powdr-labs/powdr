@@ -157,7 +157,7 @@ impl<T: Display> SymbolicMachine<T> {
         }
 
         for constraint in &self.constraints {
-            output.push_str(&format!("{} = 0\n", constraint));
+            output.push_str(&format!("{constraint} = 0\n"));
         }
 
         output.trim().to_string()
