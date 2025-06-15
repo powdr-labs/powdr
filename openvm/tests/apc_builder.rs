@@ -73,6 +73,101 @@ fn single_add_0() {
 }
 
 #[test]
+fn single_loadw() {
+    let program = [
+        // Load x2 + 20 into x8
+        loadw(8, 2, 20, 2, 1, 0),
+    ];
+    let (machine, _) = compile(program.to_vec());
+    let expected = r#"(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 614400 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 614401)) = 0 
+(943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 754974711 * is_valid - (120 * rs1_data__1_0 + 943718400 * mem_ptr_limbs__0_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 754974710 - (120 * rs1_data__1_0 + 943718400 * mem_ptr_limbs__0_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0)) = 0 
+is_valid * (is_valid - 1) = 0 
+(id=3, mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - (rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0 + 2)])
+(id=1, mult=is_valid * 1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=3, mult=is_valid * 1, args=[-(503316480 * mem_ptr_limbs__0_0), 14])
+(id=3, mult=is_valid * 1, args=[mem_ptr_limbs__1_0, 13])
+(id=3, mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0, read_data__0_0, write_data__1_0, write_data__2_0, write_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1)])
+(id=1, mult=is_valid * 1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0, read_data__0_0, write_data__1_0, write_data__2_0, write_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0])
+(id=3, mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 8, prev_data__0_0, prev_data__1_0, prev_data__2_0, prev_data__3_0, write_base_aux__prev_timestamp_0])
+(id=1, mult=is_valid * 1, args=[1, 8, read_data__0_0, write_data__1_0, write_data__2_0, write_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 1])
+(id=0, mult=-is_valid, args=[from_state__pc_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
+(id=0, mult=is_valid, args=[from_state__pc_0 + 4, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 2])
+"#;
+    assert_eq!(expected, machine.to_string());
+}
+
+#[test]
+fn single_loadbu() {
+    let program = [
+        // Load x2 + 21 into x8
+        loadbu(8, 2, 21, 2, 1, 0),
+    ];
+    let (machine, _) = compile(program.to_vec());
+    let expected = r#"flags__0_0 * ((flags__0_0 - 1) * (flags__0_0 - 2)) = 0 
+flags__1_0 * ((flags__1_0 - 1) * (flags__1_0 - 2)) = 0 
+flags__2_0 * ((flags__2_0 - 1) * (flags__2_0 - 2)) = 0 
+flags__3_0 * ((flags__3_0 - 1) * (flags__3_0 - 2)) = 0 
+(flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0) * ((flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 1) * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) = 0 
+(flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 1 * is_valid) * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) = 0 
+1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__2_0 * (flags__2_0 - 1) + 1006632960 * flags__3_0 * (flags__3_0 - 1) + flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 1 * is_valid = 0 
+(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 645120 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 645121)) = 0 
+(943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 - (120 * rs1_data__1_0 + 943718400 * mem_ptr_limbs__0_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 314572810 * is_valid)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 - (120 * rs1_data__1_0 + 943718400 * mem_ptr_limbs__0_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 314572811)) = 0 
+flags__1_0 * (flags__1_0 - 1) + flags__2_0 * (flags__2_0 - 1) + 4 * flags__0_0 * flags__1_0 + 4 * flags__0_0 * flags__2_0 + 5 * flags__0_0 * flags__3_0 + 5 * flags__1_0 * flags__2_0 + 5 * flags__1_0 * flags__3_0 + 5 * flags__2_0 * flags__3_0 - (1006632960 * flags__3_0 * (flags__3_0 - 1) + flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 3 * flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 1 * is_valid) = 0 
+is_valid * (is_valid - 1) = 0 
+(id=3, mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - (rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0 + 2)])
+(id=1, mult=is_valid * 1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=3, mult=is_valid * 1, args=[503316480 * flags__2_0 * (flags__2_0 - 1) + 503316481 * flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 503316480 * flags__1_0 * flags__2_0 + 1006632960 * flags__0_0 * flags__2_0 + 1006632960 * flags__1_0 * flags__3_0 - (503316480 * flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 1006632960 * flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 503316481 * flags__2_0 * flags__3_0 + 503316480 * mem_ptr_limbs__0_0), 14])
+(id=3, mult=is_valid * 1, args=[mem_ptr_limbs__1_0, 13])
+(id=3, mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[2, flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 2 * flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 3 * flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - flags__2_0 * (flags__2_0 - 1), read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1)])
+(id=1, mult=is_valid * 1, args=[2, flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 2 * flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 3 * flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - flags__2_0 * (flags__2_0 - 1), read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0])
+(id=3, mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 8, prev_data__0_0, prev_data__1_0, prev_data__2_0, prev_data__3_0, write_base_aux__prev_timestamp_0])
+(id=1, mult=is_valid * 1, args=[1, 8, (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0 - flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) * read_data__0_0 + (flags__0_0 * flags__2_0 + flags__1_0 * flags__2_0 + flags__1_0 * flags__3_0 + flags__2_0 * flags__3_0) * prev_data__0_0 - ((1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__3_0 * (flags__3_0 - 1)) * read_data__0_0 + flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__1_0 + (1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) * read_data__2_0 + flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__3_0), (flags__0_0 * flags__1_0 - flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) * read_data__1_0 + flags__1_0 * flags__2_0 * read_data__0_0 + (flags__0_0 * flags__2_0 + flags__0_0 * flags__3_0 + flags__1_0 * flags__3_0 + flags__2_0 * flags__3_0) * prev_data__1_0 - ((1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1)) * read_data__1_0 + 1006632960 * flags__2_0 * (flags__2_0 - 1) * read_data__3_0), (flags__0_0 * flags__2_0 + flags__1_0 * flags__3_0) * read_data__0_0 + (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0 + flags__1_0 * flags__2_0 + flags__2_0 * flags__3_0) * prev_data__2_0 - (1006632960 * flags__0_0 * (flags__0_0 - 1) * read_data__2_0 + flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__2_0), flags__2_0 * flags__3_0 * read_data__0_0 + flags__0_0 * flags__2_0 * read_data__1_0 + (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0 + flags__1_0 * flags__2_0 + flags__1_0 * flags__3_0) * prev_data__3_0 - (1006632960 * flags__0_0 * (flags__0_0 - 1) * read_data__3_0 + flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__3_0), write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 1])
+(id=0, mult=-is_valid, args=[from_state__pc_0, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
+(id=0, mult=is_valid, args=[from_state__pc_0 + 4, write_base_aux__prev_timestamp_0 + write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 2])
+"#;
+    assert_eq!(expected, machine.to_string());
+}
+
+#[test]
+fn single_srl() {
+    // Instruction 416 from the largest basic block of the Keccak guest program.
+    let program = [srl(68, 40, 25, 0)];
+    let (machine, _) = compile(program.to_vec());
+
+    // Note that this does not have any polynomial constraints, because the bit / byte shift flags can be solved at compile time.
+    let expected = r#"is_valid * (is_valid - 1) = 0 
+(id=3, mult=is_valid * 1, args=[bit_shift_carry__3_0, 1])
+(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 40, b__0_0, b__1_0, b__2_0, b__3_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 2)])
+(id=1, mult=is_valid * 1, args=[1, 40, b__0_0, b__1_0, b__2_0, b__3_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=3, mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17])
+(id=3, mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12])
+(id=1, mult=is_valid * -1, args=[1, 68, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0])
+(id=1, mult=is_valid * 1, args=[1, 68, 1006632960 * bit_shift_carry__3_0 - 1006632960 * b__3_0, 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1])
+(id=0, mult=-is_valid, args=[from_state__pc_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1])
+(id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
+(id=0, mult=is_valid, args=[from_state__pc_0 + 4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2])
+(id=6, mult=is_valid * 1, args=[1006632960 * bit_shift_carry__3_0 - 1006632960 * b__3_0, 0, 0, 0])
+"#;
+    assert_eq!(expected, machine.to_string());
+}
+
+#[test]
 fn guest_top_block() {
     // Top block from `guest` with `--pgo cell`, with 4 instructions:
     // SymbolicInstructionStatement { opcode: 512, args: [BabyBearField(8), BabyBearField(8), BabyBearField(16777200), BabyBearField(1), BabyBearField(0), BabyBearField(0), BabyBearField(0)] }
