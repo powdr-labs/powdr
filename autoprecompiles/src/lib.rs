@@ -118,13 +118,49 @@ pub struct SymbolicMachine<T> {
 
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for constraint in &self.constraints {
-            writeln!(f, "{constraint} = 0 ")?;
-        }
         for bus_interaction in &self.bus_interactions {
             writeln!(f, "{bus_interaction}")?;
         }
+        for constraint in &self.constraints {
+            writeln!(f, "{constraint} = 0")?;
+        }
         Ok(())
+    }
+}
+
+impl<T: Display> SymbolicMachine<T> {
+    pub fn render(&self, bus_map: &BusMap) -> String {
+        let mut output = String::new();
+        let bus_interactions_by_bus = self
+            .bus_interactions
+            .iter()
+            .map(|bus_interaction| (bus_interaction.id, bus_interaction))
+            .into_group_map()
+            .into_iter()
+            // sorted_by_key is stable, so we'll keep the order within each bus
+            .sorted_by_key(|(bus_id, _)| *bus_id)
+            .collect::<Vec<_>>();
+        for (bus_id, bus_interactions) in &bus_interactions_by_bus {
+            let bus_type = bus_map.bus_type(*bus_id);
+            output.push_str(&format!("\n// Bus {bus_id} ({bus_type}):\n",));
+            for bus_interaction in bus_interactions {
+                output.push_str(&format!(
+                    "mult={}, args=[{}]\n",
+                    bus_interaction.mult,
+                    bus_interaction.args.iter().join(", ")
+                ));
+            }
+        }
+
+        if !self.constraints.is_empty() {
+            output.push_str("\n// Algebraic constraints:\n");
+        }
+
+        for constraint in &self.constraints {
+            output.push_str(&format!("{} = 0\n", constraint));
+        }
+
+        output.trim().to_string()
     }
 }
 
