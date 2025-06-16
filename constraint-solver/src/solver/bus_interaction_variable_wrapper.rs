@@ -68,8 +68,16 @@ pub fn wrap_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
 
 pub fn make_result<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     assignments: Vec<(Variable<V>, QuadraticSymbolicExpression<T, Variable<V>>)>,
-    bus_interaction_vars: BTreeMap<Variable<V>, QuadraticSymbolicExpression<T, V>>,
+    mut bus_interaction_vars: BTreeMap<Variable<V>, QuadraticSymbolicExpression<T, V>>,
 ) -> SolveResult<T, V> {
+    for (variable, expr) in &assignments {
+        if let Variable::BusInteractionArg(..) = variable {
+            // TODO: Can there be more complex expressions here?
+            let value = expr.try_to_number().unwrap();
+            bus_interaction_vars.insert(variable.clone(), value.into());
+        }
+    }
+
     let assignments = assignments
         .into_iter()
         .filter_map(|(v, expr)| match v {

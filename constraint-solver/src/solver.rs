@@ -238,14 +238,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
         self.assignments.push((variable.clone(), expr.clone()));
-
-        if let Variable::BusInteractionArg(..) = variable {
-            // TODO: Can there be more complex expressions here?
-            let value = expr.try_to_number().unwrap();
-            self.bus_interaction_vars
-                .insert(variable.clone(), value.into());
-        }
-
         // TODO we could check if the variable already has an assignment,
         // but usually it should not be in the system once it has been assigned.
         true
