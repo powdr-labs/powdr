@@ -18,7 +18,7 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::legacy_expression::try_convert;
+use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;

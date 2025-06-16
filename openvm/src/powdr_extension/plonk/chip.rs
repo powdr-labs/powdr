@@ -29,7 +29,7 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
+use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::powdr::UniqueColumns;
 use powdr_autoprecompiles::SymbolicMachine;
 

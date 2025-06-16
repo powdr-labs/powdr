@@ -14,7 +14,7 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::legacy_expression::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_autoprecompiles::expression::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_expression::AlgebraicExpression;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -101,7 +101,6 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
                     Entry::Preprocessed { offset: 0 },
                     poly_id.id as usize,
                 )),
-                PolynomialType::Intermediate => todo!(),
             }
         }
     }

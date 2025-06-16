@@ -3,7 +3,7 @@ use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
 use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
-use legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr::UniqueColumns;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
@@ -22,7 +22,7 @@ mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod expression_conversion;
-pub mod legacy_expression;
+pub mod expression;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;

@@ -6,7 +6,7 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
-    legacy_expression::AlgebraicExpression,
+    expression::AlgebraicExpression,
     powdr::{self, Column},
     BusMap, BusType, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicInstructionStatement, SymbolicMachine,

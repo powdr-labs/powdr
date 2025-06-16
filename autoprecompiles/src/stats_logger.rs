@@ -7,7 +7,7 @@ use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintS
 use powdr_number::FieldElement;
 
 use crate::{
-    legacy_expression::{AlgebraicReference, PolynomialType},
+    expression::{AlgebraicReference, PolynomialType},
     powdr::UniqueColumns,
     SymbolicMachine,
 };

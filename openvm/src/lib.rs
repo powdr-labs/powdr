@@ -34,7 +34,7 @@ use openvm_stark_sdk::openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear;
-use powdr_autoprecompiles::legacy_expression::try_convert;
+use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};

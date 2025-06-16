@@ -39,7 +39,7 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::{
-    legacy_expression::AlgebraicExpression,
+    expression::AlgebraicExpression,
     powdr::{Column, UniqueColumns},
 };
 use serde::{Deserialize, Serialize};

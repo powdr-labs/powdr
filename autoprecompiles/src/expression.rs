@@ -1,7 +1,5 @@
 //! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
-//! custom `AlgebraicReference` type. This makes the type very similar to the
-//! `powdr_ast::analyzed::AlgebraicExpression`, which we've used historically.
-//! Going forward, we will simplify the code and remove this module eventually.
+//! custom `AlgebraicReference` type.
 use serde::{Deserialize, Serialize};
 use std::{
     hash::{Hash, Hasher},
@@ -12,9 +10,8 @@ pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, Algeb
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PolynomialType {
-    Committed,
-    Constant,
-    Intermediate,
+    Committed = 0,
+    Constant = 1,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +23,7 @@ pub struct PolyID {
 impl Hash for PolyID {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // single call to hash is faster
-        ((self.id << 2) + self.ptype as u64).hash(state);
+        ((self.id << 1) + self.ptype as u64).hash(state);
     }
 }
 

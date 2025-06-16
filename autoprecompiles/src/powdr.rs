@@ -7,7 +7,7 @@ use powdr_expression::visitors::{AllChildren, ExpressionVisitable};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use crate::expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use crate::SymbolicMachine;
 
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed

@@ -14,7 +14,7 @@ use crate::{
     expression_conversion::{
         algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
     },
-    legacy_expression::{AlgebraicExpression, AlgebraicReference},
+    expression::{AlgebraicExpression, AlgebraicReference},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},

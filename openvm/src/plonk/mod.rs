@@ -240,7 +240,7 @@ impl<T, V> PlonkCircuit<T, V> {
 pub mod test_utils {
     use std::sync::Arc;
 
-    use powdr_autoprecompiles::legacy_expression::{
+    use powdr_autoprecompiles::expression::{
         AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
     };
     use powdr_number::BabyBearField;
