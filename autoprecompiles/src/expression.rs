@@ -1,31 +1,9 @@
 //! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
 //! custom `AlgebraicReference` type.
 use serde::{Deserialize, Serialize};
-use std::{
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
+use std::{hash::Hash, sync::Arc};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum PolynomialType {
-    Committed = 0,
-    Constant = 1,
-}
-
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PolyID {
-    pub id: u64,
-    pub ptype: PolynomialType,
-}
-
-impl Hash for PolyID {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // single call to hash is faster
-        ((self.id << 1) + self.ptype as u64).hash(state);
-    }
-}
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct AlgebraicReference {
@@ -35,7 +13,7 @@ pub struct AlgebraicReference {
     pub name: Arc<String>,
     /// Identifier for a polynomial reference, already contains
     /// the element offset in case of an array element.
-    pub poly_id: PolyID,
+    pub id: u64,
 }
 
 impl std::fmt::Display for AlgebraicReference {
@@ -52,19 +30,19 @@ impl PartialOrd for AlgebraicReference {
 
 impl Ord for AlgebraicReference {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.poly_id.cmp(&other.poly_id)
+        self.id.cmp(&other.id)
     }
 }
 
 impl PartialEq for AlgebraicReference {
     fn eq(&self, other: &Self) -> bool {
-        self.poly_id == other.poly_id
+        self.id == other.id
     }
 }
 
 impl Hash for AlgebraicReference {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.poly_id.hash(state);
+        self.id.hash(state);
     }
 }
 

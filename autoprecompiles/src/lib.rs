@@ -2,8 +2,8 @@ use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
 use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
+use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
-use expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr::UniqueColumns;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
@@ -21,8 +21,8 @@ use powdr_number::FieldElement;
 mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
-pub mod expression_conversion;
 pub mod expression;
+pub mod expression_conversion;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
@@ -319,22 +319,11 @@ fn add_guards<T: FieldElement>(
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
-    let max_id = machine
-        .unique_columns()
-        .map(|c| {
-            assert_eq!(c.id.ptype, PolynomialType::Committed);
-            c.id.id
-        })
-        .max()
-        .unwrap()
-        + 1;
+    let max_id = machine.unique_columns().map(|c| c.id).max().unwrap() + 1;
 
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
         name: Arc::new("is_valid".to_string()),
-        poly_id: PolyID {
-            ptype: PolynomialType::Committed,
-            id: max_id,
-        },
+        id: max_id,
     });
 
     machine.constraints = machine

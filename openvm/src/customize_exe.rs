@@ -218,7 +218,7 @@ pub fn customize<P: IntoOpenVm>(
 
         let is_valid_column = autoprecompile
             .unique_columns()
-            .find(|c| c.name == "is_valid")
+            .find(|c| &*c.name == "is_valid")
             .unwrap();
 
         let opcodes_in_acc = acc

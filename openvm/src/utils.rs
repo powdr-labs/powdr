@@ -14,7 +14,7 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::expression::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_expression::AlgebraicExpression;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -88,20 +88,13 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
             },
         },
         AlgebraicExpression::Reference(algebraic_reference) => {
-            let poly_id = algebraic_reference.poly_id;
-            match poly_id.ptype {
-                PolynomialType::Committed => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Main {
-                        part_index: 0,
-                        offset: 0,
-                    },
-                    poly_id.id as usize,
-                )),
-                PolynomialType::Constant => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Preprocessed { offset: 0 },
-                    poly_id.id as usize,
-                )),
-            }
+            SymbolicExpression::Variable(SymbolicVariable::new(
+                Entry::Main {
+                    part_index: 0,
+                    offset: 0,
+                },
+                algebraic_reference.id as usize,
+            ))
         }
     }
 }
@@ -155,10 +148,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
                 AlgebraicExpression::Reference(OpenVmReference::WitnessColumn(
                     AlgebraicReference {
                         name: name.clone(),
-                        poly_id: PolyID {
-                            id: *index as u64,
-                            ptype: PolynomialType::Committed,
-                        },
+                        id: *index as u64,
                     },
                     next,
                 ))

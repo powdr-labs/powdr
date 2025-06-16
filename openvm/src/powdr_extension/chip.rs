@@ -39,8 +39,8 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::{
-    expression::AlgebraicExpression,
-    powdr::{Column, UniqueColumns},
+    expression::{AlgebraicExpression, AlgebraicReference},
+    powdr::UniqueColumns,
 };
 use serde::{Deserialize, Serialize};
 
@@ -144,7 +144,7 @@ where
 
 pub struct PowdrAir<P> {
     /// The columns in arbitrary order
-    columns: Vec<Column>,
+    columns: Vec<AlgebraicReference>,
     /// The mapping from poly_id id to the index in the list of columns.
     /// The values are always unique and contiguous
     column_index_by_poly_id: BTreeMap<u64, usize>,
@@ -153,7 +153,7 @@ pub struct PowdrAir<P> {
 
 impl<P: IntoOpenVm> ColumnsAir<OpenVmField<P>> for PowdrAir<P> {
     fn columns(&self) -> Option<Vec<String>> {
-        Some(self.columns.iter().map(|c| c.name.clone()).collect())
+        Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
     }
 }
 
@@ -208,7 +208,7 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct SymbolicMachine<F> {
-    columns: Vec<Column>,
+    columns: Vec<AlgebraicReference>,
     constraints: Vec<SymbolicConstraint<F>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<F>>,
 }
@@ -312,7 +312,7 @@ impl<P: IntoOpenVm> PowdrAir<P> {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
             .unique_columns()
             .enumerate()
-            .map(|(index, c)| ((c.id.id, index), c.clone()))
+            .map(|(index, c)| ((c.id, index), c.clone()))
             .unzip();
 
         Self {
@@ -342,7 +342,7 @@ impl<AB: InteractionBuilder, P: IntoOpenVm<Field = AB::F>> Air<AB> for PowdrAir<
         let witness_values: BTreeMap<u64, AB::Var> = self
             .columns
             .iter()
-            .map(|c| c.id.id)
+            .map(|c| c.id)
             .zip_eq(witnesses.iter().cloned())
             .collect();
 
