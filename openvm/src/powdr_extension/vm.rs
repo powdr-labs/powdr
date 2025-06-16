@@ -5,6 +5,7 @@ use std::iter::once;
 
 use derive_more::From;
 
+use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -31,7 +32,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BusMap, PrecompileImplementation};
 
-use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
@@ -196,28 +196,24 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             .first()
             .cloned();
 
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair =
+            PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
+
         for precompile in &self.precompiles {
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
+                    shared_chips_pair.clone(),
                 )
                 .into(),
                 PrecompileImplementation::PlonkChip => PlonkChip::new(
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
+                    shared_chips_pair.clone(),
                     self.bus_map.clone(),
                 )
                 .into(),
