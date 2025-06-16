@@ -37,7 +37,6 @@ impl BusMap {
     pub fn from_id_type_pairs(pairs: impl IntoIterator<Item = (u64, BusType)>) -> Self {
         let mut bus_ids = BTreeMap::new();
         for (k, v) in pairs.into_iter() {
-
             bus_ids.entry(k).and_modify(|existing| {
                 if existing != &v {
                     panic!("BusType `{v:?}` already exists under ID `{existing}`, cannot map to `{v}`");
