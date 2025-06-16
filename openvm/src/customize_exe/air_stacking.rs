@@ -1,21 +1,12 @@
 use std::collections::{BTreeSet, HashMap};
 
-use powdr_autoprecompiles::{
-    legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType},
-    simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
-};
+use powdr_autoprecompiles::{legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType}, simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
 
 use powdr_autoprecompiles::powdr::UniqueColumns;
 
-use powdr_expression::{
-    visitors::ExpressionVisitable, AlgebraicBinaryOperation, AlgebraicBinaryOperator,
-    AlgebraicUnaryOperation,
-};
+use powdr_expression::{visitors::ExpressionVisitable, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation};
 
-use crate::{
-    powdr_extension::{PowdrPrecompile, PowdrStackedPrecompile},
-    IntoOpenVm,
-};
+use crate::{powdr_extension::{PowdrPrecompile, PowdrStackedPrecompile}, IntoOpenVm};
 
 use openvm_instructions::LocalOpcode;
 
@@ -35,7 +26,6 @@ pub fn air_stacking<P: IntoOpenVm>(
             .constraints
             .iter_mut()
             .for_each(|c| canonicalize_expression(&mut c.expr));
-        // ext.machine.constraints.sort();
         // compact_ids(ext)
     });
 
@@ -145,7 +135,6 @@ pub fn air_stacking<P: IntoOpenVm>(
 
         tracing::debug!("Stacked chip has {} constraints", stacked_constraints.len());
         let mut stacked_constraints = join_constraints(stacked_constraints);
-        stacked_constraints.sort();
         tracing::debug!("After joining constraints: {}", stacked_constraints.len());
 
         // enforce only one is_valid is active
@@ -161,7 +150,6 @@ pub fn air_stacking<P: IntoOpenVm>(
         // let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
         // let mut stacked_interactions = merge_bus_interactions(interactions_by_machine);
         let mut stacked_interactions = merge_bus_interactions2(interactions_by_machine);
-        stacked_interactions.sort();
         tracing::debug!("After merging interactions: {}", stacked_interactions.len());
 
         let machine = SymbolicMachine {

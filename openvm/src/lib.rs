@@ -341,6 +341,13 @@ impl PowdrConfig {
             ..self
         }
     }
+
+    pub fn with_chip_stacking(self, chip_stacking_log: f32) -> Self {
+        Self {
+            chip_stacking_log: Some(chip_stacking_log),
+            ..self
+        }
+    }
 }
 
 pub fn compile_guest(

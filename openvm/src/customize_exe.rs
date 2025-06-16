@@ -619,7 +619,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 POWDR_OPCODE + i,
                 config.bus_map.clone(),
                 config.degree_bound,
-                false,
+                config.chip_stacking_log.is_some(),
             )
             .ok()?;
             apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());
