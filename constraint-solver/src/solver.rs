@@ -6,7 +6,9 @@ use crate::constraint_system::{
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
-use crate::solver::bus_interaction_variable_wrapper::{make_result, wrap_variables, Variable};
+use crate::solver::bus_interaction_variable_wrapper::{
+    BusInteractionVariableWrapper, IntermediateAssignment, Variable,
+};
 use crate::utils::known_variables;
 
 use super::effect::Effect;
@@ -53,10 +55,9 @@ pub struct Solver<T: FieldElement, V, BusInterHandler> {
     range_constraints: RangeConstraints<T, Variable<V>>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
-    #[allow(clippy::type_complexity)]
-    assignments: Vec<(Variable<V>, QuadraticSymbolicExpression<T, Variable<V>>)>,
-    /// Stores the definitions of bus interaction variables.
-    bus_interaction_vars: BTreeMap<Variable<V>, QuadraticSymbolicExpression<T, V>>,
+    assignments: Vec<IntermediateAssignment<T, V>>,
+    /// The bus interaction variables wrapper.
+    bus_interaction_variable_wrapper: BusInteractionVariableWrapper<T, V>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
@@ -68,14 +69,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>
             "Expected all variables to be unknown."
         );
 
-        let (constraint_system, bus_interaction_vars) = wrap_variables(constraint_system);
+        let (bus_interaction_variable_wrapper, constraint_system) =
+            BusInteractionVariableWrapper::new(constraint_system);
 
         Solver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Default::default(),
             assignments: Default::default(),
-            bus_interaction_vars,
+            bus_interaction_variable_wrapper,
         }
     }
 }
@@ -93,7 +95,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
             constraint_system: self.constraint_system,
             range_constraints: self.range_constraints,
             assignments: self.assignments,
-            bus_interaction_vars: self.bus_interaction_vars,
+            bus_interaction_variable_wrapper: self.bus_interaction_variable_wrapper,
         }
     }
 
@@ -101,7 +103,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
     /// assignments and a simplified version of the algebraic constraints.
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
-        Ok(make_result(self.assignments, self.bus_interaction_vars))
+        Ok(self
+            .bus_interaction_variable_wrapper
+            .finalize(self.assignments))
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
