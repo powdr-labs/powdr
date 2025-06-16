@@ -98,6 +98,6 @@ fn test_conflicting_constraints_in_bus_interaction() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [31, 27, 17]
+        [28, 25, 17]
     );
 }
