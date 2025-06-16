@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use powdr_number::FieldElement;
+use powdr_number::LargeInt;
 
 use crate::constraint_system::BusInteractionHandler;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
@@ -13,7 +14,9 @@ use std::hash::Hash;
 use super::Error;
 
 /// The maximum number of possible assignments to try when doing exhaustive search.
-const MAX_SEARCH_WIDTH: u64 = 1 << 12;
+const MAX_SEARCH_WIDTH: u64 = 1 << 10;
+/// The maximum range width of a variable to be considered for exhaustive search.
+const MAX_VAR_RANGE_WIDTH: u64 = 5;
 
 /// Tries to find unique assignments via exhaustive search: For any group of variables that
 /// appear together in an identity, if there are fewer than `MAX_SEARCH_WIDTH` possible
@@ -127,7 +130,7 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
         })
         .unique()
         .filter_map(move |variables| {
-            match has_few_possible_assignments(variables.iter().cloned(), &rc, MAX_SEARCH_WIDTH) {
+            match is_candidate_for_exhaustive_search(&variables, &rc) {
                 true => Some(variables),
                 false => {
                     // It could be that only one variable has a large range, but that the rest uniquely determine it.
@@ -139,15 +142,34 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
                         .sorted_by(|a, b| rc.get(a).range_width().cmp(&rc.get(b).range_width()))
                         .take(num_variables - 1)
                         .collect::<BTreeSet<_>>();
-                    has_few_possible_assignments(
-                        variables_without_largest_range.iter().cloned(),
-                        &rc,
-                        MAX_SEARCH_WIDTH,
-                    )
-                    .then_some(variables_without_largest_range)
+                    is_candidate_for_exhaustive_search(&variables_without_largest_range, &rc)
+                        .then_some(variables_without_largest_range)
                 }
             }
         })
         .filter(|variables| !variables.is_empty())
         .unique()
+}
+
+fn is_candidate_for_exhaustive_search<T: FieldElement, V: Clone + Ord>(
+    variables: &BTreeSet<V>,
+    rc: &impl RangeConstraintProvider<T, V>,
+) -> bool {
+    has_few_possible_assignments(variables.iter().cloned(), rc, MAX_SEARCH_WIDTH)
+        && has_small_max_range_width(variables.iter().cloned(), rc, MAX_VAR_RANGE_WIDTH)
+}
+
+fn has_small_max_range_width<T: FieldElement, V: Clone + Ord>(
+    variables: impl Iterator<Item = V>,
+    rc: &impl RangeConstraintProvider<T, V>,
+    threshold: u64,
+) -> bool {
+    let widths = variables
+        .map(|v| rc.get(&v).range_width().try_into_u64())
+        .collect::<Option<Vec<_>>>();
+    if let Some(widths) = widths {
+        widths.iter().all(|&width| width <= threshold)
+    } else {
+        false
+    }
 }
