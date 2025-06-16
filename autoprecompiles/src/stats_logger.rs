@@ -6,7 +6,7 @@ use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_number::FieldElement;
 
-use crate::{powdr::UniqueColumns, SymbolicMachine};
+use crate::{powdr::UniqueReferences, SymbolicMachine};
 
 pub struct StatsLogger {
     start_time: Instant,
@@ -52,7 +52,7 @@ impl<P: FieldElement> From<&SymbolicMachine<P>> for Stats {
         Stats {
             num_constraints: machine.constraints.len(),
             num_bus_interactions: machine.bus_interactions.len(),
-            num_witness_columns: machine.unique_columns().count(),
+            num_witness_columns: machine.unique_references().count(),
         }
     }
 }

@@ -4,7 +4,7 @@ use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
-use powdr::UniqueColumns;
+use powdr::UniqueReferences;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -319,7 +319,7 @@ fn add_guards<T: FieldElement>(
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
-    let max_id = machine.unique_columns().map(|c| c.id).max().unwrap() + 1;
+    let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
 
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
         name: Arc::new("is_valid".to_string()),

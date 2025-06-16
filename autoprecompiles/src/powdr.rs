@@ -74,15 +74,15 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
         .collect()
 }
 
-pub trait UniqueColumns<'a, T: 'a> {
-    /// Returns an iterator over the unique columns
-    fn unique_columns(&'a self) -> impl Iterator<Item = AlgebraicReference>;
+pub trait UniqueReferences<'a, T: 'a> {
+    /// Returns an iterator over the unique references
+    fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference>;
 }
 
 impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
-    UniqueColumns<'a, T> for E
+    UniqueReferences<'a, T> for E
 {
-    fn unique_columns(&'a self) -> impl Iterator<Item = AlgebraicReference> {
+    fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference> {
         self.all_children()
             .filter_map(|e| {
                 if let AlgebraicExpression::Reference(r) = e {
@@ -102,7 +102,7 @@ pub fn reassign_ids<T: FieldElement>(
 ) -> (u64, Vec<u64>, SymbolicMachine<T>) {
     // Build a mapping from local columns to global columns
     let subs: BTreeMap<AlgebraicReference, AlgebraicReference> = machine
-        .unique_columns()
+        .unique_references()
         // zip with increasing ids, mutating curr_id
         .zip(from_fn(|| {
             let id = curr_id;

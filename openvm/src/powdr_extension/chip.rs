@@ -40,7 +40,7 @@ use openvm_stark_backend::{
 };
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
-    powdr::UniqueColumns,
+    powdr::UniqueReferences,
 };
 use serde::{Deserialize, Serialize};
 
@@ -217,7 +217,7 @@ impl<P: IntoOpenVm> From<powdr_autoprecompiles::SymbolicMachine<P>>
     for SymbolicMachine<OpenVmField<P>>
 {
     fn from(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
-        let columns = machine.unique_columns().collect();
+        let columns = machine.unique_references().collect();
 
         let powdr_autoprecompiles::SymbolicMachine {
             constraints,
@@ -310,7 +310,7 @@ impl<P: IntoOpenVm> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<P>>
 impl<P: IntoOpenVm> PowdrAir<P> {
     pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
-            .unique_columns()
+            .unique_references()
             .enumerate()
             .map(|(index, c)| ((c.id, index), c.clone()))
             .unzip();
