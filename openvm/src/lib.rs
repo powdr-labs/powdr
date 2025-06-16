@@ -410,6 +410,7 @@ pub struct CompiledProgram<P: IntoOpenVm> {
 }
 
 // the original openvm program and config without powdr extension
+#[derive(Clone)]
 pub struct OriginalCompiledProgram<P: IntoOpenVm> {
     pub exe: VmExe<OpenVmField<P>>,
     pub sdk_vm_config: SdkVmConfig,
