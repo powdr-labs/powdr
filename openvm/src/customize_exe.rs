@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use itertools::Itertools;
@@ -214,18 +215,26 @@ pub fn customize<P: IntoOpenVm>(
             acc_block.pretty_print(openvm_instruction_formatter)
         );
 
+        let mut degree_bound = config.degree_bound.clone();
+        // chip stacking needs to guard bus arguments, so we lower the inliner bound on bus interactions
+        if config.chip_stacking_log.is_some() {
+            degree_bound.bus_interactions -= 1;
+        }
+
         // Lookup if an APC is already cached by PgoConfig::Cell and generate the APC if not
         let CachedAutoPrecompile {
             apc_opcode,
             autoprecompile,
             subs,
         } = apc_cache.remove(&acc_block.start_idx).unwrap_or_else(|| {
+            let strict_is_valid_guards = config.chip_stacking_log.is_some();
             generate_apc_cache(
                 acc_block,
                 airs,
                 POWDR_OPCODE + i,
                 config.bus_map.clone(),
-                config.degree_bound,
+                degree_bound,
+                strict_is_valid_guards,
             )
             .expect("Failed to generate autoprecompile")
         });
@@ -292,7 +301,14 @@ pub fn customize<P: IntoOpenVm>(
         ));
     }
 
-    let extensions = air_stacking(extensions);
+    let extensions = if let Some(chip_stacking_log) = config.chip_stacking_log {
+        tracing::debug!("Chip stacking enabled, grouping log: {chip_stacking_log}");
+        air_stacking(extensions, chip_stacking_log)
+    } else {
+        tracing::debug!("Chip stacking disabled");
+        extensions.into_iter().map(PowdrStackedPrecompile::new_single).collect()
+    };
+
     (
         exe,
         PowdrExtension::new(
@@ -481,9 +497,10 @@ fn generate_apc_cache<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: DegreeBound,
+    strict_is_valid_guards: bool,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
     let (autoprecompile, subs) =
-        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
+        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound, strict_is_valid_guards)?;
 
     Ok(CachedAutoPrecompile {
         apc_opcode,
@@ -505,7 +522,9 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     apc_opcode: usize,
     bus_map: BusMap,
-    mut degree_bound: DegreeBound,
+    degree_bound: DegreeBound,
+    // chip stacking needs constraints/multiplicities fully guarded by the is_valid column
+    strict_is_valid_guards: bool,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -530,10 +549,8 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map),
     };
 
-    // chip stacking needs to add guards to bus arguments also, so we restrict the optimizer by 1 degree here.
-    degree_bound.bus_interactions -= 1;
     let (precompile, subs) =
-        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
+        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32, strict_is_valid_guards)?;
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());
@@ -602,6 +619,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 POWDR_OPCODE + i,
                 config.bus_map.clone(),
                 config.degree_bound,
+                false,
             )
             .ok()?;
             apc_cache.insert(acc_block.start_idx, apc_cache_entry.clone());

@@ -26,6 +26,7 @@ use bimap::BiMap;
 // perform air stacking of multiple precompiles into stacked precompiles.
 pub fn air_stacking<P: IntoOpenVm>(
     mut extensions: Vec<PowdrPrecompile<P>>,
+    chip_stacking_log: f32,
 ) -> Vec<PowdrStackedPrecompile<P>> {
     assert!(!extensions.is_empty());
 
@@ -41,7 +42,7 @@ pub fn air_stacking<P: IntoOpenVm>(
     // create apc groups by number of columns
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<P>>> = Default::default();
     for pcp in extensions {
-        let idx = f64::log(pcp.machine.unique_columns().count() as f64, 1.1).floor() as usize;
+        let idx = f32::log(pcp.machine.unique_columns().count() as f32, chip_stacking_log).floor() as usize;
         groups.entry(idx).or_default().push(pcp);
     }
 
@@ -63,26 +64,18 @@ pub fn air_stacking<P: IntoOpenVm>(
     let mut result = vec![];
 
     for mut extensions in groups.into_values() {
-        // if there is only one precompile in the group, we can just return it as a stacked precompile
+        // group of a single precompile, no stacking
         if extensions.len() == 1 {
-            println!("not stacking precompile");
-            result.push(PowdrStackedPrecompile {
-                machine: SymbolicMachine {
-                    constraints: extensions[0].machine.constraints.clone(),
-                    bus_interactions: extensions[0].machine.bus_interactions.clone(),
-                },
-                precompiles: extensions
-                    .into_iter()
-                    .map(|p| (p.opcode.clone(), p))
-                    .collect(),
-            });
+            let precompile = extensions.pop().unwrap();
+            tracing::debug!("Precompile {} not stacked", &precompile.opcode.global_opcode().as_usize());
+            result.push(PowdrStackedPrecompile::new_single(precompile));
             continue;
         }
 
         let mut stacked_constraints = vec![];
         let mut interactions_by_machine = vec![];
 
-        println!("stacking {} precompiles", extensions.len());
+        tracing::debug!("Stacking {} precompiles", extensions.len());
 
         // take the max id in all pcps and add 1.
         let is_valid_start = 1 + extensions
@@ -101,8 +94,6 @@ pub fn air_stacking<P: IntoOpenVm>(
             // is_valid columns cannot be shared between precompiles. Here we do
             // their remapping into exclusive columns.
             let is_valid_new_id = is_valid_start + idx as u64;
-
-            println!("\tpcp width: {}", pcp.machine.unique_columns().count());
 
             // remap is_valid column in constraints and interactions
             let mut remapped = pcp.machine.clone();
@@ -152,18 +143,10 @@ pub fn air_stacking<P: IntoOpenVm>(
             interactions_by_machine.push(remapped.bus_interactions);
         }
 
-        println!("before joining constraints: {}", stacked_constraints.len());
+        tracing::debug!("Stacked chip has {} constraints", stacked_constraints.len());
         let mut stacked_constraints = join_constraints(stacked_constraints);
         stacked_constraints.sort();
-        println!("after joining constraints: {}", stacked_constraints.len());
-        println!(
-            "max degree constraints: {}",
-            stacked_constraints
-                .iter()
-                .map(|c| c.expr.degree())
-                .max()
-                .unwrap_or(0)
-        );
+        tracing::debug!("After joining constraints: {}", stacked_constraints.len());
 
         // enforce only one is_valid is active
         let one = AlgebraicExpression::Number(P::ONE);
@@ -171,41 +154,20 @@ pub fn air_stacking<P: IntoOpenVm>(
 
         stacked_constraints.push(one_hot_is_valid.into());
 
-        println!(
-            "interaction count before: {}",
+        tracing::debug!(
+            "Stacked chip has {} bus interactions",
             interactions_by_machine.iter().flatten().count()
         );
         // let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
         // let mut stacked_interactions = merge_bus_interactions(interactions_by_machine);
         let mut stacked_interactions = merge_bus_interactions2(interactions_by_machine);
         stacked_interactions.sort();
+        tracing::debug!("After merging interactions: {}", stacked_interactions.len());
 
         let machine = SymbolicMachine {
             constraints: stacked_constraints,
             bus_interactions: stacked_interactions,
         };
-
-        println!("interaction count: {}", machine.bus_interactions.len());
-        println!(
-            "max degree interaction args: {}",
-            machine
-                .bus_interactions
-                .iter()
-                .map(|i| i.args.iter().map(|a| a.degree()).max().unwrap_or(0))
-                .max()
-                .unwrap_or(0)
-        );
-        println!(
-            "max degree interaction multiplicity:{}",
-            machine
-                .bus_interactions
-                .iter()
-                .map(|i| i.mult.degree())
-                .max()
-                .unwrap_or(0)
-        );
-
-        println!("stacked width: {}", machine.unique_columns().count());
 
         result.push(PowdrStackedPrecompile {
             precompiles: extensions
@@ -226,7 +188,6 @@ fn compact_ids<P: IntoOpenVm>(pcp: &mut PowdrPrecompile<P>) {
     let mut new_poly_id = |old_id: u64| {
         *id_map.entry(old_id).or_insert_with(|| {
             let id = curr_id;
-            // println!("remapping poly id {} to {}", old_id, curr_id);
             curr_id += 1;
             id
         })
@@ -790,7 +751,6 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
                 mappings
             );
             assert!(!mappings.contains_left(&old_id));
-            // println!("Assigning new id {} for old id {}", curr_id, old_id);
             let id = curr_id;
             mappings.insert(old_id, id);
             curr_id += 1;
@@ -804,14 +764,12 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
                 }
             }
         });
-        // println!("----- assigning instr subs ------");
         pcp.original_instructions.iter_mut().for_each(|instr| {
             instr.subs.iter_mut().for_each(|sub| {
                 *sub = new_poly_id(*sub);
             });
         });
 
-        // println!("----- assigning is valid ------");
         pcp.is_valid_column.id.id = new_poly_id(pcp.is_valid_column.id.id);
 
         self.pcps.push(pcp.clone());

@@ -294,6 +294,9 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompile, i.e., how to compile it to a RAP.
     pub implementation: PrecompileImplementation,
+    /// If present, use chip stacking.
+    /// Autoprecompile chips will be grouped by the provided log of their number of witness columns.
+    pub chip_stacking_log: Option<f32>,
 }
 
 impl PowdrConfig {
@@ -307,6 +310,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
+            chip_stacking_log: None,
         }
     }
 

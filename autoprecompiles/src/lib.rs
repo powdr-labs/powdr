@@ -217,6 +217,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     vm_config: VmConfig<T, B>,
     degree_bound: DegreeBound,
     opcode: u32,
+    strict_is_valid_guards: bool,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
 
@@ -266,7 +267,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     );
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
+    let machine = add_guards(machine, strict_is_valid_guards);
 
     Ok((machine, subs))
 }
@@ -315,8 +316,8 @@ fn add_guards_constraint<T: FieldElement>(
 /// Assumptions:
 /// - There are exactly one execution bus receive and one execution bus send, in this order.
 /// - There is exactly one program bus send.
-fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    // let pre_degree = machine.degree();
+fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>, strict: bool) -> SymbolicMachine<T> {
+    let pre_degree = machine.degree();
 
     let max_id = machine
         .unique_columns()
@@ -337,14 +338,18 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
         next: false,
     });
 
-    for c in &mut machine.constraints {
-        c.expr = is_valid.clone() * c.expr.clone();
-    }
-    // machine.constraints = machine
-    //     .constraints
-    //     .into_iter()
-    //     .map(|c| add_guards_constraint(c.expr, &is_valid).into())
-    //     .collect();
+    machine.constraints = if strict {
+        machine.constraints.into_iter().map(|mut c| {
+            c.expr = is_valid.clone() * c.expr.clone();
+            c
+        }).collect()
+    } else {
+        machine
+        .constraints
+        .into_iter()
+        .map(|c| add_guards_constraint(c.expr, &is_valid).into())
+        .collect()
+    };
 
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
@@ -373,6 +378,8 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
         .unwrap();
     program_bus_send.mult = is_valid.clone();
 
+    let mut is_valid_mults = vec![];
+
     for b in &mut machine.bus_interactions {
         match b.id {
             EXECUTION_BUS_ID => {
@@ -382,29 +389,28 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
                 // already handled
             }
             _ => {
-                b.mult = is_valid.clone() * b.mult.clone();
-                // if !satisfies_zero_witness(&b.mult) {
-                //     // guard the multiplicity by `is_valid`
-                //     b.mult = is_valid.clone() * b.mult.clone();
-                //     // TODO this would not have to be cloned if we had *=
-                //     //c.expr *= guard.clone();
-                // } else {
-                //     // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-                //     let one = AlgebraicExpression::Number(1u64.into());
-                //     let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                //     is_valid_mults.push(e);
-                // }
+                if strict || !satisfies_zero_witness(&b.mult) {
+                    // guard the multiplicity by `is_valid`
+                    b.mult = is_valid.clone() * b.mult.clone();
+                } else {
+                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                    let one = AlgebraicExpression::Number(1u64.into());
+                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                    is_valid_mults.push(e);
+                }
             }
         }
     }
 
-    // machine.constraints.extend(is_valid_mults);
+    machine.constraints.extend(is_valid_mults);
 
-    // assert_eq!(
-    //     pre_degree,
-    //     machine.degree(),
-    //     "Degree should not change after adding guards"
-    // );
+    if !strict {
+        assert_eq!(
+            pre_degree,
+            machine.degree(),
+            "Degree should not change after adding guards"
+        );
+    }
 
     // This needs to be added after the assertion above because it's a quadratic constraint
     // so it may increase the degree of the machine.
