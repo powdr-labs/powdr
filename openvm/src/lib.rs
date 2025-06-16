@@ -397,7 +397,7 @@ pub fn compile_exe(
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", 1000, &bus_map);
+    export_pil(vm_config.clone(), "debug.pil", &["KeccakVmAir"], &bus_map);
 
     Ok(CompiledProgram { exe, vm_config })
 }
@@ -686,7 +686,7 @@ where
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     vm_config: VC,
     path: &str,
-    max_width: usize,
+    blacklist: &[&str],
     bus_map: &BusMap,
 ) where
     VC::Executor: Chip<BabyBearSC>,
@@ -700,11 +700,10 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
         .iter()
         .filter_map(|executor| {
             let air = executor.air();
-            let width = air.width();
             let name = air.name();
 
-            if width > max_width {
-                log::warn!("Skipping {name} (width: {width})");
+            if blacklist.contains(&name.as_str()) {
+                log::warn!("Skipping blacklisted AIR: {name}");
                 return None;
             }
 
@@ -1061,7 +1060,7 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!([m.width, m.constraints, m.bus_interactions], [53, 22, 31]);
+        assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {

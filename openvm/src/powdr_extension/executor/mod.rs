@@ -3,31 +3,31 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::OpenVmField;
+use crate::{
+    powdr_extension::executor::{
+        inventory::{DummyChipComplex, DummyInventory},
+        periphery::SharedPeripheryChips,
+    },
+    OpenVmField,
+};
 
 use super::{
-    chip::{RangeCheckerSend, RowEvaluator, SharedChips},
+    chip::{RangeCheckerSend, RowEvaluator},
     vm::OriginalInstruction,
 };
 use itertools::Itertools;
 use openvm_circuit::{
-    arch::{
-        ExecutionState, InstructionExecutor, Result as ExecutionResult, VmChipComplex,
-        VmInventoryError,
-    },
+    arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
+};
+use openvm_circuit::{
+    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
     system::memory::{
         online::{ApcRange, MemoryLogEntry},
         OfflineMemory,
     },
 };
-use openvm_circuit::{
-    arch::{VmConfig, VmInventory},
-    system::memory::MemoryController,
-    utils::next_power_of_two_or_zero,
-};
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::CastFExtension;
-use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
+use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
 };
@@ -47,16 +47,21 @@ use openvm_stark_backend::{
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
 
-type SdkVmInventory<F> = VmInventory<SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>;
+/// The inventory of the PowdrExecutor, which contains the executors for each opcode.
+mod inventory;
+/// The shared periphery chips used by the PowdrExecutor
+mod periphery;
+
+pub use periphery::PowdrPeripheryInstances;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
     instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
     is_valid_poly_id: u64,
-    inventory: SdkVmInventory<OpenVmField<P>>,
+    inventory: DummyInventory<OpenVmField<P>>,
     number_of_calls: usize,
-    periphery: SharedChips,
+    periphery: SharedPeripheryChips,
 }
 
 impl<P: IntoOpenVm> PowdrExecutor<P> {
@@ -66,7 +71,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         is_valid_column: Column,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedChips,
+        periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
             instructions,
@@ -74,13 +79,13 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             is_valid_poly_id: is_valid_column.id.id,
             inventory: create_chip_complex_with_memory(
                 memory,
-                periphery.range_checker.clone(),
+                periphery.dummy,
                 base_config.clone(),
             )
             .unwrap()
             .inventory,
             number_of_calls: 0,
-            periphery,
+            periphery: periphery.real,
         }
     }
 
@@ -378,26 +383,27 @@ fn global_index<F>(
     Ok(*variable_index)
 }
 
-// Extracted from openvm, extended to create an inventory with the correct memory
+// Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
 fn create_chip_complex_with_memory<F: PrimeField32>(
     memory: Arc<Mutex<OfflineMemory<F>>>,
-    range_checker: SharedVariableRangeCheckerChip,
+    shared_chips: SharedPeripheryChips,
     base_config: SdkVmConfig,
-) -> std::result::Result<
-    VmChipComplex<F, SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>,
-    VmInventoryError,
-> {
+) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
     use openvm_keccak256_circuit::Keccak256;
     use openvm_native_circuit::Native;
     use openvm_rv32im_circuit::{Rv32I, Rv32Io};
     use openvm_sha256_circuit::Sha256;
 
     let this = base_config;
-    let mut complex = this.system.config.create_chip_complex()?.transmute();
+    let mut complex: DummyChipComplex<F> = this.system.config.create_chip_complex()?.transmute();
 
     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
     complex.base.memory_controller.offline_memory = memory.clone();
-    complex.base.range_checker_chip = range_checker;
+    complex.base.range_checker_chip = shared_chips.range_checker.clone();
+    // END CHANGE
+
+    // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
+    complex = complex.extend(&shared_chips)?;
     // END CHANGE
 
     if this.rv32i.is_some() {

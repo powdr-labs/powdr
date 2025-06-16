@@ -5,7 +5,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{traits::OpenVmField, utils::algebraic_to_symbolic, IntoOpenVm};
+use crate::{
+    powdr_extension::executor::PowdrPeripheryInstances, traits::OpenVmField,
+    utils::algebraic_to_symbolic, IntoOpenVm,
+};
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
@@ -13,10 +16,6 @@ use openvm_circuit::system::memory::MemoryController;
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
     system::memory::OfflineMemory,
-};
-use openvm_circuit_primitives::{
-    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
-    var_range::SharedVariableRangeCheckerChip,
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_sdk::config::SdkVmConfig;
@@ -53,95 +52,12 @@ pub struct PowdrChip<P: IntoOpenVm> {
     pub air: Arc<PowdrAir<P>>,
 }
 
-/// The shared chips which can be used by the PowdrChip.
-pub struct SharedChips {
-    bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
-    pub range_checker: SharedVariableRangeCheckerChip,
-    tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
-}
-
-impl SharedChips {
-    pub fn new(
-        bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
-        range_checker: SharedVariableRangeCheckerChip,
-        tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
-    ) -> Self {
-        Self {
-            bitwise_lookup_8,
-            range_checker,
-            tuple_range_checker,
-        }
-    }
-}
-
-impl SharedChips {
-    /// Sends concrete values to the shared chips using a given bus id.
-    /// Panics if the bus id doesn't match any of the chips' bus ids.
-    pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
-        match bus_id {
-            id if id == self.bitwise_lookup_8.bus().inner.index => {
-                // bitwise operation lookup
-                // interpret the arguments, see `Air<AB> for BitwiseOperationLookupAir<NUM_BITS>`
-                let [x, y, x_xor_y, selector] = [
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                ];
-
-                for _ in 0..mult {
-                    match selector {
-                        0 => {
-                            self.bitwise_lookup_8.request_range(x, y);
-                        }
-                        1 => {
-                            let res = self.bitwise_lookup_8.request_xor(x, y);
-                            debug_assert_eq!(res, x_xor_y);
-                        }
-                        _ => {
-                            unreachable!("Invalid selector");
-                        }
-                    }
-                }
-            }
-            id if id == self.range_checker.bus().index() => {
-                // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
-                let [value, max_bits] = [args.next().unwrap(), args.next().unwrap()];
-
-                for _ in 0..mult {
-                    self.range_checker.add_count(value, max_bits as usize);
-                }
-            }
-            id if Some(id)
-                == self
-                    .tuple_range_checker
-                    .as_ref()
-                    .map(|c| c.bus().inner.index) =>
-            {
-                // tuple range checker
-                // We pass a slice. It is checked inside `add_count`.
-                let args = args.collect_vec();
-                for _ in 0..mult {
-                    self.tuple_range_checker.as_ref().unwrap().add_count(&args);
-                }
-            }
-            0..=2 => {
-                // execution bridge, memory, pc lookup
-                // do nothing
-            }
-            _ => {
-                unreachable!("Bus interaction {} not implemented", bus_id);
-            }
-        }
-    }
-}
-
 impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedChips,
+        periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
             machine,
