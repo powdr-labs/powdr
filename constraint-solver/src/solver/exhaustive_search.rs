@@ -117,6 +117,8 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
     constraint_system: &'a IndexedConstraintSystem<T, V>,
     rc: impl RangeConstraintProvider<T, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
+    // Typically, rc will be a reference, so cloning it is cheap.
+    let rc2 = rc.clone();
     constraint_system
         .expressions()
         .map(|expression| {
@@ -124,6 +126,18 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
                 .referenced_variables()
                 .cloned()
                 .collect::<BTreeSet<_>>()
+        })
+        .flat_map(move |variables| {
+            let largest_range = variables
+                .iter()
+                .max_by(|a, b| rc2.get(a).range_width().cmp(&rc2.get(b).range_width()));
+            // If the largest value is the only unknown, perhaps it can be uniquely determined.
+            let variables_without_largest_range = variables
+                .iter()
+                .filter(|v| Some(*v) != largest_range)
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            [variables, variables_without_largest_range]
         })
         .unique()
         .filter(|variables| !variables.is_empty())
