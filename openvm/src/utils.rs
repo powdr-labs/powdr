@@ -106,9 +106,10 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
         }
     }
 }
+
 pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
     expr: &SymbolicExpression<T>,
-    columns: &[String],
+    columns: &[Arc<String>],
 ) -> AlgebraicExpression<P, OpenVmReference> {
     match expr {
         SymbolicExpression::Constant(c) => {
@@ -178,7 +179,7 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
 pub fn get_pil<F: PrimeField32>(
     name: &str,
     constraints: &SymbolicConstraints<F>,
-    columns: &Vec<String>,
+    columns: &Vec<Arc<String>>,
     public_values: Vec<String>,
     bus_map: &BusMap,
 ) -> String {
@@ -250,7 +251,7 @@ namespace {name};
 fn format_bus_interaction<F: PrimeField32>(
     pil: &mut String,
     interaction: &Interaction<SymbolicExpression<F>>,
-    columns: &[String],
+    columns: &[Arc<String>],
     public_values: &[String],
     bus_name: &str,
 ) {
@@ -272,7 +273,7 @@ fn format_bus_interaction<F: PrimeField32>(
 
 fn format_expr<F: PrimeField32>(
     expr: &SymbolicExpression<F>,
-    columns: &[String],
+    columns: &[Arc<String>],
     // TODO: Implement public references
     _public_values: &[String],
 ) -> String {

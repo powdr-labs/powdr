@@ -720,13 +720,16 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     println!("Exported PIL to {path}");
 }
 
-fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
+fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
     let width = air.width();
     air.columns()
         .inspect(|columns| {
             assert_eq!(columns.len(), width);
         })
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
+        .into_iter()
+        .map(Arc::new)
+        .collect()
 }
 
 fn get_constraints(
