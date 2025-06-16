@@ -233,7 +233,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
         }
     }
 
-    pub fn apply_bus_arg_assignment(
+    pub fn apply_bus_field_assignment(
         &mut self,
         interaction_index: usize,
         field_index: usize,

@@ -51,14 +51,14 @@ impl<T: FieldElement, V: Hash> JournalingConstraintSystem<T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalingConstraintSystem<T, V> {
-    pub fn apply_bus_arg_assignments(
+    pub fn apply_bus_field_assignments(
         &mut self,
         assignments: impl IntoIterator<Item = ((usize, usize), T)>,
     ) {
         // We do not track substitutions yet, but we could.
         for ((interaction_index, field_index), value) in assignments {
             self.system
-                .apply_bus_arg_assignment(interaction_index, field_index, value);
+                .apply_bus_field_assignment(interaction_index, field_index, value);
         }
     }
 
