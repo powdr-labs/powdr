@@ -147,9 +147,7 @@ pub fn air_stacking<P: IntoOpenVm>(
             "Stacked chip has {} bus interactions",
             interactions_by_machine.iter().flatten().count()
         );
-        // let mut stacked_interactions = merge_bus_interactions_simple(interactions_by_machine);
-        // let mut stacked_interactions = merge_bus_interactions(interactions_by_machine);
-        let mut stacked_interactions = merge_bus_interactions2(interactions_by_machine);
+        let stacked_interactions = merge_bus_interactions(interactions_by_machine);
         tracing::debug!("After merging interactions: {}", stacked_interactions.len());
 
         let machine = SymbolicMachine {
@@ -169,40 +167,9 @@ pub fn air_stacking<P: IntoOpenVm>(
     result
 }
 
-/// make PolyIDs start from zero, sequential and compact
-fn compact_ids<P: IntoOpenVm>(pcp: &mut PowdrPrecompile<P>) {
-    let mut curr_id = 0;
-    let mut id_map: HashMap<u64, u64> = Default::default();
-    let mut new_poly_id = |old_id: u64| {
-        *id_map.entry(old_id).or_insert_with(|| {
-            let id = curr_id;
-            curr_id += 1;
-            id
-        })
-    };
-    pcp.machine.pre_visit_expressions_mut(&mut |expr| {
-        if let AlgebraicExpression::Reference(r) = expr {
-            if r.poly_id.ptype == PolynomialType::Committed {
-                r.poly_id.id = new_poly_id(r.poly_id.id);
-            }
-        }
-    });
-    pcp.original_instructions.iter_mut().for_each(|instr| {
-        instr.subs.iter_mut().for_each(|sub| {
-            *sub = new_poly_id(*sub);
-        });
-    });
-
-    pcp.is_valid_column.id.id = new_poly_id(pcp.is_valid_column.id.id);
-}
-
-fn merge_bus_interactions_simple<P: IntoOpenVm>(
-    interactions: Vec<Vec<SymbolicBusInteraction<P>>>,
-) -> Vec<SymbolicBusInteraction<P>> {
-    interactions.into_iter().flatten().collect_vec()
-}
-
-fn merge_bus_interactions2<P: IntoOpenVm>(
+/// Merge bus interactions, taking into account args that have the same expression.
+/// When only compatible args are merged, the expression doesn't need an is_valid guard.
+fn merge_bus_interactions<P: IntoOpenVm>(
     interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>,
 ) -> Vec<SymbolicBusInteraction<P>> {
     // split interactions by bus/args len
@@ -235,7 +202,9 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
             .map(|i| vec![i])
             .collect_vec();
         for machine_interactions in interactions_by_machine {
+            // merge sets already used by this machine
             let mut used = BTreeSet::new();
+            // interactions that didn't find an exact match in structure
             let mut try_partial_match = vec![];
             'outer: for i in machine_interactions {
                 // try to find a call with an exact match
@@ -249,7 +218,7 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
                             has_same_structure(strip_is_valid(&a1), strip_is_valid(&a2))
                         });
                     if all_args_same_structure {
-                        println!("EXACT MATCH");
+                        // found an exact match
                         to_merge_set.push(i);
                         used.insert(idx);
                         continue 'outer;
@@ -258,6 +227,7 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
                 try_partial_match.push(i);
             }
 
+            // interactions that did not find a partial structure match
             let mut no_match = vec![];
             'outer: for i in try_partial_match {
                 // didn't find exact match, try one where some args match
@@ -272,7 +242,7 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
                             has_same_structure(strip_is_valid(&a1), strip_is_valid(&a2))
                         });
                     if some_args_same_structure {
-                        println!("PARTIAL MATCH");
+                        // found a partial match on some args
                         to_merge_set.push(i);
                         used.insert(idx);
                         continue 'outer;
@@ -285,7 +255,6 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
                 // just pick the first unused one
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
                     if !used.contains(&idx) {
-                        println!("NO MATCH");
                         to_merge_set.push(i);
                         used.insert(idx);
                         continue 'outer;
@@ -383,73 +352,6 @@ fn merge_bus_interactions2<P: IntoOpenVm>(
     result
 }
 
-fn merge_bus_interactions<P: IntoOpenVm>(
-    interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>,
-) -> Vec<SymbolicBusInteraction<P>> {
-    let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<P>>>> =
-        Default::default();
-
-    for interactions in interactions_by_machine {
-        let interactions_by_bus_this_machine = interactions
-            .into_iter()
-            // we group by bus id and number of args
-            .into_group_map_by(|interaction| (interaction.id, interaction.args.len()));
-        for (k, v) in interactions_by_bus_this_machine {
-            let e = interactions_by_bus.entry(k).or_default();
-            e.push(v);
-        }
-    }
-    let mut to_merge = vec![];
-    for interactions_per_machine in interactions_by_bus.into_values() {
-        // this is doing a "zip longest" among the interactions from each machine
-        // (for a given bus), and saving the elements that were picked
-        // together to be merged later
-        let mut idx = 0;
-        loop {
-            let mut items = vec![];
-            for machine_interactions in interactions_per_machine.iter() {
-                if let Some(item) = machine_interactions.get(idx) {
-                    items.push(item.clone());
-                }
-            }
-            if items.is_empty() {
-                break;
-            }
-            idx += 1;
-            to_merge.push(items);
-        }
-    }
-
-    to_merge
-        .into_iter()
-        .map(|interactions| {
-            // assert_eq!(interactions.iter().map(|i| &i.kind).unique().count(), 1);
-
-            // add multiplicities together
-            let mut mult = interactions[0].mult.clone();
-            for mult2 in interactions.iter().skip(1).map(|i| i.mult.clone()) {
-                mult = mult + mult2;
-            }
-
-            // add args together
-            let mut args = interactions[0].args.clone();
-            for args2 in interactions.iter().skip(1).map(|i| i.args.clone()) {
-                args = args
-                    .into_iter()
-                    .zip_eq(args2)
-                    .map(|(a1, a2)| a1 + a2)
-                    .collect();
-            }
-
-            SymbolicBusInteraction {
-                id: interactions[0].id,
-                mult,
-                args,
-            }
-        })
-        .collect_vec()
-}
-
 fn canonicalize_expression<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P>) {
     expr.pre_visit_expressions_mut(&mut |expr| {
         if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) =
@@ -544,6 +446,7 @@ fn strip_is_valid<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> &AlgebraicExp
     left.as_ref()
 }
 
+/// Given two expressions with the same structure, creates mapping of polynomial ids from one to the other.
 fn create_mapping<P: IntoOpenVm>(
     from: &AlgebraicExpression<P>,
     to: &AlgebraicExpression<P>,
@@ -600,6 +503,7 @@ fn create_mapping<P: IntoOpenVm>(
     create_mapping_inner(from, to)
 }
 
+/// If there are no key or value clashes, extends the bimap.
 fn extend_if_no_conflicts(mappings: &mut BiMap<u64, u64>, new_mappings: BiMap<u64, u64>) -> bool {
     for (k, v) in &new_mappings {
         if let Some(existing_v) = mappings.get_by_left(k) {
@@ -641,15 +545,6 @@ fn expr_poly_id_by_order<P: IntoOpenVm>(
     expr
 }
 
-fn expr_orig_poly_ids<P: IntoOpenVm>(mut expr: AlgebraicExpression<P>) -> AlgebraicExpression<P> {
-    expr.pre_visit_expressions_mut(&mut |e| {
-        if let AlgebraicExpression::Reference(r) = e {
-            r.name = format!("col_{}", r.poly_id.id); // this one not needed, just for printing
-        }
-    });
-    expr
-}
-
 #[derive(Default)]
 struct ColumnAssigner<P: IntoOpenVm> {
     // original PCPs
@@ -658,8 +553,6 @@ struct ColumnAssigner<P: IntoOpenVm> {
 
 impl<P: IntoOpenVm> ColumnAssigner<P> {
     fn assign_pcp(&mut self, pcp: &mut PowdrPrecompile<P>) {
-        let idx = self.pcps.len();
-        println!("Assinging PCP {}", idx);
         let mut mappings = BiMap::new();
         // for each constraint, we want to find if there is a constraint in
         // another machine with the same structure that we can assign the same
@@ -674,23 +567,12 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
                         &expr_poly_id_by_order(c.expr.clone()),
                         &expr_poly_id_by_order(c2.expr.clone()),
                     ) {
-                        println!(
-                            "Found same structure: \n\t{}\n\n\t{}",
-                            &expr_poly_id_by_order(c.expr.clone()),
-                            &expr_poly_id_by_order(c2.expr.clone())
-                        );
-
-                        // println!("Found same structure (ids): \n\t{}\n\n\t{}",
-                        //          &expr_orig_poly_ids(c.expr.clone()),
-                        //          &expr_orig_poly_ids(c2.expr.clone()));
-
-                        // assign the same ids
+                        // Found the same structure, try to extend the column mapping
                         let new_mappings = create_mapping(&c.expr, &c2.expr);
                         if extend_if_no_conflicts(&mut mappings, new_mappings) {
-                            // println!("\tMappings: {:#?}", mappings);
+                            // we're done for this constraint
                             continue 'outer;
                         }
-                        println!("\tCould not extend due to conflicts!");
                     }
                 }
             }
@@ -720,15 +602,13 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
             }
         }
 
-        println!("Mappings for PCP {}: {:#?}", idx, mappings);
-
-        // now assign new ids for all references in the PCP
+        // now we assign the columns to the PCP. When an id is not present in the mapping, use some other unused column
         let mut curr_id = 0;
         let mut new_poly_id = |old_id: u64| {
             if let Some(id) = mappings.get_by_left(&old_id) {
                 return *id;
             }
-            // if the new id is a target in the mappings, find a new id not yet in the mapping
+            // find a new column not yet used in the mapping
             while mappings.get_by_right(&curr_id).is_some() {
                 curr_id += 1;
             }
