@@ -72,7 +72,7 @@ where
             q_range_check,
             q_execution,
             q_pc,
-            q_range_tuple: _,
+            q_range_tuple,
             a,
             b,
             c,
@@ -81,22 +81,12 @@ where
         } = (*local).borrow();
 
         let PlonkColumns {
-            q_l: _,
-            q_r: _,
-            q_o: _,
-            q_mul: _,
-            q_const: _,
-            q_bitwise: _,
-            q_memory: _,
-            q_range_check: _,
-            q_execution: _,
-            q_pc: _,
-            q_range_tuple: _,
             a: a_next,
             b: b_next,
             c: c_next,
             d: d_next,
             e: e_next,
+            ..
         } = (*local_next).borrow();
 
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
@@ -116,6 +106,15 @@ where
                 .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_range_check,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::TupleRangeChecker)
+                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
+            vec![*a, *b],
+            *c * *q_range_tuple,
             1,
         );
 
