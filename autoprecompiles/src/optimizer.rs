@@ -11,10 +11,10 @@ use powdr_number::FieldElement;
 use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
+    expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{
         algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
     },
-    expression::{AlgebraicExpression, AlgebraicReference},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
