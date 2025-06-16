@@ -122,7 +122,7 @@ pub fn get_airs_and_bus_map<P: IntoOpenVm>(
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     vm_config: VC,
     path: &str,
-    max_width: usize,
+    blacklist: &[&str],
     bus_map: &BusMap,
 ) where
     VC::Executor: Chip<BabyBearSC>,
@@ -136,11 +136,10 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
         .iter()
         .filter_map(|executor| {
             let air = executor.air();
-            let width = air.width();
             let name = air.name();
 
-            if width > max_width {
-                log::warn!("Skipping {name} (width: {width})");
+            if blacklist.contains(&name.as_str()) {
+                log::warn!("Skipping blacklisted AIR: {name}");
                 return None;
             }
 

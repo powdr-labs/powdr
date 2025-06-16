@@ -1,7 +1,8 @@
 use crate::bus_map::{BusMap, BusType};
+use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
+use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
 use itertools::Itertools;
-use legacy_expression::ast_compatibility::CompatibleWithAstExpression;
 use legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use powdr::UniqueColumns;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -19,6 +20,7 @@ use powdr_number::FieldElement;
 mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod expression_conversion;
 pub mod legacy_expression;
 pub mod memory_optimizer;
 pub mod optimizer;
@@ -26,13 +28,6 @@ pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
-
-pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    // Wrap powdr_pilopt::simplify_expression, which uses powdr_ast::analyzed::AlgebraicExpression.
-    let ast_expression = e.into_ast_expression();
-    let ast_expression = powdr_pilopt::simplify_expression(ast_expression);
-    AlgebraicExpression::try_from_ast_expression(ast_expression).unwrap()
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -123,13 +118,49 @@ pub struct SymbolicMachine<T> {
 
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for constraint in &self.constraints {
-            writeln!(f, "{constraint} = 0 ")?;
-        }
         for bus_interaction in &self.bus_interactions {
             writeln!(f, "{bus_interaction}")?;
         }
+        for constraint in &self.constraints {
+            writeln!(f, "{constraint} = 0")?;
+        }
         Ok(())
+    }
+}
+
+impl<T: Display> SymbolicMachine<T> {
+    pub fn render(&self, bus_map: &BusMap) -> String {
+        let mut output = String::new();
+        let bus_interactions_by_bus = self
+            .bus_interactions
+            .iter()
+            .map(|bus_interaction| (bus_interaction.id, bus_interaction))
+            .into_group_map()
+            .into_iter()
+            // sorted_by_key is stable, so we'll keep the order within each bus
+            .sorted_by_key(|(bus_id, _)| *bus_id)
+            .collect::<Vec<_>>();
+        for (bus_id, bus_interactions) in &bus_interactions_by_bus {
+            let bus_type = bus_map.bus_type(*bus_id);
+            output.push_str(&format!("\n// Bus {bus_id} ({bus_type}):\n",));
+            for bus_interaction in bus_interactions {
+                output.push_str(&format!(
+                    "mult={}, args=[{}]\n",
+                    bus_interaction.mult,
+                    bus_interaction.args.iter().join(", ")
+                ));
+            }
+        }
+
+        if !self.constraints.is_empty() {
+            output.push_str("\n// Algebraic constraints:\n");
+        }
+
+        for constraint in &self.constraints {
+            output.push_str(&format!("{constraint} = 0\n"));
+        }
+
+        output.trim().to_string()
     }
 }
 
@@ -238,8 +269,8 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     let mut zeroed_expr = expr.clone();
     powdr::make_refs_zero(&mut zeroed_expr);
-    let zeroed_expr = simplify_expression(zeroed_expr);
-    powdr::is_zero(&zeroed_expr)
+    let zeroed_expr = algebraic_to_quadratic_symbolic_expression(&zeroed_expr);
+    zeroed_expr.try_to_number().unwrap().is_zero()
 }
 
 /// Adds `is_valid` guards to constraints without increasing its degree.

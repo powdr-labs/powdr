@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::IntoOpenVm;
@@ -79,7 +80,7 @@ pub fn customize<P: IntoOpenVm>(
     // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
     // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
     // We don't want these opcodes because they create air constraints with next references, which powdr-openvm does not support yet.
-    let opcodes_no_apc = vec![
+    let opcodes_no_apc: HashSet<_> = [
         Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
         Rv32LoadStoreOpcode::LOADB.global_opcode().as_usize(),
@@ -144,17 +145,27 @@ pub fn customize<P: IntoOpenVm>(
         1033,
         1027,
         1029,
-    ];
+    ]
+    .into_iter()
+    .collect();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
     let branch_opcodes_set = branch_opcodes_set();
 
-    let mut blocks =
-        collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
+    let blocks = collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+
+    let mut blocks = blocks
+        .into_iter()
+        .filter(|b| {
+            !b.statements
+                .iter()
+                .any(|instr| opcodes_no_apc.contains(&instr.opcode.as_usize()))
+        })
+        .collect::<Vec<_>>();
 
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
@@ -393,7 +404,7 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
-    opcodes_no_apc: &[usize],
+    opcodes_no_apc: &HashSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
@@ -413,6 +424,11 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
             }
+            // Push the instruction itself
+            blocks.push(BasicBlock {
+                start_idx: i,
+                statements: vec![instr.clone()],
+            });
             // Skip the instrucion and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_idx: i + 1,
@@ -572,7 +588,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     bus_map: BusMap,
-    opcodes_no_apc: &[usize],
+    opcodes_no_apc: &HashSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
