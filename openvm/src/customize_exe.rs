@@ -18,8 +18,8 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::legacy_expression::try_convert;
-use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
@@ -217,8 +217,8 @@ pub fn customize<P: IntoOpenVm>(
         assert_eq!(program.len(), len_before);
 
         let is_valid_column = autoprecompile
-            .unique_columns()
-            .find(|c| c.name == "is_valid")
+            .unique_references()
+            .find(|c| &*c.name == "is_valid")
             .unwrap();
 
         let opcodes_in_acc = acc
@@ -536,7 +536,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     let air_width_by_opcode = airs
         .iter()
         .filter(|&(i, _)| (!opcodes_no_apc.contains(i)))
-        .map(|(i, air)| (*i, air.unique_columns().count()))
+        .map(|(i, air)| (*i, air.unique_references().count()))
         .collect::<HashMap<_, _>>();
 
     // generate apc and cache it for all basic blocks
@@ -558,7 +558,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
             .ok()?;
 
             // calculate cells saved per row
-            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_references().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()

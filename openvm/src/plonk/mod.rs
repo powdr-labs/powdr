@@ -240,17 +240,12 @@ impl<T, V> PlonkCircuit<T, V> {
 pub mod test_utils {
     use std::sync::Arc;
 
-    use powdr_autoprecompiles::legacy_expression::{
-        AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-    };
+    use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
     use powdr_number::BabyBearField;
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
         AlgebraicExpression::Reference(AlgebraicReference {
             name: Arc::new(name.into()),
-            poly_id: PolyID {
-                id,
-                ptype: PolynomialType::Committed,
-            },
+            id,
         })
     }
 

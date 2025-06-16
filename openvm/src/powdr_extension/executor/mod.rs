@@ -45,7 +45,9 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::IntoParallelIterator,
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{powdr::Column, SymbolicBusInteraction, SymbolicMachine};
+use powdr_autoprecompiles::{
+    expression::AlgebraicReference, SymbolicBusInteraction, SymbolicMachine,
+};
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -68,7 +70,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn new(
         instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
-        is_valid_column: Column,
+        is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
@@ -76,7 +78,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
         Self {
             instructions,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id.id,
+            is_valid_poly_id: is_valid_column.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,

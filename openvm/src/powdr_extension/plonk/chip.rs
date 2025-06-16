@@ -29,8 +29,8 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
-use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::expression::AlgebraicReference;
+use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
@@ -143,9 +143,9 @@ where
         // which is unnecessary.
         let column_index_by_poly_id = self
             .machine
-            .unique_columns()
+            .unique_references()
             .enumerate()
-            .map(|(index, c)| (c.id.id, index))
+            .map(|(index, c)| (c.id, index))
             .collect();
         let witness = self
             .executor
@@ -253,9 +253,7 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     /// Get the value of a variable. None if the variable is temporary but still unknown.
     fn get(&self, variable: &Variable<AlgebraicReference>) -> Option<F> {
         match variable {
-            Variable::Witness(id) => {
-                Some(self.witness[self.column_index_by_poly_id[&id.poly_id.id]])
-            }
+            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[&id.id]]),
             Variable::Tmp(id) => self.tmp_vars[*id],
             // The value of unused cells should not matter.
             Variable::Unused => Some(F::ZERO),

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::iter::once;
 
 use derive_more::From;
+use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
@@ -26,7 +27,6 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     Chip,
 };
-use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
@@ -75,7 +75,7 @@ pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
-    pub is_valid_column: Column,
+    pub is_valid_column: AlgebraicReference,
 }
 
 impl<P: IntoOpenVm> PowdrPrecompile<P> {
@@ -85,7 +85,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         machine: SymbolicMachine<P>,
         original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         original_airs: BTreeMap<usize, SymbolicMachine<P>>,
-        is_valid_column: Column,
+        is_valid_column: AlgebraicReference,
     ) -> Self {
         Self {
             name,

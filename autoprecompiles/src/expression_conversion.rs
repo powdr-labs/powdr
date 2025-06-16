@@ -8,7 +8,7 @@ use powdr_expression::{
 };
 use powdr_number::FieldElement;
 
-use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference};
+use crate::expression::{AlgebraicExpression, AlgebraicReference};
 
 /// Turns an algebraic expression into a quadratic symbolic expression,
 /// assuming all [`AlgebraicReference`]s are unknown variables.
