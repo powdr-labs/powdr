@@ -9,4 +9,7 @@ mod executor;
 mod plonk;
 
 pub use opcode::PowdrOpcode;
-pub use vm::{OriginalInstruction, PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrPrecompile, PowdrStackedPrecompile};
+pub use vm::{
+    OriginalInstruction, PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrPrecompile,
+    PowdrStackedPrecompile,
+};

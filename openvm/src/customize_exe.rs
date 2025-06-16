@@ -304,7 +304,6 @@ pub fn customize<P: IntoOpenVm>(
     )
 }
 
-
 fn branch_opcodes() -> Vec<usize> {
     let mut opcodes = vec![
         openvm_rv32im_transpiler::BranchEqualOpcode::BEQ

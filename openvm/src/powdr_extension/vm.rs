@@ -204,10 +204,10 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             .first()
             .cloned();
 
-        for precompile in &self.precompiles {
+        for stacked in &self.precompiles {
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
-                    precompile.clone(),
+                    stacked.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
                     SharedChips::new(
@@ -217,24 +217,29 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                     ),
                 )
                 .into(),
-                PrecompileImplementation::PlonkChip => unimplemented!("TODO")
-                // PrecompileImplementation::PlonkChip => PlonkChip::new(
-                //     precompile.clone(),
-                //     offline_memory.clone(),
-                //     self.base_config.clone(),
-                //     SharedChips::new(
-                //         bitwise_lookup.clone(),
-                //         range_checker.clone(),
-                //         tuple_range_checker.cloned(),
-                //     ),
-                //     self.bus_map.clone(),
-                // )
-                // .into(),
+                PrecompileImplementation::PlonkChip => {
+                    if stacked.precompiles.len() != 1 {
+                        panic!("Plonk chip implementation does not support chip stacking");
+                    }
+                    let precompile = stacked.precompiles.values().next().unwrap().clone();
+                    PlonkChip::new(
+                        precompile.clone(),
+                        offline_memory.clone(),
+                        self.base_config.clone(),
+                        SharedChips::new(
+                            bitwise_lookup.clone(),
+                            range_checker.clone(),
+                            tuple_range_checker.cloned(),
+                        ),
+                        self.bus_map.clone(),
+                    )
+                    .into()
+                }
             };
 
             inventory.add_executor(
                 powdr_chip,
-                precompile
+                stacked
                     .precompiles
                     .keys()
                     .map(|opcode| opcode.global_opcode()),

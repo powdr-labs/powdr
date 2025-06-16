@@ -7,10 +7,7 @@ use std::{
 
 use crate::{traits::OpenVmField, utils::algebraic_to_symbolic, IntoOpenVm};
 
-use super::{
-    PowdrStackedPrecompile,
-    executor::PowdrExecutor,
-};
+use super::{executor::PowdrExecutor, PowdrStackedPrecompile};
 use itertools::Itertools;
 use openvm_circuit::system::memory::MemoryController;
 use openvm_circuit::{
@@ -28,13 +25,17 @@ use openvm_stark_backend::{
     air_builders::symbolic::{
         symbolic_expression::{SymbolicEvaluator, SymbolicExpression},
         symbolic_variable::{Entry, SymbolicVariable},
-    }, interaction::BusIndex, p3_air::{Air, BaseAir}, p3_matrix::dense::RowMajorMatrix, rap::ColumnsAir
+    },
+    interaction::BusIndex,
+    p3_air::{Air, BaseAir},
+    p3_matrix::dense::RowMajorMatrix,
+    rap::ColumnsAir,
 };
 
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     interaction::InteractionBuilder,
-    p3_field::{Field, PrimeField32, FieldAlgebra},
+    p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::Matrix,
     prover::types::AirProofInput,
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
@@ -213,10 +214,7 @@ impl<P: IntoOpenVm> ChipUsageGetter for PowdrChip<P> {
     }
 
     fn current_trace_height(&self) -> usize {
-        self.executors
-            .values()
-            .map(|e| e.number_of_calls())
-            .sum()
+        self.executors.values().map(|e| e.number_of_calls()).sum()
     }
 
     fn trace_width(&self) -> usize {

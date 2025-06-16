@@ -220,8 +220,24 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(&program, vm_config.instruction_machines);
 
-    println!("before optimizer - machine constraints degree: {}", machine.constraints.iter().map(|c| c.expr.degree()).max().unwrap_or(0));
-    println!("before optimizer - machine bus args degree: {}", machine.bus_interactions.iter().map(|b| b.args.iter().map(|a| a.degree()).max().unwrap_or(0)).max().unwrap_or(0));
+    println!(
+        "before optimizer - machine constraints degree: {}",
+        machine
+            .constraints
+            .iter()
+            .map(|c| c.expr.degree())
+            .max()
+            .unwrap_or(0)
+    );
+    println!(
+        "before optimizer - machine bus args degree: {}",
+        machine
+            .bus_interactions
+            .iter()
+            .map(|b| b.args.iter().map(|a| a.degree()).max().unwrap_or(0))
+            .max()
+            .unwrap_or(0)
+    );
 
     let machine = optimizer::optimize(
         machine,
@@ -230,9 +246,24 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
         degree_bound,
     )?;
 
-    println!("after optimizer - machine constraints degree: {}", machine.constraints.iter().map(|c| c.expr.degree()).max().unwrap_or(0));
-    println!("after optimizer - machine bus args degree: {}", machine.bus_interactions.iter().map(|b| b.args.iter().map(|a| a.degree()).max().unwrap_or(0)).max().unwrap_or(0));
-    
+    println!(
+        "after optimizer - machine constraints degree: {}",
+        machine
+            .constraints
+            .iter()
+            .map(|c| c.expr.degree())
+            .max()
+            .unwrap_or(0)
+    );
+    println!(
+        "after optimizer - machine bus args degree: {}",
+        machine
+            .bus_interactions
+            .iter()
+            .map(|b| b.args.iter().map(|a| a.degree()).max().unwrap_or(0))
+            .max()
+            .unwrap_or(0)
+    );
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
