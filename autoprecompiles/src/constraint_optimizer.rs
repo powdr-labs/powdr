@@ -71,6 +71,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
         log::trace!("  {var} = {value}");
     }
     constraint_system.apply_substitutions(result.assignments);
+    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
     Ok(constraint_system)
 }
 

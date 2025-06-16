@@ -4,7 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::BusInteractionHandler;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
-use crate::utils::{count_possible_assignments, get_all_possible_assignments};
+use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -126,9 +126,28 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
                 .collect::<BTreeSet<_>>()
         })
         .unique()
-        .filter(|variables| !variables.is_empty())
-        .filter(move |variables| {
-            count_possible_assignments(variables.iter().cloned(), &rc)
-                .is_some_and(|count| count <= MAX_SEARCH_WIDTH)
+        .filter_map(move |variables| {
+            match has_few_possible_assignments(variables.iter().cloned(), &rc, MAX_SEARCH_WIDTH) {
+                true => Some(variables),
+                false => {
+                    // It could be that only one variable has a large range, but that the rest uniquely determine it.
+                    // In that case, searching through all combinations of the other variables would be enough.
+                    // Check if removing the variable results in a small enough set of possible assignments.
+                    let num_variables = variables.len();
+                    let variables_without_largest_range = variables
+                        .into_iter()
+                        .sorted_by(|a, b| rc.get(a).range_width().cmp(&rc.get(b).range_width()))
+                        .take(num_variables - 1)
+                        .collect::<BTreeSet<_>>();
+                    has_few_possible_assignments(
+                        variables_without_largest_range.iter().cloned(),
+                        &rc,
+                        MAX_SEARCH_WIDTH,
+                    )
+                    .then_some(variables_without_largest_range)
+                }
+            }
         })
+        .filter(|variables| !variables.is_empty())
+        .unique()
 }

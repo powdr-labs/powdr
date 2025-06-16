@@ -24,7 +24,8 @@ pub fn handle_memory<T: FieldElement>(
     } else if multiplicity == -T::one() {
         false
     } else {
-        panic!("Expected multiplicity to be 1 or -1, got: {multiplicity}");
+        // This can happen during exhaustive search, just do nothing.
+        return payload.to_vec();
     };
 
     let address_space_value = address_space
