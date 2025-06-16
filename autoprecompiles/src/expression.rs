@@ -8,11 +8,9 @@ pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, Algeb
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
-    /// Comparisons are based on polynomial ID.
-    /// In case of an array element, this ends in `[i]`.
+    /// Comparisons are based on the ID.
     pub name: Arc<String>,
-    /// Identifier for a polynomial reference, already contains
-    /// the element offset in case of an array element.
+    /// Identifier for a reference.
     pub id: u64,
 }
 
