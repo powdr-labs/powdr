@@ -1080,7 +1080,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(m.width, 16);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 5);
+        assert_eq!(m.bus_interactions, 6);
     }
 
     #[test]
