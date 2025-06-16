@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BusType {
@@ -33,20 +33,16 @@ pub struct BusMap {
 }
 
 impl BusMap {
-    /// Construct a new `BusMap`, ensuring no duplicate `BusType` values and no duplicate ids
+    /// Construct a new `BusMap`, ensuring the same id is not used for different `BusType`s
     pub fn from_id_type_pairs(pairs: impl IntoIterator<Item = (u64, BusType)>) -> Self {
         let mut bus_ids = BTreeMap::new();
-        let mut seen_values = BTreeSet::new();
-        let mut seen_keys = BTreeSet::new();
-
         for (k, v) in pairs.into_iter() {
-            if !seen_keys.insert(k) {
-                panic!("Duplicate key: {k}");
-            }
-            if !seen_values.insert(v) {
-                panic!("Duplicate value: {v}");
-            }
-            bus_ids.insert(k, v);
+
+            bus_ids.entry(k).and_modify(|existing| {
+                if existing != &v {
+                    panic!("BusType `{v:?}` already exists under ID `{existing}`, cannot map to `{v}`");
+                }
+            }).or_insert(v);
         }
 
         BusMap { bus_ids }

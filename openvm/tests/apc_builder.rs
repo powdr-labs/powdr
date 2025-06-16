@@ -6,8 +6,8 @@ use powdr_autoprecompiles::{
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::{
-    bus_map::default_openvm_bus_map, get_airs_and_bus_map, symbolic_instruction_builder::*,
-    OPENVM_DEGREE_BOUND, POWDR_OPCODE,
+    bus_map::default_openvm_bus_map, extraction_utils::get_airs_and_bus_map,
+    symbolic_instruction_builder::*, OPENVM_DEGREE_BOUND, POWDR_OPCODE,
 };
 use std::collections::HashSet;
 
