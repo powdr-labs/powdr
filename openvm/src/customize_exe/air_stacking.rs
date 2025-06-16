@@ -26,7 +26,6 @@ pub fn air_stacking<P: IntoOpenVm>(
             .constraints
             .iter_mut()
             .for_each(|c| canonicalize_expression(&mut c.expr));
-        // compact_ids(ext)
     });
 
     // create apc groups by number of columns
@@ -121,7 +120,8 @@ pub fn air_stacking<P: IntoOpenVm>(
                 .iter_mut()
                 .for_each(|interaction| {
                     interaction.args.iter_mut().for_each(|arg| {
-                        *arg = arg.clone() * is_valid.clone();
+                        *arg = is_valid.clone() * arg.clone();
+                        canonicalize_expression(arg);
                     });
                 });
 
@@ -215,7 +215,7 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                     let i2 = to_merge_set.get(0).unwrap();
                     let all_args_same_structure =
                         i.args.iter().zip_eq(i2.args.iter()).all(|(a1, a2)| {
-                            has_same_structure(strip_is_valid(&a1), strip_is_valid(&a2))
+                            has_same_structure(strip_guard(&a1), strip_guard(&a2))
                         });
                     if all_args_same_structure {
                         // found an exact match
@@ -239,7 +239,7 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                     let i2 = to_merge_set.get(0).unwrap();
                     let some_args_same_structure =
                         i.args.iter().zip_eq(i2.args.iter()).any(|(a1, a2)| {
-                            has_same_structure(strip_is_valid(&a1), strip_is_valid(&a2))
+                            has_same_structure(strip_guard(&a1), strip_guard(&a2))
                         });
                     if some_args_same_structure {
                         // found a partial match on some args
@@ -352,8 +352,40 @@ fn merge_bus_interactions<P: IntoOpenVm>(
     result
 }
 
+/// true if expression is of the form `is_valid * some_expr`.
+fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Mul,
+            ..
+        }) => {
+            match left.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    name,
+                    ..
+                }) => {
+                    name.starts_with("is_valid")
+                }
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+/// takes an expression `is_valid * expr` and canonicalizes the right side
 fn canonicalize_expression<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P>) {
-    expr.pre_visit_expressions_mut(&mut |expr| {
+    assert!(is_valid_guarded(expr), "not left guarded by is_valid: {expr}");
+    let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+        left: _is_valid,
+        op: AlgebraicBinaryOperator::Mul,
+        right,
+    }) = expr
+    else {
+        panic!("expected a Mul operation, got: {expr}");
+    };
+    right.pre_visit_expressions_mut(&mut |expr| {
         if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) =
             expr
         {
@@ -366,7 +398,7 @@ fn canonicalize_expression<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P>) {
     });
 }
 
-/// assumes ALL constraints are of the form `Y * is_valid_expr`
+/// assumes constraints are of the form `is_valid_expr * some_expr`
 fn join_constraints<P: IntoOpenVm>(
     mut constraints: Vec<SymbolicConstraint<P>>,
 ) -> Vec<SymbolicConstraint<P>> {
@@ -375,18 +407,18 @@ fn join_constraints<P: IntoOpenVm>(
     'outer: for c1 in constraints {
         for c2 in result.iter_mut() {
             if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: l1,
+                left: is_valid1,
                 op: AlgebraicBinaryOperator::Mul,
-                right: is_valid1,
+                right: r1,
             }) = &c1.expr
             {
                 if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: l2,
+                    left: is_valid2,
                     op: AlgebraicBinaryOperator::Mul,
-                    right: is_valid2,
+                    right: r2,
                 }) = &mut c2.expr
                 {
-                    if l1 == l2 {
+                    if r1 == r2 {
                         *is_valid2 = Box::new(*is_valid1.clone() + *is_valid2.clone());
                         continue 'outer;
                     }
@@ -433,17 +465,18 @@ fn has_same_structure<P: IntoOpenVm>(
     }
 }
 
-// assumes expression is of the form `some_expr * is_valid_expr`.
-fn strip_is_valid<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> &AlgebraicExpression<P> {
+/// assumes expression is of the form `is_valid_expr * some_expr`.
+/// Returns the right side.
+fn strip_guard<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> &AlgebraicExpression<P> {
     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-        left,
+        left: _,
         op: AlgebraicBinaryOperator::Mul,
-        right: _,
+        right,
     }) = expr
     else {
         panic!("Expression is not a binary operation with Mul operator: {expr}");
     };
-    left.as_ref()
+    right.as_ref()
 }
 
 /// Given two expressions with the same structure, creates mapping of polynomial ids from one to the other.
@@ -539,7 +572,8 @@ fn expr_poly_id_by_order<P: IntoOpenVm>(
     expr.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
             r.poly_id.id = new_poly_id(r.poly_id.id);
-            r.name = format!("col_{}", r.poly_id.id); // this one not needed, just for printing
+            // this is just useful for printing
+            r.name = format!("col_{}", r.poly_id.id);
         }
     });
     expr
