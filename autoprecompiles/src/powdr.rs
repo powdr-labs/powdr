@@ -121,7 +121,7 @@ pub fn reassign_ids<T: FieldElement>(
     // Update the machine with the new global column names
     machine.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
-            let new_col = subs.get(&r).unwrap().clone();
+            let new_col = subs.get(r).unwrap().clone();
             r.id = new_col.id;
             r.name = new_col.name.clone();
         }
