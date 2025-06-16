@@ -4,7 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::BusInteractionHandler;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
-use crate::utils::{count_possible_assignments, get_all_possible_assignments};
+use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -117,8 +117,6 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
     constraint_system: &'a IndexedConstraintSystem<T, V>,
     rc: impl RangeConstraintProvider<T, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
-    // Typically, rc will be a reference, so cloning it is cheap.
-    let rc2 = rc.clone();
     constraint_system
         .expressions()
         .map(|expression| {
@@ -127,22 +125,29 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
                 .cloned()
                 .collect::<BTreeSet<_>>()
         })
-        .flat_map(move |variables| {
-            let largest_range = variables
-                .iter()
-                .max_by(|a, b| rc2.get(a).range_width().cmp(&rc2.get(b).range_width()));
-            // If the largest value is the only unknown, perhaps it can be uniquely determined.
-            let variables_without_largest_range = variables
-                .iter()
-                .filter(|v| Some(*v) != largest_range)
-                .cloned()
-                .collect::<BTreeSet<_>>();
-            [variables, variables_without_largest_range]
-        })
         .unique()
-        .filter(|variables| !variables.is_empty())
-        .filter(move |variables| {
-            count_possible_assignments(variables.iter().cloned(), &rc)
-                .is_some_and(|count| count <= MAX_SEARCH_WIDTH)
+        .filter_map(move |variables| {
+            match has_few_possible_assignments(variables.iter().cloned(), &rc, MAX_SEARCH_WIDTH) {
+                true => Some(variables),
+                false => {
+                    // It could be that only one variable has a large range, but that the rest uniquely determine it.
+                    // In that case, searching through all combinations of the other variables would be enough.
+                    // Check if removing the variable results in a small enough set of possible assignments.
+                    let num_variables = variables.len();
+                    let variables_without_largest_range = variables
+                        .into_iter()
+                        .sorted_by(|a, b| rc.get(a).range_width().cmp(&rc.get(b).range_width()))
+                        .take(num_variables - 1)
+                        .collect::<BTreeSet<_>>();
+                    has_few_possible_assignments(
+                        variables_without_largest_range.iter().cloned(),
+                        &rc,
+                        MAX_SEARCH_WIDTH,
+                    )
+                    .then_some(variables_without_largest_range)
+                }
+            }
         })
+        .filter(|variables| !variables.is_empty())
+        .unique()
 }
