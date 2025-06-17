@@ -4,7 +4,8 @@ use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, Vm
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::{
-    bus_map::default_openvm_bus_map, get_airs_and_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE,
+    bus_map::default_openvm_bus_map, extraction_utils::get_airs_and_bus_map, OPENVM_DEGREE_BOUND,
+    POWDR_OPCODE,
 };
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
