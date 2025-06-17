@@ -19,23 +19,33 @@ pub fn handle_memory<T: FieldElement>(
     let timestamp = &payload[payload.len() - 1];
     let data = &payload[2..payload.len() - 1];
 
-    let is_receive = if multiplicity == -T::one() {
+    let is_send = if multiplicity == T::one() {
         true
-    } else if multiplicity == T::one() {
+    } else if multiplicity == -T::one() {
         false
     } else {
-        panic!("Expected multiplicity to be 1 or -1, got: {multiplicity}");
+        // This can happen during exhaustive search, just do nothing.
+        return payload.to_vec();
     };
 
     let address_space_value = address_space
         .try_to_single_value()
         .map(|v| v.to_integer().try_into_u32().unwrap());
 
-    match (is_receive, address_space_value) {
-        // By the assumption that all data written to registers or memory are range-checked,
-        // we can return a byte range constraint for the data.
-        (false, Some(RV32_REGISTER_AS)) | (false, Some(RV32_MEMORY_AS)) => {
-            let data = data.iter().map(|_| byte_constraint()).collect::<Vec<_>>();
+    match (is_send, address_space_value) {
+        (true, Some(RV32_REGISTER_AS)) | (true, Some(RV32_MEMORY_AS)) => {
+            let data = if address_space_value == Some(RV32_REGISTER_AS)
+                && pointer.try_to_single_value() == Some(T::zero())
+            {
+                // By the assumption that the only value written to x0 is 0, we know the result.
+                data.iter()
+                    .map(|_| RangeConstraint::from_value(T::zero()))
+                    .collect::<Vec<_>>()
+            } else {
+                // By the assumption that all data written to registers or memory are range-checked,
+                // we can return a byte range constraint for the data.
+                data.iter().map(|_| byte_constraint()).collect::<Vec<_>>()
+            };
 
             vec![address_space.clone(), pointer.clone()]
                 .into_iter()
@@ -50,10 +60,12 @@ pub fn handle_memory<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler};
+    use crate::{
+        bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
+        bus_map::{default_openvm_bus_map, DEFAULT_MEMORY},
+    };
 
     use super::*;
-    use powdr_autoprecompiles::openvm::{default_openvm_bus_map, DEFAULT_MEMORY};
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 
