@@ -29,7 +29,7 @@ impl std::fmt::Display for BusType {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BusMap {
-    bus_ids: BTreeMap<u64, BusType>,
+    pub bus_ids: BTreeMap<u64, BusType>,
 }
 
 impl BusMap {
