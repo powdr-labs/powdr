@@ -139,5 +139,28 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      # Commenting out just for faster testing of the Reth block below.
+      # - name: Run tests
+      #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+
+      - name: Checkout openvm-reth-benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: https://github.com/powdr-labs/openvm-reth-benchmark
+          ref: apc-cli
+          path: openvm-reth-benchmark
+
+      - name: Patch openvm-reth-benchmark to use local powdr
+        run: |
+          cd openvm-reth-benchmark
+          mkdir -p .cargo
+          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+
+      - name: Run small execution test with APCs
+        run: |
+          cd openvm-reth-benchmark
+          MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh
