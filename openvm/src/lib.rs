@@ -43,7 +43,8 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_airs_and_bus_map, get_constraints};
+use crate::extraction_utils::{export_pil, get_constraints, SdkVmConfigWrapper};
+use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
 
 mod air_builder;
@@ -112,7 +113,7 @@ pub enum PgoConfig {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "P::Field: Field")]
 pub struct SpecializedConfig<P: IntoOpenVm> {
-    pub sdk_config: SdkVmConfig,
+    pub sdk_config: SdkVmConfigWrapper,
     powdr: PowdrExtension<P>,
 }
 
@@ -179,32 +180,50 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl<P: IntoOpenVm> VmConfig<OpenVmField<P>> for SpecializedConfig<P> {
-    type Executor = SpecializedExecutor<P>;
-    type Periphery = MyPeriphery<OpenVmField<P>>;
+impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
+    type Executor = SpecializedExecutor<BabyBearField>;
+    type Periphery = MyPeriphery<OpenVmField<BabyBearField>>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<OpenVmField<P>>::system(&self.sdk_config)
+        VmConfig::<OpenVmField<BabyBearField>>::system(&self.sdk_config.sdk_config)
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<OpenVmField<P>>::system_mut(&mut self.sdk_config)
+        // TODO: Check that this is safe to do given the caching we do
+        VmConfig::<OpenVmField<BabyBearField>>::system_mut(&mut self.sdk_config.sdk_config)
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<VmChipComplex<OpenVmField<P>, Self::Executor, Self::Periphery>, VmInventoryError>
-    {
-        let chip = self.sdk_config.create_chip_complex()?;
+    ) -> Result<
+        VmChipComplex<OpenVmField<BabyBearField>, Self::Executor, Self::Periphery>,
+        VmInventoryError,
+    > {
+        let chip = self.sdk_config.take_chip_complex();
         let chip = chip.extend(&self.powdr)?;
 
         Ok(chip)
     }
 }
 
-impl<P: IntoOpenVm> SpecializedConfig<P> {
-    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<P>) -> Self {
-        Self { sdk_config, powdr }
+impl SpecializedConfig<BabyBearField> {
+    fn new(
+        base_config: SdkVmConfigWrapper,
+        precompiles: Vec<PowdrPrecompile<BabyBearField>>,
+        implementation: PrecompileImplementation,
+    ) -> Self {
+        let (airs, bus_map) = (base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!"), base_config.bus_map());
+        let powdr_extension = PowdrExtension::new(
+            precompiles,
+            base_config.sdk_config.clone(),
+            implementation,
+            bus_map,
+            airs,
+        );
+        Self {
+            sdk_config: base_config,
+            powdr: powdr_extension,
+        }
     }
 }
 
@@ -283,7 +302,7 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
-    /// Implementation of the precompile, i.e., how to compile it to a RAP.
+    /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
 }
 
@@ -330,9 +349,17 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_config: PgoConfig,
+    debug_file: &mut impl std::io::Write,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
-    compile_exe(guest, guest_opts, original_program, config, pgo_config)
+    compile_exe(
+        guest,
+        guest_opts,
+        original_program,
+        config,
+        pgo_config,
+        debug_file,
+    )
 }
 
 pub fn compile_exe(
@@ -341,6 +368,7 @@ pub fn compile_exe(
     original_program: OriginalCompiledProgram<BabyBearField>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
+    debug_file: &mut impl std::io::Write,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -355,34 +383,15 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let blacklist = instruction_blacklist();
-    let used_instructions = original_program
-        .exe
-        .program
-        .instructions_and_debug_infos
-        .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode)
-        .filter(|opcode| !blacklist.contains(&opcode.as_usize()))
-        .collect();
-    let (airs, bus_map) =
-        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions)
-            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-
-    let sdk_vm_config = original_program.sdk_vm_config.clone();
-
-    let (exe, extension) = customize_exe::customize(
+    let compiled_program = customize_exe::customize(
         original_program,
         &elf_powdr.text_labels,
-        &airs,
         config.clone(),
-        bus_map.clone(),
         pgo_config,
     );
-    // Generate the custom config based on the generated instructions
-    let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", &["KeccakVmAir"], &bus_map);
+    export_pil(debug_file, compiled_program.vm_config.clone());
 
-    Ok(CompiledProgram { exe, vm_config })
+    Ok(compiled_program)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -521,7 +530,12 @@ pub fn prove(
 
     // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
     if let Some(segment_height) = segment_height {
-        vm_config.sdk_config.system.config.segmentation_strategy = Arc::new(
+        vm_config
+            .sdk_config
+            .sdk_config
+            .system
+            .config
+            .segmentation_strategy = Arc::new(
             DefaultSegmentationStrategy::new_with_max_segment_len(segment_height),
         );
         tracing::debug!("Setting max segment len to {}", segment_height);
@@ -670,7 +684,14 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
+        let program = compile_guest(
+            guest,
+            GuestOptions::default(),
+            config,
+            pgo_config,
+            &mut std::io::sink(),
+        )
+        .unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -929,9 +950,15 @@ mod tests {
     // The following are compilation tests only
     fn test_guest_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
-            .unwrap()
-            .powdr_airs_metrics();
+        let machines = compile_guest(
+            GUEST,
+            GuestOptions::default(),
+            config,
+            pgo_config,
+            &mut std::io::sink(),
+        )
+        .unwrap()
+        .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
@@ -939,9 +966,15 @@ mod tests {
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
-            .unwrap()
-            .powdr_airs_metrics();
+        let machines = compile_guest(
+            GUEST_KECCAK,
+            GuestOptions::default(),
+            config,
+            pgo_config,
+            &mut std::io::sink(),
+        )
+        .unwrap()
+        .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
@@ -963,9 +996,15 @@ mod tests {
     fn guest_machine_plonk() {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
-            .unwrap()
-            .powdr_airs_metrics();
+        let machines = compile_guest(
+            GUEST,
+            GuestOptions::default(),
+            config,
+            PgoConfig::None,
+            &mut std::io::sink(),
+        )
+        .unwrap()
+        .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.width, 16);

@@ -42,6 +42,7 @@ pub struct PowdrExtension<P: IntoOpenVm> {
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
+    pub airs: BTreeMap<usize, SymbolicMachine<P>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -74,7 +75,6 @@ pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub opcode: PowdrOpcode,
     pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
     pub is_valid_column: AlgebraicReference,
 }
 
@@ -84,7 +84,6 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         opcode: PowdrOpcode,
         machine: SymbolicMachine<P>,
         original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         is_valid_column: AlgebraicReference,
     ) -> Self {
         Self {
@@ -92,7 +91,6 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
             opcode,
             machine,
             original_instructions,
-            original_airs,
             is_valid_column,
         }
     }
@@ -104,12 +102,14 @@ impl<P: IntoOpenVm> PowdrExtension<P> {
         base_config: SdkVmConfig,
         implementation: PrecompileImplementation,
         bus_map: BusMap,
+        airs: BTreeMap<usize, SymbolicMachine<P>>,
     ) -> Self {
         Self {
             precompiles,
             base_config,
             implementation,
             bus_map,
+            airs,
         }
     }
 }
@@ -183,10 +183,10 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
         let offline_memory = builder.system_base().offline_memory();
 
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = *builder
+        let bitwise_lookup = builder
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
             .first()
-            .unwrap();
+            .cloned();
         let range_checker = *builder
             .find_chip::<SharedVariableRangeCheckerChip>()
             .first()
@@ -204,6 +204,7 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
+                    self.airs.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
                     shared_chips_pair.clone(),
@@ -211,6 +212,7 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                 .into(),
                 PrecompileImplementation::PlonkChip => PlonkChip::new(
                     precompile.clone(),
+                    self.airs.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
                     shared_chips_pair.clone(),

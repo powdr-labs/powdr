@@ -4,7 +4,7 @@ use openvm_stark_sdk::config::setup_tracing_with_log_level;
 use powdr_openvm::{CompiledProgram, GuestOptions, IntoOpenVm, PgoConfig, PowdrConfig};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use std::io;
+use std::{fs::File, io};
 use tracing::Level;
 
 #[derive(Parser)]
@@ -93,6 +93,11 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
+fn create_debug_file() -> std::io::BufWriter<File> {
+    let file = File::create("debug.pil").unwrap();
+    std::io::BufWriter::new(file)
+}
+
 fn run_command(command: Commands) {
     let guest_opts = GuestOptions::default();
     match command {
@@ -105,8 +110,14 @@ fn run_command(command: Commands) {
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                pgo_config,
+                &mut create_debug_file(),
+            )
+            .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -119,8 +130,14 @@ fn run_command(command: Commands) {
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                pgo_config,
+                &mut create_debug_file(),
+            )
+            .unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
         }
 
@@ -135,8 +152,14 @@ fn run_command(command: Commands) {
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                pgo_config,
+                &mut create_debug_file(),
+            )
+            .unwrap();
             powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
         }
 

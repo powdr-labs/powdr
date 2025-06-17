@@ -55,6 +55,7 @@ pub struct PowdrChip<P: IntoOpenVm> {
 impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
+        original_airs: BTreeMap<usize, powdr_autoprecompiles::SymbolicMachine<P>>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
@@ -62,7 +63,6 @@ impl<P: IntoOpenVm> PowdrChip<P> {
         let PowdrPrecompile {
             machine,
             original_instructions,
-            original_airs,
             is_valid_column,
             name,
             opcode,
