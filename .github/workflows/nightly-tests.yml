@@ -11,7 +11,7 @@ env:
   RUSTFLAGS: "-C target-cpu=native"
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 10000
-  RPC_URL: "nooo"
+  RPC_1: "NOOO"
 
 jobs:
   check_if_needs_running:
@@ -167,4 +167,4 @@ jobs:
       - name: Run small execution test with APCs
         run: |
           cd openvm-reth-benchmark
-          RPC_URL="NOO" MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh
+          MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh
