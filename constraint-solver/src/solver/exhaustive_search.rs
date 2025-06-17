@@ -4,7 +4,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::BusInteractionHandler;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::quadratic_symbolic_expression::RangeConstraintProvider;
-use crate::utils::{count_possible_assignments, get_all_possible_assignments};
+use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
@@ -85,23 +85,29 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
     rc: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<Option<BTreeMap<V, T>>, Error> {
-    match get_all_possible_assignments(variables.iter().cloned(), &rc)
-        .filter(|assignments| {
-            !constraint_system.is_assignment_conflicting(assignments, &rc, bus_interaction_handler)
-        })
-        .exactly_one()
-    {
-        Ok(assignments) => Ok(Some(assignments)),
-        Err(mut iter) => {
-            if iter.next().is_some() {
-                // There are at least two assignments, so there is no unique assignment.
-                Ok(None)
-            } else {
-                // No assignment satisfied the constraint system.
-                Err(Error::ExhaustiveSearchError)
+    let mut assignments =
+        get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
+            constraint_system
+                .derive_more_assignments(assignments, &rc, bus_interaction_handler)
+                .ok()
+        });
+    let Some(first_assignments) = assignments.next() else {
+        // No assignment satisfied the constraint system.
+        return Err(Error::ExhaustiveSearchError);
+    };
+    // Intersect all assignments.
+    // A special case of this is that only one of the possible assignments satisfies the constraint system,
+    // but even if there are multiple, they might agree on a subset of their assignments.
+    Ok(assignments
+        .try_fold(first_assignments, |mut acc, assignments| {
+            acc.retain(|variable, value| assignments.get(variable) == Some(value));
+            if acc.is_empty() {
+                // Exiting early here is crucial for performance.
+                return Err(());
             }
-        }
-    }
+            Ok(acc)
+        })
+        .ok())
 }
 
 /// Returns all unique sets of variables that appear together in an identity
@@ -120,9 +126,28 @@ fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
                 .collect::<BTreeSet<_>>()
         })
         .unique()
-        .filter(|variables| !variables.is_empty())
-        .filter(move |variables| {
-            count_possible_assignments(variables.iter().cloned(), &rc)
-                .is_some_and(|count| count <= MAX_SEARCH_WIDTH)
+        .filter_map(move |variables| {
+            match has_few_possible_assignments(variables.iter().cloned(), &rc, MAX_SEARCH_WIDTH) {
+                true => Some(variables),
+                false => {
+                    // It could be that only one variable has a large range, but that the rest uniquely determine it.
+                    // In that case, searching through all combinations of the other variables would be enough.
+                    // Check if removing the variable results in a small enough set of possible assignments.
+                    let num_variables = variables.len();
+                    let variables_without_largest_range = variables
+                        .into_iter()
+                        .sorted_by(|a, b| rc.get(a).range_width().cmp(&rc.get(b).range_width()))
+                        .take(num_variables - 1)
+                        .collect::<BTreeSet<_>>();
+                    has_few_possible_assignments(
+                        variables_without_largest_range.iter().cloned(),
+                        &rc,
+                        MAX_SEARCH_WIDTH,
+                    )
+                    .then_some(variables_without_largest_range)
+                }
+            }
         })
+        .filter(|variables| !variables.is_empty())
+        .unique()
 }

@@ -43,7 +43,7 @@ pub enum Error {
     /// The range constraints of the parts do not cover the full constant sum.
     ConflictingRangeConstraints,
     /// An equality constraint evaluates to a known-nonzero value.
-    ConstraintUnsatisfiable,
+    ConstraintUnsatisfiable(String),
 }
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)
@@ -367,7 +367,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
             if k.is_known_nonzero() {
-                return Err(Error::ConstraintUnsatisfiable);
+                return Err(Error::ConstraintUnsatisfiable(self.to_string()));
             } else {
                 // TODO we could still process more information
                 // and reach "unsatisfiable" here.
@@ -594,7 +594,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
 
         if let Some(offset) = offset {
             if offset != 0.into() {
-                return Err(Error::ConstraintUnsatisfiable);
+                return Err(Error::ConstraintUnsatisfiable(self.to_string()));
             }
             assert_eq!(concrete_assignments.len(), self.linear.len());
             Ok(ProcessResult::complete(concrete_assignments))

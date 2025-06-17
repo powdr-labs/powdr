@@ -6,9 +6,8 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
-    legacy_expression::AlgebraicExpression,
-    powdr::{self, Column},
-    BusMap, BusType, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
+    expression::{AlgebraicExpression, AlgebraicReference},
+    powdr, BusMap, BusType, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicInstructionStatement, SymbolicMachine,
 };
 
@@ -41,7 +40,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .exactly_one()
             .expect("Expected single pc lookup");
 
-        let mut sub_map: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
+        let mut sub_map: BTreeMap<AlgebraicReference, AlgebraicExpression<T>> = Default::default();
         let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
         let is_valid: AlgebraicExpression<T> = exec_receive(
@@ -53,7 +52,8 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((is_valid.clone() + one).into());
 
-        let mut sub_map_loadstore: BTreeMap<Column, AlgebraicExpression<T>> = Default::default();
+        let mut sub_map_loadstore: BTreeMap<AlgebraicReference, AlgebraicExpression<T>> =
+            Default::default();
         if is_loadstore(instr.opcode) {
             sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
         }
@@ -70,8 +70,8 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .for_each(|(instr_arg, pc_arg)| {
                 let arg = AlgebraicExpression::Number(*instr_arg);
                 match pc_arg {
-                    AlgebraicExpression::Reference(ref arg_ref) => {
-                        sub_map.insert(Column::from(arg_ref), arg);
+                    AlgebraicExpression::Reference(arg_ref) => {
+                        sub_map.insert(arg_ref.clone(), arg);
                     }
                     AlgebraicExpression::BinaryOperation(_expr) => {
                         local_constraints.push((arg - pc_arg.clone()).into());
@@ -177,7 +177,7 @@ fn is_loadstore(opcode: usize) -> bool {
 fn loadstore_chip_info<T: FieldElement>(
     machine: &SymbolicMachine<T>,
     opcode: usize,
-) -> BTreeMap<Column, AlgebraicExpression<T>> {
+) -> BTreeMap<AlgebraicReference, AlgebraicExpression<T>> {
     let is_load = if opcode == 0x210 || opcode == 0x211 || opcode == 0x212 {
         T::from(1u32)
     } else {
@@ -189,7 +189,7 @@ fn loadstore_chip_info<T: FieldElement>(
         _ => panic!("Expected subtraction."),
     };
     let is_load_col = if let AlgebraicExpression::Reference(r) = &*is_load_expr {
-        r.into()
+        r.clone()
     } else {
         panic!("expected a single reference")
     };
