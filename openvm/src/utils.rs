@@ -214,7 +214,7 @@ namespace {name};
 
     let new_buses: BTreeMap<_, _> = bus_interactions_by_bus
         .iter()
-        .filter(|(bus_id, _)| !bus_map.bus_ids.contains_key(&(**bus_id as u64)))
+        .filter(|(bus_id, _)| !bus_map.all_types_by_id().contains_key(&(**bus_id as u64)))
         .map(|(bus_id, interaction)| (*bus_id, interaction.clone()))
         .collect();
 
