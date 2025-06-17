@@ -167,4 +167,4 @@ jobs:
       - name: Run small execution test with APCs
         run: |
           cd openvm-reth-benchmark
-          MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh
+          RPC_URL="NOO" MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh
