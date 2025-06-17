@@ -1,12 +1,11 @@
 use crate::plonk::PlonkCircuit;
 use crate::plonk::{Variable, NUMBER_OF_WITNESS_COLS};
 use itertools::Itertools;
-use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 
 use crate::powdr_extension::plonk::air::PlonkColumns;
-use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
 pub fn generate_permutation_columns<F, P>(
@@ -128,11 +127,13 @@ mod tests {
         generate_permutation_columns::<F, P>(&mut values, &plonk_circuit, number_of_calls, width);
 
         let expected: Vec<Vec<i32>> = vec![
+            // First call
             vec![0, 1, 2, 3, 4, 5, 6, 10, 3, 4],
             vec![5, 6, 7, 8, 9, 0, 1, 11, 8, 9],
             vec![10, 11, 12, 13, 14, 2, 7, 15, 13, 14],
             vec![15, 16, 17, 18, 19, 12, 16, 20, 18, 19],
             vec![20, 21, 22, 23, 24, 17, 21, 22, 23, 24],
+            // Second call
             vec![25, 26, 27, 28, 29, 30, 31, 35, 28, 29],
             vec![30, 31, 32, 33, 34, 25, 26, 36, 33, 34],
             vec![35, 36, 37, 38, 39, 27, 32, 40, 38, 39],
@@ -140,6 +141,7 @@ mod tests {
             vec![45, 46, 47, 48, 49, 42, 46, 47, 48, 49],
         ];
 
+        // Get the values corresponding to a_id, b_id, c_id, d_id, e_id, a_perm, b_perm, c_perm, d_perm, e_perm
         for (row, vec) in expected.iter().enumerate().take(height) {
             let start = row * width + 11;
             let end = row * width + 21;

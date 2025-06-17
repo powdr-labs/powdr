@@ -144,13 +144,12 @@ where
         // Get witness in a calls x variables matrix.
         // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
         // which is unnecessary.
-        let column_index_by_poly_id: BTreeMap<u64, usize> = self
+        let column_index_by_poly_id = self
             .machine
             .unique_references()
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-
         let witness = self
             .executor
             .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
