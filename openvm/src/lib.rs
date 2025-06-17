@@ -74,7 +74,7 @@ use bus_map::default_openvm_bus_map;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
-use instruction_blacklist::instruction_blacklist;
+pub use instruction_blacklist::instruction_blacklist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
