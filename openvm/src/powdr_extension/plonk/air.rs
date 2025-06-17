@@ -49,6 +49,7 @@ pub struct PlonkColumns<T> {
 }
 
 pub struct PlonkAir<F> {
+    pub copy_constraint_bus_id: u16,
     pub bus_map: BusMap,
     pub _marker: std::marker::PhantomData<F>,
 }
@@ -182,19 +183,13 @@ where
             .zip_eq(witness_perms.iter())
         {
             builder.push_interaction(
-                self.bus_map
-                    .get_bus_id(&BusType::CopyConstraintLookup)
-                    .expect("BusType::CopyConstraintLookup not found in bus_map")
-                    as u16,
+                self.copy_constraint_bus_id,
                 vec![*column, *id],
                 q_copy_constraint.clone(),
                 1,
             );
             builder.push_interaction(
-                self.bus_map
-                    .get_bus_id(&BusType::CopyConstraintLookup)
-                    .expect("BusType::CopyConstraintLookup not found in bus_map")
-                    as u16,
+                self.copy_constraint_bus_id,
                 vec![*column, *perm],
                 -q_copy_constraint.clone(),
                 1,

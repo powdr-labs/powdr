@@ -7,7 +7,8 @@ use std::collections::HashMap;
 
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use openvm_stark_backend::p3_field::PrimeField32;
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
+use powdr_autoprecompiles::expression::AlgebraicReference;
+
 pub fn generate_permutation_columns<F, P>(
     values: &mut [F],
     plonk_circuit: &PlonkCircuit<P, AlgebraicReference>,
@@ -87,7 +88,7 @@ pub fn generate_permutation_columns<F, P>(
 
 #[cfg(test)]
 mod tests {
-    use crate::default_openvm_bus_map;
+    use crate::bus_map::default_openvm_bus_map;
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::var;
     use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;

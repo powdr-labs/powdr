@@ -7,7 +7,6 @@ use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
-use derive_more::From;
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
     arch::{VmExtension, VmInventory},
@@ -183,22 +182,17 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
         let offline_memory = builder.system_base().offline_memory();
 
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = builder
+        let bitwise_lookup = *builder
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .into_iter()
-            .next()
-            .cloned()
-            .expect("bitwise chip not found");
-        let range_checker = builder
+            .first()
+            .unwrap();
+        let range_checker = *builder
             .find_chip::<SharedVariableRangeCheckerChip>()
-            .into_iter()
-            .next()
-            .cloned()
-            .expect("bitwise chip not found");
+            .first()
+            .unwrap();
         let tuple_range_checker = builder
             .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .into_iter()
-            .next()
+            .first()
             .cloned();
 
         // Create the shared chips and the dummy shared chips
@@ -214,14 +208,18 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                     shared_chips_pair.clone(),
                 )
                 .into(),
-                PrecompileImplementation::PlonkChip => PlonkChip::new(
+                PrecompileImplementation::PlonkChip => {
+                     let copy_constraint_bus_id=builder.new_bus_idx();
+                    
+                    PlonkChip::new(
                     precompile.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
                     shared_chips_pair.clone(),
-                    self.bus_map.clone().with_bus_map(BusMap::new(new_bus_ids)),
+                    self.bus_map.clone(),
+                    copy_constraint_bus_id,
                 )
-                .into(),
+                .into()},
             };
 
             inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;

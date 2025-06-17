@@ -53,6 +53,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
+        copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {
             original_instructions,
@@ -63,6 +64,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             machine,
         } = precompile;
         let air = PlonkAir {
+            copy_constraint_bus_id,
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         };

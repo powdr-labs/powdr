@@ -380,12 +380,11 @@ pub fn compile_exe(
     );
     // Generate the custom config based on the generated instructions
     let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    let bus_ids: BTreeMap<_, _> = [(8, BusType::CopyConstraintLookup)].into_iter().collect();
     export_pil(
         vm_config.clone(),
         "debug.pil",
         &["KeccakVmAir"],
-        &bus_map.with_bus_map(BusMap::new(bus_ids)),
+        &bus_map,
     );
 
     Ok(CompiledProgram { exe, vm_config })
@@ -976,7 +975,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(m.width, 26);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 15);
+        assert_eq!(m.bus_interactions, 16);
     }
 
     #[test]
