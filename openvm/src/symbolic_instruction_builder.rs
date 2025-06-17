@@ -126,7 +126,10 @@ build_instr5!(
     /// Branch eq core proves that:
     /// - If `opcode_beq_flag` is true and `a` is equal to `b`, then `to_pc == pc + imm`, otherwise `to_pc == pc + 4`
     /// - If `opcode_bne_flag` is true and `a` is not equal to `b`, then `to_pc == pc + imm`, otherwise `to_pc == pc + 4`
+    
+    /// Branch equal: to_pc = pc + imm if load(REG, rs1_ptr) == load(REG, rs2_ptr) else pc + 4
     (beq, OPCODE_BEQ),
+    /// Branch not equal: to_pc = pc + imm if load(REG, rs1_ptr) != load(REG, rs2_ptr) else pc + 4
     (bne, OPCODE_BNE),
 
     /// Branch adapter:
@@ -150,11 +153,15 @@ build_instr5!(
     /// - If the instruction is `bltu` and `compose(a) < compose(b)` (unsigned comparison), then `to_pc == pc + imm`, otherwise `to_pc == pc + 4`
     /// - If the instruction is `bge` and `compose(a) >= compose(b)` (signed comparison), then `to_pc == pc + imm`, otherwise `to_pc == pc + 4`
     /// - If the instruction is `bgeu` and `compose(a) >= compose(b)` (unsigned comparison), then `to_pc == pc + imm`, otherwise `to_pc == pc + 4`
+    
+    /// Branch less than signed: to_pc = pc + imm if load(REG, rs1_ptr) < load(REG, rs2_ptr) else pc + 4
     (blt, OPCODE_BLT),
+    /// Branch less than unsigned: to_pc = pc + imm if load(REG, rs1_ptr) < load(REG, rs2_ptr) else pc + 4
     (bltu, OPCODE_BLTU),
+    /// Branch greater than or equal signed: to_pc = pc + imm if load(REG, rs1_ptr) >= load(REG, rs2_ptr) else pc + 4
     (bge, OPCODE_BGE),
+    /// Branch greater than or equal unsigned: to_pc = pc + imm if load(REG, rs1_ptr) >= load(REG, rs2_ptr) else pc + 4
     (bgeu, OPCODE_BGEU),
-
 
     /// Rdwrite adapter:
     /// - `rd` is a register address
@@ -180,7 +187,10 @@ build_instr5!(
     /// - If `opcode` is `lui`, then
     /// - `to_pc == pc + 4`
     /// - `compose(rd) == imm * 2^8`
+    
+    /// Jump and link: to_pc = pc + imm, store(REG, rd_ptr, pc + 4)
     (jal, OPCODE_JAL),
+    /// Load upper immediate: store(REG, rd_ptr, imm * 2^8)
     (lui, OPCODE_LUI),
 
     /// JALR adapter:
@@ -206,6 +216,8 @@ build_instr5!(
     /// - The most significant limb of `rd` is in the range `[0, 2^(PC_BITS - RV32_CELL_BITS * (RV32_REGISTER_NUM_LIMBS - 1))`
     /// - `to_pc_limbs[0]` is in the range `[0, 2^15)`
     /// - `to_pc_limbs[1]` is in the range `[0, 2^(PC_BITS - 16))`
+    
+    
     (jalr, OPCODE_JALR),
 
     /// Rdwrite adapter:
@@ -300,7 +312,7 @@ build_instr5!(
     (rem, OPCODE_REM),
     (remu, OPCODE_REMU),
 
-    
+
     (hint_storew, OPCODE_HINT_STOREW),
     (hint_buffer, OPCODE_HINT_BUFFER)
 );
@@ -364,7 +376,7 @@ alu_ops!(
     (sll, OPCODE_SLL),
     /// Shift right: store(REG, rd_ptr, load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32))
     (srl, OPCODE_SRL),
-    /// Shift right arithmetic: store(REG, rd_ptr, sign_extend(load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32)))
+    /// Shift right arithmetic (signed): store(REG, rd_ptr, sign_extend(load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32)))
     (sra, OPCODE_SRA),
 
     /// ALU adapter:
