@@ -32,10 +32,7 @@ pub fn air_stacking<P: IntoOpenVm>(
     assert!(!extensions.is_empty());
 
     extensions.iter_mut().for_each(|ext| {
-        ext.machine
-            .constraints
-            .iter_mut()
-            .for_each(|c| canonicalize_expression(&mut c.expr));
+        assert!(ext.machine.constraints.iter_mut().all(|c| is_valid_guarded(&c.expr)))
     });
 
     // create apc groups by number of columns
@@ -60,7 +57,7 @@ pub fn air_stacking<P: IntoOpenVm>(
         });
         let mut column_assigner = ColumnAssigner::default();
         g.iter_mut().for_each(|ext| {
-            column_assigner.assign_pcp(ext);
+            column_assigner.assign_precompile(ext);
         });
     });
 
@@ -136,10 +133,7 @@ pub fn air_stacking<P: IntoOpenVm>(
                 .bus_interactions
                 .iter_mut()
                 .for_each(|interaction| {
-                    interaction.args.iter_mut().for_each(|arg| {
-                        *arg = is_valid.clone() * arg.clone();
-                        canonicalize_expression(arg);
-                    });
+                    interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone(); });
                 });
 
             is_valid_sum = is_valid_sum
@@ -288,35 +282,36 @@ fn merge_bus_interactions<P: IntoOpenVm>(
             arg2: AlgebraicExpression<P>,
         ) -> AlgebraicExpression<P> {
             match arg1 {
-                // expr * is_valid
+                // is_valid * expr
                 AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: left1,
+                    left: is_valid1,
                     op: AlgebraicBinaryOperator::Mul,
-                    right: is_valid1,
+                    right: right1,
                 }) => {
                     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                        left: left2,
+                        left: is_valid2,
                         op: AlgebraicBinaryOperator::Mul,
-                        right: is_valid2,
+                        right: right2,
                     }) = arg2
                     else {
                         panic!("Expected binary operation for arg2, got: {arg2}");
                     };
-                    if has_same_structure(&left1, &left2) {
-                        *left1 * (*is_valid1 + *is_valid2)
+                    if has_same_structure(&right1, &right2) {
+                        // when the expressions match, we just add the new guard
+                        (*is_valid1 + *is_valid2) * *right1
                     } else {
                         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                            left: left1,
+                            left: is_valid1,
                             op: AlgebraicBinaryOperator::Mul,
-                            right: is_valid1,
+                            right: right1,
                         }) + AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                            left: left2,
+                            left: is_valid2,
                             op: AlgebraicBinaryOperator::Mul,
-                            right: is_valid2,
+                            right: right2,
                         })
                     }
                 }
-                // exprA * is_validA + exprB * is_validB + ...
+                // is_validA * exprA + is_validB * exprB ... we can't remove the guards
                 AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                     left: _,
                     op: AlgebraicBinaryOperator::Add,
@@ -326,17 +321,18 @@ fn merge_bus_interactions<P: IntoOpenVm>(
             }
         }
 
+        /// if the bus arg is of the form `is_valid * expr`, we can remove the is_valid part
         fn simplify_arg<P: IntoOpenVm>(arg: AlgebraicExpression<P>) -> AlgebraicExpression<P> {
-            // expr * is_valid_expr
+            // is_valid_expr * expr
             if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
+                left: _is_valid_expr,
                 op: AlgebraicBinaryOperator::Mul,
-                right: _is_valid_expr,
+                right,
             }) = arg
             {
-                *left
+                *right
             } else {
-                // sum of expr * is_validN, can't simplify
+                // sum of different is_valid * expr, can't simplify
                 arg
             }
         }
@@ -371,7 +367,7 @@ fn merge_bus_interactions<P: IntoOpenVm>(
     result
 }
 
-/// true if expression is of the form `is_valid * some_expr`.
+/// true if expression is of the form `is_valid_col * some_expr`.
 fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -386,33 +382,6 @@ fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
         },
         _ => false,
     }
-}
-
-/// takes an expression `is_valid * expr` and canonicalizes the right side
-fn canonicalize_expression<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P>) {
-    assert!(
-        is_valid_guarded(expr),
-        "not left guarded by is_valid: {expr}"
-    );
-    let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-        left: _is_valid,
-        op: AlgebraicBinaryOperator::Mul,
-        right,
-    }) = expr
-    else {
-        panic!("expected a Mul operation, got: {expr}");
-    };
-    right.pre_visit_expressions_mut(&mut |expr| {
-        if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) =
-            expr
-        {
-            if *op == AlgebraicBinaryOperator::Mul
-                || *op == AlgebraicBinaryOperator::Add && left > right
-            {
-                std::mem::swap(left, right);
-            }
-        }
-    });
 }
 
 /// assumes constraints are of the form `is_valid_expr * some_expr`
@@ -597,13 +566,15 @@ fn expr_poly_id_by_order<P: IntoOpenVm>(
 }
 
 #[derive(Default)]
+/// Remaps the columns of precompiles trying to take into account the structure
+/// of constraints and bus interactions of other precompiles
 struct ColumnAssigner<P: IntoOpenVm> {
-    // original PCPs
     pcps: Vec<PowdrPrecompile<P>>,
 }
 
 impl<P: IntoOpenVm> ColumnAssigner<P> {
-    fn assign_pcp(&mut self, pcp: &mut PowdrPrecompile<P>) {
+    /// Assigns columns to the given precompile and updates the assigner
+    fn assign_precompile(&mut self, pcp: &mut PowdrPrecompile<P>) {
         let mut mappings = BiMap::new();
         // for each constraint, we want to find if there is a constraint in
         // another machine with the same structure that we can assign the same
