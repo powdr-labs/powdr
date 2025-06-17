@@ -67,7 +67,7 @@ pub fn customize<P: IntoOpenVm>(
         sdk_vm_config,
     }: OriginalCompiledProgram<P>,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     bus_map: BusMap,
     pgo_config: PgoConfig,
@@ -106,7 +106,7 @@ pub fn customize<P: IntoOpenVm>(
                 &mut blocks,
                 &mut apc_cache,
                 pgo_program_idx_count,
-                airs,
+                &airs,
                 config.clone(),
                 bus_map.clone(),
                 &opcodes_no_apc,
@@ -161,7 +161,7 @@ pub fn customize<P: IntoOpenVm>(
                 acc_block.start_idx,
                 generate_apc_cache(
                     acc_block,
-                    airs,
+                    &airs,
                     apc_opcode,
                     bus_map.clone(),
                     config.degree_bound,
@@ -174,6 +174,8 @@ pub fn customize<P: IntoOpenVm>(
     apc_cache.extend(apcs);
 
     tracing::info!("Adjust the program with the autoprecompiles");
+
+    let airs = Arc::new(airs);
 
     // now the blocks have been sorted by cost
     for acc_block in blocks.iter().skip(n_skip).take(n_acc) {
@@ -221,12 +223,6 @@ pub fn customize<P: IntoOpenVm>(
             .find(|c| &*c.name == "is_valid")
             .unwrap();
 
-        let opcodes_in_acc = acc
-            .iter()
-            .map(|x| x.opcode.as_usize())
-            .unique()
-            .collect_vec();
-
         extensions.push(PowdrPrecompile::new(
             format!("PowdrAutoprecompile_{apc_opcode}"),
             PowdrOpcode {
@@ -237,10 +233,7 @@ pub fn customize<P: IntoOpenVm>(
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
-            airs.iter()
-                .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, air.clone()))
-                .collect(),
+            airs.clone(),
             is_valid_column,
         ));
     }

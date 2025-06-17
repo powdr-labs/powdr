@@ -373,7 +373,7 @@ pub fn compile_exe(
     let (exe, extension) = customize_exe::customize(
         original_program,
         &elf_powdr.text_labels,
-        &airs,
+        airs,
         config.clone(),
         bus_map.clone(),
         pgo_config,
