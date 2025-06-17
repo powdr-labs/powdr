@@ -9,25 +9,17 @@ use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
 /// A layer that records span timings and parent relationships into maps.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct DurationRecorderLayer {
     span_times: Arc<Mutex<IndexMap<String, Vec<Duration>>>>,
     span_parents: Arc<Mutex<IndexMap<String, Option<String>>>>,
 }
 
 impl DurationRecorderLayer {
-    /// Create a new collector with empty maps.
-    pub fn new() -> Self {
-        Self {
-            span_times: Arc::new(Mutex::new(IndexMap::new())),
-            span_parents: Arc::new(Mutex::new(IndexMap::new())),
-        }
-    }
-
     /// Print the hierarchical timing breakdown, preserving insertion order with `IndexMap`.
-    pub fn print_tree_and_clear(&self) {
-        let mut parents = self.span_parents.lock().unwrap();
-        let mut times = self.span_times.lock().unwrap();
+    pub fn finish(self) {
+        let parents = self.span_parents.lock().unwrap();
+        let times = self.span_times.lock().unwrap();
 
         // build parent -> children map
         let mut tree: IndexMap<String, Vec<String>> = IndexMap::new();
@@ -75,10 +67,6 @@ impl DurationRecorderLayer {
         for root in roots {
             recurse(&root, 0, &tree, &times);
         }
-
-        // Clear all collected statistics.
-        times.clear();
-        parents.clear();
     }
 }
 

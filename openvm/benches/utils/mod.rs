@@ -13,7 +13,7 @@ pub struct BenchmarkCollector {
 impl BenchmarkCollector {
     /// Create a new, empty collector.
     pub fn new() -> Self {
-        let layer = DurationRecorderLayer::new();
+        let layer = DurationRecorderLayer::default();
         let subscriber = Registry::default()
             .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")))
             .with(layer.clone())
@@ -25,7 +25,7 @@ impl BenchmarkCollector {
     }
 
     /// Print the timing tree for all collected spans and clear any previously collected data.
-    pub fn print_tree_and_clear(&self) {
-        self.layer.print_tree_and_clear();
+    pub fn finish(self) {
+        self.layer.finish();
     }
 }
