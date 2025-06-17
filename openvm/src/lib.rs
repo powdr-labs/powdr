@@ -1,14 +1,6 @@
-use std::collections::BTreeMap;
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-
-use air_builder::AirKeygenBuilder;
 use derive_more::From;
 use eyre::Result;
-use itertools::{multiunzip, Itertools};
+use itertools::multiunzip;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
@@ -16,22 +8,15 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
-use openvm_instructions::VmOpcode;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
     prover::AggStarkProver,
     Sdk, StdIn,
 };
-use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, engine::StarkEngine,
-    rap::AnyRap, Chip,
-};
+use openvm_stark_backend::{config::StarkGenericConfig, engine::StarkEngine, rap::AnyRap, Chip};
 use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{
-        config_from_perm, default_perm, BabyBearPoseidon2Config, BabyBearPoseidon2Engine,
-    },
-    fri_params::SecurityParameters,
+    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
@@ -39,11 +24,14 @@ use openvm_stark_sdk::openvm_stark_backend::{
     config::Val,
     p3_field::{Field, PrimeField32},
 };
-use openvm_stark_sdk::p3_baby_bear;
-use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -55,23 +43,21 @@ use tracing_subscriber::{
     Layer,
 };
 
-use utils::get_pil;
-
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::extraction_utils::{export_pil, get_airs_and_bus_map, get_constraints};
 use crate::traits::OpenVmField;
-use crate::utils::symbolic_to_algebraic;
 
 mod air_builder;
 pub mod bus_map;
+pub mod extraction_utils;
+mod instruction_blacklist;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
 mod utils;
 
-use bus_map::default_openvm_bus_map;
-
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
+pub use instruction_blacklist::instruction_blacklist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
@@ -369,15 +355,18 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
+    let blacklist = instruction_blacklist();
     let used_instructions = original_program
         .exe
         .program
         .instructions_and_debug_infos
         .iter()
         .map(|instr| instr.as_ref().unwrap().0.opcode)
+        .filter(|opcode| !blacklist.contains(&opcode.as_usize()))
         .collect();
     let (airs, bus_map) =
-        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions);
+        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions)
+            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
 
     let sdk_vm_config = original_program.sdk_vm_config.clone();
 
@@ -410,6 +399,7 @@ pub struct CompiledProgram<P: IntoOpenVm> {
 }
 
 // the original openvm program and config without powdr extension
+#[derive(Clone)]
 pub struct OriginalCompiledProgram<P: IntoOpenVm> {
     pub exe: VmExe<OpenVmField<P>>,
     pub sdk_vm_config: SdkVmConfig,
@@ -628,114 +618,6 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     // times executed by program index, where index = (pc - base_pc) / step
     // help determine the basic blocks to create autoprecompile for
     pgo(program, inputs).unwrap()
-}
-
-pub fn get_airs_and_bus_map<P: IntoOpenVm, VC: VmConfig<OpenVmField<P>>>(
-    vm_config: VC,
-    used_instructions: &HashSet<VmOpcode>,
-) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap)
-where
-    VC::Executor: Chip<BabyBearSC>,
-    VC::Periphery: Chip<BabyBearSC>,
-{
-    let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-
-    // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
-    // which depends on the program being executed. But this turns out to be heavy on memory, because
-    // it includes large precompiles like Keccak.
-    (
-        used_instructions
-            .iter()
-            .filter_map(|op| {
-                chip_complex.inventory.get_executor(*op).map(|executor| {
-                    let air = executor.air();
-
-                    let columns = get_columns(air.clone());
-
-                    let constraints = get_constraints(air);
-
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
-                        .collect::<Vec<_>>();
-
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                        .collect();
-
-                    let symb_machine = SymbolicMachine {
-                        constraints: powdr_exprs,
-                        bus_interactions: powdr_bus_interactions,
-                    };
-
-                    (op.as_usize(), symb_machine)
-                })
-            })
-            .collect(),
-        // TODO: We always return the default map here, which is only correct for a subset of the possible `vm_config`.
-        // Instead, the bus map should be generated from the VM config by inspecting the chip complex above
-        default_openvm_bus_map(),
-    )
-}
-
-pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
-    vm_config: VC,
-    path: &str,
-    blacklist: &[&str],
-    bus_map: &BusMap,
-) where
-    VC::Executor: Chip<BabyBearSC>,
-    VC::Periphery: Chip<BabyBearSC>,
-{
-    let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
-
-    let pil = chip_complex
-        .inventory
-        .executors()
-        .iter()
-        .filter_map(|executor| {
-            let air = executor.air();
-            let name = air.name();
-
-            if blacklist.contains(&name.as_str()) {
-                log::warn!("Skipping blacklisted AIR: {name}");
-                return None;
-            }
-
-            let columns = get_columns(air.clone());
-
-            let constraints = get_constraints(air);
-
-            Some(get_pil(&name, &constraints, &columns, vec![], bus_map))
-        })
-        .join("\n\n\n");
-
-    println!("Writing PIL...");
-    std::fs::write(path, pil).unwrap();
-    println!("Exported PIL to {path}");
-}
-
-fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
-    let width = air.width();
-    air.columns()
-        .inspect(|columns| {
-            assert_eq!(columns.len(), width);
-        })
-        .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
-}
-
-fn get_constraints(
-    air: Arc<dyn AnyRap<BabyBearSC>>,
-) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
-    let perm = default_perm();
-    let security_params = SecurityParameters::standard_fast();
-    let config = config_from_perm(&perm, security_params);
-    let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
-    let builder = air_keygen_builder.get_symbolic_builder(None);
-    builder.constraints()
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber

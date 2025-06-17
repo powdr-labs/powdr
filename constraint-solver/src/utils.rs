@@ -46,14 +46,16 @@ pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Display
 
 /// Returns the number of possible assignments for the variables given the range constraints.
 /// Returns `None` if this number would not fit a `u64`.
-pub fn count_possible_assignments<T: FieldElement, V: Clone + Ord>(
+pub fn has_few_possible_assignments<T: FieldElement, V: Clone + Ord>(
     variables: impl Iterator<Item = V>,
     rc: &impl RangeConstraintProvider<T, V>,
-) -> Option<u64> {
+    threshold: u64,
+) -> bool {
     variables
         .map(|v| rc.get(&v))
         .map(|rc| rc.range_width().try_into_u64())
         .try_fold(1u64, |acc, x| acc.checked_mul(x?))
+        .is_some_and(|count| count <= threshold)
 }
 
 /// Returns all possible assignments for the given variables that satisfy their
@@ -87,12 +89,7 @@ pub fn possible_concrete_values<'a, T: FieldElement, V: Clone + Ord + Hash>(
     max_elements: u64,
 ) -> Option<impl Iterator<Item = T> + 'a> {
     let variables = expr.referenced_unknown_variables().cloned().collect_vec();
-    if count_possible_assignments(variables.iter().cloned(), rc)
-        .is_none_or(|count| count > max_elements)
-    {
-        // If there are too many possible assignments, we do not try to perform exhaustive search.
-        None
-    } else {
+    if has_few_possible_assignments(variables.iter().cloned(), rc, max_elements) {
         Some(
             get_all_possible_assignments(variables, rc).map(|assignment| {
                 let mut expr = expr.clone();
@@ -103,5 +100,8 @@ pub fn possible_concrete_values<'a, T: FieldElement, V: Clone + Ord + Hash>(
                 expr.try_to_number().unwrap()
             }),
         )
+    } else {
+        // If there are too many possible assignments, we do not try to perform exhaustive search.
+        None
     }
 }

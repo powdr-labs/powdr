@@ -129,8 +129,6 @@ where
         Some(BusType::ExecutionBridge) => "execution",
         Some(BusType::PcLookup) => "pc",
         Some(BusType::TupleRangeChecker) => "tuple_range",
-        Some(BusType::Sha) => "sha",
-        Some(BusType::CopyConstraintLookup) => "copy_constraint",
         None => "none",
     }
 }
@@ -241,18 +239,14 @@ impl<T, V> PlonkCircuit<T, V> {
 
 #[cfg(test)]
 pub mod test_utils {
-    use powdr_autoprecompiles::legacy_expression::{
-        AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-    };
+    use std::sync::Arc;
+
+    use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
     use powdr_number::BabyBearField;
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
         AlgebraicExpression::Reference(AlgebraicReference {
-            name: name.into(),
-            poly_id: PolyID {
-                id,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
+            name: Arc::new(name.into()),
+            id,
         })
     }
 

@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::BusMap;
@@ -13,17 +14,53 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::legacy_expression::{
-    AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-};
+use powdr_autoprecompiles::expression::AlgebraicReference;
+use powdr_expression::AlgebraicExpression;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
 };
 use powdr_number::{BabyBearField, FieldElement};
 
+pub enum OpenVmReference {
+    /// Reference to a witness column. The boolean indicates if the reference is to the next row.
+    WitnessColumn(AlgebraicReference, bool),
+    IsFirstRow,
+    IsLastRow,
+    IsTransition,
+}
+
+impl fmt::Display for OpenVmReference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpenVmReference::WitnessColumn(reference, next) => {
+                write!(f, "{}{}", reference.name, if *next { "'" } else { "" })
+            }
+            OpenVmReference::IsFirstRow => write!(f, "is_first_row"),
+            OpenVmReference::IsLastRow => write!(f, "is_last_row"),
+            OpenVmReference::IsTransition => write!(f, "is_transition"),
+        }
+    }
+}
+
+/// An unsupported OpenVM reference appeared, i.e., a non-zero offset or a reference to
+/// is_first_row, is_last_row, or is_transition.
+#[derive(Debug)]
+pub struct UnsupportedOpenVmReferenceError;
+
+impl TryFrom<OpenVmReference> for AlgebraicReference {
+    type Error = UnsupportedOpenVmReferenceError;
+
+    fn try_from(value: OpenVmReference) -> Result<Self, Self::Error> {
+        match value {
+            OpenVmReference::WitnessColumn(reference, false) => Ok(reference),
+            _ => Err(UnsupportedOpenVmReferenceError),
+        }
+    }
+}
+
 pub fn algebraic_to_symbolic<P: IntoOpenVm>(
-    expr: &AlgebraicExpression<P>,
+    expr: &AlgebraicExpression<P, AlgebraicReference>,
 ) -> SymbolicExpression<OpenVmField<P>> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
@@ -51,29 +88,21 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
             },
         },
         AlgebraicExpression::Reference(algebraic_reference) => {
-            let poly_id = algebraic_reference.poly_id;
-            let next = algebraic_reference.next as usize;
-            match poly_id.ptype {
-                PolynomialType::Committed => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Main {
-                        part_index: 0,
-                        offset: next,
-                    },
-                    poly_id.id as usize,
-                )),
-                PolynomialType::Constant => SymbolicExpression::Variable(SymbolicVariable::new(
-                    Entry::Preprocessed { offset: next },
-                    poly_id.id as usize,
-                )),
-                PolynomialType::Intermediate => todo!(),
-            }
+            SymbolicExpression::Variable(SymbolicVariable::new(
+                Entry::Main {
+                    part_index: 0,
+                    offset: 0,
+                },
+                algebraic_reference.id as usize,
+            ))
         }
     }
 }
+
 pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
     expr: &SymbolicExpression<T>,
-    columns: &[String],
-) -> AlgebraicExpression<P> {
+    columns: &[Arc<String>],
+) -> AlgebraicExpression<P, OpenVmReference> {
     match expr {
         SymbolicExpression::Constant(c) => {
             AlgebraicExpression::Number(P::from_bytes_le(&c.as_canonical_u32().to_le_bytes()))
@@ -108,56 +137,38 @@ pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
         SymbolicExpression::Variable(SymbolicVariable { entry, index, .. }) => match entry {
             Entry::Main { offset, part_index } => {
                 assert_eq!(*part_index, 0);
-                let next = match offset {
+                let next = match *offset {
                     0 => false,
                     1 => true,
-                    _ => unimplemented!(),
+                    _ => panic!("Unexpected offset: {offset}"),
                 };
                 let name = columns.get(*index).unwrap_or_else(|| {
                     panic!("Column index out of bounds: {index}\nColumns: {columns:?}");
                 });
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name: name.clone(),
-                    poly_id: PolyID {
+                AlgebraicExpression::Reference(OpenVmReference::WitnessColumn(
+                    AlgebraicReference {
+                        name: name.clone(),
                         id: *index as u64,
-                        ptype: PolynomialType::Committed,
                     },
                     next,
-                })
+                ))
             }
             _ => unimplemented!(),
         },
-        SymbolicExpression::IsFirstRow => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_first_row".to_string(),
-            poly_id: PolyID {
-                id: 0,
-                ptype: PolynomialType::Constant,
-            },
-            next: false,
-        }),
-        SymbolicExpression::IsLastRow => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_last_row".to_string(),
-            poly_id: PolyID {
-                id: 1,
-                ptype: PolynomialType::Constant,
-            },
-            next: false,
-        }),
-        SymbolicExpression::IsTransition => AlgebraicExpression::Reference(AlgebraicReference {
-            name: "is_transition".to_string(),
-            poly_id: PolyID {
-                id: 2,
-                ptype: PolynomialType::Constant,
-            },
-            next: false,
-        }),
+        SymbolicExpression::IsFirstRow => {
+            AlgebraicExpression::Reference(OpenVmReference::IsFirstRow)
+        }
+        SymbolicExpression::IsLastRow => AlgebraicExpression::Reference(OpenVmReference::IsLastRow),
+        SymbolicExpression::IsTransition => {
+            AlgebraicExpression::Reference(OpenVmReference::IsTransition)
+        }
     }
 }
 
 pub fn get_pil<F: PrimeField32>(
     name: &str,
     constraints: &SymbolicConstraints<F>,
-    columns: &Vec<String>,
+    columns: &Vec<Arc<String>>,
     public_values: Vec<String>,
     bus_map: &BusMap,
 ) -> String {
@@ -192,14 +203,15 @@ namespace {name};
         pil.push_str(&format!("    col witness {column};\n"));
     }
 
-    let bus_interactions_by_bus = constraints
+    let (bus_interactions_by_bus, new_buses): (BTreeMap<_, _>, BTreeMap<_, _>) = constraints
         .interactions
         .iter()
         .map(|interaction| (interaction.bus_index, interaction))
         .into_group_map()
         .into_iter()
-        // Use BTreeMap to sort by bus_index
-        .collect::<BTreeMap<_, _>>();
+        .partition::<BTreeMap<_, _>, _>(|(bus_index, _)| {
+            bus_map.all_types_by_id().contains_key(&(*bus_index as u64))
+        });
 
     pil.push_str(
         "
@@ -209,6 +221,14 @@ namespace {name};
     for (bus_index, interactions) in bus_interactions_by_bus {
         let bus_name = bus_map.bus_type(bus_index as u64).to_string();
 
+        for interaction in interactions {
+            format_bus_interaction(&mut pil, interaction, columns, &public_values, &bus_name);
+        }
+        pil.push('\n');
+    }
+
+    for (bus_index, interactions) in new_buses {
+        let bus_name = format!("bus_{bus_index}");
         for interaction in interactions {
             format_bus_interaction(&mut pil, interaction, columns, &public_values, &bus_name);
         }
@@ -229,7 +249,7 @@ namespace {name};
 fn format_bus_interaction<F: PrimeField32>(
     pil: &mut String,
     interaction: &Interaction<SymbolicExpression<F>>,
-    columns: &[String],
+    columns: &[Arc<String>],
     public_values: &[String],
     bus_name: &str,
 ) {
@@ -251,7 +271,7 @@ fn format_bus_interaction<F: PrimeField32>(
 
 fn format_expr<F: PrimeField32>(
     expr: &SymbolicExpression<F>,
-    columns: &[String],
+    columns: &[Arc<String>],
     // TODO: Implement public references
     _public_values: &[String],
 ) -> String {

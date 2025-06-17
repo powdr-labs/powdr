@@ -4,11 +4,11 @@ use std::sync::{Arc, Mutex};
 
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
-use crate::powdr_extension::executor::PowdrExecutor;
+use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
-use crate::powdr_extension::{chip::SharedChips, PowdrPrecompile};
+use crate::powdr_extension::PowdrPrecompile;
 use crate::{BusMap, IntoOpenVm, OpenVmField};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
@@ -30,8 +30,8 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
-use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::expression::AlgebraicReference;
+use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
@@ -51,7 +51,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
         precompile: PowdrPrecompile<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedChips,
+        periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
     ) -> Self {
         let PowdrPrecompile {
@@ -144,9 +144,9 @@ where
         // which is unnecessary.
         let column_index_by_poly_id: BTreeMap<u64, usize> = self
             .machine
-            .unique_columns()
+            .unique_references()
             .enumerate()
-            .map(|(index, c)| (c.id.id, index))
+            .map(|(index, c)| (c.id, index))
             .collect();
 
         let witness = self
@@ -258,9 +258,7 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     /// Get the value of a variable. None if the variable is temporary but still unknown.
     fn get(&self, variable: &Variable<AlgebraicReference>) -> Option<F> {
         match variable {
-            Variable::Witness(id) => {
-                Some(self.witness[self.column_index_by_poly_id[&id.poly_id.id]])
-            }
+            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[&id.id]]),
             Variable::Tmp(id) => self.tmp_vars[*id],
             // The value of unused cells should not matter.
             Variable::Unused => Some(F::ZERO),

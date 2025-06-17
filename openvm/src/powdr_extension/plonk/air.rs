@@ -86,7 +86,7 @@ where
             q_range_check,
             q_execution,
             q_pc,
-            q_range_tuple: _,
+            q_range_tuple,
             a_id,
             b_id,
             c_id,
@@ -131,6 +131,15 @@ where
                 .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_range_check,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::TupleRangeChecker)
+                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
+            vec![*a, *b],
+            *c * *q_range_tuple,
             1,
         );
 

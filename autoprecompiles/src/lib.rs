@@ -2,9 +2,9 @@ use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
 use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
+use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
-use legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
-use powdr::UniqueColumns;
+use powdr::UniqueReferences;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -12,6 +12,7 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::sync::Arc;
 use std::{collections::BTreeMap, iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
@@ -20,8 +21,8 @@ use powdr_number::FieldElement;
 mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod expression;
 pub mod expression_conversion;
-pub mod legacy_expression;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
@@ -118,13 +119,49 @@ pub struct SymbolicMachine<T> {
 
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for constraint in &self.constraints {
-            writeln!(f, "{constraint} = 0 ")?;
-        }
         for bus_interaction in &self.bus_interactions {
             writeln!(f, "{bus_interaction}")?;
         }
+        for constraint in &self.constraints {
+            writeln!(f, "{constraint} = 0")?;
+        }
         Ok(())
+    }
+}
+
+impl<T: Display> SymbolicMachine<T> {
+    pub fn render(&self, bus_map: &BusMap) -> String {
+        let mut output = String::new();
+        let bus_interactions_by_bus = self
+            .bus_interactions
+            .iter()
+            .map(|bus_interaction| (bus_interaction.id, bus_interaction))
+            .into_group_map()
+            .into_iter()
+            // sorted_by_key is stable, so we'll keep the order within each bus
+            .sorted_by_key(|(bus_id, _)| *bus_id)
+            .collect::<Vec<_>>();
+        for (bus_id, bus_interactions) in &bus_interactions_by_bus {
+            let bus_type = bus_map.bus_type(*bus_id);
+            output.push_str(&format!("\n// Bus {bus_id} ({bus_type}):\n",));
+            for bus_interaction in bus_interactions {
+                output.push_str(&format!(
+                    "mult={}, args=[{}]\n",
+                    bus_interaction.mult,
+                    bus_interaction.args.iter().join(", ")
+                ));
+            }
+        }
+
+        if !self.constraints.is_empty() {
+            output.push_str("\n// Algebraic constraints:\n");
+        }
+
+        for constraint in &self.constraints {
+            output.push_str(&format!("{constraint} = 0\n"));
+        }
+
+        output.trim().to_string()
     }
 }
 
@@ -282,23 +319,11 @@ fn add_guards<T: FieldElement>(
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
-    let max_id = machine
-        .unique_columns()
-        .map(|c| {
-            assert_eq!(c.id.ptype, PolynomialType::Committed);
-            c.id.id
-        })
-        .max()
-        .unwrap()
-        + 1;
+    let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
 
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-        name: "is_valid".to_string(),
-        poly_id: PolyID {
-            ptype: PolynomialType::Committed,
-            id: max_id,
-        },
-        next: false,
+        name: Arc::new("is_valid".to_string()),
+        id: max_id,
     });
 
     machine.constraints = machine
