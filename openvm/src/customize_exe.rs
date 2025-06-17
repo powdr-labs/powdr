@@ -306,7 +306,10 @@ pub fn customize<P: IntoOpenVm>(
         air_stacking(extensions, chip_stacking_log)
     } else {
         tracing::debug!("Chip stacking disabled");
-        extensions.into_iter().map(PowdrStackedPrecompile::new_single).collect()
+        extensions
+            .into_iter()
+            .map(PowdrStackedPrecompile::new_single)
+            .collect()
     };
 
     (
@@ -499,8 +502,14 @@ fn generate_apc_cache<P: IntoOpenVm>(
     degree_bound: DegreeBound,
     strict_is_valid_guards: bool,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
-    let (autoprecompile, subs) =
-        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound, strict_is_valid_guards)?;
+    let (autoprecompile, subs) = generate_autoprecompile(
+        block,
+        airs,
+        apc_opcode,
+        bus_map,
+        degree_bound,
+        strict_is_valid_guards,
+    )?;
 
     Ok(CachedAutoPrecompile {
         apc_opcode,
@@ -549,8 +558,13 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map),
     };
 
-    let (precompile, subs) =
-        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32, strict_is_valid_guards)?;
+    let (precompile, subs) = powdr_autoprecompiles::build(
+        program,
+        vm_config,
+        degree_bound,
+        apc_opcode as u32,
+        strict_is_valid_guards,
+    )?;
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());

@@ -1,12 +1,21 @@
 use std::collections::{BTreeSet, HashMap};
 
-use powdr_autoprecompiles::{legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType}, simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine};
+use powdr_autoprecompiles::{
+    legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType},
+    simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+};
 
 use powdr_autoprecompiles::powdr::UniqueColumns;
 
-use powdr_expression::{visitors::ExpressionVisitable, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation};
+use powdr_expression::{
+    visitors::ExpressionVisitable, AlgebraicBinaryOperation, AlgebraicBinaryOperator,
+    AlgebraicUnaryOperation,
+};
 
-use crate::{powdr_extension::{PowdrPrecompile, PowdrStackedPrecompile}, IntoOpenVm};
+use crate::{
+    powdr_extension::{PowdrPrecompile, PowdrStackedPrecompile},
+    IntoOpenVm,
+};
 
 use openvm_instructions::LocalOpcode;
 
@@ -14,7 +23,8 @@ use itertools::Itertools;
 
 use bimap::BiMap;
 
-// perform air stacking of multiple precompiles into stacked precompiles.
+/// Perform air stacking on the set of precompiles, grouping them by the log of
+/// their number of columns.
 pub fn air_stacking<P: IntoOpenVm>(
     mut extensions: Vec<PowdrPrecompile<P>>,
     chip_stacking_log: f32,
@@ -31,7 +41,11 @@ pub fn air_stacking<P: IntoOpenVm>(
     // create apc groups by number of columns
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<P>>> = Default::default();
     for pcp in extensions {
-        let idx = f32::log(pcp.machine.unique_columns().count() as f32, chip_stacking_log).floor() as usize;
+        let idx = f32::log(
+            pcp.machine.unique_columns().count() as f32,
+            chip_stacking_log,
+        )
+        .floor() as usize;
         groups.entry(idx).or_default().push(pcp);
     }
 
@@ -56,7 +70,10 @@ pub fn air_stacking<P: IntoOpenVm>(
         // group of a single precompile, no stacking
         if extensions.len() == 1 {
             let precompile = extensions.pop().unwrap();
-            tracing::debug!("Precompile {} not stacked", &precompile.opcode.global_opcode().as_usize());
+            tracing::debug!(
+                "Precompile {} not stacked",
+                &precompile.opcode.global_opcode().as_usize()
+            );
             result.push(PowdrStackedPrecompile::new_single(precompile));
             continue;
         }
@@ -213,10 +230,11 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                         continue;
                     }
                     let i2 = to_merge_set.get(0).unwrap();
-                    let all_args_same_structure =
-                        i.args.iter().zip_eq(i2.args.iter()).all(|(a1, a2)| {
-                            has_same_structure(strip_guard(&a1), strip_guard(&a2))
-                        });
+                    let all_args_same_structure = i
+                        .args
+                        .iter()
+                        .zip_eq(i2.args.iter())
+                        .all(|(a1, a2)| has_same_structure(strip_guard(&a1), strip_guard(&a2)));
                     if all_args_same_structure {
                         // found an exact match
                         to_merge_set.push(i);
@@ -237,10 +255,11 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                     }
                     // check all args have the same structure
                     let i2 = to_merge_set.get(0).unwrap();
-                    let some_args_same_structure =
-                        i.args.iter().zip_eq(i2.args.iter()).any(|(a1, a2)| {
-                            has_same_structure(strip_guard(&a1), strip_guard(&a2))
-                        });
+                    let some_args_same_structure = i
+                        .args
+                        .iter()
+                        .zip_eq(i2.args.iter())
+                        .any(|(a1, a2)| has_same_structure(strip_guard(&a1), strip_guard(&a2)));
                     if some_args_same_structure {
                         // found a partial match on some args
                         to_merge_set.push(i);
@@ -359,16 +378,11 @@ fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
             left,
             op: AlgebraicBinaryOperator::Mul,
             ..
-        }) => {
-            match left.as_ref() {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
-                    ..
-                }) => {
-                    name.starts_with("is_valid")
-                }
-                _ => false,
+        }) => match left.as_ref() {
+            AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
+                name.starts_with("is_valid")
             }
+            _ => false,
         },
         _ => false,
     }
@@ -376,7 +390,10 @@ fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
 
 /// takes an expression `is_valid * expr` and canonicalizes the right side
 fn canonicalize_expression<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P>) {
-    assert!(is_valid_guarded(expr), "not left guarded by is_valid: {expr}");
+    assert!(
+        is_valid_guarded(expr),
+        "not left guarded by is_valid: {expr}"
+    );
     let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
         left: _is_valid,
         op: AlgebraicBinaryOperator::Mul,

@@ -107,9 +107,7 @@ pub struct PowdrStackedPrecompile<P: IntoOpenVm> {
 }
 
 impl<P: IntoOpenVm> PowdrStackedPrecompile<P> {
-    pub fn new_single(
-        precompile: PowdrPrecompile<P>,
-    ) -> Self {
+    pub fn new_single(precompile: PowdrPrecompile<P>) -> Self {
         Self {
             machine: precompile.machine.clone(),
             precompiles: BTreeMap::from([(precompile.opcode.clone(), precompile)]),
