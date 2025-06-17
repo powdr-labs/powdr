@@ -19,9 +19,10 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear;
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicMachine;
 
-use crate::utils::get_pil;
+use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
@@ -72,10 +73,15 @@ fn get_bus_map<F: PrimeField32>(
     )
 }
 
+/// Given a VM configuration and a set of used instructions, computes:
+/// - The opcode -> AIR map
+/// - The bus map
+///
+/// Returns an error if the conversion from the OpenVM expression type fails.
 pub fn get_airs_and_bus_map<P: IntoOpenVm>(
     vm_config: SdkVmConfig,
     used_instructions: &HashSet<VmOpcode>,
-) -> (BTreeMap<usize, SymbolicMachine<P>>, BusMap) {
+) -> Result<(BTreeMap<usize, SymbolicMachine<P>>, BusMap), UnsupportedOpenVmReferenceError> {
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
 
     let bus_map = get_bus_map(&chip_complex);
@@ -83,40 +89,37 @@ pub fn get_airs_and_bus_map<P: IntoOpenVm>(
     // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
     // which depends on the program being executed. But this turns out to be heavy on memory, because
     // it includes large precompiles like Keccak.
-    (
+    Ok((
         used_instructions
             .iter()
-            .filter_map(|op| {
-                chip_complex.inventory.get_executor(*op).map(|executor| {
-                    let air = executor.air();
+            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(*op)?)))
+            .map(|(op, executor)| {
+                let air = executor.air();
+                let columns = get_columns(air.clone());
+                let constraints = get_constraints(air);
 
-                    let columns = get_columns(air.clone());
+                let powdr_exprs = constraints
+                    .constraints
+                    .iter()
+                    .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                    let constraints = get_constraints(air);
+                let powdr_bus_interactions = constraints
+                    .interactions
+                    .iter()
+                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                    .collect::<Result<_, _>>()?;
 
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| symbolic_to_algebraic(expr, &columns).into())
-                        .collect::<Vec<_>>();
+                let symb_machine = SymbolicMachine {
+                    constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                    bus_interactions: powdr_bus_interactions,
+                };
 
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                        .collect();
-
-                    let symb_machine = SymbolicMachine {
-                        constraints: powdr_exprs,
-                        bus_interactions: powdr_bus_interactions,
-                    };
-
-                    (op.as_usize(), symb_machine)
-                })
+                Ok((op.as_usize(), symb_machine))
             })
-            .collect(),
+            .collect::<Result<_, _>>()?,
         bus_map,
-    )
+    ))
 }
 
 pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
@@ -156,13 +159,16 @@ pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
     println!("Exported PIL to {path}");
 }
 
-fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<String> {
+pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
     let width = air.width();
     air.columns()
         .inspect(|columns| {
             assert_eq!(columns.len(), width);
         })
         .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
+        .into_iter()
+        .map(Arc::new)
+        .collect()
 }
 
 pub fn get_constraints(

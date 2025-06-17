@@ -1,22 +1,22 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::from_fn;
+use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_expression::visitors::{AllChildren, ExpressionVisitable};
 use powdr_number::FieldElement;
-use serde::{Deserialize, Serialize};
 
-use crate::legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::SymbolicMachine;
 
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed
 pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
-    sub: &BTreeMap<Column, AlgebraicExpression<T>>,
+    sub: &BTreeMap<AlgebraicReference, AlgebraicExpression<T>>,
 ) {
     expr.pre_visit_expressions_mut(&mut |expr| {
         if let AlgebraicExpression::Reference(r) = expr {
-            if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
+            if let Some(sub_expr) = sub.get(r) {
                 *expr = sub_expr.clone();
             }
         }
@@ -65,15 +65,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
 ) -> BTreeSet<AlgebraicExpression<T>> {
     expr.all_children()
         .filter_map(|expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference {
-                poly_id:
-                    PolyID {
-                        ptype: PolynomialType::Committed,
-                        ..
-                    },
-                ..
-            }) = expr
-            {
+            if let AlgebraicExpression::Reference(..) = expr {
                 Some(expr.clone())
             } else {
                 None
@@ -82,35 +74,19 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
         .collect()
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
-pub struct Column {
-    pub name: String,
-    pub id: PolyID,
-}
-
-impl From<&AlgebraicReference> for Column {
-    fn from(r: &AlgebraicReference) -> Self {
-        assert!(!r.next);
-        Column {
-            name: r.name.clone(),
-            id: r.poly_id,
-        }
-    }
-}
-
-pub trait UniqueColumns<'a, T: 'a> {
-    /// Returns an iterator over the unique columns
-    fn unique_columns(&'a self) -> impl Iterator<Item = Column>;
+pub trait UniqueReferences<'a, T: 'a> {
+    /// Returns an iterator over the unique references
+    fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference>;
 }
 
 impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
-    UniqueColumns<'a, T> for E
+    UniqueReferences<'a, T> for E
 {
-    fn unique_columns(&'a self) -> impl Iterator<Item = Column> {
+    fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference> {
         self.all_children()
             .filter_map(|e| {
                 if let AlgebraicExpression::Reference(r) = e {
-                    Some(Column::from(r))
+                    Some(r.clone())
                 } else {
                     None
                 }
@@ -125,8 +101,8 @@ pub fn reassign_ids<T: FieldElement>(
     suffix: usize,
 ) -> (u64, Vec<u64>, SymbolicMachine<T>) {
     // Build a mapping from local columns to global columns
-    let subs: BTreeMap<Column, Column> = machine
-        .unique_columns()
+    let subs: BTreeMap<AlgebraicReference, AlgebraicReference> = machine
+        .unique_references()
         // zip with increasing ids, mutating curr_id
         .zip(from_fn(|| {
             let id = curr_id;
@@ -134,17 +110,9 @@ pub fn reassign_ids<T: FieldElement>(
             Some(id)
         }))
         .map(|(local_column, id)| {
-            assert_eq!(
-                local_column.id.ptype,
-                PolynomialType::Committed,
-                "Expected committed polynomial type"
-            );
-            let global_column = Column {
-                name: format!("{}_{}", local_column.name, suffix),
-                id: PolyID {
-                    id,
-                    ptype: PolynomialType::Committed,
-                },
+            let global_column = AlgebraicReference {
+                name: Arc::new(format!("{}_{}", local_column.name, suffix)),
+                id,
             };
             (local_column, global_column)
         })
@@ -153,13 +121,13 @@ pub fn reassign_ids<T: FieldElement>(
     // Update the machine with the new global column names
     machine.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
-            let new_col = subs.get(&Column::from(&*r)).unwrap().clone();
-            r.poly_id.id = new_col.id.id;
+            let new_col = subs.get(r).unwrap().clone();
+            r.id = new_col.id;
             r.name = new_col.name.clone();
         }
     });
 
-    let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id.id, v.id.id)).collect();
+    let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id, v.id)).collect();
 
     let poly_id_min = *subs.keys().min().unwrap();
     let poly_id_max = *subs.keys().max().unwrap();

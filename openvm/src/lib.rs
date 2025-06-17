@@ -1,9 +1,3 @@
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-
 use derive_more::From;
 use eyre::Result;
 use itertools::multiunzip;
@@ -33,6 +27,11 @@ use openvm_stark_sdk::openvm_stark_backend::{
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -50,6 +49,7 @@ use crate::traits::OpenVmField;
 mod air_builder;
 pub mod bus_map;
 pub mod extraction_utils;
+mod instruction_blacklist;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
 mod utils;
@@ -57,6 +57,7 @@ mod utils;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
+use instruction_blacklist::instruction_blacklist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
@@ -354,15 +355,18 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
+    let blacklist = instruction_blacklist();
     let used_instructions = original_program
         .exe
         .program
         .instructions_and_debug_infos
         .iter()
         .map(|instr| instr.as_ref().unwrap().0.opcode)
+        .filter(|opcode| !blacklist.contains(&opcode.as_usize()))
         .collect();
     let (airs, bus_map) =
-        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions);
+        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions)
+            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
 
     let sdk_vm_config = original_program.sdk_vm_config.clone();
 
@@ -389,6 +393,7 @@ pub struct CompiledProgram<P: IntoOpenVm> {
 }
 
 // the original openvm program and config without powdr extension
+#[derive(Clone)]
 pub struct OriginalCompiledProgram<P: IntoOpenVm> {
     pub exe: VmExe<OpenVmField<P>>,
     pub sdk_vm_config: SdkVmConfig,
@@ -965,7 +970,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(m.width, 16);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 5);
+        assert_eq!(m.bus_interactions, 6);
     }
 
     #[test]

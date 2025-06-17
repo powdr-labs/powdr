@@ -1,24 +1,25 @@
 use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
+use crate::instruction_blacklist;
+use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
 use itertools::Itertools;
-use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
-use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
-use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program, VmOpcode};
-use openvm_instructions::{LocalOpcode, SystemOpcode};
-use openvm_keccak256_transpiler::Rv32KeccakOpcode;
-use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
-use openvm_sha256_transpiler::Rv32Sha256Opcode;
+use openvm_instructions::exe::VmExe;
+use openvm_instructions::instruction::Instruction;
+use openvm_instructions::program::Program;
+use openvm_instructions::{LocalOpcode, VmOpcode};
 use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
@@ -75,79 +76,7 @@ pub fn customize<P: IntoOpenVm>(
     // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
     // Otherwise, `apc_cache` will remain empty, and we will generate APC on the fly when we select which basic blocks to accelerate.
     let mut apc_cache = HashMap::new();
-
-    // The following opcodes shall never be accelerated and therefore always put in its own basic block.
-    // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
-    // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
-    // We don't want these opcodes because they create air constraints with next references, which powdr-openvm does not support yet.
-    let opcodes_no_apc: HashSet<_> = [
-        Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
-        Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
-        Rv32LoadStoreOpcode::LOADB.global_opcode().as_usize(),
-        Rv32LoadStoreOpcode::LOADH.global_opcode().as_usize(),
-        Rv32WeierstrassOpcode::EC_ADD_NE.global_opcode().as_usize(),
-        Rv32WeierstrassOpcode::SETUP_EC_ADD_NE
-            .global_opcode()
-            .as_usize(),
-        Rv32WeierstrassOpcode::EC_DOUBLE.global_opcode().as_usize(),
-        Rv32WeierstrassOpcode::SETUP_EC_DOUBLE
-            .global_opcode()
-            .as_usize(),
-        Rv32WeierstrassOpcode::EC_ADD_NE.global_opcode().as_usize() + 4,
-        Rv32WeierstrassOpcode::SETUP_EC_ADD_NE
-            .global_opcode()
-            .as_usize()
-            + 4,
-        Rv32WeierstrassOpcode::EC_DOUBLE.global_opcode().as_usize() + 4,
-        Rv32WeierstrassOpcode::SETUP_EC_DOUBLE
-            .global_opcode()
-            .as_usize()
-            + 4,
-        Rv32KeccakOpcode::KECCAK256.global_opcode().as_usize(),
-        Rv32Sha256Opcode::SHA256.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::ADD.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::SUB.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::SETUP_ADDSUB
-            .global_opcode()
-            .as_usize(),
-        Rv32ModularArithmeticOpcode::MUL.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::DIV.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::SETUP_MULDIV
-            .global_opcode()
-            .as_usize(),
-        Rv32ModularArithmeticOpcode::IS_EQ
-            .global_opcode()
-            .as_usize(),
-        Rv32ModularArithmeticOpcode::SETUP_ISEQ
-            .global_opcode()
-            .as_usize(),
-        Fp2Opcode::ADD.global_opcode().as_usize(),
-        Fp2Opcode::SUB.global_opcode().as_usize(),
-        Fp2Opcode::SETUP_ADDSUB.global_opcode().as_usize(),
-        Fp2Opcode::MUL.global_opcode().as_usize(),
-        Fp2Opcode::DIV.global_opcode().as_usize(),
-        Fp2Opcode::SETUP_MULDIV.global_opcode().as_usize(),
-        SystemOpcode::PHANTOM.global_opcode().as_usize(),
-        SystemOpcode::TERMINATE.global_opcode().as_usize(),
-        // TODO clean this up
-        0x510, // not sure yet what this is
-        0x513, // not sure yet what this is
-        0x516, // not sure yet what this is
-        0x51c, // not sure yet what this is
-        0x523, // not sure yet what this is
-        0x526, // not sure yet what this is
-        1024,
-        1025,
-        1028,
-        1033,
-        1104,
-        1030,
-        1033,
-        1027,
-        1029,
-    ]
-    .into_iter()
-    .collect();
+    let opcodes_no_apc = instruction_blacklist();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
     let branch_opcodes_set = branch_opcodes_set();
@@ -288,8 +217,8 @@ pub fn customize<P: IntoOpenVm>(
         assert_eq!(program.len(), len_before);
 
         let is_valid_column = autoprecompile
-            .unique_columns()
-            .find(|c| c.name == "is_valid")
+            .unique_references()
+            .find(|c| &*c.name == "is_valid")
             .unwrap();
 
         let opcodes_in_acc = acc
@@ -566,18 +495,18 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
-    columns: &[String],
-) -> SymbolicBusInteraction<P> {
+    columns: &[Arc<String>],
+) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
-    let mult = symbolic_to_algebraic(&interaction.count, columns);
+    let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
     let args = interaction
         .message
         .iter()
-        .map(|e| symbolic_to_algebraic(e, columns))
-        .collect();
+        .map(|e| try_convert(symbolic_to_algebraic(e, columns)))
+        .collect::<Result<_, _>>()?;
 
-    SymbolicBusInteraction { id, mult, args }
+    Ok(SymbolicBusInteraction { id, mult, args })
 }
 
 // Note: This function can lead to OOM since it generates the apc for all blocks
@@ -607,7 +536,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     let air_width_by_opcode = airs
         .iter()
         .filter(|&(i, _)| (!opcodes_no_apc.contains(i)))
-        .map(|(i, air)| (*i, air.unique_columns().count()))
+        .map(|(i, air)| (*i, air.unique_references().count()))
         .collect::<HashMap<_, _>>();
 
     // generate apc and cache it for all basic blocks
@@ -629,7 +558,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
             .ok()?;
 
             // calculate cells saved per row
-            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_references().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()
