@@ -398,7 +398,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     >= self.block_size
                 {
                     // We might process more rows than `self.block_size`, so we check
-                    // that we have the reqired amount of calls.
+                    // that we have the required amount of calls.
                     // The block shape check done by block_machine_processor will do a more
                     // thorough check later on.
                     vec![]
