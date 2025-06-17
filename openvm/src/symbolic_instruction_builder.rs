@@ -300,7 +300,7 @@ build_instr5!(
     (rem, OPCODE_REM),
     (remu, OPCODE_REMU),
 
-
+    
     (hint_storew, OPCODE_HINT_STOREW),
     (hint_buffer, OPCODE_HINT_BUFFER)
 );
@@ -326,10 +326,16 @@ alu_ops!(
     /// Base ALU core proves that:
     /// - `compose(a) == compose(b) op compose(c)`
     /// - Each limb of `a` is within the range `[0, 2^RV32_CELL_BITS)`
+
+    /// Addition: store(REG, rd_ptr, load(REG, rs1_ptr) + load(rs2_as, rs2))
     (add, OPCODE_ADD),
+    /// Subtraction: store(REG, rd_ptr, load(REG, rs1_ptr) - load(rs2_as, rs2))
     (sub, OPCODE_SUB),
+    /// XOR: store(REG, rd_ptr, load(REG, rs1_ptr) XOR load(rs2_as, rs2))
     (xor, OPCODE_XOR),
+    /// OR: store(REG, rd_ptr, load(REG, rs1_ptr) OR load(rs2_as, rs2))
     (or, OPCODE_OR),
+    /// AND: store(REG, rd_ptr, load(REG, rs1_ptr) AND load(rs2_as, rs2))
     (and, OPCODE_AND),
 
     /// ALU adapter:
@@ -353,8 +359,12 @@ alu_ops!(
     /// - If `opcode` is `srl`, then `compose(a) == compose(b) >> (compose(c) % (RV32_CELL_BITS * RV32_REGISTER_NUM_LIMBS))`
     /// - If `opcode` is `sra`, then `compose(a) == sign_extend(compose(b) >> (compose(c) % (RV32_CELL_BITS * RV32_REGISTER_NUM_LIMBS)))`
     /// - Each limb of `a` is in the range `[0, 2^RV32_CELL_BITS)`
+    
+    /// Shift left: store(REG, rd_ptr, load(REG, rs1_ptr) << (load(rs2_as, rs2) % 32))
     (sll, OPCODE_SLL),
+    /// Shift right: store(REG, rd_ptr, load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32))
     (srl, OPCODE_SRL),
+    /// Shift right arithmetic: store(REG, rd_ptr, sign_extend(load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32)))
     (sra, OPCODE_SRA),
 
     /// ALU adapter:
@@ -377,7 +387,10 @@ alu_ops!(
     /// - If `opcode` is `slt` and `compose(b) < compose(c)` (signed comparison), then `a` is 1.
     /// - If `opcode` is `sltu` and `compose(b) < compose(c)` (unsigned comparison), then `a` is 1.
     /// - Otherwise, `a` is 0.
+
+    /// Less than signed: store(REG, rd_ptr, 1 if load(REG, rs1_ptr) < load(rs2_as, rs2) else 0)
     (slt, OPCODE_SLT),
+    /// Less than unsigned: store(REG, rd_ptr, 1 if load(REG, rs1_ptr) < load(rs2_as, rs2) else 0)
     (sltu, OPCODE_SLTU)
 );
 
@@ -409,12 +422,21 @@ ls_ops!(
     /// - `opcode` indicates the operation to be performed
     ///
     /// Load sign extend core AND Loadstore core proves that `write_data` equals `shift(read_data)`, where the shift amount is adjusted according to the instruction.
+    
+    /// Load word: store(REG, rd_ptr, load(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
     (loadw, OPCODE_LOADW),
+    /// Load byte unsigned: store(REG, rd_ptr, load_byte_unsigned(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
     (loadbu, OPCODE_LOADBU),
+    /// Load half-word unsigned: store(REG, rd_ptr, load_half_word_unsigned(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
     (loadhu, OPCODE_LOADHU),
+    /// Store word: store(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
     (storew, OPCODE_STOREW),
+    /// Store half-word: store_half_word(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
     (storeh, OPCODE_STOREH),
+    /// Store byte: store_byte(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
     (storeb, OPCODE_STOREB),
+    /// Load byte signed: store(REG, rd_ptr, load_byte_signed(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
     (loadb, OPCODE_LOADB),
+    /// Load half-word signed: store(REG, rd_ptr, load_half_word_signed(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
     (loadh, OPCODE_LOADH)
 );
