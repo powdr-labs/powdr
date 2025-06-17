@@ -9,7 +9,6 @@ pub enum BusType {
     VariableRangeChecker,
     BitwiseLookup,
     TupleRangeChecker,
-    Sha,
 }
 
 impl std::fmt::Display for BusType {
@@ -21,7 +20,6 @@ impl std::fmt::Display for BusType {
             BusType::VariableRangeChecker => "VARIABLE_RANGE_CHECKER",
             BusType::BitwiseLookup => "BITWISE_LOOKUP",
             BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
-            BusType::Sha => "SHA",
         };
         write!(f, "{name}")
     }
