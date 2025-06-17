@@ -203,24 +203,15 @@ namespace {name};
         pil.push_str(&format!("    col witness {column};\n"));
     }
 
-    let mut bus_interactions_by_bus = constraints
+    let (bus_interactions_by_bus, new_buses): (BTreeMap<_, _>, BTreeMap<_, _>) = constraints
         .interactions
         .iter()
         .map(|interaction| (interaction.bus_index, interaction))
         .into_group_map()
         .into_iter()
-        // Use BTreeMap to sort by bus_index
-        .collect::<BTreeMap<_, _>>();
-
-    let new_buses: BTreeMap<_, _> = bus_interactions_by_bus
-        .iter()
-        .filter(|(bus_id, _)| !bus_map.all_types_by_id().contains_key(&(**bus_id as u64)))
-        .map(|(bus_id, interaction)| (*bus_id, interaction.clone()))
-        .collect();
-
-    for bus_id in new_buses.keys() {
-        bus_interactions_by_bus.remove(bus_id);
-    }
+        .partition::<BTreeMap<_, _>, _>(|(bus_index, _)| {
+            bus_map.all_types_by_id().contains_key(&(*bus_index as u64))
+        });
 
     pil.push_str(
         "
