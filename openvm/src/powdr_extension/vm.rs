@@ -1,9 +1,9 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
-use std::collections::BTreeMap;
-use std::iter::once;
 use derive_more::From;
 use powdr_autoprecompiles::expression::AlgebraicReference;
+use std::collections::BTreeMap;
+use std::iter::once;
 
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
@@ -209,17 +209,18 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                 )
                 .into(),
                 PrecompileImplementation::PlonkChip => {
-                     let copy_constraint_bus_id=builder.new_bus_idx();
-                    
+                    let copy_constraint_bus_id = builder.new_bus_idx();
+
                     PlonkChip::new(
-                    precompile.clone(),
-                    offline_memory.clone(),
-                    self.base_config.clone(),
-                    shared_chips_pair.clone(),
-                    self.bus_map.clone(),
-                    copy_constraint_bus_id,
-                )
-                .into()},
+                        precompile.clone(),
+                        offline_memory.clone(),
+                        self.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        self.bus_map.clone(),
+                        copy_constraint_bus_id,
+                    )
+                    .into()
+                }
             };
 
             inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;
