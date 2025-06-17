@@ -19,8 +19,25 @@ where
     T: FieldElement,
 {
     let mut circuit_builder = CircuitBuilder::<T>::new();
+    let mut last_gate_id = circuit_builder.plonk_circuit.gates.len();
     for constraint in &machine.constraints {
+        println!("Processing constraint: {}", constraint.expr);
         circuit_builder.evaluate_expression(&constraint.expr, true);
+
+        let new_gates: &[Gate<_, _>] = &circuit_builder.plonk_circuit.gates[last_gate_id..];
+
+        for gate in new_gates {
+            println!("{}", gate);
+        }
+        
+        last_gate_id = circuit_builder.plonk_circuit.gates.len();
+
+        println!(
+            "gates length til now  {}",
+            circuit_builder.plonk_circuit.gates.len()
+        );
+
+        // println!("newly added gates til now: {}", circuit_builder.plonk_circuit.gates[circuit_builder.plonk_circuit.gates.len() - 1..]);
     }
 
     for bus_interaction in &machine.bus_interactions {
