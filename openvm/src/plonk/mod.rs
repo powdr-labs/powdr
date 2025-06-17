@@ -127,7 +127,6 @@ where
         Some(BusType::ExecutionBridge) => "execution",
         Some(BusType::PcLookup) => "pc",
         Some(BusType::TupleRangeChecker) => "tuple_range",
-        Some(BusType::Sha) => "sha",
         None => "none",
     }
 }

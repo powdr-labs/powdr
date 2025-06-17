@@ -49,10 +49,6 @@ pub fn add_bus_to_plonk_circuit<T>(
         TupleRangeChecker => {
             gates[0].q_range_tuple = T::ONE;
         }
-
-        _ => {
-            unimplemented!("bus interaction type is not implemented");
-        }
     }
 
     bus_interaction
