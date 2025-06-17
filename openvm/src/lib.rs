@@ -189,7 +189,6 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        // TODO: Check that this is safe to do given the caching we do
         VmConfig::<OpenVmField<BabyBearField>>::system_mut(self.sdk_config.config_mut())
     }
 
