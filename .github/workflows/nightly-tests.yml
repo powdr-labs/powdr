@@ -139,9 +139,8 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      # Commenting out just for faster testing of the Reth block below.
-      # - name: Run tests
-      #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      - name: Run tests
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
         run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --tag v1.1.2 cargo-openvm
@@ -150,7 +149,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: apc-cli-cache
+          ref: apc-cli
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
