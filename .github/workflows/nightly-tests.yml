@@ -143,6 +143,9 @@ jobs:
       # - name: Run tests
       #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
+      - name: Install cargo openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --tag v1.1.2 cargo-openvm
+
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
         with:
