@@ -146,7 +146,7 @@ jobs:
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
         with:
-          repository: https://github.com/powdr-labs/openvm-reth-benchmark
+          repository: powdr-labs/openvm-reth-benchmark
           ref: apc-cli
           path: openvm-reth-benchmark
 
