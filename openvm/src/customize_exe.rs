@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
-use crate::extraction_utils::SdkVmConfigWrapper;
+use crate::extraction_utils::OriginalVmConfig;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -70,9 +70,9 @@ pub fn customize(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> CompiledProgram<BabyBearField> {
-    let config_wrapper = SdkVmConfigWrapper::new(sdk_vm_config.clone());
-    let (airs, bus_map) =
-            (config_wrapper.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!"), config_wrapper.bus_map());
+    let config_wrapper = OriginalVmConfig::new(sdk_vm_config.clone());
+    let airs = config_wrapper.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let bus_map = config_wrapper.bus_map();
 
     // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
     // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
@@ -238,8 +238,8 @@ pub fn customize(
     }
 
     CompiledProgram {
-        vm_config: SpecializedConfig::new(config_wrapper, extensions, config.implementation),
         exe,
+        vm_config: SpecializedConfig::new(config_wrapper, extensions, config.implementation),
     }
 }
 

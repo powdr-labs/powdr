@@ -43,7 +43,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_constraints, SdkVmConfigWrapper};
+use crate::extraction_utils::{export_pil, get_constraints, OriginalVmConfig};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
 
@@ -113,7 +113,7 @@ pub enum PgoConfig {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "P::Field: Field")]
 pub struct SpecializedConfig<P: IntoOpenVm> {
-    pub sdk_config: SdkVmConfigWrapper,
+    pub sdk_config: OriginalVmConfig,
     powdr: PowdrExtension<P>,
 }
 
@@ -185,12 +185,12 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
     type Periphery = MyPeriphery<OpenVmField<BabyBearField>>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<OpenVmField<BabyBearField>>::system(&self.sdk_config.sdk_config)
+        VmConfig::<OpenVmField<BabyBearField>>::system(self.sdk_config.config())
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
         // TODO: Check that this is safe to do given the caching we do
-        VmConfig::<OpenVmField<BabyBearField>>::system_mut(&mut self.sdk_config.sdk_config)
+        VmConfig::<OpenVmField<BabyBearField>>::system_mut(self.sdk_config.config_mut())
     }
 
     fn create_chip_complex(
@@ -208,14 +208,14 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
 
 impl SpecializedConfig<BabyBearField> {
     fn new(
-        base_config: SdkVmConfigWrapper,
+        base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBearField>>,
         implementation: PrecompileImplementation,
     ) -> Self {
         let (airs, bus_map) = (base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!"), base_config.bus_map());
         let powdr_extension = PowdrExtension::new(
             precompiles,
-            base_config.sdk_config.clone(),
+            base_config.config().clone(),
             implementation,
             bus_map,
             airs,
@@ -532,7 +532,7 @@ pub fn prove(
     if let Some(segment_height) = segment_height {
         vm_config
             .sdk_config
-            .sdk_config
+            .config_mut()
             .system
             .config
             .segmentation_strategy = Arc::new(

@@ -43,14 +43,15 @@ type CachedChipComplex = Rc<
     >,
 >;
 
+/// A wrapper around the `SdkVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SdkVmConfigWrapper {
-    pub sdk_config: SdkVmConfig,
+pub struct OriginalVmConfig {
+    sdk_config: SdkVmConfig,
     #[serde(skip)]
     chip_complex: CachedChipComplex,
 }
 
-impl SdkVmConfigWrapper {
+impl OriginalVmConfig {
     pub fn new(sdk_config: SdkVmConfig) -> Self {
         Self {
             sdk_config,
@@ -58,7 +59,18 @@ impl SdkVmConfigWrapper {
         }
     }
 
-    pub fn chip_complex(
+    pub fn config(&self) -> &SdkVmConfig {
+        &self.sdk_config
+    }
+
+    pub fn config_mut(&mut self) -> &mut SdkVmConfig {
+        // Clear the chip complex cache when mutating the config
+        self.chip_complex.borrow_mut().take();
+        &mut self.sdk_config
+    }
+
+    /// Returns a reference to the chip complex, initializing it if it hasn't been created yet.
+    fn chip_complex(
         &self,
     ) -> Ref<VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>>
     {
@@ -74,6 +86,7 @@ impl SdkVmConfigWrapper {
         })
     }
 
+    /// Returns the chip complex, emptying the cache.
     pub fn take_chip_complex(
         &self,
     ) -> VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>
@@ -282,13 +295,13 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = SdkVmConfigWrapper::new(vm_config).bus_map();
+        let _ = OriginalVmConfig::new(vm_config).bus_map();
     }
 
     #[test]
     fn test_export_pil() {
         let writer = &mut Vec::new();
-        let base_config = SdkVmConfigWrapper::new(
+        let base_config = OriginalVmConfig::new(
             SdkVmConfig::builder()
                 .system(SdkSystemConfig::default())
                 .build(),
