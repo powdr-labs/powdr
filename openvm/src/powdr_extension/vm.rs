@@ -210,15 +210,20 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                     shared_chips_pair.clone(),
                 )
                 .into(),
-                PrecompileImplementation::PlonkChip => PlonkChip::new(
-                    precompile.clone(),
-                    self.airs.clone(),
-                    offline_memory.clone(),
-                    self.base_config.clone(),
-                    shared_chips_pair.clone(),
-                    self.bus_map.clone(),
-                )
-                .into(),
+                PrecompileImplementation::PlonkChip => {
+                    let copy_constraint_bus_id = builder.new_bus_idx();
+
+                    PlonkChip::new(
+                        precompile.clone(),
+                        self.airs.clone(),
+                        offline_memory.clone(),
+                        self.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        self.bus_map.clone(),
+                        copy_constraint_bus_id,
+                    )
+                    .into()
+                }
             };
 
             inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;

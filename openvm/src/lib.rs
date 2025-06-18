@@ -983,9 +983,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 16);
+        assert_eq!(m.width, 26);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 6);
+        assert_eq!(m.bus_interactions, 16);
     }
 
     #[test]
