@@ -36,7 +36,7 @@ pub fn air_stacking<P: IntoOpenVm>(
         })
     });
 
-    // create apc groups by number of columns
+    // group precompiles by number of columns
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<P>>> = Default::default();
     for pcp in extensions {
         let idx = f32::log(
@@ -47,25 +47,11 @@ pub fn air_stacking<P: IntoOpenVm>(
         groups.entry(idx).or_default().push(pcp);
     }
 
-    // sort each group by number of columns
-    groups.values_mut().for_each(|g| {
-        // assign largest pcp first
-        g.sort_by(|pcp1, pcp2| {
-            pcp2.machine
-                .unique_references()
-                .count()
-                .cmp(&pcp1.machine.unique_references().count())
-        });
-        let mut column_assigner = ColumnAssigner::default();
-        g.iter_mut().for_each(|ext| {
-            column_assigner.assign_precompile(ext);
-        });
-    });
-
     let mut result = vec![];
 
+    // transform each group into a stacked precompile
     for mut extensions in groups.into_values() {
-        // group of a single precompile, no stacking
+        // group has a single precompile, no stacking
         if extensions.len() == 1 {
             let precompile = extensions.pop().unwrap();
             tracing::debug!(
@@ -75,6 +61,20 @@ pub fn air_stacking<P: IntoOpenVm>(
             result.push(PowdrStackedPrecompile::new_single(precompile));
             continue;
         }
+
+        // handle largest precompile first
+        extensions.sort_by(|pcp1, pcp2| {
+            pcp2.machine
+                .unique_references()
+                .count()
+                .cmp(&pcp1.machine.unique_references().count())
+        });
+
+        // assign columns to the precompiles in this group
+        let mut column_assigner = ColumnAssigner::default();
+        extensions.iter_mut().for_each(|ext| {
+            column_assigner.assign_precompile(ext);
+        });
 
         let mut stacked_constraints = vec![];
         let mut interactions_by_machine = vec![];
@@ -101,7 +101,6 @@ pub fn air_stacking<P: IntoOpenVm>(
 
             // remap is_valid column in constraints and interactions
             let mut remapped = pcp.machine.clone();
-
             remapped.pre_visit_expressions_mut(&mut |expr| {
                 if let AlgebraicExpression::Reference(r) = expr {
                     assert!(r.id <= is_valid_start);
@@ -562,7 +561,6 @@ fn extend_if_no_conflicts(mappings: &mut BiMap<u64, u64>, new_mappings: BiMap<u6
 
 /// changes poly_id to match the order in which they are encountered in the expression.
 /// This allows us to compare two expressions for the same "structure".
-/// e.g., a+a == b+b and a+a != a+b
 fn expr_poly_id_by_order<P: IntoOpenVm>(
     mut expr: AlgebraicExpression<P>,
 ) -> AlgebraicExpression<P> {
@@ -601,85 +599,84 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
         // ids.
         // There may be multiple such constraints, so we try them all (as some
         // of the ids in the current constraint may already be assigned)
-
-        'outer: for c in &pcp.machine.constraints {
-            for pcp2 in self.pcps.iter() {
-                for c2 in &pcp2.machine.constraints {
-                    if has_same_structure(
-                        &expr_poly_id_by_order(c.expr.clone()),
-                        &expr_poly_id_by_order(c2.expr.clone()),
-                    ) {
-                        // Found the same structure, try to extend the column mapping
-                        let new_mappings = create_mapping(&c.expr, &c2.expr);
-                        if extend_if_no_conflicts(&mut mappings, new_mappings) {
-                            // we're done for this constraint
-                            continue 'outer;
-                        }
+        for c in &pcp.machine.constraints {
+            for c2 in self.pcps.iter().map(|pcp| pcp.machine.constraints.iter()).flatten() {
+                if has_same_structure(
+                    &expr_poly_id_by_order(c.expr.clone()),
+                    &expr_poly_id_by_order(c2.expr.clone()),
+                ) {
+                    // Found the same structure, try to extend the column mapping
+                    let new_mappings = create_mapping(&c.expr, &c2.expr);
+                    if extend_if_no_conflicts(&mut mappings, new_mappings) {
+                        // we're done for this constraint
+                        break;
                     }
                 }
             }
         }
 
         // do the same for bus interactions
-        'outer: for b in &pcp.machine.bus_interactions {
-            for pcp2 in self.pcps.iter() {
-                for b2 in &pcp2.machine.bus_interactions {
-                    if b.id == b2.id && b.args.len() == b2.args.len() {
-                        let all_args_same_structure =
-                            b.args.iter().zip_eq(b2.args.iter()).all(|(a1, a2)| {
-                                has_same_structure(
-                                    &expr_poly_id_by_order(a1.clone()),
-                                    &expr_poly_id_by_order(a2.clone()),
-                                )
-                            });
-                        if all_args_same_structure {
-                            for (arg1, arg2) in b.args.iter().zip_eq(b2.args.iter()) {
-                                let new_mappings = create_mapping(&arg1, &arg2);
-                                extend_if_no_conflicts(&mut mappings, new_mappings);
-                            }
-                            continue 'outer;
+        for b in &pcp.machine.bus_interactions {
+            for b2 in self.pcps.iter().map(|pcp| pcp.machine.bus_interactions.iter()).flatten() {
+                if b.id == b2.id && b.args.len() == b2.args.len() {
+                    let all_args_same_structure =
+                        b.args.iter().zip_eq(b2.args.iter()).all(|(a1, a2)| {
+                            has_same_structure(
+                                &expr_poly_id_by_order(a1.clone()),
+                                &expr_poly_id_by_order(a2.clone()),
+                            )
+                        });
+                    if all_args_same_structure {
+                        for (arg1, arg2) in b.args.iter().zip_eq(b2.args.iter()) {
+                            let new_mappings = create_mapping(&arg1, &arg2);
+                            extend_if_no_conflicts(&mut mappings, new_mappings);
                         }
+                        break;
                     }
                 }
             }
         }
 
-        // now we assign the columns to the PCP. When an id is not present in the mapping, use some other unused column
-        let mut curr_id = 0;
-        let mut new_poly_id = |old_id: u64| {
-            if let Some(id) = mappings.get_by_left(&old_id) {
-                return *id;
-            }
-            // find a new column not yet used in the mapping
-            while mappings.get_by_right(&curr_id).is_some() {
-                curr_id += 1;
-            }
-            assert!(
-                mappings.get_by_right(&curr_id).is_none(),
-                "New id {} already exists in mappings: {:?}",
-                curr_id,
-                mappings
-            );
-            assert!(!mappings.contains_left(&old_id));
-            let id = curr_id;
-            mappings.insert(old_id, id);
-            curr_id += 1;
-            id
-        };
-
-        pcp.machine.pre_visit_expressions_mut(&mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                r.id = new_poly_id(r.id);
-            }
-        });
-        pcp.original_instructions.iter_mut().for_each(|instr| {
-            instr.subs.iter_mut().for_each(|sub| {
-                *sub = new_poly_id(*sub);
-            });
-        });
-
-        pcp.is_valid_column.id = new_poly_id(pcp.is_valid_column.id);
-
+        assign_columns_from_mapping(pcp, mappings);
         self.pcps.push(pcp.clone());
     }
+}
+
+/// Reasign precompile columns taking into acount the given mapping.
+/// When not present, use an unused column id (starting from 0).
+fn assign_columns_from_mapping<P: IntoOpenVm>(pcp: &mut PowdrPrecompile<P>, mut mapping: BiMap<u64, u64>) {
+    let mut curr_id = 0;
+    let mut new_poly_id = |old_id: u64| {
+        if let Some(id) = mapping.get_by_left(&old_id) {
+            return *id;
+        }
+        // find a new column not yet used in the mapping
+        while mapping.get_by_right(&curr_id).is_some() {
+            curr_id += 1;
+        }
+        assert!(
+            mapping.get_by_right(&curr_id).is_none(),
+            "New id {} already exists in mapping: {:?}",
+            curr_id,
+            mapping
+        );
+        assert!(!mapping.contains_left(&old_id));
+        let id = curr_id;
+        mapping.insert(old_id, id);
+        curr_id += 1;
+        id
+    };
+
+    pcp.machine.pre_visit_expressions_mut(&mut |expr| {
+        if let AlgebraicExpression::Reference(r) = expr {
+            r.id = new_poly_id(r.id);
+        }
+    });
+    pcp.original_instructions.iter_mut().for_each(|instr| {
+        instr.subs.iter_mut().for_each(|sub| {
+            *sub = new_poly_id(*sub);
+        });
+    });
+
+    pcp.is_valid_column.id = new_poly_id(pcp.is_valid_column.id);
 }
