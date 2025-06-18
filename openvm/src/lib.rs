@@ -31,6 +31,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use strum::{Display, EnumString};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -104,6 +105,17 @@ pub enum PgoConfig {
     Instruction(HashMap<u32, u32>),
     /// disable PGO
     #[default]
+    None,
+}
+
+#[derive(Copy, Clone, Debug, EnumString, Display)]
+#[strum(serialize_all = "lowercase")]
+pub enum PgoType {
+    /// cost = cells saved per apc * times executed
+    Cell,
+    /// cost = instruction per apc * times executed
+    Instruction,
+    /// disable PGO
     None,
 }
 
