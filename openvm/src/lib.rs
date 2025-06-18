@@ -49,7 +49,6 @@ use crate::traits::OpenVmField;
 mod air_builder;
 pub mod bus_map;
 pub mod extraction_utils;
-mod instruction_blacklist;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
 mod utils;
@@ -57,7 +56,7 @@ mod utils;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
-pub use instruction_blacklist::instruction_blacklist;
+pub use customize_exe::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
@@ -355,18 +354,18 @@ pub fn compile_exe(
     let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
     let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
 
-    let blacklist = instruction_blacklist();
+    let allowlist = instruction_allowlist();
     let used_instructions = original_program
         .exe
         .program
         .instructions_and_debug_infos
         .iter()
         .map(|instr| instr.as_ref().unwrap().0.opcode)
-        .filter(|opcode| !blacklist.contains(&opcode.as_usize()))
+        .filter(|opcode| allowlist.contains(&opcode.as_usize()))
         .collect();
     let (airs, bus_map) =
         get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions)
-            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the allowlist!");
 
     let sdk_vm_config = original_program.sdk_vm_config.clone();
 
