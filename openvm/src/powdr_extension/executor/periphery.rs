@@ -18,7 +18,7 @@ pub struct PowdrPeripheryInstances {
 
 #[derive(Clone)]
 pub struct SharedPeripheryChips {
-    pub bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
+    pub bitwise_lookup_8: Option<SharedBitwiseOperationLookupChip<8>>,
     pub range_checker: SharedVariableRangeCheckerChip,
     pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
 }
@@ -26,12 +26,12 @@ pub struct SharedPeripheryChips {
 impl PowdrPeripheryInstances {
     pub(crate) fn new(
         range_checker: &SharedVariableRangeCheckerChip,
-        bitwise_8: &SharedBitwiseOperationLookupChip<8>,
+        bitwise_8: Option<&SharedBitwiseOperationLookupChip<8>>,
         tuple_range_checker: Option<&SharedRangeTupleCheckerChip<2>>,
     ) -> Self {
         Self {
             real: SharedPeripheryChips {
-                bitwise_lookup_8: bitwise_8.clone(),
+                bitwise_lookup_8: bitwise_8.cloned(),
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.cloned(),
             },
@@ -39,7 +39,8 @@ impl PowdrPeripheryInstances {
             // If we did share, we'd have to roll back the side effects of execution and apply the side effects from the apc air onto the main periphery.
             // By not sharing them, we can throw away the dummy ones after execution and only apply the side effects from the apc air onto the main periphery.
             dummy: SharedPeripheryChips {
-                bitwise_lookup_8: SharedBitwiseOperationLookupChip::new(bitwise_8.bus()),
+                bitwise_lookup_8: bitwise_8
+                    .map(|bitwise_8| SharedBitwiseOperationLookupChip::new(bitwise_8.bus())),
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.map(|tuple_range_checker| {
                     SharedRangeTupleCheckerChip::new(*tuple_range_checker.bus())
@@ -68,10 +69,12 @@ where
         let mut inventory = openvm_circuit::arch::VmInventory::new();
 
         // Sanity check that the shared chips are not already present in the builder.
-        assert!(builder
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .is_empty());
-        inventory.add_periphery_chip(self.bitwise_lookup_8.clone());
+        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
+            assert!(builder
+                .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+                .is_empty());
+            inventory.add_periphery_chip(bitwise_lookup_8.clone());
+        }
 
         if let Some(tuple_checker) = &self.tuple_range_checker {
             assert!(builder
@@ -95,7 +98,7 @@ impl SharedPeripheryChips {
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
         match bus_id {
-            id if id == self.bitwise_lookup_8.bus().inner.index => {
+            id if Some(id) == self.bitwise_lookup_8.as_ref().map(|c| c.bus().inner.index) => {
                 // bitwise operation lookup
                 // interpret the arguments, see `Air<AB> for BitwiseOperationLookupAir<NUM_BITS>`
                 let [x, y, x_xor_y, selector] = [
@@ -108,10 +111,10 @@ impl SharedPeripheryChips {
                 for _ in 0..mult {
                     match selector {
                         0 => {
-                            self.bitwise_lookup_8.request_range(x, y);
+                            self.bitwise_lookup_8.as_ref().unwrap().request_range(x, y);
                         }
                         1 => {
-                            let res = self.bitwise_lookup_8.request_xor(x, y);
+                            let res = self.bitwise_lookup_8.as_ref().unwrap().request_xor(x, y);
                             debug_assert_eq!(res, x_xor_y);
                         }
                         _ => {

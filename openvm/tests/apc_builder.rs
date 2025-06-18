@@ -1,14 +1,10 @@
-use openvm_instructions::VmOpcode;
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::{
-    bus_map::default_openvm_bus_map, extraction_utils::get_airs_and_bus_map, OPENVM_DEGREE_BOUND,
-    POWDR_OPCODE,
-};
+use powdr_openvm::extraction_utils::OriginalVmConfig;
+use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use pretty_assertions::assert_eq;
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -21,12 +17,10 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         .io(Default::default())
         .build();
 
-    let program_instructions = program
-        .iter()
-        .map(|instr| VmOpcode::from_usize(instr.opcode))
-        .collect::<HashSet<_>>();
+    let original_config = OriginalVmConfig::new(sdk_vm_config);
 
-    let (airs, bus_map) = get_airs_and_bus_map(sdk_vm_config, &program_instructions).unwrap();
+    let airs = original_config.airs().unwrap();
+    let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
         instruction_machines: &airs,
