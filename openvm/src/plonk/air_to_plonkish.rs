@@ -19,8 +19,25 @@ where
     T: FieldElement,
 {
     let mut circuit_builder = CircuitBuilder::<T>::new();
+    let mut last_gate_id = circuit_builder.plonk_circuit.gates.len();
     for constraint in &machine.constraints {
+        println!("Processing constraint: {}", constraint.expr);
         circuit_builder.evaluate_expression(&constraint.expr, true);
+
+        let new_gates: &[Gate<_, _>] = &circuit_builder.plonk_circuit.gates[last_gate_id..];
+
+        for gate in new_gates {
+            println!("{}", gate);
+        }
+
+        last_gate_id = circuit_builder.plonk_circuit.gates.len();
+
+        println!(
+            "gates length til now  {}",
+            circuit_builder.plonk_circuit.gates.len()
+        );
+
+        // println!("newly added gates til now: {}", circuit_builder.plonk_circuit.gates[circuit_builder.plonk_circuit.gates.len() - 1..]);
     }
 
     for bus_interaction in &machine.bus_interactions {
@@ -120,18 +137,63 @@ where
                 let (q_o, c) = self.make_output(assert_zero);
                 match op {
                     AlgebraicBinaryOperator::Add => {
-                        if let AlgebraicExpression::Number(n) = left.as_ref() {
-                            q_const += *n;
-                        } else {
-                            q_l = T::ONE;
-                            a = self.evaluate_expression(left, false);
-                        }
+                        if let (
+                            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                                left: inner_left_left,
+                                op: AlgebraicBinaryOperator::Mul,
+                                right: inner_left_right,
+                            }),
+                            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                                left: inner_right_left,
+                                op: AlgebraicBinaryOperator::Mul,
+                                right: inner_right_right,
+                            }),
+                        ) = (left.as_ref(), right.as_ref())
+                        {
+                            if let (
+                                AlgebraicExpression::Number(n_left),
+                                AlgebraicExpression::Reference(poly_left),
+                                AlgebraicExpression::Number(n_right),
+                                AlgebraicExpression::Reference(poly_right),
+                            ) = (
+                                inner_left_left.as_ref(),
+                                inner_left_right.as_ref(),
+                                inner_right_left.as_ref(),
+                                inner_right_right.as_ref(),
+                            ) {
+                                q_l = *n_left;
+                                a = Variable::Witness(poly_left.clone());
+                                q_r = *n_right;
+                                b = Variable::Witness(poly_right.clone());
+                            } else {
+                                if let AlgebraicExpression::Number(n) = left.as_ref() {
+                                    q_const += *n;
+                                } else {
+                                    q_l = T::ONE;
+                                    a = self.evaluate_expression(left, false);
+                                }
 
-                        if let AlgebraicExpression::Number(n) = right.as_ref() {
-                            q_const += *n;
+                                if let AlgebraicExpression::Number(n) = right.as_ref() {
+                                    q_const += *n;
+                                } else {
+                                    q_r = T::ONE;
+                                    b = self.evaluate_expression(right, false);
+                                }
+                            }
                         } else {
-                            q_r = T::ONE;
-                            b = self.evaluate_expression(right, false);
+                            if let AlgebraicExpression::Number(n) = left.as_ref() {
+                                q_const += *n;
+                            } else {
+                                q_l = T::ONE;
+                                a = self.evaluate_expression(left, false);
+                            }
+
+                            if let AlgebraicExpression::Number(n) = right.as_ref() {
+                                q_const += *n;
+                            } else {
+                                q_r = T::ONE;
+                                b = self.evaluate_expression(right, false);
+                            }
                         }
                     }
                     AlgebraicBinaryOperator::Sub => {
