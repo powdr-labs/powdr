@@ -93,11 +93,6 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
-fn create_debug_file() -> std::io::BufWriter<File> {
-    let file = File::create("debug.pil").unwrap();
-    std::io::BufWriter::new(file)
-}
-
 fn run_command(command: Commands) {
     let guest_opts = GuestOptions::default();
     match command {
