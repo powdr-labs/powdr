@@ -1,11 +1,11 @@
 use std::collections::{BTreeSet, HashMap};
 
 use powdr_autoprecompiles::{
-    legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType},
+    expression::{AlgebraicExpression, AlgebraicReference},
     simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
-use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::powdr::UniqueReferences;
 
 use powdr_expression::{
     visitors::ExpressionVisitable, AlgebraicBinaryOperation, AlgebraicBinaryOperator,
@@ -39,7 +39,7 @@ pub fn air_stacking<P: IntoOpenVm>(
     let mut groups: HashMap<usize, Vec<PowdrPrecompile<P>>> = Default::default();
     for pcp in extensions {
         let idx = f32::log(
-            pcp.machine.unique_columns().count() as f32,
+            pcp.machine.unique_references().count() as f32,
             chip_stacking_log,
         )
         .floor() as usize;
@@ -51,9 +51,9 @@ pub fn air_stacking<P: IntoOpenVm>(
         // assign largest pcp first
         g.sort_by(|pcp1, pcp2| {
             pcp2.machine
-                .unique_columns()
+                .unique_references()
                 .count()
-                .cmp(&pcp1.machine.unique_columns().count())
+                .cmp(&pcp1.machine.unique_references().count())
         });
         let mut column_assigner = ColumnAssigner::default();
         g.iter_mut().for_each(|ext| {
@@ -103,29 +103,24 @@ pub fn air_stacking<P: IntoOpenVm>(
 
             remapped.pre_visit_expressions_mut(&mut |expr| {
                 if let AlgebraicExpression::Reference(r) = expr {
-                    assert!(r.poly_id.id <= is_valid_start);
-                    if r.poly_id == pcp.is_valid_column.id {
+                    assert!(r.id <= is_valid_start);
+                    if r.id == pcp.is_valid_column.id {
                         // we assume each pcp to have a specific column named "is_valid"
-                        assert!(r.name == "is_valid");
-                        r.poly_id.id = is_valid_new_id;
-                        r.name = format!("is_valid_{}", pcp.opcode.global_opcode().as_usize());
+                        assert!(*r.name == "is_valid");
+                        r.id = is_valid_new_id;
+                        r.name = format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()).into();
                     } else {
-                        // we need to rename columns here because `unique_columns` relies on both `Column::name` and `Column::id`
-                        r.name = format!("col_{}", r.poly_id.id);
+                        r.name = format!("col_{}", r.id).into();
                     }
                 }
             });
 
             // set the is valid column in the original precompile
-            pcp.is_valid_column.id.id = is_valid_new_id;
+            pcp.is_valid_column.id = is_valid_new_id;
 
             let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-                name: format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()),
-                poly_id: PolyID {
-                    id: is_valid_new_id,
-                    ptype: PolynomialType::Committed,
-                },
-                next: false,
+                name: format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()).into(),
+                id: is_valid_new_id,
             });
 
             // guard interaction payloads so they can be merged later
@@ -444,7 +439,7 @@ fn has_same_structure<P: IntoOpenVm>(
             }),
         ) => op1 == op2 && has_same_structure(expr1, expr2),
         (AlgebraicExpression::Reference(r1), AlgebraicExpression::Reference(r2)) => {
-            r1.poly_id.id == r2.poly_id.id
+            r1.id == r2.id
         }
         (AlgebraicExpression::Number(n1), AlgebraicExpression::Number(n2)) => n1 == n2,
         _ => false,
@@ -512,7 +507,7 @@ fn create_mapping<P: IntoOpenVm>(
             }
             (AlgebraicExpression::Reference(from), AlgebraicExpression::Reference(to)) => {
                 let mut mappings = BiMap::new();
-                mappings.insert(from.poly_id.id, to.poly_id.id);
+                mappings.insert(from.id, to.id);
                 mappings
             }
             _ => BiMap::new(),
@@ -557,9 +552,9 @@ fn expr_poly_id_by_order<P: IntoOpenVm>(
     };
     expr.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
-            r.poly_id.id = new_poly_id(r.poly_id.id);
+            r.id = new_poly_id(r.id);
             // this is just useful for printing
-            r.name = format!("col_{}", r.poly_id.id);
+            r.name = format!("col_{}", r.id).into();
         }
     });
     expr
@@ -649,9 +644,7 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
 
         pcp.machine.pre_visit_expressions_mut(&mut |expr| {
             if let AlgebraicExpression::Reference(r) = expr {
-                if r.poly_id.ptype == PolynomialType::Committed {
-                    r.poly_id.id = new_poly_id(r.poly_id.id);
-                }
+                r.id = new_poly_id(r.id);
             }
         });
         pcp.original_instructions.iter_mut().for_each(|instr| {
@@ -660,7 +653,7 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
             });
         });
 
-        pcp.is_valid_column.id.id = new_poly_id(pcp.is_valid_column.id.id);
+        pcp.is_valid_column.id = new_poly_id(pcp.is_valid_column.id);
 
         self.pcps.push(pcp.clone());
     }

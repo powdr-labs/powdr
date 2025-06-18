@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
-use powdr_autoprecompiles::legacy_expression::{AlgebraicExpression, AlgebraicReference};
+use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -206,9 +206,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::bus_map::default_openvm_bus_map;
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::{c, var};
-    use crate::BusMap;
     use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use pretty_assertions::assert_eq;
 
@@ -216,7 +216,7 @@ mod tests {
     fn test_air_to_plonkish() {
         let x = var("x", 0);
         let y = var("y", 1);
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
 
         let expr = -(x.clone() * y.clone() - (-x.clone() * (x.clone() + y.clone())));
         let machine = SymbolicMachine {
@@ -239,7 +239,7 @@ bus: none, -tmp_0 = 0
     #[test]
     fn only_constants() {
         let expr = c(4) + c(2) * (c(3) - c(5));
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
@@ -257,7 +257,7 @@ bus: none, tmp_0 + 4 = 0
     #[test]
     fn single_variable() {
         let expr = var("x", 0);
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
@@ -274,7 +274,7 @@ bus: none, tmp_0 + 4 = 0
     fn constant_and_variables() {
         let x = var("x", 0);
         let y = var("y", 1);
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
         let expr = -(c(3) - c(2) * x.clone() * y.clone()) + c(1);
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
@@ -295,7 +295,7 @@ bus: none, tmp_0 + 1 = 0
     #[test]
     fn negative_number() {
         let expr = -c(3);
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
@@ -314,7 +314,7 @@ bus: none, -tmp_0 = 0
         let x = var("x", 0);
         let y = var("y", 1);
         let expr = x.clone() - (-y.clone());
-        let bus_map = BusMap::openvm_base();
+        let bus_map = default_openvm_bus_map();
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],

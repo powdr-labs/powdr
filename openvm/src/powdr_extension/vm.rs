@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 
 use derive_more::From;
+use powdr_autoprecompiles::expression::AlgebraicReference;
 
+use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -24,13 +26,11 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     Chip,
 };
-use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
 use crate::{BusMap, PrecompileImplementation};
 
-use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
@@ -74,7 +74,7 @@ pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
-    pub is_valid_column: Column,
+    pub is_valid_column: AlgebraicReference,
 }
 
 impl<P: IntoOpenVm> PowdrPrecompile<P> {
@@ -84,7 +84,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         machine: SymbolicMachine<P>,
         original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         original_airs: BTreeMap<usize, SymbolicMachine<P>>,
-        is_valid_column: Column,
+        is_valid_column: AlgebraicReference,
     ) -> Self {
         Self {
             name,
@@ -214,16 +214,17 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             .cloned();
 
         for stacked in &self.precompiles {
+
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair =
+            PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
+
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     stacked.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
+                    shared_chips_pair.clone(),
                 )
                 .into(),
                 PrecompileImplementation::PlonkChip => {
@@ -235,11 +236,7 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
                         precompile.clone(),
                         offline_memory.clone(),
                         self.base_config.clone(),
-                        SharedChips::new(
-                            bitwise_lookup.clone(),
-                            range_checker.clone(),
-                            tuple_range_checker.cloned(),
-                        ),
+                        shared_chips_pair.clone(),
                         self.bus_map.clone(),
                     )
                     .into()

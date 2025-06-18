@@ -9,6 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
+    effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
@@ -27,6 +28,7 @@ pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
+#[derive(Clone, Default)]
 pub struct IndexedConstraintSystem<T: FieldElement, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
@@ -59,6 +61,10 @@ impl<T: FieldElement, V> From<IndexedConstraintSystem<T, V>> for ConstraintSyste
 }
 
 impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
+        &self.constraint_system
+    }
+
     pub fn algebraic_constraints(&self) -> &[QuadraticSymbolicExpression<T, V>] {
         &self.constraint_system.algebraic_constraints
     }
@@ -71,6 +77,127 @@ impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
     /// constraints and all expressions in bus interactions.
     pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
         self.constraint_system.expressions()
+    }
+
+    /// Removes all constraints that do not fulfill the predicate.
+    pub fn retain_algebraic_constraints(
+        &mut self,
+        mut f: impl FnMut(&QuadraticSymbolicExpression<T, V>) -> bool,
+    ) {
+        retain(
+            &mut self.constraint_system.algebraic_constraints,
+            &mut self.variable_occurrences,
+            &mut f,
+            ConstraintSystemItem::AlgebraicConstraint,
+        );
+    }
+
+    /// Removes all bus interactions that do not fulfill the predicate.
+    pub fn retain_bus_interactions(
+        &mut self,
+        mut f: impl FnMut(&BusInteraction<QuadraticSymbolicExpression<T, V>>) -> bool,
+    ) {
+        retain(
+            &mut self.constraint_system.bus_interactions,
+            &mut self.variable_occurrences,
+            &mut f,
+            ConstraintSystemItem::BusInteraction,
+        );
+    }
+}
+
+/// Behaves like `list.retain(f)` but also updates the variable occurrences
+/// in `occurrences`. Note that `constraint_kind_constructor` is used to
+/// create the `ConstraintSystemItem` for the occurrences, so it should
+/// match the type of the items in `list`.
+fn retain<V, Item>(
+    list: &mut Vec<Item>,
+    occurrences: &mut HashMap<V, Vec<ConstraintSystemItem>>,
+    mut f: impl FnMut(&Item) -> bool,
+    constraint_kind_constructor: impl Fn(usize) -> ConstraintSystemItem + Copy,
+) {
+    let mut counter = 0usize;
+    let mut replacement_map = vec![];
+    list.retain(|c| {
+        let retain = f(c);
+        if retain {
+            replacement_map.push(Some(counter));
+            counter += 1;
+        } else {
+            replacement_map.push(None);
+        }
+        retain
+    });
+    assert_eq!(counter, list.len());
+    // We call it once on zero just to find out which type it returns
+    // so we know which one to use in the match below.
+    let is_algebraic_constraint = matches!(
+        constraint_kind_constructor(0),
+        ConstraintSystemItem::AlgebraicConstraint(_)
+    );
+    occurrences.values_mut().for_each(|occurrences| {
+        *occurrences = occurrences
+            .iter_mut()
+            .filter_map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) if is_algebraic_constraint => {
+                    replacement_map[*i].map(constraint_kind_constructor)
+                }
+                ConstraintSystemItem::BusInteraction(i) if !is_algebraic_constraint => {
+                    replacement_map[*i].map(constraint_kind_constructor)
+                }
+                ConstraintSystemItem::AlgebraicConstraint(_)
+                | ConstraintSystemItem::BusInteraction(_) => Some(*item),
+            })
+            .collect();
+    });
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
+    /// Adds new algebraic constraints to the system.
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = QuadraticSymbolicExpression<T, V>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: constraints.into_iter().collect(),
+            bus_interactions: Vec::new(),
+        });
+    }
+
+    /// Adds new bus interactions to the system.
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: bus_interactions.into_iter().collect(),
+        });
+    }
+
+    /// Extends the constraint system by the constraints of another system.
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+        let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
+        let bus_interactions_count = self.constraint_system.bus_interactions.len();
+        // Compute the occurrences of the variables in the new constraints,
+        // but update their indices.
+        // Iterating over hash map here is fine because we are just extending another hash map.
+        #[allow(clippy::iter_over_hash_type)]
+        for (variable, occurrences) in variable_occurrences(&system) {
+            let occurrences = occurrences.into_iter().map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => {
+                    ConstraintSystemItem::AlgebraicConstraint(i + algebraic_constraint_count)
+                }
+                ConstraintSystemItem::BusInteraction(i) => {
+                    ConstraintSystemItem::BusInteraction(i + bus_interactions_count)
+                }
+            });
+            self.variable_occurrences
+                .entry(variable)
+                .or_default()
+                .extend(occurrences);
+        }
+        self.constraint_system.extend(system)
     }
 }
 
@@ -104,6 +231,17 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
         {
             substitute_by_known_in_item(&mut self.constraint_system, *item, variable, substitution);
         }
+    }
+
+    pub fn apply_bus_field_assignment(
+        &mut self,
+        interaction_index: usize,
+        field_index: usize,
+        value: T,
+    ) {
+        let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
+        let field = bus_interaction.fields_mut().nth(field_index).unwrap();
+        *field = value.into();
     }
 
     /// Substitute an unknown variable by a QuadraticSymbolicExpression in the whole system.
@@ -140,24 +278,34 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     }
 }
 
+/// The provided assignments lead to a contradiction in the constraint system.
+pub struct ContradictingConstraintError;
+
 impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSystem<T, V> {
-    /// Given a set of variable assignments, checks if they violate any constraint.
-    /// Note that this might return false negatives, because it does not propagate any values.
-    pub fn is_assignment_conflicting(
+    /// Given a list of assignments, tries to extend it with more assignments, based on the
+    /// constraints in the constraint system.
+    /// Fails if any of the assignments *directly* contradicts any of the constraints.
+    /// Note that getting an OK(_) here does not mean that there is no contradiction, as
+    /// this function only does one step of the derivation.
+    pub fn derive_more_assignments(
         &self,
-        assignments: &BTreeMap<V, T>,
+        assignments: BTreeMap<V, T>,
         range_constraints: &impl RangeConstraintProvider<T, V>,
         bus_interaction_handler: &impl BusInteractionHandler<T>,
-    ) -> bool {
-        self.constraints_referencing_variables(assignments.keys().cloned())
-            .any(|constraint| match constraint {
+    ) -> Result<BTreeMap<V, T>, ContradictingConstraintError> {
+        let effects = self
+            .constraints_referencing_variables(assignments.keys().cloned())
+            .map(|constraint| match constraint {
                 ConstraintRef::AlgebraicConstraint(identity) => {
                     let mut identity = identity.clone();
                     for (variable, value) in assignments.iter() {
                         identity
                             .substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
                     }
-                    identity.solve(range_constraints).is_err()
+                    identity
+                        .solve(range_constraints)
+                        .map(|result| result.effects)
+                        .map_err(|_| ContradictingConstraintError)
                 }
                 ConstraintRef::BusInteraction(bus_interaction) => {
                     let mut bus_interaction = bus_interaction.clone();
@@ -171,8 +319,32 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display> IndexedConstraintSys
                     }
                     bus_interaction
                         .solve(bus_interaction_handler, range_constraints)
-                        .is_err()
+                        .map_err(|_| ContradictingConstraintError)
                 }
+            })
+            // Early return if any constraint leads to a contradiction.
+            .collect::<Result<Vec<_>, _>>()?;
+
+        effects
+            .into_iter()
+            .flatten()
+            .filter_map(|effect| {
+                if let Effect::Assignment(variable, SymbolicExpression::Concrete(value)) = effect {
+                    Some((variable, value))
+                } else {
+                    None
+                }
+            })
+            .chain(assignments)
+            // Union of all unique assignments, but returning an error if there are any contradictions.
+            .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
+                if let Some(existing) = map.insert(variable, value) {
+                    if existing != value {
+                        // Duplicate assignment with different value.
+                        return Err(ContradictingConstraintError);
+                    }
+                }
+                Ok(map)
             })
     }
 }
@@ -245,6 +417,12 @@ fn substitute_by_unknown_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     }
 }
 
+impl<T: FieldElement, V: Clone + Ord + Display> Display for IndexedConstraintSystem<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.constraint_system)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use powdr_number::GoldilocksField;
@@ -293,10 +471,7 @@ mod tests {
 
         s.substitute_by_unknown(&"x", &Qse::from_unknown_variable("z"));
 
-        assert_eq!(
-            format_system(&s),
-            "y + z  |  0  |  y + -z  |  z: y * [y, z]"
-        );
+        assert_eq!(format_system(&s), "y + z  |  0  |  y - z  |  z: y * [y, z]");
 
         s.substitute_by_unknown(
             &"z",
@@ -306,7 +481,80 @@ mod tests {
 
         assert_eq!(
             format_system(&s),
-            "x + y + 7  |  0  |  -x + y + -7  |  x + 7: y * [y, x + 7]"
+            "x + y + 7  |  0  |  -(x - y + 7)  |  x + 7: y * [y, x + 7]"
         );
+    }
+
+    #[test]
+    fn retain_update_index() {
+        type Qse = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
+        let x = Qse::from_unknown_variable("x");
+        let y = Qse::from_unknown_variable("y");
+        let z = Qse::from_unknown_variable("z");
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
+            algebraic_constraints: vec![
+                x.clone() + y.clone(),
+                x.clone() - z.clone(),
+                y.clone() - z.clone(),
+            ],
+            bus_interactions: vec![
+                BusInteraction {
+                    bus_id: x.clone(),
+                    payload: vec![y.clone(), z],
+                    multiplicity: y,
+                },
+                BusInteraction {
+                    bus_id: x.clone(),
+                    payload: vec![x.clone(), x.clone()],
+                    multiplicity: x,
+                },
+            ],
+        }
+        .into();
+
+        s.retain_algebraic_constraints(|c| !c.referenced_unknown_variables().any(|v| *v == "y"));
+        s.retain_bus_interactions(|b| {
+            !b.fields()
+                .any(|e| e.referenced_unknown_variables().any(|v| *v == "y"))
+        });
+
+        assert_eq!(
+            s.constraints_referencing_variables(["y"].into_iter())
+                .count(),
+            0
+        );
+        let items_with_x = s
+            .constraints_referencing_variables(["x"].into_iter())
+            .map(|c| match c {
+                ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    format!(
+                        "{}: {} * [{}]",
+                        bus_interaction.bus_id,
+                        bus_interaction.multiplicity,
+                        bus_interaction.payload.iter().format(", ")
+                    )
+                }
+            })
+            .format(", ")
+            .to_string();
+        assert_eq!(items_with_x, "x - z, x: x * [x, x]");
+
+        let items_with_z = s
+            .constraints_referencing_variables(["z"].into_iter())
+            .map(|c| match c {
+                ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    format!(
+                        "{}: {} * [{}]",
+                        bus_interaction.bus_id,
+                        bus_interaction.multiplicity,
+                        bus_interaction.payload.iter().format(", ")
+                    )
+                }
+            })
+            .format(", ")
+            .to_string();
+        assert_eq!(items_with_z, "x - z");
     }
 }

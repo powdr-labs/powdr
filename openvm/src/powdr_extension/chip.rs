@@ -5,7 +5,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{traits::OpenVmField, utils::algebraic_to_symbolic, IntoOpenVm};
+use crate::{
+    powdr_extension::executor::PowdrPeripheryInstances, traits::OpenVmField,
+    utils::algebraic_to_symbolic, IntoOpenVm,
+};
 
 use super::{executor::PowdrExecutor, PowdrStackedPrecompile};
 use itertools::Itertools;
@@ -14,10 +17,6 @@ use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
     system::memory::OfflineMemory,
     utils::next_power_of_two_or_zero,
-};
-use openvm_circuit_primitives::{
-    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
-    var_range::SharedVariableRangeCheckerChip,
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_sdk::config::SdkVmConfig;
@@ -42,8 +41,8 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::{
-    legacy_expression::AlgebraicExpression,
-    powdr::{Column, UniqueColumns},
+    expression::{AlgebraicExpression, AlgebraicReference},
+    powdr::UniqueReferences,
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,96 +53,12 @@ pub struct PowdrChip<P: IntoOpenVm> {
     pub air: Arc<PowdrAir<P>>,
 }
 
-/// The shared chips which can be used by the PowdrChip.
-#[derive(Clone)]
-pub struct SharedChips {
-    bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
-    pub range_checker: SharedVariableRangeCheckerChip,
-    tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
-}
-
-impl SharedChips {
-    pub fn new(
-        bitwise_lookup_8: SharedBitwiseOperationLookupChip<8>,
-        range_checker: SharedVariableRangeCheckerChip,
-        tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
-    ) -> Self {
-        Self {
-            bitwise_lookup_8,
-            range_checker,
-            tuple_range_checker,
-        }
-    }
-}
-
-impl SharedChips {
-    /// Sends concrete values to the shared chips using a given bus id.
-    /// Panics if the bus id doesn't match any of the chips' bus ids.
-    pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
-        match bus_id {
-            id if id == self.bitwise_lookup_8.bus().inner.index => {
-                // bitwise operation lookup
-                // interpret the arguments, see `Air<AB> for BitwiseOperationLookupAir<NUM_BITS>`
-                let [x, y, x_xor_y, selector] = [
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                ];
-
-                for _ in 0..mult {
-                    match selector {
-                        0 => {
-                            self.bitwise_lookup_8.request_range(x, y);
-                        }
-                        1 => {
-                            let res = self.bitwise_lookup_8.request_xor(x, y);
-                            debug_assert_eq!(res, x_xor_y);
-                        }
-                        _ => {
-                            unreachable!("Invalid selector");
-                        }
-                    }
-                }
-            }
-            id if id == self.range_checker.bus().index() => {
-                // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
-                let [value, max_bits] = [args.next().unwrap(), args.next().unwrap()];
-
-                for _ in 0..mult {
-                    self.range_checker.add_count(value, max_bits as usize);
-                }
-            }
-            id if Some(id)
-                == self
-                    .tuple_range_checker
-                    .as_ref()
-                    .map(|c| c.bus().inner.index) =>
-            {
-                // tuple range checker
-                // We pass a slice. It is checked inside `add_count`.
-                let args = args.collect_vec();
-                for _ in 0..mult {
-                    self.tuple_range_checker.as_ref().unwrap().add_count(&args);
-                }
-            }
-            0..=2 => {
-                // execution bridge, memory, pc lookup
-                // do nothing
-            }
-            _ => {
-                unreachable!("Bus interaction {} not implemented", bus_id);
-            }
-        }
-    }
-}
-
 impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
         precompile: PowdrStackedPrecompile<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
-        periphery: SharedChips,
+        periphery: PowdrPeripheryInstances,
     ) -> Self {
         let air: PowdrAir<P> = PowdrAir::new(precompile.machine);
         let name = format!(
@@ -288,7 +203,7 @@ where
 
 pub struct PowdrAir<P> {
     /// The columns in arbitrary order
-    columns: Vec<Column>,
+    columns: Vec<AlgebraicReference>,
     /// The mapping from poly_id id to the index in the list of columns.
     /// The values are always unique and contiguous
     column_index_by_poly_id: BTreeMap<u64, usize>,
@@ -297,7 +212,7 @@ pub struct PowdrAir<P> {
 
 impl<P: IntoOpenVm> ColumnsAir<OpenVmField<P>> for PowdrAir<P> {
     fn columns(&self) -> Option<Vec<String>> {
-        Some(self.columns.iter().map(|c| c.name.clone()).collect())
+        Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
     }
 }
 
@@ -352,7 +267,7 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct SymbolicMachine<F> {
-    columns: Vec<Column>,
+    columns: Vec<AlgebraicReference>,
     constraints: Vec<SymbolicConstraint<F>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<F>>,
 }
@@ -361,7 +276,7 @@ impl<P: IntoOpenVm> From<powdr_autoprecompiles::SymbolicMachine<P>>
     for SymbolicMachine<OpenVmField<P>>
 {
     fn from(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
-        let columns = machine.unique_columns().collect();
+        let columns = machine.unique_references().collect();
 
         let powdr_autoprecompiles::SymbolicMachine {
             constraints,
@@ -454,9 +369,9 @@ impl<P: IntoOpenVm> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<P>>
 impl<P: IntoOpenVm> PowdrAir<P> {
     pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
-            .unique_columns()
+            .unique_references()
             .enumerate()
-            .map(|(index, c)| ((c.id.id, index), c.clone()))
+            .map(|(index, c)| ((c.id, index), c.clone()))
             .unzip();
 
         Self {
@@ -486,7 +401,7 @@ impl<AB: InteractionBuilder, P: IntoOpenVm<Field = AB::F>> Air<AB> for PowdrAir<
         let witness_values: BTreeMap<u64, AB::Var> = self
             .columns
             .iter()
-            .map(|c| c.id.id)
+            .map(|c| c.id)
             .zip_eq(witnesses.iter().cloned())
             .collect();
 

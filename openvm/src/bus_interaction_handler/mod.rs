@@ -1,14 +1,14 @@
-use std::collections::BTreeMap;
-
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
-use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
+use powdr_autoprecompiles::{
+    bus_map::{BusMap, BusType},
+    constraint_optimizer::IsBusStateful,
+};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,
 };
 use powdr_number::{FieldElement, LargeInt};
-use serde::{Deserialize, Serialize};
 use tuple_range_checker::handle_tuple_range_checker;
 use variable_range_checker::handle_variable_range_checker;
 
@@ -16,93 +16,6 @@ mod bitwise_lookup;
 mod memory;
 mod tuple_range_checker;
 mod variable_range_checker;
-
-pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
-pub const DEFAULT_MEMORY: u64 = 1;
-pub const DEFAULT_PC_LOOKUP: u64 = 2;
-pub const DEFAULT_VARIABLE_RANGE_CHECKER: u64 = 3;
-pub const DEFAULT_BITWISE_LOOKUP: u64 = 6;
-pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
-
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq)]
-pub enum BusType {
-    ExecutionBridge,
-    Memory,
-    PcLookup,
-    VariableRangeChecker,
-    BitwiseLookup,
-    TupleRangeChecker,
-    Sha,
-}
-
-impl std::fmt::Display for BusType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = match self {
-            BusType::ExecutionBridge => "EXECUTION_BRIDGE",
-            BusType::Memory => "MEMORY",
-            BusType::PcLookup => "PC_LOOKUP",
-            BusType::VariableRangeChecker => "VARIABLE_RANGE_CHECKER",
-            BusType::BitwiseLookup => "BITWISE_LOOKUP",
-            BusType::TupleRangeChecker => "TUPLE_RANGE_CHECKER",
-            BusType::Sha => "SHA",
-        };
-        write!(f, "{name}")
-    }
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct BusMap {
-    bus_ids: BTreeMap<u64, BusType>,
-}
-
-impl BusMap {
-    pub fn openvm_base() -> Self {
-        let bus_ids = [
-            (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
-            (DEFAULT_MEMORY, BusType::Memory),
-            (DEFAULT_PC_LOOKUP, BusType::PcLookup),
-            (
-                DEFAULT_VARIABLE_RANGE_CHECKER,
-                BusType::VariableRangeChecker,
-            ),
-            (DEFAULT_BITWISE_LOOKUP, BusType::BitwiseLookup),
-            (DEFAULT_TUPLE_RANGE_CHECKER, BusType::TupleRangeChecker),
-        ]
-        .into_iter()
-        .collect();
-
-        Self { bus_ids }
-    }
-
-    pub fn bus_type(&self, bus_id: u64) -> BusType {
-        self.bus_ids[&bus_id]
-    }
-
-    pub fn with_sha(mut self, id: u64) -> Self {
-        self.bus_ids.insert(id, BusType::Sha);
-        self
-    }
-
-    pub fn with_bus_type(mut self, id: u64, bus_type: BusType) -> Self {
-        self.bus_ids.insert(id, bus_type);
-        self
-    }
-
-    pub fn with_bus_map(mut self, bus_map: BusMap) -> Self {
-        self.bus_ids.extend(bus_map.bus_ids);
-        self
-    }
-
-    pub fn inner(&self) -> &BTreeMap<u64, BusType> {
-        &self.bus_ids
-    }
-
-    pub fn get_bus_id(&self, bus_type: &BusType) -> Option<u64> {
-        self.bus_ids
-            .iter()
-            .find_map(|(id, bus)| if bus == bus_type { Some(*id) } else { None })
-    }
-}
 
 #[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
@@ -151,7 +64,6 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
                 handle_variable_range_checker(&bus_interaction.payload)
             }
             BusType::TupleRangeChecker => handle_tuple_range_checker(&bus_interaction.payload),
-            BusType::Sha => bus_interaction.payload,
         };
         BusInteraction {
             payload: payload_constraints,
@@ -174,7 +86,6 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::VariableRangeChecker => false,
             BusType::BitwiseLookup => false,
             BusType::TupleRangeChecker => false,
-            BusType::Sha => false,
         }
     }
 }
