@@ -288,8 +288,8 @@ fn add_with_carry() {
         .to_string();
     assert_eq!(
         final_state,
-        "(-7 * A + 7 * X + 1792) * (-7 * A + 7 * X)
-(-A + X + 256) * (-A + X)"
+        "(7 * A - 7 * X - 1792) * (7 * A - 7 * X)
+(A - X - 256) * (A - X)"
     );
 }
 
@@ -367,9 +367,7 @@ fn binary_flags() {
     );
 }
 
-// TODO: The solver is not smart enough yet to solve this.
 #[test]
-#[should_panic(expected = "Different set of variables")]
 fn ternary_flags() {
     // Implementing this logic in the OpenVM load/store chip:
     // https://github.com/openvm-org/openvm/blob/v1.2.0/extensions/rv32im/circuit/src/loadstore/core.rs#L110-L139

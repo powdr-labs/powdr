@@ -20,13 +20,18 @@ openvm-circuit-primitives-derive.workspace = true
 openvm-instructions.workspace = true
 openvm-instructions-derive.workspace = true
 openvm-sdk.workspace = true
+openvm-ecc-circuit.workspace = true
 openvm-ecc-transpiler.workspace = true
 openvm-keccak256-circuit.workspace = true
 openvm-keccak256-transpiler.workspace = true
 openvm-sha256-circuit.workspace = true
 openvm-sha256-transpiler.workspace = true
+openvm-algebra-circuit.workspace = true
 openvm-algebra-transpiler.workspace = true
+openvm-bigint-circuit.workspace = true
 openvm-bigint-transpiler.workspace = true
+openvm-pairing-circuit.workspace = true
+openvm-pairing-transpiler.workspace = true
 openvm-native-circuit.workspace = true
 openvm-native-recursion.workspace = true
 
@@ -61,6 +66,11 @@ test-log = { version = "0.2.17", features = ["trace"] }
 pretty_assertions = "1.4.0"
 indexmap = "2.9.0"
 criterion = { version = "0.4" }
+openvm-ecc-circuit.workspace = true
+openvm-algebra-circuit.workspace = true
+openvm-bigint-circuit.workspace = true
+openvm-pairing-circuit.workspace = true
+openvm-pairing-transpiler.workspace = true
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458

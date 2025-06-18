@@ -1,23 +1,25 @@
+use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
+use crate::instruction_blacklist;
+use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
+use crate::OriginalCompiledProgram;
 use itertools::Itertools;
-use openvm_algebra_transpiler::{Fp2Opcode, Rv32ModularArithmeticOpcode};
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
-use openvm_ecc_transpiler::Rv32WeierstrassOpcode;
-use openvm_instructions::{exe::VmExe, instruction::Instruction, program::Program, VmOpcode};
-use openvm_instructions::{LocalOpcode, SystemOpcode};
-use openvm_keccak256_transpiler::Rv32KeccakOpcode;
-use openvm_rv32im_transpiler::{Rv32HintStoreOpcode, Rv32LoadStoreOpcode};
-use openvm_sdk::config::SdkVmConfig;
-use openvm_sha256_transpiler::Rv32Sha256Opcode;
+use openvm_instructions::exe::VmExe;
+use openvm_instructions::instruction::Instruction;
+use openvm_instructions::program::Program;
+use openvm_instructions::{LocalOpcode, VmOpcode};
 use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::powdr::UniqueColumns;
+use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
@@ -37,7 +39,7 @@ pub const OPENVM_DEGREE_BOUND: usize = 5;
 // TODO: read this from program
 const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
-const POWDR_OPCODE: usize = 0x10ff;
+pub const POWDR_OPCODE: usize = 0x10ff;
 
 #[derive(Clone, Debug)]
 pub struct CachedAutoPrecompile<F> {
@@ -60,98 +62,39 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
 }
 
 pub fn customize<P: IntoOpenVm>(
-    mut exe: VmExe<OpenVmField<P>>,
-    base_config: SdkVmConfig,
+    OriginalCompiledProgram {
+        mut exe,
+        sdk_vm_config,
+    }: OriginalCompiledProgram<P>,
     labels: &BTreeSet<u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
+    bus_map: BusMap,
     pgo_config: PgoConfig,
 ) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
     // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
     // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
     // Otherwise, `apc_cache` will remain empty, and we will generate APC on the fly when we select which basic blocks to accelerate.
     let mut apc_cache = HashMap::new();
-
-    // The following opcodes shall never be accelerated and therefore always put in its own basic block.
-    // Currently this contains OpenVm opcodes: Rv32HintStoreOpcode::HINT_STOREW (0x260) and Rv32HintStoreOpcode::HINT_BUFFER (0x261)
-    // which are the only two opcodes from the Rv32HintStore, the air responsible for reading host states via stdin.
-    // We don't want these opcodes because they create air constraints with next references, which powdr-openvm does not support yet.
-    let opcodes_no_apc = vec![
-        Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize(), // contain next references that don't work with apc
-        Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize(), // contain next references that don't work with apc
-        Rv32LoadStoreOpcode::LOADB.global_opcode().as_usize(),
-        Rv32LoadStoreOpcode::LOADH.global_opcode().as_usize(),
-        Rv32WeierstrassOpcode::EC_ADD_NE.global_opcode().as_usize(),
-        Rv32WeierstrassOpcode::SETUP_EC_ADD_NE
-            .global_opcode()
-            .as_usize(),
-        Rv32WeierstrassOpcode::EC_DOUBLE.global_opcode().as_usize(),
-        Rv32WeierstrassOpcode::SETUP_EC_DOUBLE
-            .global_opcode()
-            .as_usize(),
-        Rv32WeierstrassOpcode::EC_ADD_NE.global_opcode().as_usize() + 4,
-        Rv32WeierstrassOpcode::SETUP_EC_ADD_NE
-            .global_opcode()
-            .as_usize()
-            + 4,
-        Rv32WeierstrassOpcode::EC_DOUBLE.global_opcode().as_usize() + 4,
-        Rv32WeierstrassOpcode::SETUP_EC_DOUBLE
-            .global_opcode()
-            .as_usize()
-            + 4,
-        Rv32KeccakOpcode::KECCAK256.global_opcode().as_usize(),
-        Rv32Sha256Opcode::SHA256.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::ADD.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::SUB.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::SETUP_ADDSUB
-            .global_opcode()
-            .as_usize(),
-        Rv32ModularArithmeticOpcode::MUL.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::DIV.global_opcode().as_usize(),
-        Rv32ModularArithmeticOpcode::SETUP_MULDIV
-            .global_opcode()
-            .as_usize(),
-        Rv32ModularArithmeticOpcode::IS_EQ
-            .global_opcode()
-            .as_usize(),
-        Rv32ModularArithmeticOpcode::SETUP_ISEQ
-            .global_opcode()
-            .as_usize(),
-        Fp2Opcode::ADD.global_opcode().as_usize(),
-        Fp2Opcode::SUB.global_opcode().as_usize(),
-        Fp2Opcode::SETUP_ADDSUB.global_opcode().as_usize(),
-        Fp2Opcode::MUL.global_opcode().as_usize(),
-        Fp2Opcode::DIV.global_opcode().as_usize(),
-        Fp2Opcode::SETUP_MULDIV.global_opcode().as_usize(),
-        SystemOpcode::PHANTOM.global_opcode().as_usize(),
-        SystemOpcode::TERMINATE.global_opcode().as_usize(),
-        // TODO clean this up
-        0x510, // not sure yet what this is
-        0x513, // not sure yet what this is
-        0x516, // not sure yet what this is
-        0x51c, // not sure yet what this is
-        0x523, // not sure yet what this is
-        0x526, // not sure yet what this is
-        1024,
-        1025,
-        1028,
-        1033,
-        1104,
-        1030,
-        1033,
-        1027,
-        1029,
-    ];
+    let opcodes_no_apc = instruction_blacklist();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
     let branch_opcodes_set = branch_opcodes_set();
 
-    let mut blocks =
-        collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
+    let blocks = collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+
+    let mut blocks = blocks
+        .into_iter()
+        .filter(|b| {
+            !b.statements
+                .iter()
+                .any(|instr| opcodes_no_apc.contains(&instr.opcode.as_usize()))
+        })
+        .collect::<Vec<_>>();
 
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
@@ -165,6 +108,7 @@ pub fn customize<P: IntoOpenVm>(
                 pgo_program_idx_count,
                 airs,
                 config.clone(),
+                bus_map.clone(),
                 &opcodes_no_apc,
             );
         }
@@ -194,8 +138,10 @@ pub fn customize<P: IntoOpenVm>(
     let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    let apcs = blocks[n_skip..n_skip + n_acc]
+    let apcs = blocks
         .par_iter_mut()
+        .skip(n_skip)
+        .take(n_acc)
         .enumerate()
         .map(|(index, acc_block)| {
             tracing::debug!(
@@ -217,7 +163,7 @@ pub fn customize<P: IntoOpenVm>(
                     acc_block,
                     airs,
                     apc_opcode,
-                    config.bus_map.clone(),
+                    bus_map.clone(),
                     config.degree_bound,
                 )
                 .unwrap(),
@@ -271,8 +217,8 @@ pub fn customize<P: IntoOpenVm>(
         assert_eq!(program.len(), len_before);
 
         let is_valid_column = autoprecompile
-            .unique_columns()
-            .find(|c| c.name == "is_valid")
+            .unique_references()
+            .find(|c| &*c.name == "is_valid")
             .unwrap();
 
         let opcodes_in_acc = acc
@@ -300,12 +246,7 @@ pub fn customize<P: IntoOpenVm>(
     }
     (
         exe,
-        PowdrExtension::new(
-            extensions,
-            base_config,
-            config.implementation,
-            config.bus_map,
-        ),
+        PowdrExtension::new(extensions, sdk_vm_config, config.implementation, bus_map),
     )
 }
 
@@ -330,9 +271,6 @@ fn branch_opcodes() -> Vec<usize> {
             .global_opcode()
             .as_usize(),
         openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::Rv32JalLuiOpcode::LUI
             .global_opcode()
             .as_usize(),
         openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
@@ -395,7 +333,7 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
-    opcodes_no_apc: &[usize],
+    opcodes_no_apc: &HashSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
@@ -415,6 +353,11 @@ pub fn collect_basic_blocks<F: PrimeField32>(
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
             }
+            // Push the instruction itself
+            blocks.push(BasicBlock {
+                start_idx: i,
+                statements: vec![instr.clone()],
+            });
             // Skip the instrucion and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_idx: i + 1,
@@ -552,18 +495,18 @@ fn generate_autoprecompile<P: IntoOpenVm>(
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     interaction: &SymbolicInteraction<F>,
-    columns: &[String],
-) -> SymbolicBusInteraction<P> {
+    columns: &[Arc<String>],
+) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
-    let mult = symbolic_to_algebraic(&interaction.count, columns);
+    let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
     let args = interaction
         .message
         .iter()
-        .map(|e| symbolic_to_algebraic(e, columns))
-        .collect();
+        .map(|e| try_convert(symbolic_to_algebraic(e, columns)))
+        .collect::<Result<_, _>>()?;
 
-    SymbolicBusInteraction { id, mult, args }
+    Ok(SymbolicBusInteraction { id, mult, args })
 }
 
 // Note: This function can lead to OOM since it generates the apc for all blocks
@@ -573,7 +516,8 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     pgo_program_idx_count: HashMap<u32, u32>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
-    opcodes_no_apc: &[usize],
+    bus_map: BusMap,
+    opcodes_no_apc: &HashSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -582,7 +526,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
         pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
     });
 
-    tracing::info!(
+    tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
@@ -592,7 +536,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     let air_width_by_opcode = airs
         .iter()
         .filter(|&(i, _)| (!opcodes_no_apc.contains(i)))
-        .map(|(i, air)| (*i, air.unique_columns().count()))
+        .map(|(i, air)| (*i, air.unique_references().count()))
         .collect::<HashMap<_, _>>();
 
     // generate apc and cache it for all basic blocks
@@ -608,13 +552,13 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 acc_block,
                 airs,
                 POWDR_OPCODE + i,
-                config.bus_map.clone(),
+                bus_map.clone(),
                 config.degree_bound,
             )
             .ok()?;
 
             // calculate cells saved per row
-            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_columns().count();
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_references().count();
             let original_cells_per_row: usize = acc_block
                 .statements
                 .iter()
@@ -626,7 +570,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 .sum();
             let cells_saved_per_row = original_cells_per_row - apc_cells_per_row;
             assert!(cells_saved_per_row > 0);
-            tracing::info!(
+            tracing::debug!(
                 "Basic block start_idx: {}, cells saved per row: {}",
                 acc_block.start_idx,
                 cells_saved_per_row
@@ -662,7 +606,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
         let count = pgo_program_idx_count[&(start_idx as u32)];
         let cost = count * cells_saved as u32;
 
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
             start_idx,
             cost,
@@ -683,7 +627,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
     });
 
-    tracing::info!(
+    tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
@@ -701,7 +645,7 @@ fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
         let count = pgo_program_idx_count[&(start_idx as u32)];
         let cost = count * (block.statements.len() as u32);
 
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
             start_idx,
             cost,
@@ -718,7 +662,7 @@ fn sort_blocks_by_length<F: PrimeField32>(blocks: &mut Vec<BasicBlock<F>>) {
     // Debug print blocks by descending cost
     for block in blocks {
         let start_idx = block.start_idx;
-        tracing::info!(
+        tracing::debug!(
             "Basic block start_idx: {}, number_of_instructions: {}",
             start_idx,
             block.statements.len(),

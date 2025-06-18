@@ -8,16 +8,16 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-use crate::stats_logger::{IsWitnessColumn, StatsLogger};
+use crate::stats_logger::StatsLogger;
 
 #[derive(Debug)]
 pub enum Error {
-    ConstraintSolverError,
+    ConstraintSolverError(powdr_constraint_solver::solver::Error),
 }
 
 impl From<powdr_constraint_solver::solver::Error> for Error {
-    fn from(_err: powdr_constraint_solver::solver::Error) -> Self {
-        Error::ConstraintSolverError
+    fn from(err: powdr_constraint_solver::solver::Error) -> Self {
+        Error::ConstraintSolverError(err)
     }
 }
 
@@ -28,40 +28,41 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
-pub fn optimize_constraints<
-    P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Display + IsWitnessColumn,
->(
-    constraint_system: &mut JournalingConstraintSystem<P, V>,
+pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+    constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
-) -> Result<(), Error> {
-    solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
-    stats_logger.log("solver-based optimization", &*constraint_system);
+) -> Result<JournalingConstraintSystem<P, V>, Error> {
+    let constraint_system =
+        solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
+    stats_logger.log("solver-based optimization", &constraint_system);
 
-    remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log("removing disconnected columns", &*constraint_system);
+    let constraint_system =
+        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
+    stats_logger.log("removing disconnected columns", &constraint_system);
 
-    inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
-    stats_logger.log("in-lining witness columns", &*constraint_system);
+    let constraint_system =
+        inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
+    stats_logger.log("in-lining witness columns", &constraint_system);
 
-    remove_trivial_constraints(constraint_system);
-    stats_logger.log("removing trivial constraints", &*constraint_system);
+    let constraint_system = remove_trivial_constraints(constraint_system);
+    stats_logger.log("removing trivial constraints", &constraint_system);
 
-    remove_equal_constraints(constraint_system);
-    stats_logger.log("removing equal constraints", &*constraint_system);
+    let constraint_system = remove_equal_constraints(constraint_system);
+    stats_logger.log("removing equal constraints", &constraint_system);
 
-    remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
-    stats_logger.log("removing equal bus interactions", &*constraint_system);
+    let constraint_system =
+        remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
+    stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    Ok(())
+    Ok(constraint_system)
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &mut JournalingConstraintSystem<T, V>,
+    mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
-) -> Result<(), Error> {
+) -> Result<JournalingConstraintSystem<T, V>, Error> {
     let result = Solver::new(constraint_system.system().clone())
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
@@ -70,7 +71,8 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
         log::trace!("  {var} = {value}");
     }
     constraint_system.apply_substitutions(result.assignments);
-    Ok(())
+    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
+    Ok(constraint_system)
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
@@ -82,9 +84,9 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &mut JournalingConstraintSystem<T, V>,
+    mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T>,
-) {
+) -> JournalingConstraintSystem<T, V> {
     // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
     let mut variables_to_keep = constraint_system
         .system()
@@ -129,30 +131,34 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
         // constants, so we also check again whether it is stateful.
         bus_interaction_handler.is_stateful(bus_id) || has_vars_to_keep
     });
+
+    constraint_system
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq>(
-    constraint_system: &mut JournalingConstraintSystem<P, V>,
-) {
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
     let zero = QuadraticSymbolicExpression::from(P::zero());
     constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
     constraint_system
         .retain_bus_interactions(|bus_interaction| bus_interaction.multiplicity != zero);
+    constraint_system
 }
 
 fn remove_equal_constraints<P: FieldElement, V: Eq + Hash + Clone>(
-    constraint_system: &mut JournalingConstraintSystem<P, V>,
-) {
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
     let mut seen = HashSet::new();
     constraint_system.retain_algebraic_constraints(|constraint| seen.insert(constraint.clone()));
+    constraint_system
 }
 
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
-    symbolic_machine: &mut JournalingConstraintSystem<P, V>,
+    mut constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
-) {
+) -> JournalingConstraintSystem<P, V> {
     let mut seen = HashSet::new();
-    symbolic_machine.retain_bus_interactions(|interaction| {
+    constraint_system.retain_bus_interactions(|interaction| {
         // We only touch interactions with non-stateful buses.
         if let Some(bus_id) = interaction.bus_id.try_to_number() {
             if !bus_interaction_handler.is_stateful(bus_id) && !seen.insert(interaction.clone()) {
@@ -161,6 +167,7 @@ fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
         }
         true
     });
+    constraint_system
 }
 
 pub trait IsBusStateful<T: FieldElement> {

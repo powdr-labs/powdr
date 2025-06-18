@@ -53,7 +53,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
         }
-        Ok(SolveResult { assignments }) => {
+        Ok(SolveResult { assignments, .. }) => {
             let constraint_system = apply_substitutions(constraint_system, assignments.clone());
             pil_file
                 .identities
