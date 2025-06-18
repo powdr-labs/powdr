@@ -3,16 +3,18 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::extraction_utils::OriginalVmConfig;
+use crate::opcode::ALL_OPCODES;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
-use crate::{instruction_blacklist, CompiledProgram, SpecializedConfig};
+use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::Program;
 use openvm_instructions::{LocalOpcode, VmOpcode};
+use openvm_rv32im_transpiler::Rv32HintStoreOpcode;
 use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -78,12 +80,17 @@ pub fn customize(
     // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
     // Otherwise, `apc_cache` will remain empty, and we will generate APC on the fly when we select which basic blocks to accelerate.
     let mut apc_cache = HashMap::new();
-    let opcodes_no_apc = instruction_blacklist();
+    let opcodes_allowlist = instruction_allowlist();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
     let branch_opcodes_set = branch_opcodes_set();
 
-    let blocks = collect_basic_blocks(&exe.program, &labels, &opcodes_no_apc, &branch_opcodes_set);
+    let blocks = collect_basic_blocks(
+        &exe.program,
+        &labels,
+        &opcodes_allowlist,
+        &branch_opcodes_set,
+    );
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -92,9 +99,9 @@ pub fn customize(
     let mut blocks = blocks
         .into_iter()
         .filter(|b| {
-            !b.statements
+            b.statements
                 .iter()
-                .any(|instr| opcodes_no_apc.contains(&instr.opcode.as_usize()))
+                .all(|instr| opcodes_allowlist.contains(&instr.opcode.as_usize()))
         })
         .collect::<Vec<_>>();
 
@@ -111,7 +118,7 @@ pub fn customize(
                 &airs,
                 config.clone(),
                 bus_map.clone(),
-                &opcodes_no_apc,
+                &opcodes_allowlist,
             );
         }
         PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -243,6 +250,24 @@ pub fn customize(
     }
 }
 
+// Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER + bigint branch opcodes
+pub fn instruction_allowlist() -> HashSet<usize> {
+    let hint_storew = Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize();
+    let hint_buffer = Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize();
+
+    // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
+    let mut set: HashSet<usize> = ALL_OPCODES
+        .iter()
+        .map(|&op| op as usize)
+        .filter(|&op| op != hint_storew && op != hint_buffer)
+        .collect();
+
+    let branch_ops: Vec<usize> = branch_opcodes_bigint();
+    set.extend(branch_ops);
+
+    set
+}
+
 fn branch_opcodes() -> Vec<usize> {
     let mut opcodes = vec![
         openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
@@ -326,7 +351,7 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
-    opcodes_no_apc: &HashSet<usize>,
+    opcode_allowlist: &HashSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
@@ -341,7 +366,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
         let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
-        if opcodes_no_apc.contains(&instr.opcode.as_usize()) {
+        if !opcode_allowlist.contains(&instr.opcode.as_usize()) {
             // If not empty, push the current block.
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);
@@ -510,7 +535,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     bus_map: BusMap,
-    opcodes_no_apc: &HashSet<usize>,
+    opcode_allowlist: &HashSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -528,7 +553,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
     let air_width_by_opcode = airs
         .iter()
-        .filter(|&(i, _)| (!opcodes_no_apc.contains(i)))
+        .filter(|&(i, _)| (opcode_allowlist.contains(i)))
         .map(|(i, air)| (*i, air.unique_references().count()))
         .collect::<HashMap<_, _>>();
 
