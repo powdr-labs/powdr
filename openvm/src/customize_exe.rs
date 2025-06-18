@@ -70,9 +70,9 @@ pub fn customize(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> CompiledProgram<BabyBearField> {
-    let config_wrapper = OriginalVmConfig::new(sdk_vm_config.clone());
-    let airs = config_wrapper.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-    let bus_map = config_wrapper.bus_map();
+    let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
+    let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let bus_map = original_config.bus_map();
 
     // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
     // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
@@ -239,7 +239,7 @@ pub fn customize(
 
     CompiledProgram {
         exe,
-        vm_config: SpecializedConfig::new(config_wrapper, extensions, config.implementation),
+        vm_config: SpecializedConfig::new(original_config, extensions, config.implementation),
     }
 }
 
