@@ -32,7 +32,9 @@ pub fn air_stacking<P: IntoOpenVm>(
     assert!(!extensions.is_empty());
 
     extensions.iter_mut().for_each(|ext| {
-        assert!(ext.machine.constraints.iter_mut().all(|c| is_valid_guarded(&c.expr)))
+        ext.machine.constraints.iter_mut().for_each(|c| {
+            normalize_guarded(&mut c.expr);
+        })
     });
 
     // create apc groups by number of columns
@@ -128,7 +130,7 @@ pub fn air_stacking<P: IntoOpenVm>(
                 .bus_interactions
                 .iter_mut()
                 .for_each(|interaction| {
-                    interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone(); });
+                    interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone().normalize(); });
                 });
 
             is_valid_sum = is_valid_sum
@@ -376,6 +378,20 @@ fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
             _ => false,
         },
         _ => false,
+    }
+}
+
+fn normalize_guarded<P: IntoOpenVm>(expr:&mut AlgebraicExpression<P>) {
+    assert!(is_valid_guarded(expr), "not left guarded by is_valid: {expr}");
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left: _is_valid,
+            op: AlgebraicBinaryOperator::Mul,
+            right,
+        }) => {
+            *right.as_mut() = (*right.clone()).normalize();
+        },
+        _ => unreachable!(),
     }
 }
 

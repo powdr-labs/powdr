@@ -127,6 +127,13 @@ impl<T, R> AlgebraicExpression<T, R> {
     }
 }
 
+impl<T: Clone + Ord, R: Clone + Ord> AlgebraicExpression<T, R> {
+    /// Get a canonical form by expanding the expression and reordering operands.
+    pub fn normalize(self) -> Self {
+        normalize(expand(self))
+    }
+}
+
 impl<T, R> ops::Add for AlgebraicExpression<T, R> {
     type Output = Self;
 
@@ -162,5 +169,160 @@ impl<T, R> ops::Mul for AlgebraicExpression<T, R> {
 impl<T, R> From<T> for AlgebraicExpression<T, R> {
     fn from(value: T) -> Self {
         AlgebraicExpression::Number(value)
+    }
+}
+
+// normalizing an expression
+
+// Helper to flatten Add trees
+fn flatten_add<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, acc: &mut Vec<AlgebraicExpression<T, R>>) {
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Add,
+            right,
+        }) => {
+            flatten_add(*left, acc);
+            flatten_add(*right, acc);
+        }
+        _ => acc.push(normalize(expr)),
+    }
+}
+
+// Helper to flatten Mul trees
+fn flatten_mul<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, acc: &mut Vec<AlgebraicExpression<T, R>>) {
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Mul,
+            right,
+        }) => {
+            flatten_mul(*left, acc);
+            flatten_mul(*right, acc);
+        }
+        _ => acc.push(normalize(expr)),
+    }
+}
+
+fn normalize<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>) -> AlgebraicExpression<T, R> {
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Add,
+            right,
+        }) => {
+            let mut terms = Vec::new();
+            flatten_add(*left, &mut terms);
+            flatten_add(*right, &mut terms);
+            terms.sort();
+            terms.into_iter().reduce(|a, b| a + b).unwrap()
+        }
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Mul,
+            right,
+        }) => {
+            let mut factors = Vec::new();
+            flatten_mul(*left, &mut factors);
+            flatten_mul(*right, &mut factors);
+            factors.sort();
+            factors.into_iter().reduce(|a, b| a * b).unwrap()
+        }
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => {
+            normalize(*left) - normalize(*right)
+        }
+        _ => expr,
+    }
+}
+
+fn expand<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>) -> AlgebraicExpression<T, R> {
+    match expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Mul,
+            right,
+        }) => {
+            let left = expand(*left);
+            let right = expand(*right);
+            match (left, right) {
+                // (a + b)*c ==> a*c + b*c
+                (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: left1,
+                    op: AlgebraicBinaryOperator::Add,
+                    right: right1,
+                }), right) => expand(*left1 * right.clone()) + expand(*right1 * right),
+                // a*(b + c) ==> a*b + a*c
+                (left, AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: left1,
+                    op: AlgebraicBinaryOperator::Add,
+                    right: right1,
+                })) => expand(left.clone() * *left1) + expand(left.clone() * *right1),
+                (left, right) => left * right,
+            }
+        }
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Add,
+            right,
+        }) => expand(*left) + expand(*right),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => expand(*left) - expand(*right),
+        _ => expr,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    type Expr = AlgebraicExpression<u32, String>;
+
+    fn v(name: &str) -> Expr {
+        Expr::Reference(name.to_string())
+    }
+
+    #[test]
+    fn test_normalize() {
+        let expr1 = normalize(v("c") + v("b") + v("a"));
+        let expr2 = normalize(v("a") + v("b") + v("c"));
+        assert_eq!(expr1, expr2);
+
+        let expr1 = normalize(v("c") * v("b") * v("a"));
+        let expr2 = normalize(v("a") * v("b") * v("c"));
+        assert_eq!(expr1, expr2);
+    }
+
+    #[test]
+    fn test_expand() {
+        let e1 = expand(v("a") * (v("b") + v("c")));
+        let e2 = v("a") * v("b") + v("a") * v("c");
+        assert_eq!(e1, e2);
+
+        let e1 = expand((v("a") + v("b")) * v("c"));
+        let e2 = v("a") * v("c") + v("b") * v("c");
+        assert_eq!(e1, e2);
+
+        // (a + b) * (c + d)
+        let e1 = expand((v("a") + v("b")) * (v("c") + v("d")));
+        let e2 = v("a") * v("c") + v("a") * v("d") + v("b") * v("c") + v("b") * v("d");
+        assert_eq!(normalize(e1), normalize(e2));
+
+        // (a + b) * (c + d) * (e + f)
+        let e1 = expand((v("a") + v("b")) * (v("c") + v("d")) * (v("e") + v("f")));
+        let e2 = v("a") * v("c") * v("e")
+            + v("a") * v("c") * v("f")
+            + v("a") * v("d") * v("e")
+            + v("a") * v("d") * v("f")
+            + v("b") * v("c") * v("e")
+            + v("b") * v("c") * v("f")
+            + v("b") * v("d") * v("e")
+            + v("b") * v("d") * v("f");
+        assert_eq!(normalize(e1), normalize(e2));
     }
 }
