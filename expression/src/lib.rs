@@ -172,8 +172,6 @@ impl<T, R> From<T> for AlgebraicExpression<T, R> {
     }
 }
 
-// normalizing an expression
-
 // Helper to flatten Add trees
 fn flatten_add<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, acc: &mut Vec<AlgebraicExpression<T, R>>) {
     match expr {
@@ -295,6 +293,10 @@ mod tests {
 
         let expr1 = normalize(v("c") * v("b") * v("a"));
         let expr2 = normalize(v("a") * v("b") * v("c"));
+        assert_eq!(expr1, expr2);
+
+        let expr1 = normalize(v("a") + v("b") * v("c"));
+        let expr2 = normalize(v("c") * v("b") + v("a"));
         assert_eq!(expr1, expr2);
     }
 

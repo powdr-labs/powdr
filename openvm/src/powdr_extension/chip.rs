@@ -62,14 +62,21 @@ impl<P: IntoOpenVm> PowdrChip<P> {
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let air = PowdrAir::new(precompile.machine);
-        let name = format!(
-            "StackedPrecompile_{}",
-            precompile
-                .precompiles
-                .keys()
-                .map(|o| o.global_opcode())
-                .join("_")
-        );
+
+        let name = if precompile.precompiles.len() == 1 {
+            // single precompile, just use its name
+            precompile.precompiles.values().next().unwrap().name.clone()
+        } else {
+            // TODO: this name can be quite big depending on the number of precompiles
+            format!(
+                "StackedPrecompile_{}",
+                precompile
+                    .precompiles
+                    .keys()
+                    .map(|o| o.global_opcode())
+                    .join("_")
+            )
+        };
 
         let executors = precompile
             .precompiles
@@ -88,7 +95,6 @@ impl<P: IntoOpenVm> PowdrChip<P> {
             .collect();
 
         Self {
-            // TODO: proper name
             name,
             air: Arc::new(air),
             executors,
@@ -121,6 +127,7 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrChip<P> {
 
 impl<P: IntoOpenVm> ChipUsageGetter for PowdrChip<P> {
     fn air_name(&self) -> String {
+        // TODO: this name can be quite big depending on the number of stacked precompiles
         format!("powdr_air_for_opcodes_{}", self.executors.keys().join("_"))
     }
 

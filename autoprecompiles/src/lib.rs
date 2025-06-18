@@ -254,9 +254,6 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
         &vm_config.bus_map,
     );
 
-    println!("before optimizer - machine constraints degree: {}", machine.constraints.iter().map(|c| c.expr.degree()).max().unwrap_or(0));
-    println!("before optimizer - machine bus args degree: {}", machine.bus_interactions.iter().map(|b| b.args.iter().map(|a| a.degree()).max().unwrap_or(0)).max().unwrap_or(0));
-
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
@@ -264,9 +261,6 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
         degree_bound,
         &vm_config.bus_map,
     )?;
-
-    println!("after optimizer - machine constraints degree: {}", machine.constraints.iter().map(|c| c.expr.degree()).max().unwrap_or(0));
-    println!("after optimizer - machine bus args degree: {}", machine.bus_interactions.iter().map(|b| b.args.iter().map(|a| a.degree()).max().unwrap_or(0)).max().unwrap_or(0));
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map, strict_is_valid_guards);
@@ -368,8 +362,7 @@ fn add_guards<T: FieldElement>(
         .unwrap();
     program_bus_send.mult = is_valid.clone();
 
-    let mut is_valid_mults = vec![];
-
+    let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
         // already handled exec and pc lookup bus types
         if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
