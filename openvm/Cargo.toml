@@ -64,6 +64,8 @@ struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.gi
 [dev-dependencies]
 test-log = { version = "0.2.17", features = ["trace"] }
 pretty_assertions = "1.4.0"
+indexmap = "2.9.0"
+criterion = { version = "0.4" }
 openvm-ecc-circuit.workspace = true
 openvm-algebra-circuit.workspace = true
 openvm-bigint-circuit.workspace = true
@@ -72,3 +74,7 @@ openvm-pairing-transpiler.workspace = true
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
+
+[[bench]]
+name = "execution_benchmark"
+harness = false
