@@ -1,10 +1,15 @@
+use itertools::Itertools;
+use openvm_instructions::exe::VmExe;
+use openvm_instructions::program::Program;
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use powdr_openvm::{customize, OriginalCompiledProgram, PowdrConfig};
 use pretty_assertions::assert_eq;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -17,28 +22,40 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         .io(Default::default())
         .build();
 
-    let original_config = OriginalVmConfig::new(sdk_vm_config);
-
-    let airs = original_config.airs().unwrap();
-    let bus_map = original_config.bus_map();
-
-    let vm_config = VmConfig {
-        instruction_machines: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
-            default_openvm_bus_map(),
-        ),
-        bus_map: bus_map.clone(),
+    let program = program
+        .into_iter()
+        .map(|s| unimplemented!())
+        .collect::<Vec<_>>();
+    let original_compiled_program = OriginalCompiledProgram {
+        exe: VmExe::new(Program::from_instructions(&program)),
+        sdk_vm_config: sdk_vm_config.clone(),
     };
+
+    let original_config = OriginalVmConfig::new(sdk_vm_config);
+    let bus_map = original_config.bus_map();
 
     let degree_bound = DegreeBound {
         identities: OPENVM_DEGREE_BOUND,
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
-        .unwrap()
-        .0
-        .render(&bus_map)
+    let config = PowdrConfig::new(1, 0).with_degree_bound(degree_bound);
+
+    // No labels. Is this correct?
+    let labels = BTreeSet::new();
+
+    // No PGO configuration required, we accelerate the first and only block.
+    let pgo_config = powdr_openvm::PgoConfig::None;
+
+    let compiled = customize(original_compiled_program, &labels, config, pgo_config);
+
+    let machine = compiled
+        .vm_config
+        .machines()
+        .exactly_one()
+        .map_err(|_| ())
+        .unwrap();
+    machine.render(&bus_map)
 }
 
 /// Compare `actual` against the contents of the file at `path`.

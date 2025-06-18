@@ -21,6 +21,7 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
@@ -222,6 +223,10 @@ impl SpecializedConfig {
             sdk_config: base_config,
             powdr: powdr_extension,
         }
+    }
+
+    pub fn machines(&self) -> impl Iterator<Item = &SymbolicMachine<BabyBearField>> {
+        self.powdr.precompiles.iter().map(|p| &p.machine)
     }
 }
 
