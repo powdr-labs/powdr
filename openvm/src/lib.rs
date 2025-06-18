@@ -20,13 +20,12 @@ use openvm_stark_sdk::config::{
     FriParameters,
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
-use openvm_stark_sdk::openvm_stark_backend::{
-    config::Val,
-    p3_field::{Field, PrimeField32},
-};
-use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
+use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrStackedPrecompile};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::BufWriter;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -43,7 +42,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_airs_and_bus_map, get_constraints};
+use crate::extraction_utils::{export_pil, get_constraints, OriginalVmConfig};
 use crate::traits::OpenVmField;
 
 mod air_builder;
@@ -110,10 +109,9 @@ pub enum PgoConfig {
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "P::Field: Field")]
-pub struct SpecializedConfig<P: IntoOpenVm> {
-    pub sdk_config: SdkVmConfig,
-    powdr: PowdrExtension<P>,
+pub struct SpecializedConfig {
+    pub sdk_config: OriginalVmConfig,
+    powdr: PowdrExtension<BabyBearField>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -179,22 +177,24 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl<P: IntoOpenVm> VmConfig<OpenVmField<P>> for SpecializedConfig<P> {
-    type Executor = SpecializedExecutor<P>;
-    type Periphery = MyPeriphery<OpenVmField<P>>;
+impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
+    type Executor = SpecializedExecutor<BabyBearField>;
+    type Periphery = MyPeriphery<OpenVmField<BabyBearField>>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<OpenVmField<P>>::system(&self.sdk_config)
+        VmConfig::<OpenVmField<BabyBearField>>::system(self.sdk_config.config())
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<OpenVmField<P>>::system_mut(&mut self.sdk_config)
+        VmConfig::<OpenVmField<BabyBearField>>::system_mut(self.sdk_config.config_mut())
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<VmChipComplex<OpenVmField<P>, Self::Executor, Self::Periphery>, VmInventoryError>
-    {
+    ) -> Result<
+        VmChipComplex<OpenVmField<BabyBearField>, Self::Executor, Self::Periphery>,
+        VmInventoryError,
+    > {
         let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
@@ -202,9 +202,25 @@ impl<P: IntoOpenVm> VmConfig<OpenVmField<P>> for SpecializedConfig<P> {
     }
 }
 
-impl<P: IntoOpenVm> SpecializedConfig<P> {
-    pub fn from_base_and_extension(sdk_config: SdkVmConfig, powdr: PowdrExtension<P>) -> Self {
-        Self { sdk_config, powdr }
+impl SpecializedConfig {
+    fn new(
+        base_config: OriginalVmConfig,
+        precompiles: Vec<PowdrStackedPrecompile<BabyBearField>>,
+        implementation: PrecompileImplementation,
+    ) -> Self {
+        let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let bus_map = base_config.bus_map();
+        let powdr_extension = PowdrExtension::new(
+            precompiles,
+            base_config.config().clone(),
+            implementation,
+            bus_map,
+            airs,
+        );
+        Self {
+            sdk_config: base_config,
+            powdr: powdr_extension,
+        }
     }
 }
 
@@ -233,7 +249,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-) -> Result<OriginalCompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
     // wrap the sdk config (with the standard extensions) in our custom config (with our custom extension)
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
@@ -283,7 +299,7 @@ pub struct PowdrConfig {
     pub skip_autoprecompiles: u64,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
-    /// Implementation of the precompile, i.e., how to compile it to a RAP.
+    /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
     /// If present, use chip stacking.
     /// Autoprecompile chips will be grouped by the provided log of their number of witness columns.
@@ -341,7 +357,7 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
     compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
@@ -349,10 +365,10 @@ pub fn compile_guest(
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    original_program: OriginalCompiledProgram<BabyBearField>,
+    original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -363,50 +379,46 @@ pub fn compile_exe(
     path.push(guest);
     let target_path = path.to_str().unwrap();
 
-    let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-    let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
+    let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
 
-    let blacklist = instruction_blacklist();
-    let used_instructions = original_program
-        .exe
-        .program
-        .instructions_and_debug_infos
-        .iter()
-        .map(|instr| instr.as_ref().unwrap().0.opcode)
-        .filter(|opcode| !blacklist.contains(&opcode.as_usize()))
-        .collect();
-    let (airs, bus_map) =
-        get_airs_and_bus_map(original_program.sdk_vm_config.clone(), &used_instructions)
-            .expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-
-    let sdk_vm_config = original_program.sdk_vm_config.clone();
-
-    let (exe, extension) = customize_exe::customize(
+    compile_exe_with_elf(
         original_program,
-        &elf_powdr.text_labels,
-        &airs,
-        config.clone(),
-        bus_map.clone(),
+        &std::fs::read(elf_binary_path)?,
+        config,
+        pgo_config,
+    )
+}
+
+pub fn compile_exe_with_elf(
+    original_program: OriginalCompiledProgram,
+    elf: &[u8],
+    config: PowdrConfig,
+    pgo_config: PgoConfig,
+) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
+    let compiled = customize(
+        original_program,
+        &powdr_riscv_elf::load_elf_from_buffer(elf).text_labels,
+        config,
         pgo_config,
     );
-    // Generate the custom config based on the generated instructions
-    let vm_config = SpecializedConfig::from_base_and_extension(sdk_vm_config, extension);
-    export_pil(vm_config.clone(), "debug.pil", &["KeccakVmAir"], &bus_map);
-
-    Ok(CompiledProgram { exe, vm_config })
+    // Export the compiled program to a PIL file for debugging purposes.
+    export_pil(
+        &mut BufWriter::new(File::create("debug.pil").unwrap()),
+        &compiled.vm_config,
+    );
+    Ok(compiled)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "P::Field: Field")]
-pub struct CompiledProgram<P: IntoOpenVm> {
-    pub exe: VmExe<OpenVmField<P>>,
-    pub vm_config: SpecializedConfig<P>,
+pub struct CompiledProgram {
+    pub exe: VmExe<OpenVmField<BabyBearField>>,
+    pub vm_config: SpecializedConfig,
 }
 
 // the original openvm program and config without powdr extension
 #[derive(Clone)]
-pub struct OriginalCompiledProgram<P: IntoOpenVm> {
-    pub exe: VmExe<OpenVmField<P>>,
+pub struct OriginalCompiledProgram {
+    pub exe: VmExe<OpenVmField<BabyBearField>>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -417,7 +429,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram<PowdrBB> {
+impl CompiledProgram {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
@@ -449,10 +461,7 @@ impl CompiledProgram<PowdrBB> {
     }
 }
 
-pub fn execute(
-    program: CompiledProgram<PowdrBB>,
-    inputs: StdIn,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
 
     let sdk = Sdk::default();
@@ -464,7 +473,7 @@ pub fn execute(
 }
 
 pub fn pgo(
-    program: OriginalCompiledProgram<BabyBearField>,
+    program: OriginalCompiledProgram,
     inputs: StdIn,
 ) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>> {
     // in memory collector storage
@@ -521,7 +530,7 @@ pub fn pgo(
 }
 
 pub fn prove(
-    program: &CompiledProgram<PowdrBB>,
+    program: &CompiledProgram,
     mock: bool,
     recursion: bool,
     inputs: StdIn,
@@ -532,7 +541,12 @@ pub fn prove(
 
     // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
     if let Some(segment_height) = segment_height {
-        vm_config.sdk_config.system.config.segmentation_strategy = Arc::new(
+        vm_config
+            .sdk_config
+            .config_mut()
+            .system
+            .config
+            .segmentation_strategy = Arc::new(
             DefaultSegmentationStrategy::new_with_max_segment_len(segment_height),
         );
         tracing::debug!("Setting max segment len to {}", segment_height);
@@ -979,9 +993,9 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 16);
+        assert_eq!(m.width, 26);
         assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 6);
+        assert_eq!(m.bus_interactions, 16);
     }
 
     #[test]

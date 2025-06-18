@@ -56,11 +56,12 @@ pub struct PowdrChip<P: IntoOpenVm> {
 impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
         precompile: PowdrStackedPrecompile<P>,
+        original_airs: BTreeMap<usize, powdr_autoprecompiles::SymbolicMachine<P>>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
-        let air: PowdrAir<P> = PowdrAir::new(precompile.machine);
+        let air = PowdrAir::new(precompile.machine);
         let name = format!(
             "StackedPrecompile_{}",
             precompile
@@ -74,14 +75,9 @@ impl<P: IntoOpenVm> PowdrChip<P> {
             .precompiles
             .into_iter()
             .map(|(opcode, pcp)| {
-                let original_airs = pcp
-                    .original_airs
-                    .into_iter()
-                    .map(|(k, v)| (k, v.into()))
-                    .collect();
                 let executor = PowdrExecutor::new(
                     pcp.original_instructions,
-                    original_airs,
+                    original_airs.clone(),
                     pcp.is_valid_column,
                     memory.clone(),
                     base_config.clone(),

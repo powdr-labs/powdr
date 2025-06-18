@@ -1,7 +1,7 @@
 use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions, IntoOpenVm, PgoConfig, PowdrConfig};
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PowdrConfig};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::io;
@@ -171,10 +171,7 @@ fn run_command(command: Commands) {
     }
 }
 
-fn write_program_to_file<P: IntoOpenVm>(
-    program: CompiledProgram<P>,
-    filename: &str,
-) -> Result<(), io::Error> {
+fn write_program_to_file(program: CompiledProgram, filename: &str) -> Result<(), io::Error> {
     use std::fs::File;
 
     let mut file = File::create(filename)?;

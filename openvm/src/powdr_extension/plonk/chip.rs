@@ -6,6 +6,7 @@ use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
 use crate::powdr_extension::plonk::air::PlonkColumns;
+use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::{BusMap, IntoOpenVm, OpenVmField};
@@ -48,20 +49,22 @@ impl<P: IntoOpenVm> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
+        original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
+        copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {
             original_instructions,
-            original_airs,
             is_valid_column,
             name,
             opcode,
             machine,
         } = precompile;
         let air = PlonkAir {
+            copy_constraint_bus_id,
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         };
@@ -204,23 +207,26 @@ where
                 vars.derive_tmp_values_for_c(&gate);
                 vars.assert_all_known_or_unused(&gate);
 
-                if let Some(a) = vars.get(&gate.a) {
-                    columns.a = a;
-                }
-                if let Some(b) = vars.get(&gate.b) {
-                    columns.b = b;
-                }
-                if let Some(c) = vars.get(&gate.c) {
-                    columns.c = c;
-                }
-                if let Some(d) = vars.get(&gate.d) {
-                    columns.d = d;
-                }
-                if let Some(e) = vars.get(&gate.e) {
-                    columns.e = e;
+                for (witness_in_gate, witness_col) in [
+                    (&gate.a, &mut columns.a),
+                    (&gate.b, &mut columns.b),
+                    (&gate.c, &mut columns.c),
+                    (&gate.d, &mut columns.d),
+                    (&gate.e, &mut columns.e),
+                ] {
+                    if let Some(value) = vars.get(witness_in_gate) {
+                        *witness_col = value;
+                    }
                 }
             }
         }
+
+        generate_permutation_columns::<Val<SC>, P>(
+            &mut values,
+            &plonk_circuit,
+            number_of_calls,
+            width,
+        );
 
         AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
     }
