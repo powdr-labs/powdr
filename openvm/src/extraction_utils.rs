@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
-use std::{collections::HashSet, sync::Arc};
+use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::{BabyBearSC, IntoOpenVm};
-use itertools::Itertools;
-use openvm_circuit::arch::{VmChipComplex, VmConfig};
+use crate::{instruction_allowlist, BabyBearSC, SpecializedConfig};
+use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
@@ -16,11 +14,13 @@ use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{config_from_perm, default_perm},
     fri_params::SecurityParameters,
 };
-use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_sdk::p3_baby_bear;
+use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicMachine;
+use serde::{Deserialize, Serialize};
+use std::ops::Deref;
+use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
@@ -35,64 +35,96 @@ fn to_option<T>(mut v: Vec<T>) -> Option<T> {
     }
 }
 
-fn get_bus_map<F: PrimeField32>(
-    chip_complex: &VmChipComplex<F, SdkVmConfigExecutor<F>, SdkVmConfigPeriphery<F>>,
-) -> BusMap {
-    let builder = chip_complex.inventory_builder();
+/// A lazy chip complex that is initialized on the first access
+type LazyChipComplex =
+    Option<VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>>;
 
-    let shared_bitwise_lookup =
-        to_option(builder.find_chip::<SharedBitwiseOperationLookupChip<8>>());
-    let shared_range_tuple_checker =
-        to_option(builder.find_chip::<SharedRangeTupleCheckerChip<2>>());
+/// A shared and mutable reference to a `LazyChipComplex`.
+type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
 
-    BusMap::from_id_type_pairs(
-        {
-            let base = &chip_complex.base;
-            [
-                (base.execution_bus().inner.index, BusType::ExecutionBridge),
-                (base.memory_bus().inner.index, BusType::Memory),
-                (base.program_bus().inner.index, BusType::PcLookup),
-                (
-                    base.range_checker_bus().inner.index,
-                    BusType::VariableRangeChecker,
-                ),
-            ]
-            .into_iter()
-        }
-        .chain(
-            shared_bitwise_lookup
-                .into_iter()
-                .map(|chip| (chip.bus().inner.index, BusType::BitwiseLookup)),
-        )
-        .chain(
-            shared_range_tuple_checker
-                .into_iter()
-                .map(|chip| (chip.bus().inner.index, BusType::TupleRangeChecker)),
-        )
-        .map(|(id, bus_type)| (id as u64, bus_type)),
-    )
+/// A guard that provides access to the chip complex, ensuring it is initialized.
+pub struct ChipComplexGuard<'a> {
+    guard: MutexGuard<'a, LazyChipComplex>,
 }
 
-/// Given a VM configuration and a set of used instructions, computes:
-/// - The opcode -> AIR map
-/// - The bus map
-///
-/// Returns an error if the conversion from the OpenVM expression type fails.
-pub fn get_airs_and_bus_map<P: IntoOpenVm>(
-    vm_config: SdkVmConfig,
-    used_instructions: &HashSet<VmOpcode>,
-) -> Result<(BTreeMap<usize, SymbolicMachine<P>>, BusMap), UnsupportedOpenVmReferenceError> {
-    let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
+impl<'a> Deref for ChipComplexGuard<'a> {
+    type Target =
+        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>;
 
-    let bus_map = get_bus_map(&chip_complex);
+    fn deref(&self) -> &Self::Target {
+        // Unwrap is safe here because we ensure that the chip complex is initialized
+        self.guard
+            .as_ref()
+            .expect("Chip complex should be initialized")
+    }
+}
 
-    // Note that we could use chip_complex.inventory.available_opcodes() instead of used_instructions,
-    // which depends on the program being executed. But this turns out to be heavy on memory, because
-    // it includes large precompiles like Keccak.
-    Ok((
-        used_instructions
-            .iter()
-            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(*op)?)))
+/// A wrapper around the `SdkVmConfig` that caches a chip complex.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OriginalVmConfig {
+    sdk_config: SdkVmConfig,
+    #[serde(skip)]
+    chip_complex: CachedChipComplex,
+}
+
+impl OriginalVmConfig {
+    pub fn new(sdk_config: SdkVmConfig) -> Self {
+        Self {
+            sdk_config,
+            chip_complex: Default::default(),
+        }
+    }
+
+    pub fn config(&self) -> &SdkVmConfig {
+        &self.sdk_config
+    }
+
+    pub fn config_mut(&mut self) -> &mut SdkVmConfig {
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        *guard = None; // Invalidate cache
+        &mut self.sdk_config
+    }
+
+    /// Returns a guard that provides access to the chip complex, initializing it if necessary.
+    fn chip_complex(&self) -> ChipComplexGuard {
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+
+        if guard.is_none() {
+            // This is the expensive part that we want to run a single time: create the chip complex
+            let complex = self
+                .sdk_config
+                .create_chip_complex()
+                .expect("Failed to create chip complex");
+            // Store the complex in the guard
+            *guard = Some(complex);
+        }
+
+        ChipComplexGuard { guard }
+    }
+
+    /// Given a VM configuration and a set of used instructions, computes:
+    /// - The opcode -> AIR map
+    /// - The bus map
+    ///
+    /// Returns an error if the conversion from the OpenVM expression type fails.
+    pub fn airs(
+        &self,
+    ) -> Result<
+        BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
+        UnsupportedOpenVmReferenceError,
+    > {
+        let chip_complex = self.chip_complex();
+
+        let instruction_allowlist = instruction_allowlist();
+
+        chip_complex
+            .inventory
+            .available_opcodes()
+            .filter(|op| {
+                // Filter out the opcode that we are not interested in
+                instruction_allowlist.contains(&op.as_usize())
+            })
+            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
             .map(|(op, executor)| {
                 let air = executor.air();
                 let columns = get_columns(air.clone());
@@ -117,46 +149,81 @@ pub fn get_airs_and_bus_map<P: IntoOpenVm>(
 
                 Ok((op.as_usize(), symb_machine))
             })
-            .collect::<Result<_, _>>()?,
-        bus_map,
-    ))
+            .collect::<Result<_, _>>()
+    }
+
+    pub fn bus_map(&self) -> BusMap {
+        let chip_complex = self.chip_complex();
+        let builder = chip_complex.inventory_builder();
+
+        let shared_bitwise_lookup =
+            to_option(builder.find_chip::<SharedBitwiseOperationLookupChip<8>>());
+        let shared_range_tuple_checker =
+            to_option(builder.find_chip::<SharedRangeTupleCheckerChip<2>>());
+
+        BusMap::from_id_type_pairs(
+            {
+                let base = &chip_complex.base;
+                [
+                    (base.execution_bus().inner.index, BusType::ExecutionBridge),
+                    (base.memory_bus().inner.index, BusType::Memory),
+                    (base.program_bus().inner.index, BusType::PcLookup),
+                    (
+                        base.range_checker_bus().inner.index,
+                        BusType::VariableRangeChecker,
+                    ),
+                ]
+                .into_iter()
+            }
+            .chain(
+                shared_bitwise_lookup
+                    .into_iter()
+                    .map(|chip| (chip.bus().inner.index, BusType::BitwiseLookup)),
+            )
+            .chain(
+                shared_range_tuple_checker
+                    .into_iter()
+                    .map(|chip| (chip.bus().inner.index, BusType::TupleRangeChecker)),
+            )
+            .map(|(id, bus_type)| (id as u64, bus_type)),
+        )
+    }
+
+    pub fn create_chip_complex(
+        &self,
+    ) -> Result<
+        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>,
+        VmInventoryError,
+    > {
+        // Clear the cache
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        *guard = None; // Invalidate cache
+                       // Create a new chip complex
+        self.sdk_config.create_chip_complex()
+    }
 }
 
-pub fn export_pil<VC: VmConfig<p3_baby_bear::BabyBear>>(
-    vm_config: VC,
-    path: &str,
-    blacklist: &[&str],
-    bus_map: &BusMap,
-) where
-    VC::Executor: Chip<BabyBearSC>,
-    VC::Periphery: Chip<BabyBearSC>,
-{
+pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
+    let blacklist = ["KeccakVmAir"];
+    let bus_map = vm_config.sdk_config.bus_map();
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
 
-    let pil = chip_complex
-        .inventory
-        .executors()
-        .iter()
-        .filter_map(|executor| {
-            let air = executor.air();
-            let name = air.name();
+    for executor in chip_complex.inventory.executors().iter() {
+        let air = executor.air();
+        let name = air.name();
 
-            if blacklist.contains(&name.as_str()) {
-                log::warn!("Skipping blacklisted AIR: {name}");
-                return None;
-            }
+        if blacklist.contains(&name.as_str()) {
+            log::warn!("Skipping blacklisted AIR: {name}");
+            continue;
+        }
 
-            let columns = get_columns(air.clone());
+        let columns = get_columns(air.clone());
 
-            let constraints = get_constraints(air);
+        let constraints = get_constraints(air);
 
-            Some(get_pil(&name, &constraints, &columns, vec![], bus_map))
-        })
-        .join("\n\n\n");
-
-    println!("Writing PIL...");
-    std::fs::write(path, pil).unwrap();
-    println!("Exported PIL to {path}");
+        let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
+        writeln!(writer, "{pil}\n").unwrap();
+    }
 }
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
@@ -184,8 +251,6 @@ pub fn get_constraints(
 
 #[cfg(test)]
 mod tests {
-    use crate::OpenVmField;
-
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
     use openvm_bigint_circuit::Int256;
@@ -193,7 +258,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use powdr_number::BabyBearField;
+    use openvm_sdk::config::SdkSystemConfig;
 
     #[test]
     fn test_get_bus_map() {
@@ -242,9 +307,24 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let chip_complex: VmChipComplex<OpenVmField<BabyBearField>, _, _> =
-            vm_config.create_chip_complex().unwrap();
-        // This will panic if the same id is used for multiple bus types
-        let _ = get_bus_map(&chip_complex);
+        let _ = OriginalVmConfig::new(vm_config).bus_map();
+    }
+
+    #[test]
+    fn test_export_pil() {
+        let writer = &mut Vec::new();
+        let base_config = OriginalVmConfig::new(
+            SdkVmConfig::builder()
+                .system(SdkSystemConfig::default())
+                .build(),
+        );
+        let specialized_config = SpecializedConfig::new(
+            base_config,
+            vec![],
+            crate::PrecompileImplementation::SingleRowChip,
+        );
+        export_pil(writer, &specialized_config);
+        let output = String::from_utf8(writer.clone()).unwrap();
+        assert!(!output.is_empty(), "PIL output should not be empty");
     }
 }

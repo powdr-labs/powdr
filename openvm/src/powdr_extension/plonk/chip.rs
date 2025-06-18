@@ -49,6 +49,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
+        original_airs: BTreeMap<usize, SymbolicMachine<P>>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
@@ -57,7 +58,6 @@ impl<P: IntoOpenVm> PlonkChip<P> {
     ) -> Self {
         let PowdrPrecompile {
             original_instructions,
-            original_airs,
             is_valid_column,
             name,
             opcode,

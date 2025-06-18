@@ -2,13 +2,15 @@ use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
+use crate::extraction_utils::OriginalVmConfig;
+use crate::opcode::ALL_OPCODES;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
+use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
-use openvm_instructions::exe::VmExe;
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::Program;
 use openvm_instructions::{LocalOpcode, VmOpcode};
@@ -25,13 +27,12 @@ use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
     bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
-use powdr_number::FieldElement;
+use powdr_number::{BabyBearField, FieldElement};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
-    opcode::ALL_OPCODES,
-    powdr_extension::{OriginalInstruction, PowdrExtension, PowdrOpcode, PowdrPrecompile},
+    powdr_extension::{OriginalInstruction, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
 
@@ -62,17 +63,19 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
-pub fn customize<P: IntoOpenVm>(
+pub fn customize(
     OriginalCompiledProgram {
         mut exe,
         sdk_vm_config,
-    }: OriginalCompiledProgram<P>,
+    }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
-    bus_map: BusMap,
     pgo_config: PgoConfig,
-) -> (VmExe<OpenVmField<P>>, PowdrExtension<P>) {
+) -> CompiledProgram {
+    let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
+    let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let bus_map = original_config.bus_map();
+
     // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
     // `apc_cache` will be populated to be used later when we select which basic blocks to accelerate.
     // Otherwise, `apc_cache` will remain empty, and we will generate APC on the fly when we select which basic blocks to accelerate.
@@ -112,7 +115,7 @@ pub fn customize<P: IntoOpenVm>(
                 &mut blocks,
                 &mut apc_cache,
                 pgo_program_idx_count,
-                airs,
+                &airs,
                 config.clone(),
                 bus_map.clone(),
                 &opcodes_allowlist,
@@ -130,13 +133,13 @@ pub fn customize<P: IntoOpenVm>(
 
     let noop = Instruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
-        a: OpenVmField::<P>::ZERO,
-        b: OpenVmField::<P>::ZERO,
-        c: OpenVmField::<P>::ZERO,
-        d: OpenVmField::<P>::ZERO,
-        e: OpenVmField::<P>::ZERO,
-        f: OpenVmField::<P>::ZERO,
-        g: OpenVmField::<P>::ZERO,
+        a: OpenVmField::<BabyBearField>::ZERO,
+        b: OpenVmField::<BabyBearField>::ZERO,
+        c: OpenVmField::<BabyBearField>::ZERO,
+        d: OpenVmField::<BabyBearField>::ZERO,
+        e: OpenVmField::<BabyBearField>::ZERO,
+        f: OpenVmField::<BabyBearField>::ZERO,
+        g: OpenVmField::<BabyBearField>::ZERO,
     };
 
     let mut extensions = Vec::new();
@@ -167,7 +170,7 @@ pub fn customize<P: IntoOpenVm>(
                 acc_block.start_idx,
                 generate_apc_cache(
                     acc_block,
-                    airs,
+                    &airs,
                     apc_opcode,
                     bus_map.clone(),
                     config.degree_bound,
@@ -191,13 +194,13 @@ pub fn customize<P: IntoOpenVm>(
 
         let new_instr = Instruction {
             opcode: VmOpcode::from_usize(apc_opcode),
-            a: OpenVmField::<P>::ZERO,
-            b: OpenVmField::<P>::ZERO,
-            c: OpenVmField::<P>::ZERO,
-            d: OpenVmField::<P>::ZERO,
-            e: OpenVmField::<P>::ZERO,
-            f: OpenVmField::<P>::ZERO,
-            g: OpenVmField::<P>::ZERO,
+            a: OpenVmField::<BabyBearField>::ZERO,
+            b: OpenVmField::<BabyBearField>::ZERO,
+            c: OpenVmField::<BabyBearField>::ZERO,
+            d: OpenVmField::<BabyBearField>::ZERO,
+            e: OpenVmField::<BabyBearField>::ZERO,
+            f: OpenVmField::<BabyBearField>::ZERO,
+            g: OpenVmField::<BabyBearField>::ZERO,
         };
 
         let pc = acc_block.start_idx;
@@ -227,12 +230,6 @@ pub fn customize<P: IntoOpenVm>(
             .find(|c| &*c.name == "is_valid")
             .unwrap();
 
-        let opcodes_in_acc = acc
-            .iter()
-            .map(|x| x.opcode.as_usize())
-            .unique()
-            .collect_vec();
-
         extensions.push(PowdrPrecompile::new(
             format!("PowdrAutoprecompile_{apc_opcode}"),
             PowdrOpcode {
@@ -243,17 +240,14 @@ pub fn customize<P: IntoOpenVm>(
                 .zip_eq(subs)
                 .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                 .collect(),
-            airs.iter()
-                .filter(|(i, _)| opcodes_in_acc.contains(*i))
-                .map(|(i, air)| (*i, air.clone()))
-                .collect(),
             is_valid_column,
         ));
     }
-    (
+
+    CompiledProgram {
         exe,
-        PowdrExtension::new(extensions, sdk_vm_config, config.implementation, bus_map),
-    )
+        vm_config: SpecializedConfig::new(original_config, extensions, config.implementation),
+    }
 }
 
 // Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER + bigint branch opcodes
