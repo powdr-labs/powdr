@@ -47,131 +47,126 @@ pub fn air_stacking<P: IntoOpenVm>(
         groups.entry(idx).or_default().push(pcp);
     }
 
-    let mut result = vec![];
+    groups.into_values().map(group_into_stacked).collect_vec()
+}
 
-    // transform each group into a stacked precompile
-    for mut extensions in groups.into_values() {
-        // group has a single precompile, no stacking
-        if extensions.len() == 1 {
-            let precompile = extensions.pop().unwrap();
-            tracing::debug!(
-                "Precompile {} not stacked",
-                &precompile.opcode.global_opcode().as_usize()
-            );
-            result.push(PowdrStackedPrecompile::new_single(precompile));
-            continue;
-        }
-
-        // handle largest precompile first
-        extensions.sort_by(|pcp1, pcp2| {
-            pcp2.machine
-                .unique_references()
-                .count()
-                .cmp(&pcp1.machine.unique_references().count())
-        });
-
-        // assign columns to the precompiles in this group
-        let mut column_assigner = ColumnAssigner::default();
-        extensions.iter_mut().for_each(|ext| {
-            column_assigner.assign_precompile(ext);
-        });
-
-        let mut stacked_constraints = vec![];
-        let mut interactions_by_machine = vec![];
-
-        tracing::debug!("Stacking {} precompiles", extensions.len());
-
-        // take the max id in all pcps and add 1.
-        let is_valid_start = 1 + extensions
-            .iter()
-            .flat_map(|pcp| {
-                pcp.original_instructions
-                    .iter()
-                    .flat_map(|instr| instr.subs.iter())
-            })
-            .max()
-            .unwrap();
-
-        let mut is_valid_sum: Option<AlgebraicExpression<P>> = None;
-
-        for (idx, pcp) in extensions.iter_mut().enumerate() {
-            // is_valid columns cannot be shared between precompiles. Here we do
-            // their remapping into exclusive columns.
-            let is_valid_new_id = is_valid_start + idx as u64;
-
-            // remap is_valid column in constraints and interactions
-            let mut remapped = pcp.machine.clone();
-            remapped.pre_visit_expressions_mut(&mut |expr| {
-                if let AlgebraicExpression::Reference(r) = expr {
-                    assert!(r.id <= is_valid_start);
-                    if r.id == pcp.is_valid_column.id {
-                        // we assume each pcp to have a specific column named "is_valid"
-                        assert!(*r.name == "is_valid");
-                        r.id = is_valid_new_id;
-                        r.name = format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()).into();
-                    } else {
-                        r.name = format!("col_{}", r.id).into();
-                    }
-                }
-            });
-
-            // set the is valid column in the original precompile
-            pcp.is_valid_column.id = is_valid_new_id;
-
-            let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-                name: format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()).into(),
-                id: is_valid_new_id,
-            });
-
-            // guard interaction payloads so they can be merged later
-            remapped
-                .bus_interactions
-                .iter_mut()
-                .for_each(|interaction| {
-                    interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone().normalize(); });
-                });
-
-            is_valid_sum = is_valid_sum
-                .map(|sum| sum + is_valid.clone())
-                .or_else(|| Some(is_valid.clone()));
-
-            stacked_constraints.extend(remapped.constraints);
-            interactions_by_machine.push(remapped.bus_interactions);
-        }
-
-        tracing::debug!("Stacked chip has {} constraints", stacked_constraints.len());
-        let mut stacked_constraints = join_constraints(stacked_constraints);
-        tracing::debug!("After joining constraints: {}", stacked_constraints.len());
-
-        // enforce only one is_valid is active
-        stacked_constraints.push(make_bool(is_valid_sum.unwrap()).into());
-
+/// Takes a group of precompiles and stacks them into a single stacked precompile.
+fn group_into_stacked<P: IntoOpenVm>(mut group: Vec<PowdrPrecompile<P>>) -> PowdrStackedPrecompile<P>{
+    // group has a single precompile, no stacking
+    if group.len() == 1 {
+        let precompile = group.pop().unwrap();
         tracing::debug!(
-            "Stacked chip has {} bus interactions",
-            interactions_by_machine.iter().flatten().count()
+            "Precompile {} not stacked",
+            &precompile.opcode.global_opcode().as_usize()
         );
-        let stacked_interactions = join_bus_interactions(interactions_by_machine);
-        tracing::debug!("After merging interactions: {}", stacked_interactions.len());
-
-        let machine = SymbolicMachine {
-            constraints: stacked_constraints,
-            bus_interactions: stacked_interactions,
-        };
-
-        result.push(PowdrStackedPrecompile {
-            precompiles: extensions
-                .into_iter()
-                .map(|p| (p.opcode.clone(), p))
-                .collect(),
-            machine,
-        });
+        return PowdrStackedPrecompile::new_single(precompile);
     }
 
-    result
+    // handle largest precompile first
+    group.sort_by(|pcp1, pcp2| {
+        pcp2.machine
+            .unique_references()
+            .count()
+            .cmp(&pcp1.machine.unique_references().count())
+    });
+
+    // assign columns to the precompiles in this group
+    let mut column_assigner = ColumnAssigner::default();
+    group.iter_mut().for_each(|ext| {
+        column_assigner.assign_precompile(ext);
+    });
+
+    tracing::debug!("Stacking {} precompiles", group.len());
+
+    // take the max id in all pcps and add 1.
+    let is_valid_start = 1 + group
+        .iter()
+        .flat_map(|pcp| {
+            pcp.original_instructions
+                .iter()
+                .flat_map(|instr| instr.subs.iter())
+        })
+        .max()
+        .unwrap();
+
+    let mut is_valid_sum: Option<AlgebraicExpression<P>> = None;
+    let mut stacked_constraints = vec![];
+    let mut interactions_by_machine = vec![];
+
+    for (idx, pcp) in group.iter_mut().enumerate() {
+        // is_valid columns cannot be shared between precompiles. Here we do
+        // their remapping into exclusive columns.
+        let is_valid_new_id = is_valid_start + idx as u64;
+
+        // remap is_valid column in constraints and interactions
+        let mut remapped = pcp.machine.clone();
+        remapped.pre_visit_expressions_mut(&mut |expr| {
+            if let AlgebraicExpression::Reference(r) = expr {
+                assert!(r.id <= is_valid_start);
+                if r.id == pcp.is_valid_column.id {
+                    // we assume each pcp to have a specific column named "is_valid"
+                    assert!(*r.name == "is_valid");
+                    r.id = is_valid_new_id;
+                    r.name = format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()).into();
+                } else {
+                    r.name = format!("col_{}", r.id).into();
+                }
+            }
+        });
+
+        // set the is valid column in the original precompile
+        pcp.is_valid_column.id = is_valid_new_id;
+
+        let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
+            name: format!("is_valid_{}", pcp.opcode.global_opcode().as_usize()).into(),
+            id: is_valid_new_id,
+        });
+
+        // guard interaction payloads so they can be merged later
+        remapped
+            .bus_interactions
+            .iter_mut()
+            .for_each(|interaction| {
+                interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone().normalize(); });
+            });
+
+        is_valid_sum = is_valid_sum
+            .map(|sum| sum + is_valid.clone())
+            .or_else(|| Some(is_valid.clone()));
+
+        stacked_constraints.extend(remapped.constraints);
+        interactions_by_machine.push(remapped.bus_interactions);
+    }
+
+    tracing::debug!("Stacked chip has {} constraints", stacked_constraints.len());
+    let mut stacked_constraints = join_constraints(stacked_constraints);
+    tracing::debug!("After joining constraints: {}", stacked_constraints.len());
+
+    // enforce only one is_valid is active
+    stacked_constraints.push(make_bool(is_valid_sum.unwrap()).into());
+
+    tracing::debug!(
+        "Stacked chip has {} bus interactions",
+        interactions_by_machine.iter().flatten().count()
+    );
+    let stacked_interactions = join_bus_interactions(interactions_by_machine);
+    tracing::debug!("After merging interactions: {}", stacked_interactions.len());
+
+    let machine = SymbolicMachine {
+        constraints: stacked_constraints,
+        bus_interactions: stacked_interactions,
+    };
+
+    PowdrStackedPrecompile {
+        precompiles: group
+            .into_iter()
+            .map(|p| (p.opcode.clone(), p))
+            .collect(),
+        machine,
+    }
 }
 
 /// Merge bus interactions, taking into account args that have the same expression.
-/// When only compatible args are merged, the expression doesn't need an is_valid guard.
 fn join_bus_interactions<P: IntoOpenVm>(
     interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>,
 ) -> Vec<SymbolicBusInteraction<P>> {
@@ -276,14 +271,15 @@ fn join_bus_interactions<P: IntoOpenVm>(
         }
 
         // do the actual merging of the grouped interactions
-        result.extend(to_merge.into_iter().map(merge_bus_interactions));
+        result.extend(to_merge.into_iter().map(combine_bus_interactions));
     }
 
     result
 }
 
-/// helper to combine a set of bus interactions into a single interaction
-fn merge_bus_interactions<P: IntoOpenVm>(
+/// helper to combine a set of bus interactions into a single interaction.
+/// When only compatible args are combined, the expression doesn't need an is_valid guard.
+fn combine_bus_interactions<P: IntoOpenVm>(
     interactions: Vec<SymbolicBusInteraction<P>>,
 ) -> SymbolicBusInteraction<P> {
     assert!(interactions.iter().map(|i| i.id).unique().count() == 1, "grouped interactions should have the same bus");
