@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::{instruction_blacklist, BabyBearSC, SpecializedConfig};
+use crate::{instruction_allowlist, BabyBearSC, SpecializedConfig};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -115,14 +115,14 @@ impl OriginalVmConfig {
     > {
         let chip_complex = self.chip_complex();
 
-        let instruction_blacklist = instruction_blacklist();
+        let instruction_allowlist = instruction_allowlist();
 
         chip_complex
             .inventory
             .available_opcodes()
             .filter(|op| {
                 // Filter out the opcode that we are not interested in
-                !instruction_blacklist.contains(&op.as_usize())
+                instruction_allowlist.contains(&op.as_usize())
             })
             .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
             .map(|(op, executor)| {
