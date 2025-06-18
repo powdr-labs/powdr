@@ -6,7 +6,7 @@ use openvm_sdk::StdIn;
 use powdr_openvm::{compile_guest, execute_and_generate, GuestOptions, PgoConfig, PowdrConfig};
 
 const GUEST_KECCAK: &str = "guest-keccak";
-const GUEST_KECCAK_ITER: u32 = 10;
+const GUEST_KECCAK_ITER: u32 = 1000;
 const GUEST_KECCAK_APC: u64 = 1;
 const GUEST_KECCAK_SKIP: u64 = 0;
 
