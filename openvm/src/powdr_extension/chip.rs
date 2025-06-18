@@ -152,54 +152,71 @@ where
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
         let num_records = self.current_trace_height();
-        let height = next_power_of_two_or_zero(num_records);
         let width = self.trace_width();
-        let mut values = Val::<SC>::zero_vec(height * width);
-        let mut values_curr_record = 0;
-        // this is just for sanity checking later
-        let all_is_valid_ids = self
-            .executors
-            .values()
-            .map(|executor| executor.is_valid_poly_id)
-            .collect::<Vec<_>>();
+        let height = next_power_of_two_or_zero(num_records);
 
-        for (_opcode, executor) in self.executors {
-            let executor_is_valid_id = executor.is_valid_poly_id;
-            let executor_calls = executor.number_of_calls();
-            let mut trace = executor.generate_witness::<SC>(
+        let trace = if self.executors.len() == 1 {
+            // non-stacked precompile
+            let executor = self.executors.into_values().next().unwrap();
+            executor.generate_witness::<SC>(
                 &self.air.column_index_by_poly_id,
                 &self.air.machine.bus_interactions,
-            );
+            )
+        } else {
+            // stacked precompiles, reserve space for the full trace and call each executor in turn
 
-            // copy to main trace
-            values
-                .chunks_mut(width)
-                .skip(values_curr_record)
-                .zip(trace.rows_mut().take(executor_calls))
-                .for_each(|(values_row, trace_row)| {
-                    assert!(values_row.len() >= trace_row.len());
-                    // copy the trace row to the main trace row
-                    values_row.copy_from_slice(trace_row);
+            // this is just for sanity checking later
+            let all_is_valid_ids = self
+                .executors
+                .values()
+                .map(|executor| executor.is_valid_poly_id)
+                .collect::<Vec<_>>();
 
-                    // check that only the correct is valid is set to ONE
-                    for id in all_is_valid_ids.iter() {
-                        if *id == executor_is_valid_id {
-                            assert_eq!(
-                                values_row[self.air.column_index_by_poly_id[id]],
-                                <Val<SC>>::ONE
-                            );
-                        } else {
-                            assert_eq!(
-                                values_row[self.air.column_index_by_poly_id[id]],
-                                <Val<SC>>::ZERO
-                            );
+            // TODO: we could avoid copying by having witgen take this vec as input to write the values in
+            let mut values = Val::<SC>::zero_vec(height * width);
+            let mut values_curr_record = 0;
+
+            for (_opcode, executor) in self.executors {
+                let executor_is_valid_id = executor.is_valid_poly_id;
+                let executor_calls = executor.number_of_calls();
+                let mut trace = executor.generate_witness::<SC>(
+                    &self.air.column_index_by_poly_id,
+                    &self.air.machine.bus_interactions,
+                );
+
+                // copy to main trace
+                values
+                    .chunks_mut(width)
+                    .skip(values_curr_record)
+                    .zip(trace.rows_mut().take(executor_calls))
+                    .for_each(|(values_row, trace_row)| {
+                        assert!(values_row.len() >= trace_row.len());
+                        // copy the trace row to the main trace row
+                        values_row.copy_from_slice(trace_row);
+
+                        // check that only the correct is valid is set to ONE
+                        for id in all_is_valid_ids.iter() {
+                            if *id == executor_is_valid_id {
+                                assert_eq!(
+                                    values_row[self.air.column_index_by_poly_id[id]],
+                                    <Val<SC>>::ONE
+                                );
+                            } else {
+                                assert_eq!(
+                                    values_row[self.air.column_index_by_poly_id[id]],
+                                    <Val<SC>>::ZERO
+                                );
+                            }
                         }
-                    }
-                });
-            values_curr_record += executor_calls;
-        }
+                    });
+                values_curr_record += executor_calls;
+            }
 
-        let trace = RowMajorMatrix::new(values, width);
+            RowMajorMatrix::new(values, width)
+        };
+
+        assert_eq!(trace.width(), width);
+
         AirProofInput::simple(trace, vec![])
     }
 }

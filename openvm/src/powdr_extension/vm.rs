@@ -100,7 +100,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
 pub struct PowdrStackedPrecompile<P: IntoOpenVm> {
     /// stacked precompiles by opcode
     pub precompiles: BTreeMap<PowdrOpcode, PowdrPrecompile<P>>,
-    /// constraints
+    /// joined constraints / interactions
     pub machine: SymbolicMachine<P>,
 }
 
