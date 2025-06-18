@@ -176,66 +176,6 @@ pub fn air_stacking<P: IntoOpenVm>(
 fn merge_bus_interactions<P: IntoOpenVm>(
     interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>,
 ) -> Vec<SymbolicBusInteraction<P>> {
-    /// helper: combine args taking into acount if they have the same guarded expression
-    fn merge_args<P: IntoOpenVm>(
-        arg1: AlgebraicExpression<P>,
-        arg2: AlgebraicExpression<P>,
-    ) -> AlgebraicExpression<P> {
-        match arg1 {
-            // is_valid * expr
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: is_valid1,
-                op: AlgebraicBinaryOperator::Mul,
-                right: right1,
-            }) => {
-                let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: is_valid2,
-                    op: AlgebraicBinaryOperator::Mul,
-                    right: right2,
-                }) = arg2
-                else {
-                    panic!("Expected binary operation for arg2, got: {arg2}");
-                };
-                if has_same_structure(&right1, &right2) {
-                    // when the expressions match, we just add the new guard
-                    (*is_valid1 + *is_valid2) * *right1
-                } else {
-                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                        left: is_valid1,
-                        op: AlgebraicBinaryOperator::Mul,
-                        right: right1,
-                    }) + AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                        left: is_valid2,
-                        op: AlgebraicBinaryOperator::Mul,
-                        right: right2,
-                    })
-                }
-            }
-            // is_validA * exprA + is_validB * exprB ... we can't remove the guards
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: _,
-                op: AlgebraicBinaryOperator::Add,
-                right: _,
-            }) => arg1 + arg2,
-            _ => unreachable!(),
-        }
-    }
-
-    /// helper: if the merged bus arg is a multiplication, it is of the form `is_valid_expr * expr`, and we can remove the guard
-    fn simplify_arg<P: IntoOpenVm>(arg: AlgebraicExpression<P>) -> AlgebraicExpression<P> {
-        if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left: _is_valid_expr,
-            op: AlgebraicBinaryOperator::Mul,
-            right,
-        }) = arg
-        {
-            *right
-        } else {
-            // sum of different is_valid * expr, can't simplify
-            arg
-        }
-    }
-
     // split interactions by bus/args len
     let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<P>>>> =
         Default::default();
@@ -266,16 +206,13 @@ fn merge_bus_interactions<P: IntoOpenVm>(
             .map(|i| vec![i])
             .collect_vec();
         // In the following, we go through each machine and try to find for each
-        // of its interactions, an existing interaction to merge with. First we
-        // try to find one where all args are compatible, if not found, one with
-        // a partial match, and finally just merge with any.
+        // of its interactions an existing interaction to merge it with.
         for machine_interactions in interactions_by_machine {
             // merge sets already used by this machine
             let mut used = BTreeSet::new();
-            // interactions that didn't find an exact match in structure
+            // first: try to find an exact match, where all args have the same expression
             let mut try_partial_match = vec![];
             'outer: for i in machine_interactions {
-                // try to find a call with an exact match
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
                     if used.contains(&idx) {
                         continue;
@@ -297,15 +234,13 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                 try_partial_match.push(i);
             }
 
-            // interactions that did not find a partial structure match
+            // then: try to find a partial match, where some of the args have the same expression
             let mut no_match = vec![];
             'outer: for i in try_partial_match {
-                // didn't find exact match, try one where some args match
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
                     if used.contains(&idx) {
                         continue;
                     }
-                    // check all args have the same structure
                     let i2 = to_merge_set.get(0).unwrap();
                     let some_args_same_structure = i
                         .args
@@ -322,6 +257,7 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                 no_match.push(i);
             }
 
+            // finally: just pick the first unused one to merge with
             'outer: for i in no_match {
                 // just pick the first unused one
                 for (idx, to_merge_set) in to_merge.iter_mut().enumerate() {
@@ -335,9 +271,11 @@ fn merge_bus_interactions<P: IntoOpenVm>(
             }
         }
 
-        // merge each set of interactions
+        // do the actual merging of the grouped interactions
         for set in to_merge {
+            assert!(set.iter().map(|i| i.id).unique().count() == 1, "grouped interactions should have the same bus");
             let id = set[0].id;
+            // multiplicites are just added
             let mult = simplify_expression(
                 set.iter()
                     .map(|i| i.mult.clone())
@@ -350,19 +288,72 @@ fn merge_bus_interactions<P: IntoOpenVm>(
                 .reduce(|a, b| {
                     a.into_iter()
                         .zip_eq(b)
-                        .map(|(a1, a2)| merge_args(a1, a2))
+                        .map(|(a1, a2)| bus_arg_merge(a1, a2))
                         .collect()
                 })
                 .unwrap();
+            // remove the is_valid guard from the args when possible
             let args = args
                 .into_iter()
-                .map(|arg| simplify_expression(simplify_arg(arg)))
+                .map(|arg| simplify_expression(bus_arg_simplify(arg)))
                 .collect_vec();
             result.push(SymbolicBusInteraction { id, args, mult });
         }
     }
 
     result
+}
+
+/// helper to combine args taking into acount if they have the same guarded expression
+fn bus_arg_merge<P: IntoOpenVm>(
+    arg1: AlgebraicExpression<P>,
+    arg2: AlgebraicExpression<P>,
+) -> AlgebraicExpression<P> {
+    match arg1 {
+        // is_valid * expr
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left: is_valid1,
+            op: AlgebraicBinaryOperator::Mul,
+            right: right1,
+        }) => {
+            let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: is_valid2,
+                op: AlgebraicBinaryOperator::Mul,
+                right: right2,
+            }) = arg2
+            else {
+                panic!("Expected binary operation for arg2, got: {arg2}");
+            };
+            if has_same_structure(&right1, &right2) {
+                // when the expressions match, we just add the new guard
+                (*is_valid1 + *is_valid2) * *right1
+            } else {
+                (*is_valid1 * *right1) + (*is_valid2 * *right2)
+            }
+        }
+        // is_validA * exprA + is_validB * exprB ... we can't remove the guards
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left: _,
+            op: AlgebraicBinaryOperator::Add,
+            right: _,
+        }) => arg1 + arg2,
+        _ => unreachable!(),
+    }
+}
+
+/// helper: if the merged bus arg is a multiplication, it is of the form `is_valid_expr * expr`, and we can remove the guard
+fn bus_arg_simplify<P: IntoOpenVm>(arg: AlgebraicExpression<P>) -> AlgebraicExpression<P> {
+    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+        left: _is_valid_expr,
+        op: AlgebraicBinaryOperator::Mul,
+        right,
+    }) = arg
+    {
+        *right
+    } else {
+        // sum of different is_valid * expr, can't simplify
+        arg
+    }
 }
 
 /// true if expression is of the form `is_valid_col * some_expr`.
@@ -383,7 +374,7 @@ fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
 }
 
 fn normalize_guarded<P: IntoOpenVm>(expr:&mut AlgebraicExpression<P>) {
-    assert!(is_valid_guarded(expr), "not left guarded by is_valid: {expr}");
+    assert!(is_valid_guarded(expr), "not left guarded by is_valid col: {expr}");
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left: _is_valid,
