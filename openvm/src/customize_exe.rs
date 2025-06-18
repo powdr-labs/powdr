@@ -65,11 +65,11 @@ pub fn customize(
     OriginalCompiledProgram {
         mut exe,
         sdk_vm_config,
-    }: OriginalCompiledProgram<BabyBearField>,
+    }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-) -> CompiledProgram<BabyBearField> {
+) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();

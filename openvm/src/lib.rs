@@ -20,10 +20,7 @@ use openvm_stark_sdk::config::{
     FriParameters,
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
-use openvm_stark_sdk::openvm_stark_backend::{
-    config::Val,
-    p3_field::{Field, PrimeField32},
-};
+use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
@@ -113,10 +110,9 @@ pub enum PgoConfig {
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "P::Field: Field")]
-pub struct SpecializedConfig<P: IntoOpenVm> {
+pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
-    powdr: PowdrExtension<P>,
+    powdr: PowdrExtension<BabyBearField>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -182,7 +178,7 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
+impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
     type Executor = SpecializedExecutor<BabyBearField>;
     type Periphery = MyPeriphery<OpenVmField<BabyBearField>>;
 
@@ -207,7 +203,7 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
     }
 }
 
-impl SpecializedConfig<BabyBearField> {
+impl SpecializedConfig {
     fn new(
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBearField>>,
@@ -254,7 +250,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-) -> Result<OriginalCompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
     // wrap the sdk config (with the standard extensions) in our custom config (with our custom extension)
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
@@ -351,7 +347,7 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
     compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
@@ -359,10 +355,10 @@ pub fn compile_guest(
 pub fn compile_exe(
     guest: &str,
     guest_opts: GuestOptions,
-    original_program: OriginalCompiledProgram<BabyBearField>,
+    original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -384,11 +380,11 @@ pub fn compile_exe(
 }
 
 pub fn compile_exe_with_elf(
-    original_program: OriginalCompiledProgram<BabyBearField>,
+    original_program: OriginalCompiledProgram,
     elf: &[u8],
     config: PowdrConfig,
     pgo_config: PgoConfig,
-) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let compiled = customize(
         original_program,
         &powdr_riscv_elf::load_elf_from_buffer(elf).text_labels,
@@ -404,16 +400,15 @@ pub fn compile_exe_with_elf(
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "P::Field: Field")]
-pub struct CompiledProgram<P: IntoOpenVm> {
-    pub exe: VmExe<OpenVmField<P>>,
-    pub vm_config: SpecializedConfig<P>,
+pub struct CompiledProgram {
+    pub exe: VmExe<OpenVmField<BabyBearField>>,
+    pub vm_config: SpecializedConfig,
 }
 
 // the original openvm program and config without powdr extension
 #[derive(Clone)]
-pub struct OriginalCompiledProgram<P: IntoOpenVm> {
-    pub exe: VmExe<OpenVmField<P>>,
+pub struct OriginalCompiledProgram {
+    pub exe: VmExe<OpenVmField<BabyBearField>>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -424,7 +419,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram<PowdrBB> {
+impl CompiledProgram {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
@@ -456,10 +451,7 @@ impl CompiledProgram<PowdrBB> {
     }
 }
 
-pub fn execute(
-    program: CompiledProgram<PowdrBB>,
-    inputs: StdIn,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
 
     let sdk = Sdk::default();
@@ -471,7 +463,7 @@ pub fn execute(
 }
 
 pub fn pgo(
-    program: OriginalCompiledProgram<BabyBearField>,
+    program: OriginalCompiledProgram,
     inputs: StdIn,
 ) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>> {
     // in memory collector storage
@@ -528,7 +520,7 @@ pub fn pgo(
 }
 
 pub fn prove(
-    program: &CompiledProgram<PowdrBB>,
+    program: &CompiledProgram,
     mock: bool,
     recursion: bool,
     inputs: StdIn,

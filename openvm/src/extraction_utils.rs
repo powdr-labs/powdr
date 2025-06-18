@@ -203,10 +203,7 @@ impl OriginalVmConfig {
     }
 }
 
-pub fn export_pil(
-    writer: &mut impl std::io::Write,
-    vm_config: &SpecializedConfig<powdr_number::BabyBearField>,
-) {
+pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
     let blacklist: [&'static str; 1] = ["KeccakVmAir"];
     let bus_map = vm_config.sdk_config.bus_map();
     let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
