@@ -27,6 +27,8 @@ use openvm_stark_sdk::openvm_stark_backend::{
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::BufWriter;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -211,7 +213,8 @@ impl SpecializedConfig<BabyBearField> {
         precompiles: Vec<PowdrPrecompile<BabyBearField>>,
         implementation: PrecompileImplementation,
     ) -> Self {
-        let (airs, bus_map) = (base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!"), base_config.bus_map());
+        let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(
             precompiles,
             base_config.config().clone(),
@@ -348,17 +351,9 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-    debug_file: &mut impl std::io::Write,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
-    compile_exe(
-        guest,
-        guest_opts,
-        original_program,
-        config,
-        pgo_config,
-        debug_file,
-    )
+    compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
 
 pub fn compile_exe(
@@ -367,7 +362,6 @@ pub fn compile_exe(
     original_program: OriginalCompiledProgram<BabyBearField>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-    debug_file: &mut impl std::io::Write,
 ) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -379,18 +373,34 @@ pub fn compile_exe(
     path.push(guest);
     let target_path = path.to_str().unwrap();
 
-    let elf_binary = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-    let elf_powdr = powdr_riscv_elf::load_elf(&elf_binary);
+    let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
 
-    let compiled_program = customize_exe::customize(
+    compile_exe_with_elf(
         original_program,
-        &elf_powdr.text_labels,
-        config.clone(),
+        &std::fs::read(elf_binary_path)?,
+        config,
+        pgo_config,
+    )
+}
+
+pub fn compile_exe_with_elf(
+    original_program: OriginalCompiledProgram<BabyBearField>,
+    elf: &[u8],
+    config: PowdrConfig,
+    pgo_config: PgoConfig,
+) -> Result<CompiledProgram<BabyBearField>, Box<dyn std::error::Error>> {
+    let compiled = customize(
+        original_program,
+        &powdr_riscv_elf::load_elf_from_buffer(elf).text_labels,
+        config,
         pgo_config,
     );
-    export_pil(debug_file, &compiled_program.vm_config);
-
-    Ok(compiled_program)
+    // Export the compiled program to a PIL file for debugging purposes.
+    export_pil(
+        &mut BufWriter::new(File::create("debug.pil").unwrap()),
+        &compiled.vm_config,
+    );
+    Ok(compiled)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -683,14 +693,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(
-            guest,
-            GuestOptions::default(),
-            config,
-            pgo_config,
-            &mut std::io::sink(),
-        )
-        .unwrap();
+        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -949,15 +952,9 @@ mod tests {
     // The following are compilation tests only
     fn test_guest_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let machines = compile_guest(
-            GUEST,
-            GuestOptions::default(),
-            config,
-            pgo_config,
-            &mut std::io::sink(),
-        )
-        .unwrap()
-        .powdr_airs_metrics();
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
+            .unwrap()
+            .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
@@ -965,15 +962,9 @@ mod tests {
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let machines = compile_guest(
-            GUEST_KECCAK,
-            GuestOptions::default(),
-            config,
-            pgo_config,
-            &mut std::io::sink(),
-        )
-        .unwrap()
-        .powdr_airs_metrics();
+        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
+            .unwrap()
+            .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
@@ -995,15 +986,9 @@ mod tests {
     fn guest_machine_plonk() {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        let machines = compile_guest(
-            GUEST,
-            GuestOptions::default(),
-            config,
-            PgoConfig::None,
-            &mut std::io::sink(),
-        )
-        .unwrap()
-        .powdr_airs_metrics();
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
+            .unwrap()
+            .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.width, 16);

@@ -115,7 +115,6 @@ fn run_command(command: Commands) {
                 guest_opts,
                 powdr_config,
                 pgo_config,
-                &mut create_debug_file(),
             )
             .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
@@ -135,7 +134,6 @@ fn run_command(command: Commands) {
                 guest_opts,
                 powdr_config,
                 pgo_config,
-                &mut create_debug_file(),
             )
             .unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
@@ -157,7 +155,6 @@ fn run_command(command: Commands) {
                 guest_opts,
                 powdr_config,
                 pgo_config,
-                &mut create_debug_file(),
             )
             .unwrap();
             powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
