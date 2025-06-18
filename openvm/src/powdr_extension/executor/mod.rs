@@ -60,7 +60,7 @@ pub use periphery::PowdrPeripheryInstances;
 pub struct PowdrExecutor<P: IntoOpenVm> {
     instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
-    is_valid_poly_id: u64,
+    pub is_valid_poly_id: u64,
     inventory: DummyInventory<OpenVmField<P>>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,

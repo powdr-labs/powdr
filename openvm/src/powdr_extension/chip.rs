@@ -10,12 +10,13 @@ use crate::{
     utils::algebraic_to_symbolic, IntoOpenVm,
 };
 
-use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
+use super::{executor::PowdrExecutor, PowdrStackedPrecompile};
 use itertools::Itertools;
 use openvm_circuit::system::memory::MemoryController;
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
     system::memory::OfflineMemory,
+    utils::next_power_of_two_or_zero,
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_sdk::config::SdkVmConfig;
@@ -26,13 +27,14 @@ use openvm_stark_backend::{
     },
     interaction::BusIndex,
     p3_air::{Air, BaseAir},
+    p3_matrix::dense::RowMajorMatrix,
     rap::ColumnsAir,
 };
 
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     interaction::InteractionBuilder,
-    p3_field::{Field, PrimeField32},
+    p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::Matrix,
     prover::types::AirProofInput,
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
@@ -46,42 +48,56 @@ use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<P: IntoOpenVm> {
     pub name: String,
-    pub opcode: PowdrOpcode,
-    /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<P>,
+    /// An "executor" for each precompile stacked in this chip, by opcode.
+    pub executors: BTreeMap<usize, PowdrExecutor<P>>,
     pub air: Arc<PowdrAir<P>>,
 }
 
 impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<P>,
+        precompile: PowdrStackedPrecompile<P>,
         original_airs: BTreeMap<usize, powdr_autoprecompiles::SymbolicMachine<P>>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
-        let PowdrPrecompile {
-            machine,
-            original_instructions,
-            is_valid_column,
-            name,
-            opcode,
-        } = precompile;
-        let air = PowdrAir::new(machine);
-        let executor = PowdrExecutor::new(
-            original_instructions,
-            original_airs,
-            is_valid_column,
-            memory,
-            base_config,
-            periphery,
-        );
+        let air = PowdrAir::new(precompile.machine);
+
+        let name = if precompile.precompiles.len() == 1 {
+            // single precompile, just use its name
+            precompile.precompiles.values().next().unwrap().name.clone()
+        } else {
+            // TODO: this name can be quite big depending on the number of precompiles
+            format!(
+                "StackedPrecompile_{}",
+                precompile
+                    .precompiles
+                    .keys()
+                    .map(|o| o.global_opcode())
+                    .join("_")
+            )
+        };
+
+        let executors = precompile
+            .precompiles
+            .into_iter()
+            .map(|(opcode, pcp)| {
+                let executor = PowdrExecutor::new(
+                    pcp.original_instructions,
+                    original_airs.clone(),
+                    pcp.is_valid_column,
+                    memory.clone(),
+                    base_config.clone(),
+                    periphery.clone(),
+                );
+                (opcode.global_opcode().as_usize(), executor)
+            })
+            .collect();
 
         Self {
             name,
-            opcode,
             air: Arc::new(air),
-            executor,
+            executors,
         }
     }
 }
@@ -94,9 +110,12 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrChip<P> {
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
-        assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state)?;
+        let execution_state = self
+            .executors
+            .get_mut(&opcode.as_usize())
+            .expect("invalid opcode for stacked chip")
+            .execute(memory, from_state)?;
 
         Ok(execution_state)
     }
@@ -108,10 +127,12 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrChip<P> {
 
 impl<P: IntoOpenVm> ChipUsageGetter for PowdrChip<P> {
     fn air_name(&self) -> String {
-        format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
+        // TODO: this name can be quite big depending on the number of stacked precompiles
+        format!("powdr_air_for_opcodes_{}", self.executors.keys().join("_"))
     }
+
     fn current_trace_height(&self) -> usize {
-        self.executor.number_of_calls()
+        self.executors.values().map(|e| e.number_of_calls()).sum()
     }
 
     fn trace_width(&self) -> usize {
@@ -130,11 +151,69 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
+        let num_records = self.current_trace_height();
         let width = self.trace_width();
-        let trace = self.executor.generate_witness::<SC>(
-            &self.air.column_index_by_poly_id,
-            &self.air.machine.bus_interactions,
-        );
+        let height = next_power_of_two_or_zero(num_records);
+
+        let trace = if self.executors.len() == 1 {
+            // non-stacked precompile
+            let executor = self.executors.into_values().next().unwrap();
+            executor.generate_witness::<SC>(
+                &self.air.column_index_by_poly_id,
+                &self.air.machine.bus_interactions,
+            )
+        } else {
+            // stacked precompiles, reserve space for the full trace and call each executor in turn
+
+            // this is just for sanity checking later
+            let all_is_valid_ids = self
+                .executors
+                .values()
+                .map(|executor| executor.is_valid_poly_id)
+                .collect::<Vec<_>>();
+
+            // TODO: we could avoid copying by having witgen take this vec as input to write the values in
+            let mut values = Val::<SC>::zero_vec(height * width);
+            let mut values_curr_record = 0;
+
+            for (_opcode, executor) in self.executors {
+                let executor_is_valid_id = executor.is_valid_poly_id;
+                let executor_calls = executor.number_of_calls();
+                let mut trace = executor.generate_witness::<SC>(
+                    &self.air.column_index_by_poly_id,
+                    &self.air.machine.bus_interactions,
+                );
+
+                // copy to main trace
+                values
+                    .chunks_mut(width)
+                    .skip(values_curr_record)
+                    .zip(trace.rows_mut().take(executor_calls))
+                    .for_each(|(values_row, trace_row)| {
+                        assert!(values_row.len() >= trace_row.len());
+                        // copy the trace row to the main trace row
+                        values_row.copy_from_slice(trace_row);
+
+                        // check that only the correct is valid is set to ONE
+                        for id in all_is_valid_ids.iter() {
+                            if *id == executor_is_valid_id {
+                                assert_eq!(
+                                    values_row[self.air.column_index_by_poly_id[id]],
+                                    <Val<SC>>::ONE
+                                );
+                            } else {
+                                assert_eq!(
+                                    values_row[self.air.column_index_by_poly_id[id]],
+                                    <Val<SC>>::ZERO
+                                );
+                            }
+                        }
+                    });
+                values_curr_record += executor_calls;
+            }
+
+            RowMajorMatrix::new(values, width)
+        };
 
         assert_eq!(trace.width(), width);
 

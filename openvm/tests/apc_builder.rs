@@ -35,7 +35,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
+    build(program, vm_config, degree_bound, POWDR_OPCODE as u32, false)
         .unwrap()
         .0
         .render(&bus_map)

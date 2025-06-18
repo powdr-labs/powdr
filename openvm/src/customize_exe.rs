@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::ALL_OPCODES;
+use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -35,6 +36,9 @@ use crate::{
     powdr_extension::{OriginalInstruction, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
+
+mod air_stacking;
+use air_stacking::air_stacking;
 
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
@@ -147,6 +151,13 @@ pub fn customize(
     let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
+    let mut degree_bound = config.degree_bound.clone();
+    // chip stacking needs to guard bus arguments, so we lower the inliner bound on bus interactions
+    if config.chip_stacking_log.is_some() {
+        degree_bound.bus_interactions -= 1;
+    }
+    let strict_is_valid_guards = config.chip_stacking_log.is_some();
+
     let apcs = blocks
         .par_iter_mut()
         .skip(n_skip)
@@ -173,7 +184,8 @@ pub fn customize(
                     &airs,
                     apc_opcode,
                     bus_map.clone(),
-                    config.degree_bound,
+                    degree_bound,
+                    strict_is_valid_guards,
                 )
                 .unwrap(),
             )
@@ -243,6 +255,17 @@ pub fn customize(
             is_valid_column,
         ));
     }
+
+    let extensions = if let Some(chip_stacking_log) = config.chip_stacking_log {
+        tracing::debug!("Chip stacking enabled, grouping log: {chip_stacking_log}");
+        air_stacking(extensions, chip_stacking_log)
+    } else {
+        tracing::debug!("Chip stacking disabled");
+        extensions
+            .into_iter()
+            .map(PowdrStackedPrecompile::new_single)
+            .collect()
+    };
 
     CompiledProgram {
         exe,
@@ -447,9 +470,16 @@ fn generate_apc_cache<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: DegreeBound,
+    strict_is_valid_guards: bool,
 ) -> Result<CachedAutoPrecompile<P>, Error> {
-    let (autoprecompile, subs) =
-        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
+    let (autoprecompile, subs) = generate_autoprecompile(
+        block,
+        airs,
+        apc_opcode,
+        bus_map,
+        degree_bound,
+        strict_is_valid_guards,
+    )?;
 
     Ok(CachedAutoPrecompile {
         apc_opcode,
@@ -472,6 +502,8 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: DegreeBound,
+    // chip stacking needs constraints/multiplicities fully guarded by the is_valid column
+    strict_is_valid_guards: bool,
 ) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -497,8 +529,13 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_map,
     };
 
-    let (precompile, subs) =
-        powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
+    let (precompile, subs) = powdr_autoprecompiles::build(
+        program,
+        vm_config,
+        degree_bound,
+        apc_opcode as u32,
+        strict_is_valid_guards,
+    )?;
 
     // Check that substitution values are unique over all instructions
     assert!(subs.iter().flatten().all_unique());
@@ -572,6 +609,7 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
                 POWDR_OPCODE + i,
                 bus_map.clone(),
                 config.degree_bound,
+                config.chip_stacking_log.is_some(),
             )
             .ok()?;
 

@@ -30,6 +30,9 @@ enum Commands {
 
         #[arg(long)]
         input: Option<u32>,
+
+        #[arg(long)]
+        chip_stacking: Option<f32>,
     },
 
     Execute {
@@ -46,6 +49,9 @@ enum Commands {
 
         #[arg(long)]
         input: Option<u32>,
+
+        #[arg(long)]
+        chip_stacking: Option<f32>,
     },
 
     Pgo {
@@ -77,6 +83,9 @@ enum Commands {
 
         #[arg(long)]
         input: Option<u32>,
+
+        #[arg(long)]
+        chip_stacking: Option<f32>,
     },
 }
 
@@ -102,8 +111,12 @@ fn run_command(command: Commands) {
             skip,
             pgo,
             input,
+            chip_stacking,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            if let Some(log) = chip_stacking {
+                powdr_config = powdr_config.with_chip_stacking(log);
+            }
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
@@ -116,8 +129,12 @@ fn run_command(command: Commands) {
             skip,
             pgo,
             input,
+            chip_stacking,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            if let Some(log) = chip_stacking {
+                powdr_config = powdr_config.with_chip_stacking(log);
+            }
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
@@ -132,8 +149,12 @@ fn run_command(command: Commands) {
             recursion,
             pgo,
             input,
+            chip_stacking,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            if let Some(log) = chip_stacking {
+                powdr_config = powdr_config.with_chip_stacking(log);
+            }
             let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();

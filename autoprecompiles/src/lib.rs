@@ -1,6 +1,6 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
-use crate::optimizer::simplify_expression;
+pub use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -36,7 +36,7 @@ pub struct SymbolicInstructionStatement<T> {
     pub args: Vec<T>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -65,11 +65,11 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct SymbolicBusInteraction<T> {
     pub id: u64,
-    pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+    pub mult: AlgebraicExpression<T>,
 }
 
 impl<T: Display> Display for SymbolicBusInteraction<T> {
@@ -246,6 +246,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     vm_config: VmConfig<T, B>,
     degree_bound: DegreeBound,
     opcode: u32,
+    strict_is_valid_guards: bool,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
@@ -262,7 +263,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine, vm_config.bus_map);
+    let machine = add_guards(machine, vm_config.bus_map, strict_is_valid_guards);
 
     Ok((machine, subs))
 }
@@ -314,6 +315,7 @@ fn add_guards_constraint<T: FieldElement>(
 fn add_guards<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     bus_map: BusMap,
+    strict: bool,
 ) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
@@ -326,11 +328,22 @@ fn add_guards<T: FieldElement>(
         id: max_id,
     });
 
-    machine.constraints = machine
-        .constraints
-        .into_iter()
-        .map(|c| add_guards_constraint(c.expr, &is_valid).into())
-        .collect();
+    machine.constraints = if strict {
+        machine
+            .constraints
+            .into_iter()
+            .map(|mut c| {
+                c.expr = is_valid.clone() * c.expr.clone();
+                c
+            })
+            .collect()
+    } else {
+        machine
+            .constraints
+            .into_iter()
+            .map(|c| add_guards_constraint(c.expr, &is_valid).into())
+            .collect()
+    };
 
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
@@ -357,7 +370,7 @@ fn add_guards<T: FieldElement>(
     for b in &mut machine.bus_interactions {
         // already handled exec and pc lookup bus types
         if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
-            if !satisfies_zero_witness(&b.mult) {
+            if strict || !satisfies_zero_witness(&b.mult) {
                 // guard the multiplicity by `is_valid`
                 b.mult = is_valid.clone() * b.mult.clone();
                 // TODO this would not have to be cloned if we had *=
@@ -373,11 +386,13 @@ fn add_guards<T: FieldElement>(
 
     machine.constraints.extend(is_valid_mults);
 
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
+    if !strict {
+        assert_eq!(
+            pre_degree,
+            machine.degree(),
+            "Degree should not change after adding guards"
+        );
+    }
 
     // This needs to be added after the assertion above because it's a quadratic constraint
     // so it may increase the degree of the machine.
