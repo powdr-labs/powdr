@@ -86,7 +86,7 @@ impl OriginalVmConfig {
     }
 
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
-    pub fn chip_complex(&self) -> ChipComplexGuard {
+    fn chip_complex(&self) -> ChipComplexGuard {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
         if guard.is_none() {
