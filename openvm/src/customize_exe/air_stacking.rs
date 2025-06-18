@@ -30,10 +30,19 @@ pub fn air_stacking<P: IntoOpenVm>(
 ) -> Vec<PowdrStackedPrecompile<P>> {
     assert!(!extensions.is_empty());
 
+    // we normalize expressions in constraints and bus arguments so that they
+    // can later be compared for having the same structure
     extensions.iter_mut().for_each(|ext| {
         ext.machine.constraints.iter_mut().for_each(|c| {
             normalize_guarded(&mut c.expr);
-        })
+        });
+
+        ext.machine
+            .bus_interactions
+            .iter_mut()
+            .for_each(|i| {
+                i.args.iter_mut().for_each(|arg| { *arg = arg.clone().normalize(); });
+            });
     });
 
     // group precompiles by number of columns
@@ -42,8 +51,7 @@ pub fn air_stacking<P: IntoOpenVm>(
         let idx = f32::log(
             pcp.machine.unique_references().count() as f32,
             chip_stacking_log,
-        )
-        .floor() as usize;
+        ).floor() as usize;
         groups.entry(idx).or_default().push(pcp);
     }
 
@@ -127,7 +135,7 @@ fn group_into_stacked<P: IntoOpenVm>(mut group: Vec<PowdrPrecompile<P>>) -> Powd
             .bus_interactions
             .iter_mut()
             .for_each(|interaction| {
-                interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone().normalize(); });
+                interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone(); });
             });
 
         is_valid_sum = is_valid_sum
