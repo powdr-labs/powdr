@@ -151,7 +151,7 @@ pub fn air_stacking<P: IntoOpenVm>(
             "Stacked chip has {} bus interactions",
             interactions_by_machine.iter().flatten().count()
         );
-        let stacked_interactions = merge_bus_interactions(interactions_by_machine);
+        let stacked_interactions = join_bus_interactions(interactions_by_machine);
         tracing::debug!("After merging interactions: {}", stacked_interactions.len());
 
         let machine = SymbolicMachine {
@@ -173,10 +173,10 @@ pub fn air_stacking<P: IntoOpenVm>(
 
 /// Merge bus interactions, taking into account args that have the same expression.
 /// When only compatible args are merged, the expression doesn't need an is_valid guard.
-fn merge_bus_interactions<P: IntoOpenVm>(
+fn join_bus_interactions<P: IntoOpenVm>(
     interactions_by_machine: Vec<Vec<SymbolicBusInteraction<P>>>,
 ) -> Vec<SymbolicBusInteraction<P>> {
-    // split interactions by bus/args len
+    // split interactions by bus/args len, and then by machine
     let mut interactions_by_bus: HashMap<_, Vec<Vec<SymbolicBusInteraction<P>>>> =
         Default::default();
 
@@ -190,6 +190,8 @@ fn merge_bus_interactions<P: IntoOpenVm>(
             e.push(v);
         }
     }
+
+    // for each target bus, we sort the machines by number of interactions to that bus
     interactions_by_bus
         .values_mut()
         .for_each(|interactions_by_machine| {
@@ -197,8 +199,11 @@ fn merge_bus_interactions<P: IntoOpenVm>(
         });
 
     let mut result = vec![];
+    // Go through each bus, merging interactions to that bus
     for mut interactions_by_machine in interactions_by_bus.into_values() {
-        // to_merge is a vec of vecs, each inner vec is a set of interactions to be merged
+        // to_merge is a vec of vecs, each inner vec is a set of interactions to be merged.
+        // We initialize it using the machine with the largest number of interactions to that bus.
+        // This is so each subsequent machine can find at least one interaction to merge with for each of its own.
         let mut to_merge = interactions_by_machine
             .pop()
             .unwrap()
@@ -272,36 +277,41 @@ fn merge_bus_interactions<P: IntoOpenVm>(
         }
 
         // do the actual merging of the grouped interactions
-        for set in to_merge {
-            assert!(set.iter().map(|i| i.id).unique().count() == 1, "grouped interactions should have the same bus");
-            let id = set[0].id;
-            // multiplicites are just added
-            let mult = simplify_expression(
-                set.iter()
-                    .map(|i| i.mult.clone())
-                    .reduce(|a, b| a + b)
-                    .unwrap(),
-            );
-            let args = set
-                .into_iter()
-                .map(|i| i.args)
-                .reduce(|a, b| {
-                    a.into_iter()
-                        .zip_eq(b)
-                        .map(|(a1, a2)| bus_arg_merge(a1, a2))
-                        .collect()
-                })
-                .unwrap();
-            // remove the is_valid guard from the args when possible
-            let args = args
-                .into_iter()
-                .map(|arg| simplify_expression(bus_arg_simplify(arg)))
-                .collect_vec();
-            result.push(SymbolicBusInteraction { id, args, mult });
-        }
+        result.extend(to_merge.into_iter().map(merge_bus_interactions));
     }
 
     result
+}
+
+/// helper to combine a set of bus interactions into a single interaction
+fn merge_bus_interactions<P: IntoOpenVm>(
+    interactions: Vec<SymbolicBusInteraction<P>>,
+) -> SymbolicBusInteraction<P> {
+    assert!(interactions.iter().map(|i| i.id).unique().count() == 1, "grouped interactions should have the same bus");
+    let id = interactions[0].id;
+    // multiplicites are just added
+    let mult = simplify_expression(
+        interactions.iter()
+            .map(|i| i.mult.clone())
+            .reduce(|a, b| a + b)
+            .unwrap(),
+    );
+    let args = interactions
+        .into_iter()
+        .map(|i| i.args)
+        .reduce(|a, b| {
+            a.into_iter()
+                .zip_eq(b)
+                .map(|(a1, a2)| bus_arg_merge(a1, a2))
+                .collect()
+        })
+        .unwrap();
+    // remove the is_valid guard from the args when possible
+    let args = args
+        .into_iter()
+        .map(|arg| simplify_expression(bus_arg_simplify(arg)))
+        .collect_vec();
+    SymbolicBusInteraction { id, args, mult }
 }
 
 /// helper to combine args taking into acount if they have the same guarded expression
