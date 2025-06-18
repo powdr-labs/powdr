@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
-use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::ALL_OPCODES;
+use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;

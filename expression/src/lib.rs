@@ -173,7 +173,10 @@ impl<T, R> From<T> for AlgebraicExpression<T, R> {
 }
 
 // Helper to flatten Add trees
-fn flatten_add<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, acc: &mut Vec<AlgebraicExpression<T, R>>) {
+fn flatten_add<T: Ord + Clone, R: Ord + Clone>(
+    expr: AlgebraicExpression<T, R>,
+    acc: &mut Vec<AlgebraicExpression<T, R>>,
+) {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -188,7 +191,10 @@ fn flatten_add<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, 
 }
 
 // Helper to flatten Mul trees
-fn flatten_mul<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, acc: &mut Vec<AlgebraicExpression<T, R>>) {
+fn flatten_mul<T: Ord + Clone, R: Ord + Clone>(
+    expr: AlgebraicExpression<T, R>,
+    acc: &mut Vec<AlgebraicExpression<T, R>>,
+) {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -202,7 +208,9 @@ fn flatten_mul<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>, 
     }
 }
 
-fn normalize<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>) -> AlgebraicExpression<T, R> {
+fn normalize<T: Ord + Clone, R: Ord + Clone>(
+    expr: AlgebraicExpression<T, R>,
+) -> AlgebraicExpression<T, R> {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -230,14 +238,14 @@ fn normalize<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>) ->
             left,
             op: AlgebraicBinaryOperator::Sub,
             right,
-        }) => {
-            normalize(*left) - normalize(*right)
-        }
+        }) => normalize(*left) - normalize(*right),
         _ => expr,
     }
 }
 
-fn expand<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>) -> AlgebraicExpression<T, R> {
+fn expand<T: Ord + Clone, R: Ord + Clone>(
+    expr: AlgebraicExpression<T, R>,
+) -> AlgebraicExpression<T, R> {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -248,17 +256,23 @@ fn expand<T: Ord + Clone, R: Ord + Clone>(expr: AlgebraicExpression<T, R>) -> Al
             let right = expand(*right);
             match (left, right) {
                 // (a + b)*c ==> a*c + b*c
-                (AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: a,
-                    op: AlgebraicBinaryOperator::Add,
-                    right: b,
-                }), c) => expand(*a * c.clone()) + expand(*b * c),
+                (
+                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                        left: a,
+                        op: AlgebraicBinaryOperator::Add,
+                        right: b,
+                    }),
+                    c,
+                ) => expand(*a * c.clone()) + expand(*b * c),
                 // a*(b + c) ==> a*b + a*c
-                (a, AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: b,
-                    op: AlgebraicBinaryOperator::Add,
-                    right: c,
-                })) => expand(a.clone() * *b) + expand(a.clone() * *c),
+                (
+                    a,
+                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                        left: b,
+                        op: AlgebraicBinaryOperator::Add,
+                        right: c,
+                    }),
+                ) => expand(a.clone() * *b) + expand(a.clone() * *c),
                 (left, right) => left * right,
             }
         }
@@ -328,11 +342,17 @@ mod tests {
         assert_eq!(normalize(e1), normalize(e2));
 
         // a*(b + c) + d + b*(a + b)
-        let expr1 = normalize(expand(v("a") * (v("b") + v("c")) + v("d") + v("b") * (v("a") + v("b"))));
+        let expr1 = normalize(expand(
+            v("a") * (v("b") + v("c")) + v("d") + v("b") * (v("a") + v("b")),
+        ));
         // a*b + a*c + (d + b*a + b*b)
-        let expr2 = normalize(expand(v("a") * v("b") + v("a") * v("c") + (v("d") + v("b") * v("a") + v("b") * v("b"))));
+        let expr2 = normalize(expand(
+            v("a") * v("b") + v("a") * v("c") + (v("d") + v("b") * v("a") + v("b") * v("b")),
+        ));
         // (d + b*a) + b*b + (a*b + a*c)
-        let expr3 = normalize(expand((v("d") + v("b") * v("a")) + v("b") * v("b") + (v("a") * v("b") + v("a") * v("c"))));
+        let expr3 = normalize(expand(
+            (v("d") + v("b") * v("a")) + v("b") * v("b") + (v("a") * v("b") + v("a") * v("c")),
+        ));
         assert_eq!(expr1, expr2);
         assert_eq!(expr1, expr3);
     }

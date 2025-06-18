@@ -1,7 +1,9 @@
 use std::collections::{BTreeSet, HashMap};
 
 use powdr_autoprecompiles::{
-    expression::{AlgebraicExpression, AlgebraicReference}, powdr::make_bool, simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine
+    expression::{AlgebraicExpression, AlgebraicReference},
+    powdr::make_bool,
+    simplify_expression, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
 use powdr_autoprecompiles::powdr::UniqueReferences;
@@ -37,12 +39,11 @@ pub fn air_stacking<P: IntoOpenVm>(
             normalize_guarded(&mut c.expr);
         });
 
-        ext.machine
-            .bus_interactions
-            .iter_mut()
-            .for_each(|i| {
-                i.args.iter_mut().for_each(|arg| { *arg = arg.clone().normalize(); });
+        ext.machine.bus_interactions.iter_mut().for_each(|i| {
+            i.args.iter_mut().for_each(|arg| {
+                *arg = arg.clone().normalize();
             });
+        });
     });
 
     // group precompiles by number of columns
@@ -51,7 +52,8 @@ pub fn air_stacking<P: IntoOpenVm>(
         let idx = f32::log(
             pcp.machine.unique_references().count() as f32,
             chip_stacking_log,
-        ).floor() as usize;
+        )
+        .floor() as usize;
         groups.entry(idx).or_default().push(pcp);
     }
 
@@ -59,7 +61,9 @@ pub fn air_stacking<P: IntoOpenVm>(
 }
 
 /// Takes a group of precompiles and stacks them into a single stacked precompile.
-fn group_into_stacked<P: IntoOpenVm>(mut group: Vec<PowdrPrecompile<P>>) -> PowdrStackedPrecompile<P>{
+fn group_into_stacked<P: IntoOpenVm>(
+    mut group: Vec<PowdrPrecompile<P>>,
+) -> PowdrStackedPrecompile<P> {
     // group has a single precompile, no stacking
     if group.len() == 1 {
         let precompile = group.pop().unwrap();
@@ -135,7 +139,9 @@ fn group_into_stacked<P: IntoOpenVm>(mut group: Vec<PowdrPrecompile<P>>) -> Powd
             .bus_interactions
             .iter_mut()
             .for_each(|interaction| {
-                interaction.args.iter_mut().for_each(|arg| { *arg = is_valid.clone() * arg.clone(); });
+                interaction.args.iter_mut().for_each(|arg| {
+                    *arg = is_valid.clone() * arg.clone();
+                });
             });
 
         is_valid_sum = is_valid_sum
@@ -166,10 +172,7 @@ fn group_into_stacked<P: IntoOpenVm>(mut group: Vec<PowdrPrecompile<P>>) -> Powd
     };
 
     PowdrStackedPrecompile {
-        precompiles: group
-            .into_iter()
-            .map(|p| (p.opcode.clone(), p))
-            .collect(),
+        precompiles: group.into_iter().map(|p| (p.opcode.clone(), p)).collect(),
         machine,
     }
 }
@@ -290,11 +293,15 @@ fn join_bus_interactions<P: IntoOpenVm>(
 fn combine_bus_interactions<P: IntoOpenVm>(
     interactions: Vec<SymbolicBusInteraction<P>>,
 ) -> SymbolicBusInteraction<P> {
-    assert!(interactions.iter().map(|i| i.id).unique().count() == 1, "grouped interactions should have the same bus");
+    assert!(
+        interactions.iter().map(|i| i.id).unique().count() == 1,
+        "grouped interactions should have the same bus"
+    );
     let id = interactions[0].id;
     // multiplicites are just added
     let mult = simplify_expression(
-        interactions.iter()
+        interactions
+            .iter()
             .map(|i| i.mult.clone())
             .reduce(|a, b| a + b)
             .unwrap(),
@@ -386,8 +393,11 @@ fn is_valid_guarded<P: IntoOpenVm>(expr: &AlgebraicExpression<P>) -> bool {
     }
 }
 
-fn normalize_guarded<P: IntoOpenVm>(expr:&mut AlgebraicExpression<P>) {
-    assert!(is_valid_guarded(expr), "not left guarded by is_valid col: {expr}");
+fn normalize_guarded<P: IntoOpenVm>(expr: &mut AlgebraicExpression<P>) {
+    assert!(
+        is_valid_guarded(expr),
+        "not left guarded by is_valid col: {expr}"
+    );
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left: _is_valid,
@@ -395,7 +405,7 @@ fn normalize_guarded<P: IntoOpenVm>(expr:&mut AlgebraicExpression<P>) {
             right,
         }) => {
             *right.as_mut() = (*right.clone()).normalize();
-        },
+        }
         _ => unreachable!(),
     }
 }
@@ -466,9 +476,7 @@ fn has_same_structure<P: IntoOpenVm>(
                 expr: expr2,
             }),
         ) => op1 == op2 && has_same_structure(expr1, expr2),
-        (AlgebraicExpression::Reference(r1), AlgebraicExpression::Reference(r2)) => {
-            r1.id == r2.id
-        }
+        (AlgebraicExpression::Reference(r1), AlgebraicExpression::Reference(r2)) => r1.id == r2.id,
         (AlgebraicExpression::Number(n1), AlgebraicExpression::Number(n2)) => n1 == n2,
         _ => false,
     }
@@ -604,7 +612,12 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
         // There may be multiple such constraints, so we try them all (as some
         // of the ids in the current constraint may already be assigned)
         for c in &pcp.machine.constraints {
-            for c2 in self.pcps.iter().map(|pcp| pcp.machine.constraints.iter()).flatten() {
+            for c2 in self
+                .pcps
+                .iter()
+                .map(|pcp| pcp.machine.constraints.iter())
+                .flatten()
+            {
                 if has_same_structure(
                     &expr_poly_id_by_order(c.expr.clone()),
                     &expr_poly_id_by_order(c2.expr.clone()),
@@ -621,7 +634,12 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
 
         // do the same for bus interactions
         for b in &pcp.machine.bus_interactions {
-            for b2 in self.pcps.iter().map(|pcp| pcp.machine.bus_interactions.iter()).flatten() {
+            for b2 in self
+                .pcps
+                .iter()
+                .map(|pcp| pcp.machine.bus_interactions.iter())
+                .flatten()
+            {
                 if b.id == b2.id && b.args.len() == b2.args.len() {
                     let all_args_same_structure =
                         b.args.iter().zip_eq(b2.args.iter()).all(|(a1, a2)| {
@@ -648,7 +666,10 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
 
 /// Reasign precompile columns taking into acount the given mapping.
 /// When not present, use an unused column id (starting from 0).
-fn assign_columns_from_mapping<P: IntoOpenVm>(pcp: &mut PowdrPrecompile<P>, mut mapping: BiMap<u64, u64>) {
+fn assign_columns_from_mapping<P: IntoOpenVm>(
+    pcp: &mut PowdrPrecompile<P>,
+    mut mapping: BiMap<u64, u64>,
+) {
     let mut curr_id = 0;
     let mut new_poly_id = |old_id: u64| {
         if let Some(id) = mapping.get_by_left(&old_id) {

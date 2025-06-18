@@ -315,7 +315,7 @@ fn add_guards_constraint<T: FieldElement>(
 fn add_guards<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     bus_map: BusMap,
-    strict: bool
+    strict: bool,
 ) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
@@ -329,16 +329,20 @@ fn add_guards<T: FieldElement>(
     });
 
     machine.constraints = if strict {
-        machine.constraints.into_iter().map(|mut c| {
-            c.expr = is_valid.clone() * c.expr.clone();
-            c
-        }).collect()
+        machine
+            .constraints
+            .into_iter()
+            .map(|mut c| {
+                c.expr = is_valid.clone() * c.expr.clone();
+                c
+            })
+            .collect()
     } else {
         machine
-        .constraints
-        .into_iter()
-        .map(|c| add_guards_constraint(c.expr, &is_valid).into())
-        .collect()
+            .constraints
+            .into_iter()
+            .map(|c| add_guards_constraint(c.expr, &is_valid).into())
+            .collect()
     };
 
     let [execution_bus_receive, execution_bus_send] = machine
