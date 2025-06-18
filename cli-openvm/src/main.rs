@@ -1,9 +1,9 @@
 use eyre::Result;
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PowdrConfig};
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrConfig};
 
-use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand};
 use std::io;
 use tracing::Level;
 
@@ -25,8 +25,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
-        pgo: CliPgoType,
+        #[arg(long, default_value_t = PgoType::Cell)]
+        pgo: PgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -41,8 +41,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
-        pgo: CliPgoType,
+        #[arg(long, default_value_t = PgoType::Cell)]
+        pgo: PgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -72,8 +72,8 @@ enum Commands {
         #[arg(default_value_t = false)]
         recursion: bool,
 
-        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
-        pgo: CliPgoType,
+        #[arg(long, default_value_t = PgoType::Cell)]
+        pgo: PgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -166,33 +166,23 @@ fn stdin_from(input: Option<u32>) -> StdIn {
     s
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum CliPgoType {
-    /// cost = cells saved per apc * times executed
-    Cell,
-    /// cost = instruction per apc * times executed
-    Instruction,
-    /// disable PGO
-    None,
-}
-
 fn get_pgo_config(
     guest: String,
     guest_opts: GuestOptions,
-    pgo: CliPgoType,
+    pgo: PgoType,
     input: Option<u32>,
 ) -> PgoConfig {
     match pgo {
-        CliPgoType::Cell => {
+        PgoType::Cell => {
             let pc_idx_count =
                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
             PgoConfig::Cell(pc_idx_count)
         }
-        CliPgoType::Instruction => {
+        PgoType::Instruction => {
             let pc_idx_count =
                 powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
             PgoConfig::Instruction(pc_idx_count)
         }
-        CliPgoType::None => PgoConfig::None,
+        PgoType::None => PgoConfig::None,
     }
 }
