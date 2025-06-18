@@ -198,7 +198,7 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig<BabyBearField> {
         VmChipComplex<OpenVmField<BabyBearField>, Self::Executor, Self::Periphery>,
         VmInventoryError,
     > {
-        let chip = self.sdk_config.take_chip_complex();
+        let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
         Ok(chip)
@@ -388,7 +388,7 @@ pub fn compile_exe(
         config.clone(),
         pgo_config,
     );
-    export_pil(debug_file, compiled_program.vm_config.clone());
+    export_pil(debug_file, &compiled_program.vm_config);
 
     Ok(compiled_program)
 }

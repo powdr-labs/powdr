@@ -1,11 +1,9 @@
-use std::cell::{Ref, RefCell};
 use std::collections::BTreeMap;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{instruction_blacklist, BabyBearSC, SpecializedConfig};
-use openvm_circuit::arch::{VmChipComplex, VmConfig};
+use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
@@ -21,6 +19,8 @@ use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
+use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
@@ -35,13 +35,29 @@ fn to_option<T>(mut v: Vec<T>) -> Option<T> {
     }
 }
 
-type CachedChipComplex = Rc<
-    RefCell<
-        Option<
-            VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>,
-        >,
-    >,
->;
+/// A lazy chip complex that is initialized on the first access
+type LazyChipComplex =
+    Option<VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>>;
+
+/// A shared and mutable reference to a `LazyChipComplex`.
+type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
+
+/// A guard that provides access to the chip complex, ensuring it is initialized.
+pub struct ChipComplexGuard<'a> {
+    guard: MutexGuard<'a, LazyChipComplex>,
+}
+
+impl<'a> Deref for ChipComplexGuard<'a> {
+    type Target =
+        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>;
+
+    fn deref(&self) -> &Self::Target {
+        // Unwrap is safe here because we ensure that the chip complex is initialized
+        self.guard
+            .as_ref()
+            .expect("Chip complex should be initialized")
+    }
+}
 
 /// A wrapper around the `SdkVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
@@ -55,7 +71,7 @@ impl OriginalVmConfig {
     pub fn new(sdk_config: SdkVmConfig) -> Self {
         Self {
             sdk_config,
-            chip_complex: Rc::new(RefCell::new(None)),
+            chip_complex: Default::default(),
         }
     }
 
@@ -64,37 +80,26 @@ impl OriginalVmConfig {
     }
 
     pub fn config_mut(&mut self) -> &mut SdkVmConfig {
-        // Clear the chip complex cache when mutating the config
-        self.chip_complex.borrow_mut().take();
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        *guard = None; // Invalidate cache
         &mut self.sdk_config
     }
 
-    /// Returns a reference to the chip complex, initializing it if it hasn't been created yet.
-    fn chip_complex(
-        &self,
-    ) -> Ref<VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>>
-    {
-        if self.chip_complex.borrow().is_none() {
-            let chip_complex = self
+    /// Returns a guard that provides access to the chip complex, initializing it if necessary.
+    pub fn chip_complex(&self) -> ChipComplexGuard {
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+
+        if guard.is_none() {
+            // This is the expensive part that we want to run a single time: create the chip complex
+            let complex = self
                 .sdk_config
                 .create_chip_complex()
                 .expect("Failed to create chip complex");
-            *self.chip_complex.borrow_mut() = Some(chip_complex);
+            // Store the complex in the guard
+            *guard = Some(complex);
         }
-        Ref::map(self.chip_complex.borrow(), |opt| {
-            opt.as_ref().expect("Chip complex should be initialized")
-        })
-    }
 
-    /// Returns the chip complex, emptying the cache.
-    pub fn take_chip_complex(
-        &self,
-    ) -> VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>
-    {
-        self.chip_complex
-            .borrow_mut()
-            .take()
-            .expect("Chip complex should be initialized")
+        ChipComplexGuard { guard }
     }
 
     /// Given a VM configuration and a set of used instructions, computes:
@@ -183,11 +188,24 @@ impl OriginalVmConfig {
             .map(|(id, bus_type)| (id as u64, bus_type)),
         )
     }
+
+    pub fn create_chip_complex(
+        &self,
+    ) -> Result<
+        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>,
+        VmInventoryError,
+    > {
+        // Clear the cache
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        *guard = None; // Invalidate cache
+                       // Create a new chip complex
+        self.sdk_config.create_chip_complex()
+    }
 }
 
 pub fn export_pil(
     writer: &mut impl std::io::Write,
-    vm_config: SpecializedConfig<powdr_number::BabyBearField>,
+    vm_config: &SpecializedConfig<powdr_number::BabyBearField>,
 ) {
     let blacklist: [&'static str; 1] = ["KeccakVmAir"];
     let bus_map = vm_config.sdk_config.bus_map();
@@ -236,8 +254,6 @@ pub fn get_constraints(
 
 #[cfg(test)]
 mod tests {
-    use crate::OpenVmField;
-
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
     use openvm_bigint_circuit::Int256;
@@ -245,8 +261,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::{config::SdkSystemConfig, Sdk};
-    use powdr_number::BabyBearField;
+    use openvm_sdk::config::SdkSystemConfig;
 
     #[test]
     fn test_get_bus_map() {
@@ -311,7 +326,7 @@ mod tests {
             vec![],
             crate::PrecompileImplementation::SingleRowChip,
         );
-        export_pil(writer, specialized_config);
+        export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();
         assert!(!output.is_empty(), "PIL output should not be empty");
     }
