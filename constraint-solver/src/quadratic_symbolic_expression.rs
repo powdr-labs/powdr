@@ -93,7 +93,7 @@ pub trait RuntimeConstant<V>:
     fn try_to_number(&self) -> Option<Self::FieldType>;
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
     fn substitute(&mut self, variable: &V, substitution: &Self);
-    fn referenced_symbols(&self) -> impl Iterator<Item = V>;
+    fn referenced_symbols(&self) -> impl Iterator<Item = &V>;
     fn field_div(&self, other: &Self) -> Self;
 
     fn from_u64(k: u64) -> Self {
@@ -130,7 +130,7 @@ impl<T: FieldElement, V: 'static> RuntimeConstant<V> for T {
         // No-op for numbers.
     }
 
-    fn referenced_symbols(&self) -> impl Iterator<Item = V> {
+    fn referenced_symbols(&self) -> impl Iterator<Item = &V> {
         std::iter::empty()
     }
 
@@ -344,7 +344,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
     }
 
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = V> + '_> {
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
             .quadratic
             .iter()
