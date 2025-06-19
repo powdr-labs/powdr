@@ -14,7 +14,7 @@ pub enum EffectImpl<T: RuntimeConstant<V>, V> {
     /// Variable can be assigned a value.
     Assignment(V, T),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
-    BitDecomposition(BitDecomposition<T::FieldType, V>),
+    BitDecomposition(BitDecomposition<T, V>),
     /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T::FieldType>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -28,7 +28,7 @@ pub enum EffectImpl<T: RuntimeConstant<V>, V> {
     },
 }
 
-pub type Effect<T: FieldElement, V> = EffectImpl<SymbolicExpression<T, V>, V>;
+pub type Effect<T, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 
 /// A bit decomposition of a value.
 /// Executing this effect solves the following equation:
