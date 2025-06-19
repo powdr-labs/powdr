@@ -10,7 +10,7 @@ use crate::{
 
 /// The effect of solving a symbolic equation.
 #[derive(Clone, PartialEq, Eq)]
-pub enum Effect<T: RuntimeConstant<V>, V> {
+pub enum EffectImpl<T: RuntimeConstant<V>, V> {
     /// Variable can be assigned a value.
     Assignment(V, T),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
@@ -27,6 +27,8 @@ pub enum Effect<T: RuntimeConstant<V>, V> {
         out_of_range_value: T,
     },
 }
+
+pub type Effect<T: FieldElement, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 
 /// A bit decomposition of a value.
 /// Executing this effect solves the following equation:
@@ -94,22 +96,22 @@ pub struct Assertion<T: RuntimeConstant<V>, V> {
 }
 
 impl<T: RuntimeConstant<V>, V> Assertion<T, V> {
-    pub fn assert_is_zero(condition: T) -> Effect<T, V> {
+    pub fn assert_is_zero(condition: T) -> EffectImpl<T, V> {
         Self::assert_eq(condition, T::from_u64(0))
     }
-    pub fn assert_is_nonzero(condition: T) -> Effect<T, V> {
+    pub fn assert_is_nonzero(condition: T) -> EffectImpl<T, V> {
         Self::assert_neq(condition, T::from_u64(0))
     }
-    pub fn assert_eq(lhs: T, rhs: T) -> Effect<T, V> {
-        Effect::Assertion(Assertion {
+    pub fn assert_eq(lhs: T, rhs: T) -> EffectImpl<T, V> {
+        EffectImpl::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: true,
             _mark: std::marker::PhantomData,
         })
     }
-    pub fn assert_neq(lhs: T, rhs: T) -> Effect<T, V> {
-        Effect::Assertion(Assertion {
+    pub fn assert_neq(lhs: T, rhs: T) -> EffectImpl<T, V> {
+        EffectImpl::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: false,

@@ -13,13 +13,13 @@ use crate::{
     effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
-use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
+use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
 use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
 #[derive(Default)]
 pub struct ProcessResult<T: RuntimeConstant<V>, V> {
-    pub effects: Vec<Effect<T, V>>,
+    pub effects: Vec<EffectImpl<T, V>>,
     pub complete: bool,
 }
 
@@ -30,7 +30,7 @@ impl<T: RuntimeConstant<V>, V> ProcessResult<T, V> {
             complete: false,
         }
     }
-    pub fn complete(effects: Vec<Effect<T, V>>) -> Self {
+    pub fn complete(effects: Vec<EffectImpl<T, V>>) -> Self {
         Self {
             effects,
             complete: true,
@@ -633,7 +633,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>
                 concrete_assignments.push(
                     // We're not using assignment_if_satisfies_range_constraints here, because we
                     // might still exit early. The error case is handled below.
-                    Effect::Assignment(variable.clone(), T::from(component >> exponent).into()),
+                    EffectImpl::Assignment(variable.clone(), T::from(component >> exponent).into()),
                 );
                 if is_negative {
                     *offset += T::from(component);
@@ -661,7 +661,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>
             assert_eq!(concrete_assignments.len(), self.linear.len());
             Ok(ProcessResult::complete(concrete_assignments))
         } else {
-            Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
+            Ok(ProcessResult::complete(vec![EffectImpl::BitDecomposition(
                 BitDecomposition {
                     value: self.constant.clone(),
                     components,
@@ -673,7 +673,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>
     fn transfer_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Vec<Effect<T, V>> {
+    ) -> Vec<EffectImpl<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
         assert!(!self.is_quadratic());
@@ -684,7 +684,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>
                 Some((var, rc))
             })
             .filter(|(_, constraint)| !constraint.is_unconstrained())
-            .map(|(var, constraint)| Effect::RangeConstraint(var.clone(), constraint))
+            .map(|(var, constraint)| EffectImpl::RangeConstraint(var.clone(), constraint))
             .collect()
     }
 
@@ -733,10 +733,10 @@ fn combine_to_conditional_assignment<
     right: &ProcessResult<T, V>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<ProcessResult<T, V>> {
-    let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
+    let [EffectImpl::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
     };
-    let [Effect::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
+    let [EffectImpl::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
         return None;
     };
 
@@ -767,7 +767,7 @@ fn combine_to_conditional_assignment<
     }
 
     Some(ProcessResult {
-        effects: vec![Effect::ConditionalAssignment {
+        effects: vec![EffectImpl::ConditionalAssignment {
             variable: first_var.clone(),
             condition: Condition {
                 value: first_assignment.clone(),
@@ -825,7 +825,7 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Di
     ProcessResult {
         effects: effects
             .into_iter()
-            .map(|(v, rc, _)| Effect::RangeConstraint(v.clone(), rc))
+            .map(|(v, rc, _)| EffectImpl::RangeConstraint(v.clone(), rc))
             .collect(),
         complete,
     }
@@ -835,21 +835,21 @@ fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + H
     var: V,
     value: SymbolicExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
-) -> Result<Effect<T, V>, Error> {
+) -> Result<EffectImpl<T, V>, Error> {
     let rc = range_constraints.get(&var);
     if rc.is_disjoint(&value.range_constraint()) {
         return Err(Error::ConflictingRangeConstraints);
     }
-    Ok(Effect::Assignment(var, value))
+    Ok(EffectImpl::Assignment(var, value))
 }
 
 /// Turns an effect into a range constraint on a variable.
 fn effect_to_range_constraint<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq>(
-    effect: &Effect<T, V>,
+    effect: &EffectImpl<T, V>,
 ) -> Option<(V, RangeConstraint<T::FieldType>)> {
     match effect {
-        Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
-        Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
+        EffectImpl::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
+        EffectImpl::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
         _ => None,
     }
 }
@@ -1258,7 +1258,7 @@ mod tests {
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete);
         assert_eq!(result.effects.len(), 1);
-        let Effect::Assignment(var, expr) = &result.effects[0] else {
+        let EffectImpl::Assignment(var, expr) = &result.effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
@@ -1291,7 +1291,7 @@ mod tests {
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
         let effects = result.effects;
-        let Effect::Assignment(var, expr) = &effects[0] else {
+        let EffectImpl::Assignment(var, expr) = &effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
@@ -1325,7 +1325,7 @@ mod tests {
         let [effect] = &result.effects[..] else {
             panic!();
         };
-        let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
+        let EffectImpl::BitDecomposition(BitDecomposition { value, components }) = effect else {
             panic!();
         };
         assert_eq!(format!("{value}"), "(10 + Z)");
@@ -1374,7 +1374,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             .effects
             .into_iter()
             .map(|effect| match effect {
-                Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
+                EffectImpl::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
                 _ => panic!(),
             })
             .format("")
@@ -1403,7 +1403,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             .effects
             .into_iter()
             .map(|effect| match effect {
-                Effect::ConditionalAssignment {
+                EffectImpl::ConditionalAssignment {
                     variable,
                     condition: Condition { value, condition },
                     in_range_value,
@@ -1427,7 +1427,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
-        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
+        let [EffectImpl::Assignment(var, expr)] = result.effects.as_slice() else {
             panic!("Expected 1 assignment");
         };
         assert_eq!(var, &"a");
@@ -1443,7 +1443,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let [effect] = &process_result.effects[..] else {
             panic!();
         };
-        let Effect::RangeConstraint(var, rc) = effect else {
+        let EffectImpl::RangeConstraint(var, rc) = effect else {
             panic!();
         };
         (var, rc.clone())
