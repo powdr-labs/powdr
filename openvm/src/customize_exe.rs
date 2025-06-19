@@ -217,22 +217,17 @@ pub fn customize(
     }
 }
 
-// Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER + bigint branch opcodes
+// Allowed opcodes = ALL_OPCODES (which includes bigint branch opcodes) - HINT_STOREW - HINT_BUFFER
 pub fn instruction_allowlist() -> HashSet<usize> {
     let hint_storew = Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize();
     let hint_buffer = Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize();
 
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
-    let mut set: HashSet<usize> = ALL_OPCODES
+    ALL_OPCODES
         .iter()
         .map(|&op| op as usize)
         .filter(|&op| op != hint_storew && op != hint_buffer)
-        .collect();
-
-    let branch_ops: Vec<usize> = branch_opcodes_bigint();
-    set.extend(branch_ops);
-
-    set
+        .collect()
 }
 
 fn branch_opcodes() -> Vec<usize> {
