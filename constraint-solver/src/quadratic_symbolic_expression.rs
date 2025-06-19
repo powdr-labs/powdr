@@ -84,7 +84,7 @@ impl<T, V> From<T> for QuadraticSymbolicExpressionImpl<T, V> {
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + 'static> QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq> QuadraticSymbolicExpressionImpl<T, V> {
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T::FieldType>) -> Self {
         T::from_symbol(symbol, rc).into()
     }
