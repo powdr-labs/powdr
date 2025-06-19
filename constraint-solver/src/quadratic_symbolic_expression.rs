@@ -948,7 +948,9 @@ impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display> Display
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Display> QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display>
+    QuadraticSymbolicExpressionImpl<T, V>
+{
     fn to_signed_string(&self) -> (bool, String) {
         self.quadratic
             .iter()
