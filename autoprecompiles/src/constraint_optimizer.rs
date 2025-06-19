@@ -135,7 +135,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     constraint_system
 }
 
-fn remove_trivial_constraints<P: FieldElement, V: PartialEq>(
+fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
     let zero = QuadraticSymbolicExpression::from(P::zero());

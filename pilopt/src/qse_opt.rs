@@ -9,6 +9,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
+use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     solver::{self, SolveResult},
