@@ -76,7 +76,10 @@ pub type QuadraticSymbolicExpression<T, V> =
 
 // Note that we can't also implement `From<T>` for `QuadraticSymbolicExpressionImpl<T, V>`,
 // because it could be that `T::FieldType == T`, and the two implementations would conflict.
-impl<T: RuntimeConstant<V>, V> From<T::FieldType> for QuadraticSymbolicExpressionImpl<T, V> {
+// Use `QuadraticSymbolicExpressionImpl::from_runtime_constant` instead.
+impl<F: FieldElement, T: RuntimeConstant<V, FieldType = F>, V> From<F>
+    for QuadraticSymbolicExpressionImpl<T, V>
+{
     fn from(k: T::FieldType) -> Self {
         Self {
             quadratic: Default::default(),
@@ -87,8 +90,16 @@ impl<T: RuntimeConstant<V>, V> From<T::FieldType> for QuadraticSymbolicExpressio
 }
 
 impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq> QuadraticSymbolicExpressionImpl<T, V> {
+    pub fn from_runtime_constant(constant: T) -> Self {
+        Self {
+            quadratic: Default::default(),
+            linear: Default::default(),
+            constant: constant,
+        }
+    }
+
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T::FieldType>) -> Self {
-        T::from_symbol(symbol, rc).into()
+        Self::from_runtime_constant(T::from_symbol(symbol, rc))
     }
 
     pub fn from_unknown_variable(var: V) -> Self {
