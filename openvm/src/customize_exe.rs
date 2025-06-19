@@ -151,7 +151,7 @@ pub fn customize(
     let n_skip = config.skip_autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    let mut degree_bound = config.degree_bound.clone();
+    let mut degree_bound = config.degree_bound;
     // chip stacking needs to guard bus arguments, so we lower the inliner bound on bus interactions
     if config.chip_stacking_log.is_some() {
         degree_bound.bus_interactions -= 1;

@@ -227,12 +227,12 @@ fn join_bus_interactions<P: IntoOpenVm>(
                     if used.contains(&idx) {
                         continue;
                     }
-                    let i2 = to_merge_set.get(0).unwrap();
+                    let i2 = to_merge_set.first().unwrap();
                     let all_args_same_structure = i
                         .args
                         .iter()
                         .zip_eq(i2.args.iter())
-                        .all(|(a1, a2)| has_same_structure(strip_guard(&a1), strip_guard(&a2)));
+                        .all(|(a1, a2)| has_same_structure(strip_guard(a1), strip_guard(a2)));
                     if all_args_same_structure {
                         // found an exact match
                         to_merge_set.push(i);
@@ -251,12 +251,12 @@ fn join_bus_interactions<P: IntoOpenVm>(
                     if used.contains(&idx) {
                         continue;
                     }
-                    let i2 = to_merge_set.get(0).unwrap();
+                    let i2 = to_merge_set.first().unwrap();
                     let some_args_same_structure = i
                         .args
                         .iter()
                         .zip_eq(i2.args.iter())
-                        .any(|(a1, a2)| has_same_structure(strip_guard(&a1), strip_guard(&a2)));
+                        .any(|(a1, a2)| has_same_structure(strip_guard(a1), strip_guard(a2)));
                     if some_args_same_structure {
                         // found a partial match on some args
                         to_merge_set.push(i);
@@ -539,7 +539,7 @@ fn create_mapping<P: IntoOpenVm>(
                 }),
             ) => {
                 assert_eq!(op1, op2);
-                create_mapping_inner(&expr1, &expr2)
+                create_mapping_inner(expr1, expr2)
             }
             (AlgebraicExpression::Reference(from), AlgebraicExpression::Reference(to)) => {
                 let mut mappings = BiMap::new();
@@ -615,8 +615,7 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
             for c2 in self
                 .pcps
                 .iter()
-                .map(|pcp| pcp.machine.constraints.iter())
-                .flatten()
+                .flat_map(|pcp| pcp.machine.constraints.iter())
             {
                 if has_same_structure(
                     &expr_poly_id_by_order(c.expr.clone()),
@@ -637,8 +636,7 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
             for b2 in self
                 .pcps
                 .iter()
-                .map(|pcp| pcp.machine.bus_interactions.iter())
-                .flatten()
+                .flat_map(|pcp| pcp.machine.bus_interactions.iter())
             {
                 if b.id == b2.id && b.args.len() == b2.args.len() {
                     let all_args_same_structure =
@@ -650,7 +648,7 @@ impl<P: IntoOpenVm> ColumnAssigner<P> {
                         });
                     if all_args_same_structure {
                         for (arg1, arg2) in b.args.iter().zip_eq(b2.args.iter()) {
-                            let new_mappings = create_mapping(&arg1, &arg2);
+                            let new_mappings = create_mapping(arg1, arg2);
                             extend_if_no_conflicts(&mut mappings, new_mappings);
                         }
                         break;
@@ -681,9 +679,7 @@ fn assign_columns_from_mapping<P: IntoOpenVm>(
         }
         assert!(
             mapping.get_by_right(&curr_id).is_none(),
-            "New id {} already exists in mapping: {:?}",
-            curr_id,
-            mapping
+            "New id {curr_id} already exists in mapping: {mapping:?}",
         );
         assert!(!mapping.contains_left(&old_id));
         let id = curr_id;
