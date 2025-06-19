@@ -475,8 +475,7 @@ mod tests {
 
         s.substitute_by_unknown(
             &"z",
-            &(Qse::from_unknown_variable("x")
-                + Qse::from(SymbolicExpression::from(GoldilocksField::from(7)))),
+            &(Qse::from_unknown_variable("x") + Qse::from(GoldilocksField::from(7))),
         );
 
         assert_eq!(

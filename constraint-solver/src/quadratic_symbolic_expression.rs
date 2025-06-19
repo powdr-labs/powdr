@@ -74,12 +74,14 @@ pub struct QuadraticSymbolicExpressionImpl<T, V> {
 pub type QuadraticSymbolicExpression<T, V> =
     QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>;
 
-impl<T, V> From<T> for QuadraticSymbolicExpressionImpl<T, V> {
-    fn from(k: T) -> Self {
+// Note that we can't also implement `From<T>` for `QuadraticSymbolicExpressionImpl<T, V>`,
+// because it could be that `T::FieldType == T`, and the two implementations would conflict.
+impl<T: RuntimeConstant<V>, V> From<T::FieldType> for QuadraticSymbolicExpressionImpl<T, V> {
+    fn from(k: T::FieldType) -> Self {
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
-            constant: k,
+            constant: T::from(k),
         }
     }
 }
@@ -345,7 +347,7 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>
+impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
     QuadraticSymbolicExpressionImpl<T, V>
 {
     /// Solves the equation `self = 0` and returns how to compute the solution.
