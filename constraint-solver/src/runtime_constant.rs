@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    ops::{Add, AddAssign, Mul, Neg, Sub},
-};
+use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 use num_traits::{One, Zero};
 use powdr_number::FieldElement;
@@ -12,7 +9,6 @@ pub trait RuntimeConstant<V>:
     Sized
     + Neg<Output = Self>
     + Clone
-    + Display
     + From<Self::FieldType>
     + Add<Output = Self>
     + AddAssign<Self>

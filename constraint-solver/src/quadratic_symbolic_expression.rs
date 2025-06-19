@@ -935,7 +935,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Display> Display
+impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display> Display
     for QuadraticSymbolicExpressionImpl<T, V>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
