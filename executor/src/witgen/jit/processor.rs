@@ -48,7 +48,7 @@ pub struct Processor<'a, T: FieldElement> {
 pub struct ProcessorResult<T: FieldElement> {
     /// Generated code.
     pub code: Vec<Effect<T, Variable>>,
-    /// Range constrainst of the variables they were requested on.
+    /// Range constraints of the variables they were requested on.
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 

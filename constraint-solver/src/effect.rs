@@ -44,7 +44,7 @@ pub struct BitDecomposition<T: RuntimeConstant<V>, V> {
     pub components: Vec<BitDecompositionComponent<T::FieldType, V>>,
 }
 
-impl<T: FieldElement, V: Display> Display for BitDecomposition<T, V> {
+impl<T: RuntimeConstant<V> + Display, V: Display> Display for BitDecomposition<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BitDecomposition { value, components } = self;
         write!(f, "{} := {value};", components.iter().format(" + "))
@@ -92,7 +92,7 @@ pub struct Assertion<T: RuntimeConstant<V>, V> {
     /// If this is true, we assert that both sides are equal.
     /// Otherwise, we assert that they are different.
     pub expected_equal: bool,
-    _mark: std::marker::PhantomData<V>,
+    _marker: std::marker::PhantomData<V>,
 }
 
 impl<T: RuntimeConstant<V>, V> Assertion<T, V> {
@@ -107,7 +107,7 @@ impl<T: RuntimeConstant<V>, V> Assertion<T, V> {
             lhs,
             rhs,
             expected_equal: true,
-            _mark: std::marker::PhantomData,
+            _marker: std::marker::PhantomData,
         })
     }
     pub fn assert_neq(lhs: T, rhs: T) -> EffectImpl<T, V> {
@@ -115,7 +115,7 @@ impl<T: RuntimeConstant<V>, V> Assertion<T, V> {
             lhs,
             rhs,
             expected_equal: false,
-            _mark: std::marker::PhantomData,
+            _marker: std::marker::PhantomData,
         })
     }
 }
