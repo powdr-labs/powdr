@@ -6,6 +6,7 @@ use powdr_autoprecompiles::bus_map::BusType;
 
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
+pub mod gates_optimizer;
 
 pub const NUMBER_OF_WITNESS_COLS: u64 = 5;
 
