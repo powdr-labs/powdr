@@ -6,7 +6,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
@@ -93,7 +93,9 @@ pub trait RuntimeConstant<V>:
     fn try_to_number(&self) -> Option<Self::FieldType>;
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
     fn substitute(&mut self, variable: &V, substitution: &Self);
-    fn referenced_symbols(&self) -> impl Iterator<Item = &V>;
+    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
+    where
+        V: 'a;
     fn field_div(&self, other: &Self) -> Self;
 
     fn from_u64(k: u64) -> Self {
@@ -101,17 +103,26 @@ pub trait RuntimeConstant<V>:
     }
 
     fn is_known_zero(&self) -> bool {
-        self.try_to_number().map_or(false, |n| n.is_known_zero())
+        self.try_to_number().is_some_and(|n| n.is_zero())
     }
+
     fn is_known_one(&self) -> bool {
-        self.try_to_number().map_or(false, |n| n.is_known_one())
+        self.try_to_number().is_some_and(|n| n.is_one())
     }
+
+    fn is_known_minus_one(&self) -> bool {
+        self.try_to_number()
+            .is_some_and(|n| n == -Self::FieldType::from(1))
+    }
+
     fn is_known_nonzero(&self) -> bool {
-        self.try_to_number().map_or(false, |n| n.is_known_nonzero())
+        // Only checking range constraint is enough since if this is a known
+        // fixed value, we will get a range constraint with just a single value.
+        !self.range_constraint().allows_value(0.into())
     }
 }
 
-impl<T: FieldElement, V: 'static> RuntimeConstant<V> for T {
+impl<T: FieldElement, V> RuntimeConstant<V> for T {
     type FieldType = T;
 
     fn from_symbol(_symbol: V, _rc: RangeConstraint<Self::FieldType>) -> Self {
@@ -130,12 +141,16 @@ impl<T: FieldElement, V: 'static> RuntimeConstant<V> for T {
         // No-op for numbers.
     }
 
-    fn referenced_symbols(&self) -> impl Iterator<Item = &V> {
-        std::iter::empty()
-    }
-
     fn field_div(&self, other: &Self) -> Self {
         self.clone() / other.clone()
+    }
+
+    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
+    where
+        V: 'a,
+    {
+        // No symbols in numbers.
+        std::iter::empty()
     }
 }
 
@@ -177,7 +192,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + 'static> QuadraticSymbolicExpr
     }
 
     /// If the expression is a known number, returns it.
-    pub fn try_to_number(&self) -> Option<T> {
+    pub fn try_to_number(&self) -> Option<T::FieldType> {
         self.try_to_known()?.try_to_number()
     }
 
