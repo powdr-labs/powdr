@@ -1,0 +1,14 @@
+[package]
+name = "powdr-openvm-metrics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+tempfile = "3.6"
+clap = { version = "^4.3", features = ["derive"] }
+which = "8.0.0"
+
+[lib]

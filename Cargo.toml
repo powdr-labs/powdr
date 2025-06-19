@@ -36,6 +36,7 @@ members = [
   "executor-utils",
   "autoprecompiles",
   "openvm",
+  "openvm-metrics",
   "cli-openvm",
 ]
 
