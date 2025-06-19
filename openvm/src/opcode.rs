@@ -1,62 +1,80 @@
+use openvm_instructions::LocalOpcode;
+use openvm_rv32im_transpiler::*;
+
 /// Defines each opcode as a `pub const u32` and also generates
 /// a `pub const ALL_OPCODES: &[u32]` containing all of them.
 macro_rules! define_opcodes {
-  ( $(
-      $name:ident = $val:expr,
-  )* ) => {
-      $(
-          pub const $name: u32 = $val;
-      )*
+    (
+        $( $name:ident = $ty:ident :: $variant:ident, )*
+    ) => {
+        $(
+            // e.g. OPCODE_ADD = BaseAluOpcode::ADD as usize + BaseAluOpcode::CLASS_OFFSET
+            pub const $name: u32 =
+                ($ty::$variant as usize + <$ty as LocalOpcode>::CLASS_OFFSET) as u32;
+        )*
 
-      /// A slice containing *all* opcode constants.
-      pub const ALL_OPCODES: &[u32] = &[
-          $( $name ),*
-      ];
-  }
+        /// A slice containing *all* opcode constants.
+        pub const ALL_OPCODES: &[u32] = &[
+            $( $name ),*
+        ];
+    }
 }
 
 define_opcodes!(
     // Rv32BaseAluChip
-    OPCODE_ADD = 512,
-    OPCODE_SUB = 513,
-    OPCODE_XOR = 514,
-    OPCODE_OR = 515,
-    OPCODE_AND = 516,
+    OPCODE_ADD = BaseAluOpcode::ADD,
+    OPCODE_SUB = BaseAluOpcode::SUB,
+    OPCODE_XOR = BaseAluOpcode::XOR,
+    OPCODE_OR = BaseAluOpcode::OR,
+    OPCODE_AND = BaseAluOpcode::AND,
+
     // Rv32ShiftChip opcodes
-    OPCODE_SLL = 517,
-    OPCODE_SRL = 518,
-    OPCODE_SRA = 519,
+    OPCODE_SLL = ShiftOpcode::SLL,
+    OPCODE_SRL = ShiftOpcode::SRL,
+    OPCODE_SRA = ShiftOpcode::SRA,
+
     // Rv32LessThanChip opcodes
-    OPCODE_SLT = 520,
-    OPCODE_SLTU = 521,
+    OPCODE_SLT = LessThanOpcode::SLT,
+    OPCODE_SLTU = LessThanOpcode::SLTU,
+
     // Load/Store opcodes
-    OPCODE_LOADW = 528,
-    OPCODE_LOADBU = 529,
-    OPCODE_LOADHU = 530,
-    OPCODE_STOREW = 531,
-    OPCODE_STOREH = 532,
-    OPCODE_STOREB = 533,
-    OPCODE_LOADB = 534,
-    OPCODE_LOADH = 535,
+    OPCODE_LOADW = Rv32LoadStoreOpcode::LOADW,
+    OPCODE_LOADBU = Rv32LoadStoreOpcode::LOADBU,
+    OPCODE_LOADHU = Rv32LoadStoreOpcode::LOADHU,
+    OPCODE_STOREW = Rv32LoadStoreOpcode::STOREW,
+    OPCODE_STOREH = Rv32LoadStoreOpcode::STOREH,
+    OPCODE_STOREB = Rv32LoadStoreOpcode::STOREB,
+    OPCODE_LOADB = Rv32LoadStoreOpcode::LOADB,
+    OPCODE_LOADH = Rv32LoadStoreOpcode::LOADH,
+
     // Other opcodes
-    OPCODE_BEQ = 544,
-    OPCODE_BNE = 545,
-    OPCODE_BLT = 549,
-    OPCODE_BLTU = 550,
-    OPCODE_BGE = 551,
-    OPCODE_BGEU = 552,
-    OPCODE_JAL = 560,
-    OPCODE_LUI = 561,
-    OPCODE_JALR = 565,
-    OPCODE_AUIPC = 576,
-    OPCODE_MUL = 592,
-    OPCODE_MULH = 593,
-    OPCODE_MULHSU = 594,
-    OPCODE_MULHU = 595,
-    OPCODE_DIV = 596,
-    OPCODE_DIVU = 597,
-    OPCODE_REM = 598,
-    OPCODE_REMU = 599,
-    OPCODE_HINT_STOREW = 608,
-    OPCODE_HINT_BUFFER = 609,
+    OPCODE_BEQ = BranchEqualOpcode::BEQ,
+    OPCODE_BNE = BranchEqualOpcode::BNE,
+
+    OPCODE_BLT = BranchLessThanOpcode::BLT,
+    OPCODE_BLTU = BranchLessThanOpcode::BLTU,
+    OPCODE_BGE = BranchLessThanOpcode::BGE,
+    OPCODE_BGEU = BranchLessThanOpcode::BGEU,
+
+    OPCODE_JAL = Rv32JalLuiOpcode::JAL,
+    OPCODE_LUI = Rv32JalLuiOpcode::LUI,
+
+    OPCODE_JALR = Rv32JalrOpcode::JALR,
+
+    OPCODE_AUIPC = Rv32AuipcOpcode::AUIPC,
+
+    OPCODE_MUL = MulOpcode::MUL,
+
+    OPCODE_MULH = MulHOpcode::MULH,
+    OPCODE_MULHSU = MulHOpcode::MULHSU,
+    OPCODE_MULHU = MulHOpcode::MULHU,
+
+    OPCODE_DIV = DivRemOpcode::DIV,
+    OPCODE_DIVU = DivRemOpcode::DIVU,
+    OPCODE_REM = DivRemOpcode::REM,
+    OPCODE_REMU = DivRemOpcode::REMU,
+
+    OPCODE_HINT_STOREW = Rv32HintStoreOpcode::HINT_STOREW,
+    OPCODE_HINT_BUFFER = Rv32HintStoreOpcode::HINT_BUFFER,
 );
+
