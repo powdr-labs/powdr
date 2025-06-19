@@ -6,11 +6,12 @@ use std::{
 };
 
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::Condition, runtime_constant::RuntimeConstant,
+    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
@@ -72,87 +73,6 @@ pub struct QuadraticSymbolicExpressionImpl<T, V> {
 
 pub type QuadraticSymbolicExpression<T, V> =
     QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>;
-
-pub trait RuntimeConstant<V>:
-    Sized
-    + Neg<Output = Self>
-    + Clone
-    + Display
-    + From<Self::FieldType>
-    + Add<Output = Self>
-    + AddAssign<Self>
-    + Sub<Output = Self>
-    + Mul<Output = Self>
-    + PartialEq
-    + Eq
-    + Zero
-{
-    type FieldType: FieldElement;
-
-    fn from_symbol(symbol: V, rc: RangeConstraint<Self::FieldType>) -> Self;
-    fn try_to_number(&self) -> Option<Self::FieldType>;
-    fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
-    fn substitute(&mut self, variable: &V, substitution: &Self);
-    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
-    where
-        V: 'a;
-    fn field_div(&self, other: &Self) -> Self;
-
-    fn from_u64(k: u64) -> Self {
-        Self::from(Self::FieldType::from(k))
-    }
-
-    fn is_known_zero(&self) -> bool {
-        self.try_to_number().is_some_and(|n| n.is_zero())
-    }
-
-    fn is_known_one(&self) -> bool {
-        self.try_to_number().is_some_and(|n| n.is_one())
-    }
-
-    fn is_known_minus_one(&self) -> bool {
-        self.try_to_number()
-            .is_some_and(|n| n == -Self::FieldType::from(1))
-    }
-
-    fn is_known_nonzero(&self) -> bool {
-        // Only checking range constraint is enough since if this is a known
-        // fixed value, we will get a range constraint with just a single value.
-        !self.range_constraint().allows_value(0.into())
-    }
-}
-
-impl<T: FieldElement, V> RuntimeConstant<V> for T {
-    type FieldType = T;
-
-    fn from_symbol(_symbol: V, _rc: RangeConstraint<Self::FieldType>) -> Self {
-        unimplemented!()
-    }
-
-    fn try_to_number(&self) -> Option<Self> {
-        Some(self.clone())
-    }
-
-    fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
-        RangeConstraint::from_value(self.clone())
-    }
-
-    fn substitute(&mut self, _variable: &V, _substitution: &Self) {
-        // No-op for numbers.
-    }
-
-    fn field_div(&self, other: &Self) -> Self {
-        self.clone() / other.clone()
-    }
-
-    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
-    where
-        V: 'a,
-    {
-        // No symbols in numbers.
-        std::iter::empty()
-    }
-}
 
 impl<T, V> From<T> for QuadraticSymbolicExpressionImpl<T, V> {
     fn from(k: T) -> Self {
@@ -798,7 +718,7 @@ fn combine_to_conditional_assignment<
 /// Tries to combine range constraint results from two alternative branches.
 /// In some cases, if both branches produce a complete range constraint for the same variable,
 /// and those range constraints can be combined without loss, the result is complete as well.
-fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
+fn combine_range_constraints<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
 ) -> ProcessResult<T, V> {

@@ -4,7 +4,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    quadratic_symbolic_expression::RuntimeConstant, range_constraint::RangeConstraint,
+    range_constraint::RangeConstraint, runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
 };
 

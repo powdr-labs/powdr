@@ -13,7 +13,7 @@ use std::{
 
 use powdr_number::FieldElement;
 
-use crate::quadratic_symbolic_expression::RuntimeConstant;
+use crate::runtime_constant::RuntimeConstant;
 
 use super::range_constraint::RangeConstraint;
 

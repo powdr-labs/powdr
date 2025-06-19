@@ -8,6 +8,7 @@ pub mod inliner;
 pub mod journaling_constraint_system;
 pub mod quadratic_symbolic_expression;
 pub mod range_constraint;
+pub mod runtime_constant;
 pub mod solver;
 pub mod symbolic_expression;
 pub mod symbolic_to_quadratic;
