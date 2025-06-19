@@ -283,13 +283,14 @@ mod tests {
             SECP256K1_CONFIG.modulus.clone(),
             SECP256K1_CONFIG.scalar.clone(),
         ];
-        let mut supported_complex_moduli = vec![bn_config.modulus.clone()];
+        let mut supported_complex_moduli =
+            vec![("Bn254Fp2".to_string(), bn_config.modulus.clone())];
         let mut supported_curves = vec![bn_config.clone(), SECP256K1_CONFIG.clone()];
         let mut supported_pairing_curves = vec![PairingCurve::Bn254];
         if use_kzg_intrinsics {
             supported_moduli.push(bls_config.modulus.clone());
             supported_moduli.push(bls_config.scalar.clone());
-            supported_complex_moduli.push(bls_config.modulus.clone());
+            supported_complex_moduli.push(("Bls12_381Fp2".to_string(), bls_config.modulus.clone()));
             supported_curves.push(bls_config.clone());
             supported_pairing_curves.push(PairingCurve::Bls12_381);
         }
