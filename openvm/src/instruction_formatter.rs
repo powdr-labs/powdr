@@ -20,9 +20,9 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
         // Alu instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/alu.rs#L197-L201
         512..=521 => {
-            assert_eq!(d, &F::ONE);
-            assert_eq!(f, &F::ZERO);
-            assert_eq!(g, &F::ZERO);
+            // assert_eq!(d, &F::ONE);
+            // assert_eq!(f, &F::ZERO);
+            // assert_eq!(g, &F::ZERO);
             let opcode = match opcode.as_usize() as u32 {
                 // Rv32BaseAluChip
                 OPCODE_ADD => "ADD",
@@ -45,7 +45,7 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
         // Load/Store instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/loadstore.rs#L340-L346
         528..=535 => {
-            assert_eq!(d, &F::ONE);
+            // assert_eq!(d, &F::ONE);
             let opcode = match opcode.as_usize() as u32 {
                 OPCODE_LOADW => "LOADW",
                 OPCODE_LOADBU => "LOADBU",
@@ -87,6 +87,6 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
 
         OPCODE_HINT_STOREW => format!("HINT_STOREW {a} {b} {c} {d} {e}"),
         OPCODE_HINT_BUFFER => format!("HINT_BUFFER {a} {b} {c} {d} {e}"),
-        _ => format!("<opcode {opcode}> {a} {b} {c} {d} {e} {f} {g}"),
+        _ => format!("<opcode{opcode}> {a} {b} {c} {d} {e} {f} {g}"),
     }
 }

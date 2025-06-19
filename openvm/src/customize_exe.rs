@@ -72,6 +72,50 @@ pub fn customize(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
+    // tally opcode frequency
+    if let PgoConfig::Cell(pgo_program_idx_count) = &pgo_config {
+        tracing::debug!("pc count: {:#?}", pgo_program_idx_count);
+        let mut tally = HashMap::new();
+        exe.program.instructions_and_debug_infos.iter()
+            .enumerate()
+            .for_each(|(i, instr)| {
+                let instr = instr.as_ref().unwrap().0.clone();
+                if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
+                    tally.entry(instr.opcode.as_usize())
+                        .and_modify(|e| *e += count)
+                        .or_insert(*count);
+                }
+            });
+        let mut tally = tally.into_iter().collect::<Vec<_>>();
+        tally.sort_by(|a, b| b.1.cmp(&a.1)); // sort by frequency descending
+
+        fn first_part_str(s: String) -> String {
+            s.split_whitespace()
+             .next()
+             .unwrap_or("")
+             .to_string()
+        }
+
+        // print the tally
+        println!("Opcode frequency tally");
+        tally.iter().for_each(|(opcode, count)| {
+            let dummy_instruction = Instruction { 
+                opcode: VmOpcode::from_usize(*opcode),
+                a: OpenVmField::<BabyBearField>::ZERO,
+                b: OpenVmField::<BabyBearField>::ZERO,
+                c: OpenVmField::<BabyBearField>::ZERO,
+                d: OpenVmField::<BabyBearField>::ZERO,
+                e: OpenVmField::<BabyBearField>::ZERO,
+                f: OpenVmField::<BabyBearField>::ZERO,
+                g: OpenVmField::<BabyBearField>::ZERO,
+            };
+            println!("{}: {}", first_part_str(openvm_instruction_formatter(&dummy_instruction)), count);
+        });
+    }
+
+    panic!();
+
+
     let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
