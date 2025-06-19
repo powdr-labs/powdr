@@ -5,14 +5,11 @@ use std::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
+use crate::{effect::Condition, runtime_constant::RuntimeConstant};
 use itertools::Itertools;
+use num_traits::One;
 use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
-
-use crate::{
-    effect::Condition, runtime_constant::RuntimeConstant,
-    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
-};
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
 use super::range_constraint::RangeConstraint;
@@ -105,8 +102,8 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq> QuadraticSymbolicExpressionImpl
     pub fn from_unknown_variable(var: V) -> Self {
         Self {
             quadratic: Default::default(),
-            linear: [(var.clone(), T::from(1).into())].into_iter().collect(),
-            constant: T::from(0).into(),
+            linear: [(var.clone(), T::one().into())].into_iter().collect(),
+            constant: T::zero().into(),
         }
     }
 
@@ -207,7 +204,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
             // any symbolic expression.
             // We replace the variable by a symbolic expression, so it goes into the constant part.
             let coeff = self.linear.remove(variable).unwrap();
-            self.constant += &coeff * substitution;
+            self.constant += coeff * substitution.clone();
         } else {
             for coeff in self.linear.values_mut() {
                 coeff.substitute(variable, substitution);
@@ -218,13 +215,15 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
         // TODO can we do that without moving everything?
         // In the end, the order does not matter much.
 
-        let mut to_add = QuadraticSymbolicExpressionImpl::from(T::zero());
+        let mut to_add = QuadraticSymbolicExpressionImpl::from_runtime_constant(T::zero());
         self.quadratic.retain_mut(|(l, r)| {
             l.substitute_by_known(variable, substitution);
             r.substitute_by_known(variable, substitution);
             match (l.try_to_known(), r.try_to_known()) {
                 (Some(l), Some(r)) => {
-                    to_add += (l * r).into();
+                    to_add += QuadraticSymbolicExpressionImpl::from_runtime_constant(
+                        l.clone() * r.clone(),
+                    );
                     false
                 }
                 (Some(l), None) => {
@@ -256,7 +255,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
             return;
         }
 
-        let mut to_add = QuadraticSymbolicExpressionImpl::from(T::zero());
+        let mut to_add = QuadraticSymbolicExpressionImpl::from_runtime_constant(T::zero());
         for (var, coeff) in std::mem::take(&mut self.linear) {
             if var == *variable {
                 to_add += substitution.clone() * coeff;
@@ -272,7 +271,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
                 r.substitute_by_unknown(variable, substitution);
                 match (l.try_to_known(), r.try_to_known()) {
                     (Some(lval), Some(rval)) => {
-                        to_add += (lval * rval).into();
+                        to_add += Self::from_runtime_constant(lval.clone() * rval.clone());
                         None
                     }
                     (Some(lval), None) => {
@@ -298,9 +297,10 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
             .iter()
             .flat_map(|(a, b)| a.referenced_variables().chain(b.referenced_variables()));
 
-        let linear = self.linear.iter().flat_map(|(var, coeff)| {
-            std::iter::once(var.clone()).chain(coeff.referenced_symbols())
-        });
+        let linear = self
+            .linear
+            .iter()
+            .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
         let constant = self.constant.referenced_symbols();
         Box::new(quadr.chain(linear).chain(constant))
     }
@@ -407,7 +407,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
         }
         let mut result = self.clone();
         let coefficient = result.linear.remove(variable)?;
-        Some(result * (-T::from(1).field_div(&coefficient)))
+        Some(result * (-T::one().field_div(&coefficient)))
     }
 
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
@@ -439,7 +439,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
                     None
                 }
             })
-            .unwrap_or(T::from(1).into());
+            .unwrap_or(T::one().into());
         let result = expr - &(self.clone() * normalization_factor);
 
         // Check that the operations removed all variables in `expr` from `self`.
@@ -471,7 +471,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
             );
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
-                let value = self.constant.field_div(&-coeff);
+                let value = self.constant.field_div(&-coeff.clone());
                 ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
                     var.clone(),
                     value,
@@ -480,7 +480,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
             } else if self.constant.is_known_nonzero() {
                 // If the offset is not zero, then the coefficient must be non-zero,
                 // otherwise the constraint is violated.
-                let value = self.constant.field_div(&-coeff);
+                let value = self.constant.field_div(&-coeff.clone());
                 ProcessResult::complete(vec![
                     Assertion::assert_is_nonzero(coeff.clone()),
                     assignment_if_satisfies_range_constraints(
@@ -546,7 +546,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
 
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T::FieldType as FieldElement>::Integer = 0.into();
-        let mut components = vec![];
+        let mut components: Vec<BitDecompositionComponent<T::FieldType, V>> = vec![];
         for (variable, constraint, is_negative, coeff_abs, exponent) in constrained_coefficients
             .into_iter()
             .sorted_by_key(|(_, _, _, _, exponent)| *exponent)
@@ -563,7 +563,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
             // if it is not known, we return a BitDecomposition effect.
             if let Some(offset) = &mut offset {
                 let mut component = if is_negative { -*offset } else { *offset }.to_integer();
-                if component > (T::modulus() - 1.into()) >> 1 {
+                if component > (T::FieldType::modulus() - 1.into()) >> 1 {
                     // Convert a signed finite field element into two's complement.
                     // a regular subtraction would underflow, so we do this.
                     // We add the difference between negative numbers in the field
@@ -581,12 +581,15 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
                 concrete_assignments.push(
                     // We're not using assignment_if_satisfies_range_constraints here, because we
                     // might still exit early. The error case is handled below.
-                    EffectImpl::Assignment(variable.clone(), T::from(component >> exponent).into()),
+                    EffectImpl::Assignment(
+                        variable.clone(),
+                        T::FieldType::from(component >> exponent).into(),
+                    ),
                 );
                 if is_negative {
-                    *offset += T::from(component);
+                    *offset += T::FieldType::from(component);
                 } else {
-                    *offset -= T::from(component);
+                    *offset -= T::FieldType::from(component);
                 }
             } else {
                 components.push(BitDecompositionComponent {
@@ -598,7 +601,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
             }
         }
 
-        if covered_bits >= T::modulus() {
+        if covered_bits >= T::FieldType::modulus() {
             return Ok(ProcessResult::empty());
         }
 
@@ -697,9 +700,10 @@ fn combine_to_conditional_assignment<
     // the same time (i.e. the "or" is exclusive), we can turn this into a
     // conditional assignment.
 
-    let diff = symbolic_expression_to_quadratic_symbolic_expression(
-        &(first_assignment.clone() + -second_assignment.clone()),
-    )?;
+    let diff: QuadraticSymbolicExpressionImpl<T, V> = (first_assignment.clone()
+        + -second_assignment.clone())
+    .try_into()
+    .ok()?;
     let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
     // Now if `rc + diff` is disjoint from `rc`, it means
@@ -779,10 +783,10 @@ fn combine_range_constraints<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq +
     }
 }
 
-fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn assignment_if_satisfies_range_constraints<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq>(
     var: V,
-    value: SymbolicExpression<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
+    value: T,
+    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Result<EffectImpl<T, V>, Error> {
     let rc = range_constraints.get(&var);
     if rc.is_disjoint(&value.range_constraint()) {
@@ -910,12 +914,12 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<T>
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> MulAssign<&SymbolicExpression<T, V>>
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> MulAssign<&T>
     for QuadraticSymbolicExpressionImpl<T, V>
 {
-    fn mul_assign(&mut self, rhs: &SymbolicExpression<T, V>) {
+    fn mul_assign(&mut self, rhs: &T) {
         if rhs.is_known_zero() {
-            *self = T::zero().into();
+            *self = Self::from_runtime_constant(T::zero());
         } else {
             for (first, _) in &mut self.quadratic {
                 *first *= rhs;
@@ -942,7 +946,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul
             Self {
                 quadratic: vec![(self, rhs)],
                 linear: Default::default(),
-                constant: T::from(0).into(),
+                constant: T::zero(),
             }
         }
     }
@@ -976,8 +980,8 @@ impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display>
                 self.linear
                     .iter()
                     .map(|(var, coeff)| match coeff.try_to_number() {
-                        Some(k) if k == T::from_u64(1) => (false, format!("{var}")),
-                        Some(k) if k == -T::from_u64(1) => (true, format!("{var}")),
+                        Some(k) if k == T::FieldType::one() => (false, format!("{var}")),
+                        Some(k) if k == -T::FieldType::one() => (true, format!("{var}")),
                         _ => {
                             let (sign, coeff) = Self::symbolic_expression_to_signed_string(coeff);
                             (sign, format!("{coeff} * {var}"))
@@ -1069,7 +1073,7 @@ mod tests {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let zero = Qse::from(SymbolicExpression::from_u64(0));
+        let zero = Qse::from_runtime_constant(SymbolicExpression::from_u64(0));
         let t: Qse = x * y + a;
         assert_eq!(t.to_string(), "(X) * (Y) + A");
         assert_eq!((t.clone() * zero).to_string(), "0");
@@ -1155,7 +1159,7 @@ mod tests {
 
     #[test]
     fn unsolvable() {
-        let r = Qse::from(SymbolicExpression::from_u64(10)).solve(&NoRangeConstraints);
+        let r = Qse::from(GoldilocksField::from(10)).solve(&NoRangeConstraints);
         assert!(r.is_err());
     }
 
@@ -1163,12 +1167,12 @@ mod tests {
     fn unsolvable_with_vars() {
         let x = &Qse::from_known_symbol("X", Default::default());
         let y = &Qse::from_known_symbol("Y", Default::default());
-        let mut constr = x + y - SymbolicExpression::from_u64(10).into();
+        let mut constr = x + y - GoldilocksField::from(10).into();
         // We cannot solve it, but we can also not learn anything new from it.
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
-        assert!(Qse::from(SymbolicExpression::from_u64(10))
+        assert!(Qse::from(GoldilocksField::from(10))
             .solve(&NoRangeConstraints)
             .is_err());
 
@@ -1184,14 +1188,14 @@ mod tests {
                 RangeConstraint::from_range(100.into(), 102.into()),
             ),
         );
-        assert!(Qse::from(SymbolicExpression::from_u64(10))
+        assert!(Qse::from(GoldilocksField::from(10))
             .solve(&NoRangeConstraints)
             .is_err());
     }
 
     #[test]
     fn solvable_without_vars() {
-        let constr = Qse::from(SymbolicExpression::from_u64(0));
+        let constr = Qse::from(GoldilocksField::zero());
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete && result.effects.is_empty());
     }
@@ -1201,9 +1205,9 @@ mod tests {
         let y = Qse::from_known_symbol("y", Default::default());
         let x = Qse::from_unknown_variable("X");
         // 2 * X + 7 * y - 10 = 0
-        let two = Qse::from(SymbolicExpression::from_u64(2));
-        let seven = Qse::from(SymbolicExpression::from_u64(7));
-        let ten = Qse::from(SymbolicExpression::from_u64(10));
+        let two = Qse::from(GoldilocksField::from(2));
+        let seven = Qse::from(GoldilocksField::from(7));
+        let ten = Qse::from(GoldilocksField::from(10));
         let constr = two * x + seven * y - ten;
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete);
@@ -1221,8 +1225,8 @@ mod tests {
         let z = Qse::from_known_symbol("z", Default::default());
         let x = Qse::from_unknown_variable("X");
         // z * X + 7 * y - 10 = 0
-        let seven = Qse::from(SymbolicExpression::from_u64(7));
-        let ten = Qse::from(SymbolicExpression::from_u64(10));
+        let seven = Qse::from(GoldilocksField::from(7));
+        let ten = Qse::from(GoldilocksField::from(10));
         let mut constr = z * x + seven * y - ten.clone();
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
         let result = constr.solve(&NoRangeConstraints).unwrap();
@@ -1257,10 +1261,10 @@ mod tests {
         let c = Qse::from_unknown_variable("c");
         let z = Qse::from_known_symbol("Z", Default::default());
         // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
-        let ten = Qse::from(SymbolicExpression::from_u64(10));
-        let constr: Qse = a * Qse::from(SymbolicExpression::from_u64(0x100))
-            - b * Qse::from(SymbolicExpression::from_u64(0x10000))
-            + c * Qse::from(SymbolicExpression::from_u64(0x1000000))
+        let ten = Qse::from(GoldilocksField::from(10));
+        let constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
+            - b * Qse::from(GoldilocksField::from(0x10000))
+            + c * Qse::from(GoldilocksField::from(0x1000000))
             + ten.clone()
             + z.clone();
         // Without range constraints on a, this is not solvable.
@@ -1312,10 +1316,10 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let range_constraints =
             HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
-        let ten = Qse::from(SymbolicExpression::from_u64(10));
-        let constr = a * Qse::from(SymbolicExpression::from_u64(0x100))
-            + b * Qse::from(SymbolicExpression::from_u64(0x10000))
-            + c * Qse::from(SymbolicExpression::from_u64(0x1000000))
+        let ten = Qse::from(GoldilocksField::from(10));
+        let constr = a * Qse::from(GoldilocksField::from(0x100))
+            + b * Qse::from(GoldilocksField::from(0x10000))
+            + c * Qse::from(GoldilocksField::from(0x1000000))
             + ten.clone()
             - z.clone();
         let result = constr.solve(&range_constraints).unwrap();
@@ -1344,8 +1348,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let a = Qse::from_unknown_variable("a");
         let b = Qse::from_known_symbol("b", rc.clone());
         let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
-        let ten = Qse::from(SymbolicExpression::from_u64(10));
-        let two_pow8 = Qse::from(SymbolicExpression::from_u64(0x100));
+        let ten = Qse::from(GoldilocksField::from(10));
+        let two_pow8 = Qse::from(GoldilocksField::from(0x100));
         let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
@@ -1402,9 +1406,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_bit_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let one = Qse::from(SymbolicExpression::from_u64(1));
-        let three = Qse::from(SymbolicExpression::from_u64(3));
-        let five = Qse::from(SymbolicExpression::from_u64(5));
+        let one = Qse::from(GoldilocksField::from(1));
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
 
         // All these constraints should be equivalent to a bit constraint.
         let constraints = [
@@ -1425,8 +1429,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_complete_range_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let three = Qse::from(SymbolicExpression::from_u64(3));
-        let four = Qse::from(SymbolicExpression::from_u64(4));
+        let three = Qse::from(GoldilocksField::from(3));
+        let four = Qse::from(GoldilocksField::from(4));
 
         // `a` can be 3 or 4, which is can be completely represented by
         // RangeConstraint::from_range(3, 4), so the identity should be
@@ -1446,8 +1450,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_incomplete_range_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let three = Qse::from(SymbolicExpression::from_u64(3));
-        let five = Qse::from(SymbolicExpression::from_u64(5));
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
 
         // `a` can be 3 or 5, so there is a range constraint
         // RangeConstraint::from_range(3, 5) on `a`.

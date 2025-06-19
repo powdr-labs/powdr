@@ -37,11 +37,11 @@ pub type Effect<T: FieldElement, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 /// This effect can only be created if the equation has a unique solution.
 /// It might be that it leads to a contradiction, which should result in an assertion failure.
 #[derive(Clone, PartialEq, Eq)]
-pub struct BitDecomposition<T: FieldElement, V> {
+pub struct BitDecomposition<T: RuntimeConstant<V>, V> {
     /// The value that is decomposed.
-    pub value: SymbolicExpression<T, V>,
+    pub value: T,
     /// The components of the decomposition.
-    pub components: Vec<BitDecompositionComponent<T, V>>,
+    pub components: Vec<BitDecompositionComponent<T::FieldType, V>>,
 }
 
 impl<T: FieldElement, V: Display> Display for BitDecomposition<T, V> {

@@ -132,6 +132,7 @@ pub trait FieldElement:
     + Sub<Output = Self>
     + SubAssign
     + Mul<Output = Self>
+    + MulAssign<Self>
     + Div<Output = Self>
     + Neg<Output = Self>
     + Zero

@@ -13,7 +13,7 @@ use crate::{
 /// Fails in case a division operation is used.
 pub fn symbolic_expression_to_quadratic_symbolic_expression<
     T: FieldElement,
-    V: Clone + Ord + Hash,
+    V: Clone + Hash + Eq + Ord,
 >(
     e: &SymbolicExpression<T, V>,
 ) -> Option<QuadraticSymbolicExpression<T, V>> {

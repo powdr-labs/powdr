@@ -1,9 +1,12 @@
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
 use powdr_number::FieldElement;
 
-use crate::range_constraint::RangeConstraint;
+use crate::{
+    quadratic_symbolic_expression::QuadraticSymbolicExpressionImpl,
+    range_constraint::RangeConstraint,
+};
 
 pub trait RuntimeConstant<V>:
     Sized
@@ -14,9 +17,12 @@ pub trait RuntimeConstant<V>:
     + AddAssign<Self>
     + Sub<Output = Self>
     + Mul<Output = Self>
+    + MulAssign<Self>
     + PartialEq
     + Eq
     + Zero
+    + One
+    + TryInto<QuadraticSymbolicExpressionImpl<Self, V>>
 {
     type FieldType: FieldElement;
 
