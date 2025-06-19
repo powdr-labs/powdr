@@ -18,12 +18,12 @@ use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
 #[derive(Default)]
-pub struct ProcessResult<T: FieldElement, V> {
+pub struct ProcessResult<T: RuntimeConstant<V>, V> {
     pub effects: Vec<Effect<T, V>>,
     pub complete: bool,
 }
 
-impl<T: FieldElement, V> ProcessResult<T, V> {
+impl<T: RuntimeConstant<V>, V> ProcessResult<T, V> {
     pub fn empty() -> Self {
         Self {
             effects: vec![],
@@ -58,20 +58,86 @@ pub enum Error {
 /// an unknown variable gets known and provides functions to solve
 /// (some kinds of) equations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
+pub struct QuadraticSymbolicExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
     /// have at least one unknown.
     quadratic: Vec<(Self, Self)>,
     /// Linear terms of the form `a * X`, where `a` is a (symbolically) known
     /// value and `X` is an unknown variable.
-    linear: BTreeMap<V, SymbolicExpression<T, V>>,
+    linear: BTreeMap<V, T>,
     /// Constant term, a (symbolically) known value.
-    constant: SymbolicExpression<T, V>,
+    constant: T,
 }
 
-impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExpression<T, V> {
-    fn from(k: SymbolicExpression<T, V>) -> Self {
+pub trait RuntimeConstant<V>:
+    Sized
+    + Neg<Output = Self>
+    + Clone
+    + Display
+    + From<Self::FieldType>
+    + Add<Output = Self>
+    + AddAssign<Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + PartialEq
+    + Eq
+    + Zero
+{
+    type FieldType: FieldElement;
+
+    fn from_symbol(symbol: V, rc: RangeConstraint<Self::FieldType>) -> Self;
+    fn try_to_number(&self) -> Option<Self::FieldType>;
+    fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
+    fn substitute(&mut self, variable: &V, substitution: &Self);
+    fn referenced_symbols(&self) -> impl Iterator<Item = V>;
+    fn field_div(&self, other: &Self) -> Self;
+
+    fn from_u64(k: u64) -> Self {
+        Self::from(Self::FieldType::from(k))
+    }
+
+    fn is_known_zero(&self) -> bool {
+        self.try_to_number().map_or(false, |n| n.is_known_zero())
+    }
+    fn is_known_one(&self) -> bool {
+        self.try_to_number().map_or(false, |n| n.is_known_one())
+    }
+    fn is_known_nonzero(&self) -> bool {
+        self.try_to_number().map_or(false, |n| n.is_known_nonzero())
+    }
+}
+
+impl<T: FieldElement, V: 'static> RuntimeConstant<V> for T {
+    type FieldType = T;
+
+    fn from_symbol(_symbol: V, _rc: RangeConstraint<Self::FieldType>) -> Self {
+        unimplemented!()
+    }
+
+    fn try_to_number(&self) -> Option<Self> {
+        Some(self.clone())
+    }
+
+    fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
+        RangeConstraint::from_value(self.clone())
+    }
+
+    fn substitute(&mut self, _variable: &V, _substitution: &Self) {
+        // No-op for numbers.
+    }
+
+    fn referenced_symbols(&self) -> impl Iterator<Item = V> {
+        std::iter::empty()
+    }
+
+    fn field_div(&self, other: &Self) -> Self {
+        self.clone() / other.clone()
+    }
+}
+
+impl<T, V> From<T> for QuadraticSymbolicExpression<T, V> {
+    fn from(k: T) -> Self {
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
@@ -80,15 +146,9 @@ impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExp
     }
 }
 
-impl<T: FieldElement, V> From<T> for QuadraticSymbolicExpression<T, V> {
-    fn from(k: T) -> Self {
-        SymbolicExpression::from(k).into()
-    }
-}
-
-impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
-    pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
-        SymbolicExpression::from_symbol(symbol, rc).into()
+impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + 'static> QuadraticSymbolicExpression<T, V> {
+    pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T::FieldType>) -> Self {
+        T::from_symbol(symbol, rc).into()
     }
 
     pub fn from_unknown_variable(var: V) -> Self {
@@ -100,7 +160,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
     }
 
     /// If this expression does not contain unknown variables, returns the symbolic expression.
-    pub fn try_to_known(&self) -> Option<&SymbolicExpression<T, V>> {
+    pub fn try_to_known(&self) -> Option<&T> {
         if self.quadratic.is_empty() && self.linear.is_empty() {
             Some(&self.constant)
         } else {
@@ -151,19 +211,13 @@ impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
 
     /// Returns the quadratic, linear and constant components of this expression.
     #[allow(clippy::type_complexity)]
-    pub fn components(
-        &self,
-    ) -> (
-        &[(Self, Self)],
-        impl Iterator<Item = (&V, &SymbolicExpression<T, V>)>,
-        &SymbolicExpression<T, V>,
-    ) {
+    pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
     /// Panics if the expression is quadratic.
-    pub fn coefficient_of_variable(&self, var: &V) -> Option<&SymbolicExpression<T, V>> {
+    pub fn coefficient_of_variable(&self, var: &V) -> Option<&T> {
         assert!(!self.is_quadratic());
         self.linear.get(var)
     }
@@ -171,8 +225,8 @@ impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
     /// Returns the range constraint of the full expression.
     pub fn range_constraint(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> RangeConstraint<T> {
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> RangeConstraint<T::FieldType> {
         self.quadratic
             .iter()
             .map(|(l, r)| {
@@ -190,10 +244,10 @@ impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpression<T, V> {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
-    pub fn substitute_by_known(&mut self, variable: &V, substitution: &SymbolicExpression<T, V>) {
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
         self.constant.substitute(variable, substitution);
 
         if self.linear.contains_key(variable) {
@@ -287,16 +341,15 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpression<T,
     }
 
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = V> + '_> {
         let quadr = self
             .quadratic
             .iter()
             .flat_map(|(a, b)| a.referenced_variables().chain(b.referenced_variables()));
 
-        let linear = self
-            .linear
-            .iter()
-            .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
+        let linear = self.linear.iter().flat_map(|(var, coeff)| {
+            std::iter::once(var.clone()).chain(coeff.referenced_symbols())
+        });
         let constant = self.constant.referenced_symbols();
         Box::new(quadr.chain(linear).chain(constant))
     }
@@ -311,11 +364,11 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpression<T,
     }
 }
 
-impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<T, V1> {
+impl<T: FieldElement, V1: Ord + Clone> QuadraticSymbolicExpression<SymbolicExpression<T, V1>, V1> {
     pub fn transform_var_type<V2: Ord + Clone>(
         &self,
         var_transform: &mut impl FnMut(&V1) -> V2,
-    ) -> QuadraticSymbolicExpression<T, V2> {
+    ) -> QuadraticSymbolicExpression<SymbolicExpression<T, V2>, V2> {
         QuadraticSymbolicExpression {
             quadratic: self
                 .quadratic
@@ -352,7 +405,9 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>
+    QuadraticSymbolicExpression<T, V>
+{
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
     /// If no way to solve the equation (and no way to derive new range
@@ -361,7 +416,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     /// If the equation is known to be unsolvable, returns an error.
     pub fn solve(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.is_quadratic() {
             self.solve_quadratic(range_constraints)?
@@ -399,7 +454,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         }
         let mut result = self.clone();
         let coefficient = result.linear.remove(variable)?;
-        Some(result * (SymbolicExpression::from(-T::from(1)).field_div(&coefficient)))
+        Some(result * (-T::from(1).field_div(&coefficient)))
     }
 
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
@@ -452,7 +507,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
 
     fn solve_affine(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.linear.len() == 1 {
             let (var, coeff) = self.linear.iter().next().unwrap();
@@ -504,7 +559,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     /// Tries to solve a bit-decomposition equation.
     fn solve_bit_decomposition(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         assert!(!self.is_quadratic());
         // All the coefficients need to be known numbers and the
@@ -537,7 +592,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         let mut concrete_assignments = vec![];
 
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: <T as FieldElement>::Integer = 0.into();
+        let mut covered_bits: <T::FieldType as FieldElement>::Integer = 0.into();
         let mut components = vec![];
         for (variable, constraint, is_negative, coeff_abs, exponent) in constrained_coefficients
             .into_iter()
@@ -560,10 +615,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                     // a regular subtraction would underflow, so we do this.
                     // We add the difference between negative numbers in the field
                     // and negative numbers in two's complement.
-                    component += T::Integer::MAX - T::modulus() + 1.into();
+                    component += <T::FieldType as FieldElement>::Integer::MAX
+                        - T::FieldType::modulus()
+                        + 1.into();
                 };
                 component &= bit_mask;
-                if component >= T::modulus() {
+                if component >= T::FieldType::modulus() {
                     // If the component does not fit the field, the bit mask is not
                     // tight good enough.
                     return Ok(ProcessResult::empty());
@@ -610,7 +667,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
 
     fn transfer_constraints(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
@@ -628,7 +685,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
 
     fn solve_quadratic(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         let Some((left, right)) = self.try_as_single_product() else {
             return Ok(ProcessResult::empty());
@@ -663,10 +720,13 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
 
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
-fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+fn combine_to_conditional_assignment<
+    T: RuntimeConstant<V>,
+    V: Ord + Clone + Hash + Eq + Display,
+>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<ProcessResult<T, V>> {
     let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
@@ -718,7 +778,7 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
 /// Tries to combine range constraint results from two alternative branches.
 /// In some cases, if both branches produce a complete range constraint for the same variable,
 /// and those range constraints can be combined without loss, the result is complete as well.
-fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
 ) -> ProcessResult<T, V> {
@@ -779,9 +839,9 @@ fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + H
 }
 
 /// Turns an effect into a range constraint on a variable.
-fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+fn effect_to_range_constraint<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq>(
     effect: &Effect<T, V>,
-) -> Option<(V, RangeConstraint<T>)> {
+) -> Option<(V, RangeConstraint<T::FieldType>)> {
     match effect {
         Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
         Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
@@ -789,7 +849,7 @@ fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn add(mut self, rhs: Self) -> Self {
@@ -798,7 +858,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpre
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Add for &QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -806,7 +866,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &QuadraticSymbolicExpr
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExpression<T, V>>
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExpression<T, V>>
     for QuadraticSymbolicExpression<T, V>
 {
     fn add_assign(&mut self, rhs: Self) {
@@ -822,7 +882,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExp
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for &QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Sub for &QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -830,7 +890,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for &QuadraticSymbolicExpr
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Sub for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -838,7 +898,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for QuadraticSymbolicExpre
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord> QuadraticSymbolicExpression<T, V> {
     fn negate(&mut self) {
         for (first, _) in &mut self.quadratic {
             first.negate()
@@ -850,7 +910,7 @@ impl<T: FieldElement, V: Clone + Ord> QuadraticSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Neg for QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord> Neg for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn neg(mut self) -> Self {
@@ -859,7 +919,7 @@ impl<T: FieldElement, V: Clone + Ord> Neg for QuadraticSymbolicExpression<T, V> 
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Neg for &QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord> Neg for &QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn neg(self) -> Self::Output {
@@ -868,23 +928,23 @@ impl<T: FieldElement, V: Clone + Ord> Neg for &QuadraticSymbolicExpression<T, V>
 }
 
 /// Multiply by known symbolic expression.
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul<&SymbolicExpression<T, V>>
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<&T>
     for QuadraticSymbolicExpression<T, V>
 {
     type Output = QuadraticSymbolicExpression<T, V>;
 
-    fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self {
+    fn mul(mut self, rhs: &T) -> Self {
         self *= rhs;
         self
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul<SymbolicExpression<T, V>>
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<T>
     for QuadraticSymbolicExpression<T, V>
 {
     type Output = QuadraticSymbolicExpression<T, V>;
 
-    fn mul(self, rhs: SymbolicExpression<T, V>) -> Self {
+    fn mul(self, rhs: T) -> Self {
         self * &rhs
     }
 }
@@ -907,7 +967,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> MulAssign<&SymbolicExpression<
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn mul(self, rhs: QuadraticSymbolicExpression<T, V>) -> Self {
@@ -925,7 +985,9 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Display> Display
+    for QuadraticSymbolicExpression<T, V>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (sign, s) = self.to_signed_string();
         if sign {
@@ -936,7 +998,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant<V>, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
     fn to_signed_string(&self) -> (bool, String) {
         self.quadratic
             .iter()
@@ -949,8 +1011,8 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
                 self.linear
                     .iter()
                     .map(|(var, coeff)| match coeff.try_to_number() {
-                        Some(k) if k == 1.into() => (false, format!("{var}")),
-                        Some(k) if k == (-1).into() => (true, format!("{var}")),
+                        Some(k) if k == T::from_u64(1) => (false, format!("{var}")),
+                        Some(k) if k == -T::from_u64(1) => (true, format!("{var}")),
                         _ => {
                             let (sign, coeff) = Self::symbolic_expression_to_signed_string(coeff);
                             (sign, format!("{coeff} * {var}"))
@@ -958,7 +1020,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
                     }),
             )
             .chain(match self.constant.try_to_number() {
-                Some(k) if k == T::zero() => None,
+                Some(k) if k == T::FieldType::zero() => None,
                 _ => Some(Self::symbolic_expression_to_signed_string(&self.constant)),
             })
             .reduce(|(n1, p1), (n2, p2)| {
@@ -974,7 +1036,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
             .unwrap_or((false, "0".to_string()))
     }
 
-    fn symbolic_expression_to_signed_string(value: &SymbolicExpression<T, V>) -> (bool, String) {
+    fn symbolic_expression_to_signed_string(value: &T) -> (bool, String) {
         match value.try_to_number() {
             Some(k) => {
                 if k.is_in_lower_half() {
@@ -999,7 +1061,10 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    type Qse = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
+    type Qse = QuadraticSymbolicExpression<
+        SymbolicExpression<GoldilocksField, &'static str>,
+        &'static str,
+    >;
 
     #[test]
     fn test_mul() {
@@ -1039,7 +1104,7 @@ mod tests {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let zero = Qse::from(GoldilocksField::from(0));
+        let zero = Qse::from(SymbolicExpression::from_u64(0));
         let t: Qse = x * y + a;
         assert_eq!(t.to_string(), "(X) * (Y) + A");
         assert_eq!((t.clone() * zero).to_string(), "0");
@@ -1125,7 +1190,7 @@ mod tests {
 
     #[test]
     fn unsolvable() {
-        let r = Qse::from(GoldilocksField::from(10)).solve(&NoRangeConstraints);
+        let r = Qse::from(SymbolicExpression::from_u64(10)).solve(&NoRangeConstraints);
         assert!(r.is_err());
     }
 
@@ -1133,12 +1198,12 @@ mod tests {
     fn unsolvable_with_vars() {
         let x = &Qse::from_known_symbol("X", Default::default());
         let y = &Qse::from_known_symbol("Y", Default::default());
-        let mut constr = x + y - GoldilocksField::from(10).into();
+        let mut constr = x + y - SymbolicExpression::from_u64(10).into();
         // We cannot solve it, but we can also not learn anything new from it.
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
-        assert!(Qse::from(GoldilocksField::from(10))
+        assert!(Qse::from(SymbolicExpression::from_u64(10))
             .solve(&NoRangeConstraints)
             .is_err());
 
@@ -1154,14 +1219,14 @@ mod tests {
                 RangeConstraint::from_range(100.into(), 102.into()),
             ),
         );
-        assert!(Qse::from(GoldilocksField::from(10))
+        assert!(Qse::from(SymbolicExpression::from_u64(10))
             .solve(&NoRangeConstraints)
             .is_err());
     }
 
     #[test]
     fn solvable_without_vars() {
-        let constr = Qse::from(GoldilocksField::from(0));
+        let constr = Qse::from(SymbolicExpression::from_u64(0));
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete && result.effects.is_empty());
     }
@@ -1171,9 +1236,9 @@ mod tests {
         let y = Qse::from_known_symbol("y", Default::default());
         let x = Qse::from_unknown_variable("X");
         // 2 * X + 7 * y - 10 = 0
-        let two = Qse::from(GoldilocksField::from(2));
-        let seven = Qse::from(GoldilocksField::from(7));
-        let ten = Qse::from(GoldilocksField::from(10));
+        let two = Qse::from(SymbolicExpression::from_u64(2));
+        let seven = Qse::from(SymbolicExpression::from_u64(7));
+        let ten = Qse::from(SymbolicExpression::from_u64(10));
         let constr = two * x + seven * y - ten;
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete);
@@ -1191,8 +1256,8 @@ mod tests {
         let z = Qse::from_known_symbol("z", Default::default());
         let x = Qse::from_unknown_variable("X");
         // z * X + 7 * y - 10 = 0
-        let seven = Qse::from(GoldilocksField::from(7));
-        let ten = Qse::from(GoldilocksField::from(10));
+        let seven = Qse::from(SymbolicExpression::from_u64(7));
+        let ten = Qse::from(SymbolicExpression::from_u64(10));
         let mut constr = z * x + seven * y - ten.clone();
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
         let result = constr.solve(&NoRangeConstraints).unwrap();
@@ -1227,10 +1292,10 @@ mod tests {
         let c = Qse::from_unknown_variable("c");
         let z = Qse::from_known_symbol("Z", Default::default());
         // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
-        let ten = Qse::from(GoldilocksField::from(10));
-        let constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
-            - b * Qse::from(GoldilocksField::from(0x10000))
-            + c * Qse::from(GoldilocksField::from(0x1000000))
+        let ten = Qse::from(SymbolicExpression::from_u64(10));
+        let constr: Qse = a * Qse::from(SymbolicExpression::from_u64(0x100))
+            - b * Qse::from(SymbolicExpression::from_u64(0x10000))
+            + c * Qse::from(SymbolicExpression::from_u64(0x1000000))
             + ten.clone()
             + z.clone();
         // Without range constraints on a, this is not solvable.
@@ -1282,10 +1347,10 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let range_constraints =
             HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
-        let ten = Qse::from(GoldilocksField::from(10));
-        let constr = a * Qse::from(GoldilocksField::from(0x100))
-            + b * Qse::from(GoldilocksField::from(0x10000))
-            + c * Qse::from(GoldilocksField::from(0x1000000))
+        let ten = Qse::from(SymbolicExpression::from_u64(10));
+        let constr = a * Qse::from(SymbolicExpression::from_u64(0x100))
+            + b * Qse::from(SymbolicExpression::from_u64(0x10000))
+            + c * Qse::from(SymbolicExpression::from_u64(0x1000000))
             + ten.clone()
             - z.clone();
         let result = constr.solve(&range_constraints).unwrap();
@@ -1314,8 +1379,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let a = Qse::from_unknown_variable("a");
         let b = Qse::from_known_symbol("b", rc.clone());
         let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
-        let ten = Qse::from(GoldilocksField::from(10));
-        let two_pow8 = Qse::from(GoldilocksField::from(0x100));
+        let ten = Qse::from(SymbolicExpression::from_u64(10));
+        let two_pow8 = Qse::from(SymbolicExpression::from_u64(0x100));
         let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
@@ -1355,7 +1420,10 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     }
 
     fn unpack_range_constraint(
-        process_result: &ProcessResult<GoldilocksField, &'static str>,
+        process_result: &ProcessResult<
+            SymbolicExpression<GoldilocksField, &'static str>,
+            &'static str,
+        >,
     ) -> (&'static str, RangeConstraint<GoldilocksField>) {
         let [effect] = &process_result.effects[..] else {
             panic!();
@@ -1369,9 +1437,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_bit_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let one = Qse::from(GoldilocksField::from(1));
-        let three = Qse::from(GoldilocksField::from(3));
-        let five = Qse::from(GoldilocksField::from(5));
+        let one = Qse::from(SymbolicExpression::from_u64(1));
+        let three = Qse::from(SymbolicExpression::from_u64(3));
+        let five = Qse::from(SymbolicExpression::from_u64(5));
 
         // All these constraints should be equivalent to a bit constraint.
         let constraints = [
@@ -1392,8 +1460,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_complete_range_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let three = Qse::from(GoldilocksField::from(3));
-        let four = Qse::from(GoldilocksField::from(4));
+        let three = Qse::from(SymbolicExpression::from_u64(3));
+        let four = Qse::from(SymbolicExpression::from_u64(4));
 
         // `a` can be 3 or 4, which is can be completely represented by
         // RangeConstraint::from_range(3, 4), so the identity should be
@@ -1413,8 +1481,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_incomplete_range_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let three = Qse::from(GoldilocksField::from(3));
-        let five = Qse::from(GoldilocksField::from(5));
+        let three = Qse::from(SymbolicExpression::from_u64(3));
+        let five = Qse::from(SymbolicExpression::from_u64(5));
 
         // `a` can be 3 or 5, so there is a range constraint
         // RangeConstraint::from_range(3, 5) on `a`.

@@ -1,5 +1,6 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
+use num_traits::Zero;
 use std::hash::Hash;
 use std::ops::Sub;
 use std::ops::{AddAssign, MulAssign};
@@ -11,6 +12,8 @@ use std::{
 };
 
 use powdr_number::FieldElement;
+
+use crate::quadratic_symbolic_expression::RuntimeConstant;
 
 use super::range_constraint::RangeConstraint;
 
@@ -452,5 +455,49 @@ impl<T: FieldElement, V: Clone + PartialEq> SymbolicExpression<T, V> {
                 Default::default(),
             )
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone + PartialEq> Zero for SymbolicExpression<T, V> {
+    fn zero() -> Self {
+        SymbolicExpression::Concrete(T::from(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.is_known_zero()
+    }
+}
+
+impl<T: FieldElement, V: Clone + PartialEq + Eq + Display + Hash> RuntimeConstant<V>
+    for SymbolicExpression<T, V>
+{
+    type FieldType = T;
+
+    fn from_symbol(symbol: V, rc: RangeConstraint<Self::FieldType>) -> Self {
+        SymbolicExpression::from_symbol(symbol, rc)
+    }
+
+    fn try_to_number(&self) -> Option<Self::FieldType> {
+        SymbolicExpression::try_to_number(self)
+    }
+
+    fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
+        SymbolicExpression::range_constraint(self)
+    }
+
+    fn substitute(&mut self, variable: &V, substitution: &Self) {
+        SymbolicExpression::substitute(self, variable, substitution);
+    }
+
+    fn referenced_symbols(&self) -> impl Iterator<Item = V> {
+        SymbolicExpression::referenced_symbols(self).cloned()
+    }
+
+    fn field_div(&self, other: &Self) -> Self {
+        SymbolicExpression::field_div(self, other)
+    }
+
+    fn from_u64(k: u64) -> Self {
+        SymbolicExpression::Concrete(T::from(k))
     }
 }

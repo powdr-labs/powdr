@@ -1,14 +1,17 @@
 use powdr_number::GoldilocksField;
 
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use crate::{
+    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RuntimeConstant},
+    symbolic_expression::SymbolicExpression,
+};
 
 pub type Var = &'static str;
-pub type Qse = QuadraticSymbolicExpression<GoldilocksField, Var>;
+pub type Qse = QuadraticSymbolicExpression<SymbolicExpression<GoldilocksField, Var>, Var>;
 
 pub fn var(name: Var) -> Qse {
     Qse::from_unknown_variable(name)
 }
 
 pub fn constant(value: u64) -> Qse {
-    GoldilocksField::from(value).into()
+    SymbolicExpression::from_u64(value).into()
 }
