@@ -1,7 +1,7 @@
-use std::cmp::Reverse;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::ALL_OPCODES;
@@ -576,21 +576,40 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
         max_cache,
     );
 
-    // min-heap storing (cost, block_idx) with lowest cost on top
-    let heap = Arc::new(Mutex::new(BinaryHeap::<Reverse<(u32, usize)>>::new()));
-    // map from block_idx to its cached APC entry, capped to `max_cache` entries
-    let new_apc_cache = Arc::new(Mutex::new(
-        HashMap::<usize, CachedAutoPrecompile<P>>::with_capacity(max_cache),
-    ));
+    // node carries all needed data but is only ordered by cost
+    struct Node<P> {
+        cost: u32,
+        start: usize,
+        entry: CachedAutoPrecompile<P>,
+        cells_saved: usize,
+    }
 
-    // generate apc in parallel
-    let cells_saved_per_row_by_bb: HashMap<usize, usize> = blocks
+    impl<P> PartialEq for Node<P> {
+        fn eq(&self, other: &Self) -> bool {
+            self.cost == other.cost
+        }
+    }
+    impl<P> Eq for Node<P> {}
+
+    impl<P> PartialOrd for Node<P> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    // order nodes by reverse cost, so that our BinaryHeap pops the smallest costed node first
+    impl<P> Ord for Node<P> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            other.cost.cmp(&self.cost)
+        }
+    }
+
+    // map–reduce over blocks into a single BinaryHeap<Node<P>> capped at max_cache
+    let top_heap: BinaryHeap<Node<P>> = blocks
         .par_iter()
         .enumerate()
         .filter_map(|(i, block)| {
-            let start = block.start_idx;
-
-            // attempt apc generation, skip on error
+            // attempt apc; if it errors, skip this block entirely
             let entry = generate_apc_cache(
                 block,
                 airs,
@@ -600,63 +619,69 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
             )
             .ok()?;
 
-            // compute "cells saved per row" as original width minus apc
-            let apc_cells_per_row = entry.autoprecompile.unique_references().count();
-            let orig_cells_per_row: usize = block
+            // compute cost and cells_saved_per_row
+            let apc_cells = entry.autoprecompile.unique_references().count();
+            let orig_cells: usize = block
                 .statements
                 .iter()
                 .map(|instr| air_width_by_opcode[&instr.opcode.as_usize()])
                 .sum();
-            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
-            assert!(cells_saved_per_row > 0);
-            tracing::debug!(
-                "Basic block start_idx: {}, cells saved per row: {}",
-                start,
-                cells_saved_per_row
-            );
+            let cells_saved = orig_cells - apc_cells;
+            let freq = *pgo_program_idx_count
+                .get(&(block.start_idx as u32))
+                .unwrap_or(&0) as usize;
+            let cost = (cells_saved * freq) as u32;
 
-            // cost = frequency * cells_saved_per_row
-            let freq = pgo_program_idx_count[&(start as u32)] as usize;
-            let cost = (cells_saved_per_row * freq) as u32;
-
-            // mutex access to heap for cost ordering
-            let mut heap_guard = heap.lock().unwrap();
-            let mut cache_guard = new_apc_cache.lock().unwrap();
-
-            // if we haven't filled max_cache yet, just insert
-            if heap_guard.len() < max_cache {
-                heap_guard.push(Reverse((cost, start)));
-                cache_guard.insert(start, entry);
-            } else if let Some(&Reverse((min_cost, min_idx))) = heap_guard.peek() {
-                // if new cost beats the lowest cost in heap, replace it
-                if cost > min_cost {
-                    // remove the smallest cost for cache
-                    heap_guard.pop();
-                    cache_guard.remove(&min_idx);
-                    // insert the new higher-cost cache entry
-                    heap_guard.push(Reverse((cost, start)));
-                    cache_guard.insert(start, entry);
-                }
-                // else: this entry is too low-cost, drop it
-            }
-            Some((start, cells_saved_per_row))
-            // locks dropped at end of scope
+            // build a 1-element heap
+            let mut local = BinaryHeap::new();
+            local.push(Node {
+                cost,
+                start: block.start_idx,
+                entry,
+                cells_saved,
+            });
+            Some(local)
         })
-        .collect();
+        .reduce(
+            // identity: empty heap
+            BinaryHeap::new,
+            // merge two heaps, pruning back to max_cache
+            |mut a, mut b| {
+                for node in b.drain() {
+                    a.push(node);
+                    if a.len() > max_cache {
+                        a.pop();
+                    }
+                }
+                a
+            },
+        );
 
-    // merge costliest caches into the main apc_cache
-    {
-        let cache_guard = new_apc_cache.lock().unwrap();
-        apc_cache.extend(cache_guard.clone());
-    }
+    // created from the min heap, so should be sorted already
+    let (cells_saved_by_bb, new_apc_cache): (
+        HashMap<usize, usize>,
+        HashMap<usize, CachedAutoPrecompile<P>>,
+    ) = top_heap
+        .into_par_iter()
+        .map(
+            |Node {
+                 start,
+                 entry,
+                 cells_saved,
+                 ..
+             }| { ((start, cells_saved), (start, entry)) },
+        )
+        .unzip();
 
-    // filter out the basic blocks where the apc generation errored out
-    blocks.retain(|b| cells_saved_per_row_by_bb.contains_key(&b.start_idx));
+    apc_cache.extend(new_apc_cache);
+
+    // filter to the top `max_cache` blocks by cost
+    blocks.retain(|b| cells_saved_by_bb.contains_key(&b.start_idx));
 
     // cost = frequency * cells_saved_per_row
     blocks.sort_by(|a, b| {
-        let a_cells_saved = cells_saved_per_row_by_bb[&a.start_idx];
-        let b_cells_saved = cells_saved_per_row_by_bb[&b.start_idx];
+        let a_cells_saved = cells_saved_by_bb[&a.start_idx];
+        let b_cells_saved = cells_saved_by_bb[&b.start_idx];
 
         let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
         let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
@@ -667,7 +692,7 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
     // debug print blocks by descending cost
     for block in blocks {
         let start_idx = block.start_idx;
-        let cells_saved = cells_saved_per_row_by_bb[&start_idx];
+        let cells_saved = cells_saved_by_bb[&start_idx];
         let freq = pgo_program_idx_count[&(start_idx as u32)];
         let cost = freq * cells_saved as u32;
 
