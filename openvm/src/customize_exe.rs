@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::extraction_utils::OriginalVmConfig;
-use crate::opcode::{instruction_allowlist, *};
+use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist};
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -81,7 +81,12 @@ pub fn customize(
 
     let labels = add_extra_targets(&exe.program, labels.clone());
 
-    let blocks = collect_basic_blocks(&exe.program, &labels, &opcodes_allowlist, BRANCH_OPCODES);
+    let blocks = collect_basic_blocks(
+        &exe.program,
+        &labels,
+        &opcodes_allowlist,
+        &branch_opcodes_set(),
+    );
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -230,8 +235,8 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
-    opcode_allowlist: &[usize],
-    branch_opcodes: &[usize],
+    opcode_allowlist: &BTreeSet<usize>,
+    branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -302,6 +307,7 @@ fn add_extra_targets<F: PrimeField32>(
     program: &Program<F>,
     mut labels: BTreeSet<u32>,
 ) -> BTreeSet<u32> {
+    let branch_opcodes_bigint = branch_opcodes_bigint_set();
     let new_labels = program
         .instructions_and_debug_infos
         .iter()
@@ -310,7 +316,7 @@ fn add_extra_targets<F: PrimeField32>(
             let instr = instr.as_ref().unwrap().0.clone();
             let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
             let op = instr.opcode.as_usize();
-            BRANCH_OPCODES_BIGINT
+            branch_opcodes_bigint
                 .contains(&op)
                 .then_some(adjusted_pc + instr.c.as_canonical_u32())
         });
@@ -461,7 +467,7 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     bus_map: BusMap,
-    opcode_allowlist: &[usize],
+    opcode_allowlist: &BTreeSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::LocalOpcode;
 use openvm_rv32im_transpiler::*;
@@ -100,7 +102,6 @@ pub const BRANCH_OPCODES_BIGINT: &[usize] = &[
 ];
 
 pub const BRANCH_OPCODES: &[usize] = &[
-    // Non-bigint branch
     OPCODE_BEQ,
     OPCODE_BNE,
     OPCODE_BLT,
@@ -109,23 +110,28 @@ pub const BRANCH_OPCODES: &[usize] = &[
     OPCODE_BGEU,
     OPCODE_JAL,
     OPCODE_JALR,
-    // Bigint branch
-    BIGINT_OPCODE_BEQ,
-    BIGINT_OPCODE_BNE,
-    BIGINT_OPCODE_BLT,
-    BIGINT_OPCODE_BLTU,
-    BIGINT_OPCODE_BGE,
-    BIGINT_OPCODE_BGEU,
 ];
 
 // Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER
-pub fn instruction_allowlist() -> Vec<usize> {
+pub fn instruction_allowlist() -> BTreeSet<usize> {
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
     ALL_OPCODES
         .iter()
         .copied()
         .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
         .collect()
+}
+
+pub fn branch_opcodes_bigint_set() -> BTreeSet<usize> {
+    let mut set = BTreeSet::new();
+    set.extend(BRANCH_OPCODES_BIGINT);
+    set
+}
+
+pub fn branch_opcodes_set() -> BTreeSet<usize> {
+    let mut set = branch_opcodes_bigint_set();
+    set.extend(BRANCH_OPCODES);
+    set
 }
 
 #[cfg(test)]
@@ -146,11 +152,13 @@ mod tests {
     #[test]
     fn test_instruction_allowlist() {
         let allowlist = instruction_allowlist();
-        let expected = &[
+        let expected = [
             512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
             535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
             598, 599, 1056, 1057, 1061, 1062, 1063, 1064,
-        ];
+        ]
+        .into_iter()
+        .collect();
         assert_eq!(allowlist.len(), ALL_OPCODES.len() - 2); // Excluding HINT_STOREW and HINT_BUFFER
         assert_eq!(allowlist, expected);
     }
