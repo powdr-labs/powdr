@@ -415,7 +415,7 @@ fn add_extra_targets<F: PrimeField32>(
 
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
-fn cache_apc_for_all_acc_blocks<P: IntoOpenVm>(
+fn create_apcs_for_all_blocks<P: IntoOpenVm>(
     blocks: Vec<BasicBlock<OpenVmField<P>>>,
     powdr_config: &PowdrConfig,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
@@ -720,7 +720,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
         );
     }
 
-    cache_apc_for_all_acc_blocks(blocks, config, airs, bus_map)
+    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
 }
 
 fn create_apcs_with_no_pgo<P: IntoOpenVm>(
@@ -742,5 +742,5 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
         );
     }
 
-    cache_apc_for_all_acc_blocks(blocks, config, airs, bus_map)
+    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
 }
