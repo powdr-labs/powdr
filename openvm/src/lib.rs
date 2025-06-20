@@ -110,7 +110,6 @@ pub enum PgoConfig {
     None,
 }
 
-
 #[derive(Copy, Clone, Debug, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
