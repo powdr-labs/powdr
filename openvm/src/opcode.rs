@@ -1,6 +1,6 @@
+use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::LocalOpcode;
 use openvm_rv32im_transpiler::*;
-use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 
 /// Defines each opcode as a `pub const usize` and also generates
 /// a `pub const ALL_OPCODES: &[usize]` containing all of them.
@@ -123,7 +123,7 @@ pub fn instruction_allowlist() -> Vec<usize> {
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
     ALL_OPCODES
         .iter()
-        .map(|&op| op)
+        .copied()
         .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
         .collect()
 }

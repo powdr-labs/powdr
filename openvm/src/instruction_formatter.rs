@@ -13,7 +13,7 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
         f,
         g,
     } = instruction;
-    let opcode_number = opcode.as_usize() as u32;
+    let opcode_number = opcode.as_usize();
     let opcode_name = openvm_opcode_formatter(opcode);
 
     match opcode_number {
@@ -46,7 +46,7 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
 pub fn openvm_opcode_formatter(opcode: &VmOpcode) -> String {
     // Opcodes taken from:
     // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/transpiler/src/instructions.rs
-    match opcode.as_usize() as u32 {
+    match opcode.as_usize() {
         // Rv32BaseAluChip opcodes
         OPCODE_ADD => "ADD".to_string(),
         OPCODE_SUB => "SUB".to_string(),
@@ -90,6 +90,13 @@ pub fn openvm_opcode_formatter(opcode: &VmOpcode) -> String {
         OPCODE_REMU => "REMU".to_string(),
         OPCODE_HINT_STOREW => "HINT_STOREW".to_string(),
         OPCODE_HINT_BUFFER => "HINT_BUFFER".to_string(),
+        // Bigint opcodes
+        BIGINT_OPCODE_BEQ => "BIGINT_BEQ".to_string(),
+        BIGINT_OPCODE_BNE => "BIGINT_BNE".to_string(),
+        BIGINT_OPCODE_BLT => "BIGINT_BLT".to_string(),
+        BIGINT_OPCODE_BLTU => "BIGINT_BLTU".to_string(),
+        BIGINT_OPCODE_BGE => "BIGINT_BGE".to_string(),
+        BIGINT_OPCODE_BGEU => "BIGINT_BGEU".to_string(),
         other => format!("<opcode {other}>"),
     }
 }

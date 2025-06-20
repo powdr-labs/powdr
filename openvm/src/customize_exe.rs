@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::extraction_utils::OriginalVmConfig;
-use crate::opcode::{*, instruction_allowlist};
+use crate::opcode::{instruction_allowlist, *};
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -81,12 +81,7 @@ pub fn customize(
 
     let labels = add_extra_targets(&exe.program, labels.clone());
 
-    let blocks = collect_basic_blocks(
-        &exe.program,
-        &labels,
-        &opcodes_allowlist,
-        BRANCH_OPCODES,
-    );
+    let blocks = collect_basic_blocks(&exe.program, &labels, &opcodes_allowlist, BRANCH_OPCODES);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
