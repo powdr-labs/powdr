@@ -591,6 +591,7 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
             self.apc_cost == other.apc_cost
         }
     }
+
     impl<P: IntoOpenVm> Eq for ApcCandidate<P> {}
 
     impl<P: IntoOpenVm> PartialOrd for ApcCandidate<P> {
@@ -607,7 +608,11 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
     }
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    let top_heap: BinaryHeap<ApcCandidate<P>> = blocks
+    // created from the min heap, so should be sorted already
+    let (new_apc_cache, retained_blocks_with_stats): (
+        HashMap<usize, CachedAutoPrecompile<_>>,
+        Vec<_>,
+    ) = blocks
         .par_iter()
         .enumerate()
         .filter_map(|(i, block)| {
@@ -658,14 +663,8 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
                 }
                 heap_acc
             },
-        );
-
-    // created from the min heap, so should be sorted already
-    let (new_apc_cache, retained_blocks_with_stats): (
-        HashMap<usize, CachedAutoPrecompile<P>>,
-        Vec<(BasicBlock<OpenVmField<P>>, usize, usize, usize)>,
-    ) = top_heap
-        .into_par_iter()
+        )
+        .into_iter()
         .map(
             |ApcCandidate {
                  block,
