@@ -121,10 +121,12 @@ openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", re
   "parallel",
   "jemalloc",
   "nightly-features",
+  "bench-metrics",
 ] }
 openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "37c22d2", default-features = false, features = [
   "parallel",
   "jemalloc",
+  "bench-metrics",
 ] }
 
 [profile.pr-tests]
