@@ -95,7 +95,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     system
 }
 
-fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Ord>(
+fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Hash + Eq + Ord>(
     bus_int: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
     bitwise_lookup_bus_id: u64,
 ) -> bool {

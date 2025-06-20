@@ -203,7 +203,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
 
     fn apply_effect(&mut self, effect: Effect<T, Variable<V>>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr.into()),
+            Effect::Assignment(v, expr) => self.apply_assignment(
+                &v,
+                &QuadraticSymbolicExpression::from_runtime_constant(expr),
+            ),
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }

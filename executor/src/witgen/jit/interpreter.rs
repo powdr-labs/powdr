@@ -80,7 +80,7 @@ enum BranchTest<T: FieldElement> {
 impl<T: FieldElement> BranchTest<T> {
     fn new(
         var_mapper: &mut VariableMapper,
-        Condition { value, condition }: &Condition<T, Variable>,
+        Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>, Variable>,
     ) -> Self {
         let (min, max) = condition.range();
         let value = var_mapper.map_expr_to_rpn(value);
@@ -248,6 +248,7 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                 lhs,
                 rhs,
                 expected_equal,
+                ..
             }) => InterpreterAction::Assertion(
                 var_mapper.map_expr_to_rpn(lhs),
                 var_mapper.map_expr_to_rpn(rhs),

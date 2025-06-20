@@ -1,5 +1,6 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use std::hash::Hash;
 use std::ops::Sub;
 use std::ops::{AddAssign, MulAssign};
@@ -11,6 +12,10 @@ use std::{
 };
 
 use powdr_number::FieldElement;
+
+use crate::quadratic_symbolic_expression::QuadraticSymbolicExpressionImpl;
+use crate::runtime_constant::RuntimeConstant;
+use crate::symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression;
 
 use super::range_constraint::RangeConstraint;
 
@@ -73,24 +78,6 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
         }
     }
 
-    pub fn is_known_zero(&self) -> bool {
-        self.try_to_number().is_some_and(|n| n.is_zero())
-    }
-
-    pub fn is_known_one(&self) -> bool {
-        self.try_to_number().is_some_and(|n| n.is_one())
-    }
-
-    pub fn is_known_minus_one(&self) -> bool {
-        self.try_to_number().is_some_and(|n| n == -T::from(1))
-    }
-
-    pub fn is_known_nonzero(&self) -> bool {
-        // Only checking range constraint is enough since if this is a known
-        // fixed value, we will get a range constraint with just a single value.
-        !self.range_constraint().allows_value(0.into())
-    }
-
     pub fn range_constraint(&self) -> RangeConstraint<T> {
         match self {
             SymbolicExpression::Concrete(v) => RangeConstraint::from_value(*v),
@@ -110,7 +97,7 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     }
 }
 
-impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
+impl<T: FieldElement, S: Clone + Ord + Hash + Eq> SymbolicExpression<T, S> {
     /// Applies a variable substitution and returns a modified version if there was a change.
     pub fn compute_substitution(&self, variable: &S, substitution: &Self) -> Option<Self> {
         match self {
@@ -235,7 +222,7 @@ impl<T: FieldElement, V> From<T> for SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Add for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -265,20 +252,20 @@ impl<T: FieldElement, V: Clone + PartialEq> Add for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Add for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn add(self, rhs: Self) -> Self::Output {
         &self + &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> AddAssign for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign for SymbolicExpression<T, V> {
     fn add_assign(&mut self, rhs: Self) {
         *self = self.clone() + rhs;
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Sub for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -304,14 +291,14 @@ impl<T: FieldElement, V: Clone + PartialEq> Sub for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Sub for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn sub(self, rhs: Self) -> Self::Output {
         &self - &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Neg for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Neg for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn neg(self) -> Self::Output {
@@ -360,14 +347,14 @@ impl<T: FieldElement, V: Clone + PartialEq> Neg for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Neg for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Neg for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn neg(self) -> Self::Output {
         -&self
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Mul for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -395,20 +382,20 @@ impl<T: FieldElement, V: Clone + PartialEq> Mul for &SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> Mul for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn mul(self, rhs: Self) -> Self {
         &self * &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> MulAssign for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> MulAssign for SymbolicExpression<T, V> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs;
     }
 }
 
-impl<T: FieldElement, V: Clone + PartialEq> SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> SymbolicExpression<T, V> {
     /// Field element division.
     /// If you use this, you must ensure that the divisor is not zero.
     pub fn field_div(&self, rhs: &Self) -> Self {
@@ -452,5 +439,70 @@ impl<T: FieldElement, V: Clone + PartialEq> SymbolicExpression<T, V> {
                 Default::default(),
             )
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Zero for SymbolicExpression<T, V> {
+    fn zero() -> Self {
+        SymbolicExpression::Concrete(T::from(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.is_known_zero()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> One for SymbolicExpression<T, V> {
+    fn one() -> Self {
+        SymbolicExpression::Concrete(T::from(1))
+    }
+
+    fn is_one(&self) -> bool {
+        self.is_known_one()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash> TryFrom<SymbolicExpression<T, V>>
+    for QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>
+{
+    type Error = ();
+
+    fn try_from(e: SymbolicExpression<T, V>) -> Result<Self, Self::Error> {
+        symbolic_expression_to_quadratic_symbolic_expression(&e).ok_or(())
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RuntimeConstant<V> for SymbolicExpression<T, V> {
+    type FieldType = T;
+
+    fn from_symbol(symbol: V, rc: RangeConstraint<Self::FieldType>) -> Self {
+        SymbolicExpression::from_symbol(symbol, rc)
+    }
+
+    fn try_to_number(&self) -> Option<Self::FieldType> {
+        SymbolicExpression::try_to_number(self)
+    }
+
+    fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
+        SymbolicExpression::range_constraint(self)
+    }
+
+    fn substitute(&mut self, variable: &V, substitution: &Self) {
+        SymbolicExpression::substitute(self, variable, substitution);
+    }
+
+    fn field_div(&self, other: &Self) -> Self {
+        SymbolicExpression::field_div(self, other)
+    }
+
+    fn from_u64(k: u64) -> Self {
+        SymbolicExpression::Concrete(T::from(k))
+    }
+
+    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
+    where
+        V: 'a,
+    {
+        SymbolicExpression::referenced_symbols(self)
     }
 }
