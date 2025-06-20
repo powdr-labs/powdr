@@ -64,7 +64,7 @@ struct BlockWithApc<P: IntoOpenVm> {
     apc: Apc<P>,
 }
 
-fn generate_apcs<P: IntoOpenVm>(
+fn generate_apcs_with_pgo<P: IntoOpenVm>(
     blocks: Vec<BasicBlock<OpenVmField<P>>>,
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     bus_map: &BusMap,
@@ -134,7 +134,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs(
+    let blocks_with_apcs = generate_apcs_with_pgo(
         blocks,
         &airs,
         &bus_map,
