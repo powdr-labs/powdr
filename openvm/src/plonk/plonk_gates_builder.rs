@@ -4,7 +4,7 @@ use crate::plonk::bus_interaction_handler::{
 
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::air_to_plonkish::CircuitBuilder;
-use openvm::platform::print;
+use openvm::{io::println, platform::print};
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::expression_conversion::algebraic_to_quadratic_symbolic_expression;
@@ -27,7 +27,7 @@ where
     T: FieldElement,
 {
     let mut circuit_builder = CircuitBuilderQuadratic::<T>::new();
-    let mut circuit_builder_older = CircuitBuilder::new();
+    //let mut circuit_builder_older = CircuitBuilder::new();
     let mut length = 0;
     for constraint in &machine.constraints {
         let quadratic_symbolic_expr = algebraic_to_quadratic_symbolic_expression(&constraint.expr);
@@ -45,17 +45,6 @@ where
         for gate in slice {
             println!("Gate: {}", gate);
         }
-
-        length = circuit_builder_older.plonk_circuit.len();
-        circuit_builder_older.evaluate_expression(&constraint.expr, true);
-
-        length = circuit_builder_older.plonk_circuit.len() - length;
-        println!("Number of gates added from algebric way: {}", length);
-        let slice_older = &circuit_builder_older.plonk_circuit.gates
-            [circuit_builder_older.plonk_circuit.gates.len() - length..];
-        for gate in slice {
-            println!("Gate: {}", gate);
-        }
     }
 
     for bus_interaction in &machine.bus_interactions {
@@ -67,7 +56,7 @@ where
         );
 
         length = circuit_builder.plonk_circuit.len() - length;
-        println!("Number of gates added from bus interaction: {}", length);
+        println!("Number of gates added: {}", length);
 
         let slice = &circuit_builder.plonk_circuit.gates
             [circuit_builder.plonk_circuit.gates.len() - length..];
@@ -76,26 +65,28 @@ where
             println!("Gate: {}", gate);
         }
 
-        length = circuit_builder_older.plonk_circuit.len();
+        // length = circuit_builder_older.plonk_circuit.len();
 
-        add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder_older, bus_map);
+        // add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder_older, bus_map);
 
-        length = circuit_builder_older.plonk_circuit.len() - length;
-        println!(
-            "Number of gates added from bus interaction, old way: {}",
-            length
-        );
-        let slice_older = &circuit_builder_older.plonk_circuit.gates
-            [circuit_builder_older.plonk_circuit.gates.len() - length..];
-        for gate in slice_older {
-            println!("Gate: {}", gate);
-        }
+        // length = circuit_builder_older.plonk_circuit.len() - length;
+        // println!(
+        //     "Number of gates added from bus interaction, old way: {}",
+        //     length
+        // );
+        // let slice_older = &circuit_builder_older.plonk_circuit.gates
+        //     [circuit_builder_older.plonk_circuit.gates.len() - length..];
+        // for gate in slice_older {
+        //     println!("Gate: {}", gate);
+        // }
     }
 
     println!(
         "Number of gates in plonk circuit: {}",
         circuit_builder.plonk_circuit.len()
     );
+
+    println!("cache size: {}", circuit_builder.cache.len());
 
     circuit_builder.build()
 }
@@ -133,6 +124,7 @@ where
         if !expr.is_quadratic()
             && expr.linear.len() == 1
             && *expr.linear.values().next().unwrap() == SymbolicExpression::Concrete(T::ONE)
+            && expr.constant == SymbolicExpression::Concrete(T::ZERO)
         {
             return Variable::Witness(expr.linear.keys().next().cloned().unwrap());
         }
@@ -185,7 +177,9 @@ where
             .next()
             .cloned()
             .unwrap_or(Variable::Unused);
-        quadratic_result.iter().skip(1).for_each(|var| {
+        quadratic_result.iter().enumerate()
+    .skip(1) // start from the second element (index 1)
+    .filter(|(i, _)| i % 2 == 1).for_each(|(_,var)| {
             self.plonk_circuit.add_gate(Gate {
                 q_l: T::ONE,
                 a: temp.clone(),
@@ -204,12 +198,14 @@ where
 
         let mut linear_results = Vec::new();
 
-        while let (Some((poly_a, c_a)), Some((poly_b, c_b))) = (iter.next(), iter.next()) {
+        while let (Some((poly_a, c_a)), Some((poly_b, c_b)),Some((poly_d, c_d)),Some((poly_e, c_e))) = (iter.next(), iter.next(),iter.next(),iter.next()) {
             let temp_expr = QuadraticSymbolicExpression {
                 quadratic: Vec::new(),
                 linear: BTreeMap::from([
                     (poly_a.clone(), c_a.clone()),
                     (poly_b.clone(), c_b.clone()),
+                    (poly_d.clone(), c_d.clone()),
+                    (poly_e.clone(), c_e.clone()),
                 ]),
                 constant: c_a.clone() - c_a.clone(),
             };
@@ -233,7 +229,54 @@ where
         }
 
         // Handle the last unpaired item if odd length
-        if expr.linear.len() % 2 != 0 {
+        if expr.linear.len() % 4 == 1 {
+            if let Some((poly_a, c_a)) = expr.linear.iter().last() {
+                let temp_expr = QuadraticSymbolicExpression {
+                    quadratic: Vec::new(),
+                    linear: BTreeMap::from([(poly_a.clone(), c_a.clone())]),
+                    constant: SymbolicExpression::Concrete(T::ZERO),
+                };
+                if let Some(var) = self.cache.get(&temp_expr) {
+                    temp = var.clone();
+                } else {
+                    self.plonk_circuit.add_gate(Gate {
+                        q_l: c_a.try_to_number().expect("Expected a constant for q_l"),
+                        a: Variable::Witness(poly_a.clone()),
+                        q_o: -T::ONE,
+                        c: Variable::Tmp(self.temp_id_offset),
+                        ..Default::default()
+                    });
+                    self.temp_id_offset += 1;
+                    linear_results.push(Variable::Tmp(self.temp_id_offset - 1));
+                    self.cache.insert(temp_expr.clone(), temp.clone());
+                }
+            }
+        }
+
+        if expr.linear.len() % 4 == 2 {
+            if let Some((poly_a, c_a)) = expr.linear.iter().last() {
+                let temp_expr = QuadraticSymbolicExpression {
+                    quadratic: Vec::new(),
+                    linear: BTreeMap::from([(poly_a.clone(), c_a.clone())]),
+                    constant: c_a.clone() - c_a.clone(),
+                };
+                if let Some(var) = self.cache.get(&temp_expr) {
+                    temp = var.clone();
+                } else {
+                    self.plonk_circuit.add_gate(Gate {
+                        q_l: c_a.try_to_number().expect("Expected a constant for q_l"),
+                        a: Variable::Witness(poly_a.clone()),
+                        q_o: -T::ONE,
+                        c: Variable::Tmp(self.temp_id_offset),
+                        ..Default::default()
+                    });
+                    self.temp_id_offset += 1;
+                    linear_results.push(Variable::Tmp(self.temp_id_offset - 1));
+                    self.cache.insert(temp_expr.clone(), temp.clone());
+                }
+            }
+        }
+        if expr.linear.len() % 4 == 3 {
             if let Some((poly_a, c_a)) = expr.linear.iter().last() {
                 let temp_expr = QuadraticSymbolicExpression {
                     quadratic: Vec::new(),
@@ -278,7 +321,7 @@ where
                 temp = Variable::Tmp(self.temp_id_offset - 1);
             }
 
-            linear_results.iter().skip(1).for_each(|var| {
+            linear_results.iter().skip(4).for_each(|var| {
                 self.plonk_circuit.add_gate(Gate {
                     q_l: T::ONE,
                     a: temp.clone(),
@@ -325,14 +368,16 @@ mod tests {
     fn test_air_to_plonkish() {
         let x = var("x", 0);
         let y = var("y", 1);
+        let z = var("z", 2);
+        let h = var("h", 3);
         let bus_map = default_openvm_bus_map();
 
-        let expr1 = x.clone() * y.clone() - (-x.clone() * (x.clone() + y.clone()));
-        let expr2 = x.clone() * y.clone() - x.clone();
+        let expr1 = c(1) * y.clone() + c(2)*x.clone()+c(3) * z.clone() + c(4)*h.clone();
+        //let expr2 = x.clone() * y.clone() - x.clone();
         let machine = SymbolicMachine {
             constraints: vec![
                 SymbolicConstraint { expr: expr1 },
-                SymbolicConstraint { expr: expr2 },
+               // SymbolicConstraint { expr: expr2 },
             ],
             bus_interactions: vec![],
         };
