@@ -24,13 +24,18 @@ def main(metrics_path, output_path=None, subtitle=None):
     #     ],
     # }
 
+    total_cells = sum(
+        int(c["value"]) for c in metrics["counter"] if c["metric"] == "total_cells"
+    )
+    print(f"Total cells: {total_cells/1e9:.2f}B")
+
     cell_entries = [
         (dict(c["labels"]), c["value"])
         for c in metrics["counter"]
         if c["metric"] == "cells"
     ]
     rows = [
-        (int(labels["segment"]), labels["air_name"], int(cells))
+        (int(labels.get("segment", 0)), labels["air_name"], int(cells))
         for (labels, cells) in cell_entries
     ]
 
@@ -38,7 +43,18 @@ def main(metrics_path, output_path=None, subtitle=None):
 
     # Group and threshold
     cells_by_air = df.groupby('air_name')['cells'].sum().sort_values(ascending=False)
-    threshold_ratio = 0.02
+    print("Cells by AIR:")
+    print(cells_by_air)
+
+    # Sanity check: #cells should match total_cells
+    # Doesn't currently match exactly (not sure why), but should be close
+    total_cells2 = cells_by_air.sum()
+    diff = abs(total_cells - total_cells2)
+    relative_diff = diff / total_cells
+    if relative_diff > 0.01:
+        print(f"\nWarning: Total cells mismatch: {total_cells} vs {total_cells2} (diff: {relative_diff* 100:.2f}%)")
+
+    threshold_ratio = 0.015
     threshold = threshold_ratio * cells_by_air.sum()
     large = cells_by_air[cells_by_air >= threshold]
     small = cells_by_air[cells_by_air < threshold]
@@ -50,14 +66,21 @@ def main(metrics_path, output_path=None, subtitle=None):
     plot_title = "Trace cells by AIR" if subtitle is None else f"Trace cells by AIR ({subtitle})"
     ax.set_title(plot_title)
     total = large.sum()
-    ax.pie(
+    colors = plt.get_cmap("tab20")(range(len(large)))
+    def autopct_filtered(pct):
+        return autopct_with_billions(pct, total) if pct > 5 else ''
+
+    wedges, texts, autotexts = ax.pie(
         large,
-        autopct=lambda pct: autopct_with_billions(pct, total),
-        labeldistance=1.05,
-        startangle=90
+        autopct=autopct_filtered,
+        startangle=90,
+        colors=colors
     )
+    percentages = 100 * large / total
+    legend_labels = [f"{percent:.1f}% - {label}" for label, percent in zip(large.index, percentages)]
     ax.legend(
-        large.index,
+        wedges,
+        legend_labels,
         title="AIRs",
         loc="upper center",
         bbox_to_anchor=(0.5, 0),
