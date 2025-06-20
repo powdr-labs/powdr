@@ -35,11 +35,10 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
             format!("{opcode_name} rd_rs2_ptr = {a}, rs1_ptr = {b}, imm = {c}, mem_as = {e}, needs_write = {f}, imm_sign = {g}")
         }
 
-        OPCODE_BEQ | OPCODE_BNE | OPCODE_BLT | OPCODE_BLTU | OPCODE_BGE | OPCODE_BGEU
-        | OPCODE_JAL | OPCODE_LUI | OPCODE_JALR | OPCODE_AUIPC | OPCODE_MUL | OPCODE_MULH
-        | OPCODE_MULHSU | OPCODE_MULHU | OPCODE_DIV | OPCODE_DIVU | OPCODE_REM | OPCODE_REMU
-        | OPCODE_HINT_STOREW | OPCODE_HINT_BUFFER => format!("{opcode_name} {a} {b} {c} {d} {e}"),
+        // All other opcodes in the list
+        x if ALL_OPCODES.contains(&x) => format!("{opcode_name} {a} {b} {c} {d} {e}"),
 
+        // Opcodes not in the list
         _ => format!("{opcode_name} {a} {b} {c} {d} {e} {f} {g}"),
     }
 }
@@ -91,6 +90,6 @@ pub fn openvm_opcode_formatter(opcode: &VmOpcode) -> String {
         OPCODE_REMU => "REMU".to_string(),
         OPCODE_HINT_STOREW => "HINT_STOREW".to_string(),
         OPCODE_HINT_BUFFER => "HINT_BUFFER".to_string(),
-        other => format!("<opcode {}>", other),
+        other => format!("<opcode {other}>"),
     }
 }
