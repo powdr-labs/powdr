@@ -161,7 +161,6 @@ fn run_command(command: Commands) {
         // By default, Compile, Execute, and Prove all run Pgo first
         // This command is only used to test the powdr_openvm::pgo API
         Commands::Pgo { guest, input } => {
-            setup_tracing_with_log_level(Level::WARN);
             let program = powdr_openvm::compile_openvm(&guest, guest_opts).unwrap();
             powdr_openvm::pgo(program, stdin_from(input)).unwrap();
         }
