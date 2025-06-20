@@ -68,6 +68,8 @@ pub struct QuadraticSymbolicExpressionImpl<T, V> {
     constant: T,
 }
 
+// TODO: This type is equivalent to a pre-refactoring version of `QuadraticSymbolicExpressionImpl`.
+// It should be removed in a follow-up PR.
 pub type QuadraticSymbolicExpression<T, V> =
     QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>;
 
