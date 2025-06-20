@@ -155,7 +155,7 @@ pub fn customize(
     // 3. if PgoConfig::None, cost = number_of_instructions
     match pgo_config {
         PgoConfig::Cell(pgo_program_idx_count) => {
-            sort_blocks_by_pgo_cell_cost(
+            sort_blocks_by_pgo_cell_cost_and_cache_apc(
                 &mut blocks,
                 &mut apc_cache,
                 pgo_program_idx_count,
@@ -167,9 +167,11 @@ pub fn customize(
         }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             sort_blocks_by_pgo_instruction_cost(&mut blocks, pgo_program_idx_count);
+            cache_apc_for_all_acc_blocks(&mut apc_cache, &config, &blocks, &airs, bus_map);
         }
         PgoConfig::None => {
             sort_blocks_by_length(&mut blocks);
+            cache_apc_for_all_acc_blocks(&mut apc_cache, &config, &blocks, &airs, bus_map);
         }
     };
 
@@ -189,42 +191,6 @@ pub fn customize(
     let mut extensions = Vec::new();
     let n_acc = config.autoprecompiles as usize;
     let n_skip = config.skip_autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
-
-    let apcs = blocks
-        .par_iter_mut()
-        .skip(n_skip)
-        .take(n_acc)
-        .enumerate()
-        .map(|(index, acc_block)| {
-            tracing::debug!(
-                "Accelerating block of length {} and start idx {}",
-                acc_block.statements.len(),
-                acc_block.start_idx
-            );
-
-            tracing::debug!(
-                "Acc block: {}",
-                acc_block.pretty_print(openvm_instruction_formatter)
-            );
-
-            let apc_opcode = POWDR_OPCODE + index;
-
-            (
-                acc_block.start_idx,
-                generate_apc_cache(
-                    acc_block,
-                    &airs,
-                    apc_opcode,
-                    bus_map.clone(),
-                    config.degree_bound,
-                )
-                .unwrap(),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    apc_cache.extend(apcs);
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -294,22 +260,17 @@ pub fn customize(
     }
 }
 
-// Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER + bigint branch opcodes
+// Allowed opcodes = ALL_OPCODES (which includes bigint branch opcodes) - HINT_STOREW - HINT_BUFFER
 pub fn instruction_allowlist() -> HashSet<usize> {
     let hint_storew = Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize();
     let hint_buffer = Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize();
 
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
-    let mut set: HashSet<usize> = ALL_OPCODES
+    ALL_OPCODES
         .iter()
         .map(|&op| op as usize)
         .filter(|&op| op != hint_storew && op != hint_buffer)
-        .collect();
-
-    let branch_ops: Vec<usize> = branch_opcodes_bigint();
-    set.extend(branch_ops);
-
-    set
+        .collect()
 }
 
 fn branch_opcodes() -> Vec<usize> {
@@ -502,6 +463,54 @@ fn generate_apc_cache<P: IntoOpenVm>(
     })
 }
 
+// Only used for PgoConfig::Instruction and PgoConfig::None,
+// because PgoConfig::Cell caches all APCs in sorting stage.
+fn cache_apc_for_all_acc_blocks<P: IntoOpenVm>(
+    apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
+    powdr_config: &PowdrConfig,
+    blocks: &[BasicBlock<OpenVmField<P>>],
+    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    bus_map: BusMap,
+) {
+    let n_acc = powdr_config.autoprecompiles as usize;
+    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
+
+    let apcs = blocks
+        .par_iter()
+        .skip(powdr_config.skip_autoprecompiles as usize)
+        .take(n_acc)
+        .enumerate()
+        .map(|(index, acc_block)| {
+            tracing::debug!(
+                "Accelerating block of length {} and start idx {}",
+                acc_block.statements.len(),
+                acc_block.start_idx
+            );
+
+            tracing::debug!(
+                "Acc block: {}",
+                acc_block.pretty_print(openvm_instruction_formatter)
+            );
+
+            let apc_opcode = POWDR_OPCODE + index;
+
+            (
+                acc_block.start_idx,
+                generate_apc_cache(
+                    acc_block,
+                    airs,
+                    apc_opcode,
+                    bus_map.clone(),
+                    powdr_config.degree_bound,
+                )
+                .unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    apc_cache.extend(apcs);
+}
+
 // OpenVM relevant bus ids:
 // 0: execution bridge -> [pc, timestamp]
 // 1: memory -> [address space, pointer, data, timestamp, 1]
@@ -572,7 +581,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 // Note: This function can lead to OOM since it generates the apc for all blocks
-fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
+fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
     blocks: &mut Vec<BasicBlock<OpenVmField<P>>>,
     apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
     pgo_program_idx_count: HashMap<u32, u32>,
@@ -603,6 +612,11 @@ fn sort_blocks_by_pgo_cell_cost<P: IntoOpenVm>(
 
     // generate apc and cache it for all basic blocks
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
+    tracing::info!(
+        "Generating autoprecompiles for all ({}) basic blocks in parallel",
+        blocks.len()
+    );
+
     let (cells_saved_per_row_by_bb, new_apc_cache): (
         HashMap<_, _>,
         HashMap<usize, CachedAutoPrecompile<P>>,
