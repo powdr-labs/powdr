@@ -771,7 +771,7 @@ mod tests {
             assignment(&x0, number(7) * symbol(&a0)),
             assignment(&cv1, symbol(&x0)),
             Effect::MachineCall(
-                GoldilocksField::from(7).into(),
+                GoldilocksField::from(7),
                 [false, true].into_iter().collect(),
                 vec![r1.clone(), cv1.clone()],
             ),
