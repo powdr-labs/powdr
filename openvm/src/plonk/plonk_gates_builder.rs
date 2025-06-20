@@ -27,8 +27,10 @@ where
     T: FieldElement,
 {
     let mut circuit_builder = CircuitBuilderQuadratic::<T>::new();
-    let mut circuit_builder_older = CircuitBuilder::new();
     let mut length = 0;
+
+    tracing::debug!("number of constraints: {}", machine.constraints.len());
+
     for constraint in &machine.constraints {
         let quadratic_symbolic_expr = algebraic_to_quadratic_symbolic_expression(&constraint.expr);
         println!("Adding constraint: {}", quadratic_symbolic_expr.to_string());
@@ -46,17 +48,9 @@ where
             println!("Gate: {}", gate);
         }
 
-        length = circuit_builder_older.plonk_circuit.len();
-        circuit_builder_older.evaluate_expression(&constraint.expr, true);
-
-        length = circuit_builder_older.plonk_circuit.len() - length;
-        println!("Number of gates added from algebric way: {}", length);
-        let slice_older = &circuit_builder_older.plonk_circuit.gates
-            [circuit_builder_older.plonk_circuit.gates.len() - length..];
-        for gate in slice {
-            println!("Gate: {}", gate);
-        }
     }
+    tracing::debug!("number of gates for constraints: {}", circuit_builder.plonk_circuit.len());
+     tracing::debug!("number of bus interactions: {}", machine.bus_interactions.len());
 
     for bus_interaction in &machine.bus_interactions {
         length = circuit_builder.plonk_circuit.len();
@@ -76,20 +70,6 @@ where
             println!("Gate: {}", gate);
         }
 
-        length = circuit_builder_older.plonk_circuit.len();
-
-        add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder_older, bus_map);
-
-        length = circuit_builder_older.plonk_circuit.len() - length;
-        println!(
-            "Number of gates added from bus interaction, old way: {}",
-            length
-        );
-        let slice_older = &circuit_builder_older.plonk_circuit.gates
-            [circuit_builder_older.plonk_circuit.gates.len() - length..];
-        for gate in slice_older {
-            println!("Gate: {}", gate);
-        }
     }
 
     println!(
@@ -291,12 +271,14 @@ where
                 self.temp_id_offset += 1;
                 temp = Variable::Tmp(self.temp_id_offset - 1);
             });
-        }
 
-        // if expr.constant!=T::ZERO{self.plonk_circuit.gates.last_mut().unwrap().q_const = expr
-        //     .constant
-        //     .try_to_number()
-        //     .expect("Expected a constant for q_const");}
+            if expr.constant != SymbolicExpression::Concrete(T::ZERO) {
+                self.plonk_circuit.gates.last_mut().unwrap().q_const = expr
+                    .constant
+                    .try_to_number()
+                    .expect("Expected a constant for q_const");
+            }
+        }
 
         self.cache.insert(expr.clone(), temp.clone());
 
