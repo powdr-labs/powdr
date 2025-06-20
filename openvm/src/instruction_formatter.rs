@@ -1,6 +1,5 @@
 use crate::opcode::*;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
-use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
 
 pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F>) -> String {
