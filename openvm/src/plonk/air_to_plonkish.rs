@@ -30,11 +30,13 @@ where
         add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder, bus_map);
     }
 
+    //println!("plonk circuit from algebraic expressions: {}", circuit_builder.plonk_circuit);
+
     circuit_builder.build()
 }
 
 pub struct CircuitBuilder<T> {
-    plonk_circuit: PlonkCircuit<T, AlgebraicReference>,
+    pub plonk_circuit: PlonkCircuit<T, AlgebraicReference>,
     temp_id_offset: usize,
     cache: BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
 }
