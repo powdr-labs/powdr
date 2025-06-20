@@ -67,11 +67,11 @@ impl<T: FieldElement, V> RuntimeConstant<V> for T {
     }
 
     fn try_to_number(&self) -> Option<Self> {
-        Some(self.clone())
+        Some(*self)
     }
 
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
-        RangeConstraint::from_value(self.clone())
+        RangeConstraint::from_value(*self)
     }
 
     fn substitute(&mut self, _variable: &V, _substitution: &Self) {
@@ -79,7 +79,7 @@ impl<T: FieldElement, V> RuntimeConstant<V> for T {
     }
 
     fn field_div(&self, other: &Self) -> Self {
-        self.clone() / other.clone()
+        *self / *other
     }
 
     fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a

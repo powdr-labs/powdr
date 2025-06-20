@@ -91,7 +91,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq> QuadraticSymbolicExpressionImpl
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
-            constant: constant,
+            constant,
         }
     }
 
@@ -102,8 +102,8 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq> QuadraticSymbolicExpressionImpl
     pub fn from_unknown_variable(var: V) -> Self {
         Self {
             quadratic: Default::default(),
-            linear: [(var.clone(), T::one().into())].into_iter().collect(),
-            constant: T::zero().into(),
+            linear: [(var.clone(), T::one())].into_iter().collect(),
+            constant: T::zero(),
         }
     }
 
@@ -439,7 +439,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
                     None
                 }
             })
-            .unwrap_or(T::one().into());
+            .unwrap_or(T::one());
         let result = expr - &(self.clone() * normalization_factor);
 
         // Check that the operations removed all variables in `expr` from `self`.
