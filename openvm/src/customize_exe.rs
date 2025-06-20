@@ -576,8 +576,8 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
         max_cache,
     );
 
-    // each created apc becomes a candidate
-    // apc candidate carries all needed data but is only ordered by cost
+    // each generated apc becomes a candidate for caching
+    // it is only ordered by cost, but carries all needed data for modifying the blocks, extending the cache, and debug print
     struct ApcCandidate<P: IntoOpenVm> {
         block: BasicBlock<OpenVmField<P>>,
         apc_cache_entry: CachedAutoPrecompile<P>,
@@ -608,7 +608,7 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
     }
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    // created from the min heap, so should be sorted already
+    // returned caches and blocks are ordered by descending cost already because they are unzipped from the min heap
     let (new_apc_cache, retained_blocks_with_stats): (
         HashMap<usize, CachedAutoPrecompile<_>>,
         Vec<_>,
