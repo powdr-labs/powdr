@@ -605,7 +605,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     }
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    let blocks = blocks
+    blocks
         .into_par_iter()
         .enumerate()
         .filter_map(|(i, block)| {
@@ -672,11 +672,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
             c.block_with_apc
         })
-        .collect_vec();
-
-    assert!(blocks.len() <= config.autoprecompiles as usize);
-
-    blocks
+        .collect()
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
