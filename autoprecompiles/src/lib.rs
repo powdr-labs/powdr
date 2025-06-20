@@ -12,8 +12,8 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::iter::once;
 use std::sync::Arc;
-use std::{iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
@@ -246,7 +246,11 @@ pub trait InstructionMachineHandler<T> {
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
 }
 
-pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone, M: InstructionMachineHandler<T>>(
+pub fn build<
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    M: InstructionMachineHandler<T>,
+>(
     program: Vec<SymbolicInstructionStatement<T>>,
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
