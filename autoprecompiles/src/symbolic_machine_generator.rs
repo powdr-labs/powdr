@@ -5,14 +5,12 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    expression::{AlgebraicExpression, AlgebraicReference},
-    powdr, BusMap, BusType, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicInstructionStatement, SymbolicMachine,
+    expression::{AlgebraicExpression, AlgebraicReference}, powdr, BusMap, BusType, InstructionMachineHandler, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine
 };
 
 pub fn statements_to_symbolic_machine<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
-    instruction_machines: &BTreeMap<usize, SymbolicMachine<T>>,
+    instruction_machine_handler: &impl InstructionMachineHandler<T>,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
@@ -21,7 +19,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
     let mut global_idx: u64 = 3;
 
     for (i, instr) in statements.iter().enumerate() {
-        let machine = instruction_machines.get(&instr.opcode).unwrap().clone();
+        let machine = instruction_machine_handler.get_instruction_air(instr.opcode).unwrap().clone();
 
         let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
         global_idx = next_global_idx;
