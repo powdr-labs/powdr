@@ -1,21 +1,37 @@
 use openvm_instructions::LocalOpcode;
 use openvm_rv32im_transpiler::*;
+use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 
-/// Defines each opcode as a `pub const u32` and also generates
-/// a `pub const ALL_OPCODES: &[u32]` containing all of them.
+/// Defines each opcode as a `pub const usize` and also generates
+/// a `pub const ALL_OPCODES: &[usize]` containing all of them.
 macro_rules! define_opcodes {
     (
+        // Non-bigint opcodes
+        // e.g. OPCODE_BEQ = BranchEqualOpcode::BEQ as usize + BranchEqualOpcode::CLASS_OFFSET
         $( $name:ident = $ty:ident :: $variant:ident, )*
+        ; // Intentional pattern split delimiter
+        // Bigint opcodes
+        // e.g. BIGINT_OPCODE_BEQ = BranchEqualOpcode::BEQ as usize + Rv32BranchEqual256Opcode::CLASS_OFFSET
+        $( $big_name:ident = $big_ty:ident ; $small_ty:ident :: $small_variant:ident, )*
     ) => {
         $(
-            // e.g. OPCODE_ADD = BaseAluOpcode::ADD as usize + BaseAluOpcode::CLASS_OFFSET
-            pub const $name: u32 =
-                ($ty::$variant as usize + <$ty as LocalOpcode>::CLASS_OFFSET) as u32;
+            pub const $name: usize = (
+                $ty::$variant as usize
+                + < $ty as LocalOpcode >::CLASS_OFFSET
+            ) as usize;
         )*
 
-        /// A slice containing *all* opcode constants.
-        pub const ALL_OPCODES: &[u32] = &[
-            $( $name ),*
+        $(
+            pub const $big_name: usize = (
+                $small_ty::$small_variant as usize
+                + < $big_ty as LocalOpcode >::CLASS_OFFSET
+            ) as usize;
+        )*
+
+        /// All opcodes in one slice
+        pub const ALL_OPCODES: &[usize] = &[
+            $( $name, )*
+            $( $big_name, )*
         ];
     }
 }
@@ -64,4 +80,50 @@ define_opcodes!(
     OPCODE_REMU = DivRemOpcode::REMU,
     OPCODE_HINT_STOREW = Rv32HintStoreOpcode::HINT_STOREW,
     OPCODE_HINT_BUFFER = Rv32HintStoreOpcode::HINT_BUFFER,
+    ; // Intentional pattern split delimiter
+    // Bigint opcodes
+    BIGINT_OPCODE_BEQ = Rv32BranchEqual256Opcode; BranchEqualOpcode::BEQ,
+    BIGINT_OPCODE_BNE = Rv32BranchEqual256Opcode; BranchEqualOpcode::BNE,
+    BIGINT_OPCODE_BLT = Rv32BranchLessThan256Opcode; BranchLessThanOpcode::BLT,
+    BIGINT_OPCODE_BLTU = Rv32BranchLessThan256Opcode; BranchLessThanOpcode::BLTU,
+    BIGINT_OPCODE_BGE = Rv32BranchLessThan256Opcode; BranchLessThanOpcode::BGE,
+    BIGINT_OPCODE_BGEU = Rv32BranchLessThan256Opcode; BranchLessThanOpcode::BGEU,
 );
+
+pub const BRANCH_OPCODES_BIGINT: &[usize] = &[
+    BIGINT_OPCODE_BEQ,
+    BIGINT_OPCODE_BNE,
+    BIGINT_OPCODE_BLT,
+    BIGINT_OPCODE_BLTU,
+    BIGINT_OPCODE_BGE,
+    BIGINT_OPCODE_BGEU,
+];
+
+pub const BRANCH_OPCODES: &[usize] = &[
+    // Non-bigint branch
+    OPCODE_BEQ,
+    OPCODE_BNE,
+    OPCODE_BLT,
+    OPCODE_BLTU,
+    OPCODE_BGE,
+    OPCODE_BGEU,
+    OPCODE_JAL,
+    OPCODE_JALR,
+    // Bigint branch
+    BIGINT_OPCODE_BEQ,
+    BIGINT_OPCODE_BNE,
+    BIGINT_OPCODE_BLT,
+    BIGINT_OPCODE_BLTU,
+    BIGINT_OPCODE_BGE,
+    BIGINT_OPCODE_BGEU,
+];
+
+// Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER
+pub fn instruction_allowlist() -> Vec<usize> {
+    // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
+    ALL_OPCODES
+        .iter()
+        .map(|&op| op)
+        .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
+        .collect()
+}

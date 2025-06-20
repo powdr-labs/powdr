@@ -57,7 +57,7 @@ mod utils;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
-pub use customize_exe::instruction_allowlist;
+pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 

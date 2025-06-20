@@ -1,20 +1,17 @@
-use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::extraction_utils::OriginalVmConfig;
-use crate::opcode::ALL_OPCODES;
+use crate::opcode::{*, instruction_allowlist};
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
-use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::Program;
-use openvm_instructions::{LocalOpcode, VmOpcode};
-use openvm_rv32im_transpiler::Rv32HintStoreOpcode;
+use openvm_instructions::VmOpcode;
 use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -83,13 +80,12 @@ pub fn customize(
     let opcodes_allowlist = instruction_allowlist();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
-    let branch_opcodes_set = branch_opcodes_set();
 
     let blocks = collect_basic_blocks(
         &exe.program,
         &labels,
         &opcodes_allowlist,
-        &branch_opcodes_set,
+        BRANCH_OPCODES,
     );
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
@@ -216,84 +212,6 @@ pub fn customize(
     }
 }
 
-// Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER + bigint branch opcodes
-pub fn instruction_allowlist() -> HashSet<usize> {
-    let hint_storew = Rv32HintStoreOpcode::HINT_STOREW.global_opcode().as_usize();
-    let hint_buffer = Rv32HintStoreOpcode::HINT_BUFFER.global_opcode().as_usize();
-
-    // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
-    let mut set: HashSet<usize> = ALL_OPCODES
-        .iter()
-        .map(|&op| op as usize)
-        .filter(|&op| op != hint_storew && op != hint_buffer)
-        .collect();
-
-    let branch_ops: Vec<usize> = branch_opcodes_bigint();
-    set.extend(branch_ops);
-
-    set
-}
-
-fn branch_opcodes() -> Vec<usize> {
-    let mut opcodes = vec![
-        openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::BranchEqualOpcode::BNE
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::Rv32JalLuiOpcode::JAL
-            .global_opcode()
-            .as_usize(),
-        openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
-            .global_opcode()
-            .as_usize(),
-    ];
-
-    opcodes.extend(branch_opcodes_bigint());
-
-    opcodes
-}
-
-fn branch_opcodes_bigint() -> Vec<usize> {
-    vec![
-        // The instructions below are structs so we cannot call `global_opcode()` on them without
-        // an instnace, so we manually build the global opcodes.
-        Rv32BranchEqual256Opcode::CLASS_OFFSET
-            + openvm_rv32im_transpiler::BranchEqualOpcode::BEQ.local_usize(),
-        Rv32BranchEqual256Opcode::CLASS_OFFSET
-            + openvm_rv32im_transpiler::BranchEqualOpcode::BNE.local_usize(),
-        Rv32BranchLessThan256Opcode::CLASS_OFFSET
-            + openvm_rv32im_transpiler::BranchLessThanOpcode::BLT.local_usize(),
-        Rv32BranchLessThan256Opcode::CLASS_OFFSET
-            + openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU.local_usize(),
-        Rv32BranchLessThan256Opcode::CLASS_OFFSET
-            + openvm_rv32im_transpiler::BranchLessThanOpcode::BGE.local_usize(),
-        Rv32BranchLessThan256Opcode::CLASS_OFFSET
-            + openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU.local_usize(),
-    ]
-}
-
-fn branch_opcodes_set() -> BTreeSet<usize> {
-    branch_opcodes().into_iter().collect()
-}
-
-fn branch_opcodes_bigint_set() -> BTreeSet<usize> {
-    branch_opcodes_bigint().into_iter().collect()
-}
-
 #[derive(Debug, Clone)]
 pub struct BasicBlock<F> {
     pub start_idx: usize,
@@ -317,8 +235,8 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
-    opcode_allowlist: &HashSet<usize>,
-    branch_opcodes: &BTreeSet<usize>,
+    opcode_allowlist: &[usize],
+    branch_opcodes: &[usize],
 ) -> Vec<BasicBlock<F>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -389,7 +307,6 @@ fn add_extra_targets<F: PrimeField32>(
     program: &Program<F>,
     mut labels: BTreeSet<u32>,
 ) -> BTreeSet<u32> {
-    let branch_opcodes_bigint = branch_opcodes_bigint_set();
     let new_labels = program
         .instructions_and_debug_infos
         .iter()
@@ -398,7 +315,7 @@ fn add_extra_targets<F: PrimeField32>(
             let instr = instr.as_ref().unwrap().0.clone();
             let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
             let op = instr.opcode.as_usize();
-            branch_opcodes_bigint
+            BRANCH_OPCODES_BIGINT
                 .contains(&op)
                 .then_some(adjusted_pc + instr.c.as_canonical_u32())
         });
@@ -549,7 +466,7 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
     airs: &BTreeMap<usize, SymbolicMachine<P>>,
     config: PowdrConfig,
     bus_map: BusMap,
-    opcode_allowlist: &HashSet<usize>,
+    opcode_allowlist: &[usize],
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::{instruction_allowlist, BabyBearSC, SpecializedConfig};
+use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
