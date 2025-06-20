@@ -28,6 +28,8 @@ pub enum EffectImpl<T: RuntimeConstant<V>, V> {
     },
 }
 
+// TODO: This type is equivalent to a pre-refactoring version of `EffectImpl`.
+// It should be removed in a follow-up PR.
 pub type Effect<T, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 
 /// A bit decomposition of a value.
@@ -92,7 +94,7 @@ pub struct Assertion<T: RuntimeConstant<V>, V> {
     /// If this is true, we assert that both sides are equal.
     /// Otherwise, we assert that they are different.
     pub expected_equal: bool,
-    _marker: std::marker::PhantomData<V>,
+    pub _marker: std::marker::PhantomData<V>,
 }
 
 impl<T: RuntimeConstant<V>, V> Assertion<T, V> {

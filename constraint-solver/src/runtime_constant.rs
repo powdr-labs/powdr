@@ -8,6 +8,9 @@ use crate::{
     range_constraint::RangeConstraint,
 };
 
+/// Represents a run-time constant in the constraint solver.
+/// Any T: FieldElement can represent a run-time constant (which is also a compile-time constant),
+/// but the trait lets us represent run-time constants symbolically as well.
 pub trait RuntimeConstant<V>:
     Sized
     + Neg<Output = Self>
@@ -26,6 +29,7 @@ pub trait RuntimeConstant<V>:
 {
     type FieldType: FieldElement;
 
+    /// Creates a run-time constant from a variable.
     fn from_symbol(symbol: V, rc: RangeConstraint<Self::FieldType>) -> Self;
     fn try_to_number(&self) -> Option<Self::FieldType>;
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
@@ -63,7 +67,8 @@ impl<T: FieldElement, V> RuntimeConstant<V> for T {
     type FieldType = T;
 
     fn from_symbol(_symbol: V, _rc: RangeConstraint<Self::FieldType>) -> Self {
-        unimplemented!()
+        // This is the only thing that a generic field element does not support.
+        panic!("This type does not support a symbolic representation.")
     }
 
     fn try_to_number(&self) -> Option<Self> {
