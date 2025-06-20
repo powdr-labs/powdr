@@ -425,7 +425,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         .collect();
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
+        instruction_machine_handler: airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map,
     };

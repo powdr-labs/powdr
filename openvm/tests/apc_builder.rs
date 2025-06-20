@@ -23,7 +23,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machines: &airs,
+        instruction_machine_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
