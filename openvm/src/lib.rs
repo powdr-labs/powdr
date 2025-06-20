@@ -2,6 +2,7 @@ use derive_more::From;
 use eyre::Result;
 use itertools::multiunzip;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
+use openvm_circuit::arch::InitFileGenerator;
 use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
     SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
@@ -57,7 +58,7 @@ mod utils;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
-pub use customize_exe::instruction_allowlist;
+pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
@@ -124,6 +125,23 @@ pub enum PgoType {
 pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
     powdr: PowdrExtension<BabyBearField>,
+}
+
+// For generation of the init file, we delegate to the underlying SdkVmConfig.
+impl InitFileGenerator for SpecializedConfig {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.sdk_config.config().generate_init_file_contents()
+    }
+
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> eyre::Result<()> {
+        self.sdk_config
+            .config()
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -283,7 +301,13 @@ pub fn compile_openvm(
     path.push(guest);
     let target_path = path.to_str().unwrap();
 
-    let elf = sdk.build(guest_opts, target_path, &Default::default())?;
+    let elf = sdk.build(
+        guest_opts,
+        &sdk_vm_config,
+        target_path,
+        &Default::default(),
+        Default::default(),
+    )?;
 
     // Transpile the ELF into a VmExe. Note that this happens using the sdk transpiler only, our extension does not use a transpiler.
     let exe = sdk.transpile(elf, sdk_vm_config.transpiler())?;
