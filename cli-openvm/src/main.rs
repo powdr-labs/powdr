@@ -90,7 +90,7 @@ enum Commands {
 fn main() -> Result<(), io::Error> {
     let args = Cli::parse();
 
-    setup_tracing_with_log_level(Level::WARN);
+    setup_tracing_with_log_level(Level::INFO);
 
     if let Some(command) = args.command {
         run_command(command);
