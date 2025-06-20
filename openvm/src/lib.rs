@@ -1,6 +1,6 @@
 use derive_more::From;
 use eyre::Result;
-use itertools::multiunzip;
+use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
@@ -24,6 +24,7 @@ use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
 use std::{
@@ -97,7 +98,7 @@ mod plonk;
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
 /// The inner HashMap contains number of time a pc is executed.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
     Cell(HashMap<u32, u32>),
@@ -360,7 +361,44 @@ pub fn compile_guest(
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
+
+    // Optional tally of opcode freqency (only enabled for debug level logs)
+    if tracing::enabled!(Level::DEBUG) {
+        tally_opcode_frequency(pgo_config.clone(), original_program.exe.clone());
+    }
+
     compile_exe(guest, guest_opts, original_program, config, pgo_config)
+}
+
+fn tally_opcode_frequency(pgo_config: PgoConfig, exe: VmExe<OpenVmField<BabyBearField>>) {
+    exe.program
+        .instructions_and_debug_infos
+        .iter()
+        .enumerate()
+        .fold(HashMap::new(), |mut acc, (i, instr)| {
+            let opcode = instr.as_ref().unwrap().0.opcode.as_usize();
+            if let PgoConfig::Cell(pgo_program_idx_count)
+            | PgoConfig::Instruction(pgo_program_idx_count) = &pgo_config
+            {
+                // If execution count of each pc is available, we tally the opcode execution frequency
+                if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
+                    *acc.entry(opcode).or_insert(0) += count;
+                }
+                acc
+            } else {
+                // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
+                *acc.entry(opcode).or_insert(0) += 1;
+                acc
+            }
+        })
+        .into_iter()
+        .sorted_by_key(|(_, count)| Reverse(*count))
+        .for_each(|(opcode, count)| {
+            // Print the opcode and its count
+            tracing::debug!("Opcode {}: {}", opcode, count);
+        });
+
+    panic!();
 }
 
 pub fn compile_exe(
