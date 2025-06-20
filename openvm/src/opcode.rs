@@ -8,21 +8,21 @@ macro_rules! define_opcodes {
     (
         // Non-bigint opcodes
         // e.g. OPCODE_BEQ = BranchEqualOpcode::BEQ as usize + BranchEqualOpcode::CLASS_OFFSET
-        $( $name:ident = $ty:ident :: $variant:ident, )*
+        $( $non_big_int_name:ident = $ty:ident :: $variant:ident, )*
         ; // Intentional pattern split delimiter
         // Bigint opcodes
         // e.g. BIGINT_OPCODE_BEQ = BranchEqualOpcode::BEQ as usize + Rv32BranchEqual256Opcode::CLASS_OFFSET
-        $( $big_name:ident = $big_ty:ident ; $small_ty:ident :: $small_variant:ident, )*
+        $( $bigint_name:ident = $big_ty:ident ; $small_ty:ident :: $small_variant:ident, )*
     ) => {
         $(
-            pub const $name: usize = (
+            pub const $non_big_int_name: usize = (
                 $ty::$variant as usize
                 + < $ty as LocalOpcode >::CLASS_OFFSET
             ) as usize;
         )*
 
         $(
-            pub const $big_name: usize = (
+            pub const $bigint_name: usize = (
                 $small_ty::$small_variant as usize
                 + < $big_ty as LocalOpcode >::CLASS_OFFSET
             ) as usize;
@@ -30,8 +30,8 @@ macro_rules! define_opcodes {
 
         /// All opcodes in one slice
         pub const ALL_OPCODES: &[usize] = &[
-            $( $name, )*
-            $( $big_name, )*
+            $( $non_big_int_name, )*
+            $( $bigint_name, )*
         ];
     }
 }
