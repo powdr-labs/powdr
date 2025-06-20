@@ -45,6 +45,7 @@ use tracing_subscriber::{
 };
 
 use crate::extraction_utils::{export_pil, get_constraints, OriginalVmConfig};
+use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
 
@@ -98,7 +99,7 @@ mod plonk;
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
 /// The inner HashMap contains number of time a pc is executed.
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
     Cell(HashMap<u32, u32>),
@@ -364,41 +365,47 @@ pub fn compile_guest(
 
     // Optional tally of opcode freqency (only enabled for debug level logs)
     if tracing::enabled!(Level::DEBUG) {
-        tally_opcode_frequency(pgo_config.clone(), original_program.exe.clone());
+        tally_opcode_frequency(&pgo_config, &original_program.exe);
     }
 
     compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
 
-fn tally_opcode_frequency(pgo_config: PgoConfig, exe: VmExe<OpenVmField<BabyBearField>>) {
+fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
+    let pgo_program_idx_count = match pgo_config {
+        PgoConfig::Cell(pgo_program_idx_count)
+        | PgoConfig::Instruction(pgo_program_idx_count) => {
+            // If execution count of each pc is available, we tally the opcode execution frequency
+            tracing::debug!("Opcode execution frequency:");
+            pgo_program_idx_count
+        }
+        PgoConfig::None => {
+            // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
+            tracing::debug!("Opcode frequency in program:");
+            // Create a dummy HashMap that returns 1 for each pc
+            &(0..exe.program.instructions_and_debug_infos.len())
+                .map(|i| (i as u32, 1))
+                .collect::<HashMap<_, _>>()
+        }
+    };
+    
     exe.program
         .instructions_and_debug_infos
         .iter()
         .enumerate()
         .fold(HashMap::new(), |mut acc, (i, instr)| {
-            let opcode = instr.as_ref().unwrap().0.opcode.as_usize();
-            if let PgoConfig::Cell(pgo_program_idx_count)
-            | PgoConfig::Instruction(pgo_program_idx_count) = &pgo_config
-            {
-                // If execution count of each pc is available, we tally the opcode execution frequency
-                if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
-                    *acc.entry(opcode).or_insert(0) += count;
-                }
-                acc
-            } else {
-                // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
-                *acc.entry(opcode).or_insert(0) += 1;
-                acc
+            let opcode = instr.as_ref().unwrap().0.opcode;
+            if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
+                *acc.entry(opcode).or_insert(0) += count;
             }
+            acc
         })
         .into_iter()
         .sorted_by_key(|(_, count)| Reverse(*count))
         .for_each(|(opcode, count)| {
-            // Print the opcode and its count
-            tracing::debug!("Opcode {}: {}", opcode, count);
+            // Log the opcode and its count
+            tracing::debug!("   {}: {count}", openvm_opcode_formatter(&opcode));
         });
-
-    panic!();
 }
 
 pub fn compile_exe(
