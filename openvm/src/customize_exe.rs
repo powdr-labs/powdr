@@ -483,8 +483,6 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     // generate apc for all basic blocks and only cache the ones we eventually use
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-    // Note: we could reduce `max_cache` to `config.autoprecompiles` by discarding the first `config.skip_autoprecompiles` candidates.
-    // This would require remembering their costs, which adds complexity here. We do not do this because the `skip_autoprecompiles` parameter is for debugging purposes only.
     let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
     tracing::info!(
         "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
