@@ -127,3 +127,31 @@ pub fn instruction_allowlist() -> Vec<usize> {
         .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_opcodes() {
+        let expected = &[
+            512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
+            535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
+            598, 599, 608, 609, 1056, 1057, 1061, 1062, 1063, 1064,
+        ];
+        assert_eq!(ALL_OPCODES.len(), 44); // 38 non-bigint + 6 bigint
+        assert_eq!(ALL_OPCODES, expected);
+    }
+
+    #[test]
+    fn test_instruction_allowlist() {
+        let allowlist = instruction_allowlist();
+        let expected = &[
+            512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
+            535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
+            598, 599, 1056, 1057, 1061, 1062, 1063, 1064,
+        ];
+        assert_eq!(allowlist.len(), ALL_OPCODES.len() - 2); // Excluding HINT_STOREW and HINT_BUFFER
+        assert_eq!(allowlist, expected);
+    }
+}
