@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::LocalOpcode;
 use openvm_rv32im_transpiler::*;
@@ -8,21 +10,21 @@ macro_rules! define_opcodes {
     (
         // Non-bigint opcodes
         // e.g. OPCODE_BEQ = BranchEqualOpcode::BEQ as usize + BranchEqualOpcode::CLASS_OFFSET
-        $( $name:ident = $ty:ident :: $variant:ident, )*
+        $( $non_big_int_name:ident = $ty:ident :: $variant:ident, )*
         ; // Intentional pattern split delimiter
         // Bigint opcodes
         // e.g. BIGINT_OPCODE_BEQ = BranchEqualOpcode::BEQ as usize + Rv32BranchEqual256Opcode::CLASS_OFFSET
-        $( $big_name:ident = $big_ty:ident ; $small_ty:ident :: $small_variant:ident, )*
+        $( $bigint_name:ident = $big_ty:ident ; $small_ty:ident :: $small_variant:ident, )*
     ) => {
         $(
-            pub const $name: usize = (
+            pub const $non_big_int_name: usize = (
                 $ty::$variant as usize
                 + < $ty as LocalOpcode >::CLASS_OFFSET
             ) as usize;
         )*
 
         $(
-            pub const $big_name: usize = (
+            pub const $bigint_name: usize = (
                 $small_ty::$small_variant as usize
                 + < $big_ty as LocalOpcode >::CLASS_OFFSET
             ) as usize;
@@ -30,8 +32,8 @@ macro_rules! define_opcodes {
 
         /// All opcodes in one slice
         pub const ALL_OPCODES: &[usize] = &[
-            $( $name, )*
-            $( $big_name, )*
+            $( $non_big_int_name, )*
+            $( $bigint_name, )*
         ];
     }
 }
@@ -100,7 +102,6 @@ pub const BRANCH_OPCODES_BIGINT: &[usize] = &[
 ];
 
 pub const BRANCH_OPCODES: &[usize] = &[
-    // Non-bigint branch
     OPCODE_BEQ,
     OPCODE_BNE,
     OPCODE_BLT,
@@ -109,21 +110,56 @@ pub const BRANCH_OPCODES: &[usize] = &[
     OPCODE_BGEU,
     OPCODE_JAL,
     OPCODE_JALR,
-    // Bigint branch
-    BIGINT_OPCODE_BEQ,
-    BIGINT_OPCODE_BNE,
-    BIGINT_OPCODE_BLT,
-    BIGINT_OPCODE_BLTU,
-    BIGINT_OPCODE_BGE,
-    BIGINT_OPCODE_BGEU,
 ];
 
 // Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER
-pub fn instruction_allowlist() -> Vec<usize> {
+pub fn instruction_allowlist() -> BTreeSet<usize> {
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
     ALL_OPCODES
         .iter()
         .copied()
         .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
         .collect()
+}
+
+pub fn branch_opcodes_bigint_set() -> BTreeSet<usize> {
+    let mut set = BTreeSet::new();
+    set.extend(BRANCH_OPCODES_BIGINT);
+    set
+}
+
+pub fn branch_opcodes_set() -> BTreeSet<usize> {
+    let mut set = branch_opcodes_bigint_set();
+    set.extend(BRANCH_OPCODES);
+    set
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_opcodes() {
+        let expected = &[
+            512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
+            535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
+            598, 599, 608, 609, 1056, 1057, 1061, 1062, 1063, 1064,
+        ];
+        assert_eq!(ALL_OPCODES.len(), 44); // 38 non-bigint + 6 bigint
+        assert_eq!(ALL_OPCODES, expected);
+    }
+
+    #[test]
+    fn test_instruction_allowlist() {
+        let allowlist = instruction_allowlist();
+        let expected = [
+            512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
+            535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
+            598, 599, 1056, 1057, 1061, 1062, 1063, 1064,
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(allowlist.len(), ALL_OPCODES.len() - 2); // Excluding HINT_STOREW and HINT_BUFFER
+        assert_eq!(allowlist, expected);
+    }
 }
