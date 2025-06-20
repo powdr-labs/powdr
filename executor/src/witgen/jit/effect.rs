@@ -43,9 +43,8 @@ where
     ),
 }
 
-impl<T: FieldElement, V: Clone> From<ConstraintSolverEffect<T, V>> for Effect<T, V>
-where
-    SymbolicExpression<T, V>: RuntimeConstant<V>,
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> From<ConstraintSolverEffect<T, V>>
+    for Effect<T, V>
 {
     fn from(effect: ConstraintSolverEffect<T, V>) -> Self {
         match effect {
