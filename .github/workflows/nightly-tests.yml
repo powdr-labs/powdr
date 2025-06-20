@@ -143,7 +143,7 @@ jobs:
         run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --tag v1.1.2 cargo-openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev 815b3cc cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
@@ -166,4 +166,4 @@ jobs:
         run: |
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh
+          MODE="execute" APC=500 /usr/bin/time -v ./run.sh
