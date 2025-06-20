@@ -576,134 +576,134 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
         max_cache,
     );
 
-    // node carries all needed data but is only ordered by cost
-    struct Node<P> {
-        cost: u32,
-        start: usize,
-        entry: CachedAutoPrecompile<P>,
-        cells_saved: usize,
+    // each created apc becomes a candidate
+    // apc candidate carries all needed data but is only ordered by cost
+    struct ApcCandidate<P: IntoOpenVm> {
+        block: BasicBlock<OpenVmField<P>>,
+        apc_cache_entry: CachedAutoPrecompile<P>,
+        apc_cost: usize,
+        execution_frequency: usize,
+        cells_saved_per_row: usize,
     }
 
-    impl<P> PartialEq for Node<P> {
+    impl<P: IntoOpenVm> PartialEq for ApcCandidate<P> {
         fn eq(&self, other: &Self) -> bool {
-            self.cost == other.cost
+            self.apc_cost == other.apc_cost
         }
     }
-    impl<P> Eq for Node<P> {}
+    impl<P: IntoOpenVm> Eq for ApcCandidate<P> {}
 
-    impl<P> PartialOrd for Node<P> {
+    impl<P: IntoOpenVm> PartialOrd for ApcCandidate<P> {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.cmp(other))
         }
     }
 
-    // order nodes by reverse cost, so that our BinaryHeap pops the smallest costed node first
-    impl<P> Ord for Node<P> {
+    // order apc candidates by reverse cost, so that our BinaryHeap pops the smallest costed apc candidate first
+    impl<P: IntoOpenVm> Ord for ApcCandidate<P> {
         fn cmp(&self, other: &Self) -> Ordering {
-            other.cost.cmp(&self.cost)
+            other.apc_cost.cmp(&self.apc_cost)
         }
     }
 
-    // map–reduce over blocks into a single BinaryHeap<Node<P>> capped at max_cache
-    let top_heap: BinaryHeap<Node<P>> = blocks
+    // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
+    let top_heap: BinaryHeap<ApcCandidate<P>> = blocks
         .par_iter()
         .enumerate()
         .filter_map(|(i, block)| {
-            // attempt apc; if it errors, skip this block entirely
-            let entry = generate_apc_cache(
+            // try to create apc for a candidate block
+            let apc_cache_entry = generate_apc_cache(
                 block,
                 airs,
                 POWDR_OPCODE + i,
                 bus_map.clone(),
                 config.degree_bound,
             )
-            .ok()?;
+            .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
-            let apc_cells = entry.autoprecompile.unique_references().count();
-            let orig_cells: usize = block
+            let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_references().count();
+            let orig_cells_per_row: usize = block
                 .statements
                 .iter()
                 .map(|instr| air_width_by_opcode[&instr.opcode.as_usize()])
                 .sum();
-            let cells_saved = orig_cells - apc_cells;
-            let freq = *pgo_program_idx_count
+            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
+            let execution_frequency = *pgo_program_idx_count
                 .get(&(block.start_idx as u32))
                 .unwrap_or(&0) as usize;
-            let cost = (cells_saved * freq) as u32;
+            let apc_cost = cells_saved_per_row * execution_frequency;
 
             // build a 1-element heap
-            let mut local = BinaryHeap::new();
-            local.push(Node {
-                cost,
-                start: block.start_idx,
-                entry,
-                cells_saved,
+            let mut heap = BinaryHeap::new();
+            heap.push(ApcCandidate {
+                block: block.clone(),
+                apc_cache_entry,
+                apc_cost,
+                execution_frequency,
+                cells_saved_per_row,
             });
-            Some(local)
+            Some(heap)
         })
         .reduce(
             // identity: empty heap
             BinaryHeap::new,
             // merge two heaps, pruning back to max_cache
-            |mut a, mut b| {
-                for node in b.drain() {
-                    a.push(node);
-                    if a.len() > max_cache {
-                        a.pop();
+            |mut heap_acc, mut heap| {
+                for apc_candidate in heap.drain() {
+                    heap_acc.push(apc_candidate);
+                    if heap_acc.len() > max_cache {
+                        heap_acc.pop();
                     }
                 }
-                a
+                heap_acc
             },
         );
 
     // created from the min heap, so should be sorted already
-    let (cells_saved_by_bb, new_apc_cache): (
-        HashMap<usize, usize>,
+    let (new_apc_cache, retained_blocks_with_stats): (
         HashMap<usize, CachedAutoPrecompile<P>>,
+        Vec<(BasicBlock<OpenVmField<P>>, usize, usize, usize)>,
     ) = top_heap
         .into_par_iter()
         .map(
-            |Node {
-                 start,
-                 entry,
-                 cells_saved,
-                 ..
-             }| { ((start, cells_saved), (start, entry)) },
+            |ApcCandidate {
+                 block,
+                 apc_cache_entry,
+                 apc_cost,
+                 execution_frequency,
+                 cells_saved_per_row,
+             }| {
+                (
+                    (block.start_idx, apc_cache_entry),
+                    (block, apc_cost, execution_frequency, cells_saved_per_row),
+                )
+            },
         )
         .unzip();
 
     apc_cache.extend(new_apc_cache);
 
-    // filter to the top `max_cache` blocks by cost
-    blocks.retain(|b| cells_saved_by_bb.contains_key(&b.start_idx));
-
-    // cost = frequency * cells_saved_per_row
-    blocks.sort_by(|a, b| {
-        let a_cells_saved = cells_saved_by_bb[&a.start_idx];
-        let b_cells_saved = cells_saved_by_bb[&b.start_idx];
-
-        let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
-        let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
-
-        (b_cells_saved * b_cnt as usize).cmp(&(a_cells_saved * a_cnt as usize))
-    });
-
     // debug print blocks by descending cost
-    for block in blocks {
-        let start_idx = block.start_idx;
-        let cells_saved = cells_saved_by_bb[&start_idx];
-        let freq = pgo_program_idx_count[&(start_idx as u32)];
-        let cost = freq * cells_saved as u32;
-
+    for (block, apc_cost, execution_frequency, cells_saved_per_row) in
+        retained_blocks_with_stats.iter()
+    {
         tracing::debug!(
             "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
-            start_idx,
-            cost,
-            freq,
-            cells_saved,
+            block.start_idx,
+            apc_cost,
+            execution_frequency,
+            cells_saved_per_row,
         );
     }
+
+    let retained_blocks: Vec<BasicBlock<<P as IntoOpenVm>::Field>> = retained_blocks_with_stats
+        .into_iter()
+        .map(|(block, _, _, _)| block)
+        .collect();
+
+    blocks.clear(); // have to clear first and extend because &mut doesn't allow reassignment
+    blocks.extend(retained_blocks);
 }
 
 fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
