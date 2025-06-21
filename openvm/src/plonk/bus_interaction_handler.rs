@@ -123,7 +123,7 @@ pub fn add_bus_to_plonk_circuit_from_quadratic_symbolic_expression<T>(
         }))
         .for_each(|(arg, payload)| {
             *payload = circuit_builder
-                .evaluate_expression(&algebraic_to_quadratic_symbolic_expression(arg));
+                .evaluate_expression(&algebraic_to_quadratic_symbolic_expression(arg),false);
         });
 
     // Add the gates to the circuit.
