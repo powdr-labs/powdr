@@ -44,10 +44,11 @@ pub fn optimize<T: FieldElement>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut constraint_system =
+        JournalingConstraintSystem::from(symbolic_machine_to_constraint_system(machine));
 
     loop {
-        let stats = stats_logger::Stats::from(&constraint_system);
+        let stats = stats_logger::Stats::from(constraint_system.system());
         constraint_system = optimization_loop_iteration(
             constraint_system,
             bus_interaction_handler.clone(),
@@ -55,32 +56,32 @@ pub fn optimize<T: FieldElement>(
             &mut stats_logger,
             bus_map,
         )?;
-        if stats == stats_logger::Stats::from(&constraint_system) {
-            return Ok(constraint_system_to_symbolic_machine(constraint_system));
+        if stats == stats_logger::Stats::from(constraint_system.system()) {
+            return Ok(constraint_system_to_symbolic_machine(
+                constraint_system.system().clone(),
+            ));
         }
     }
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, AlgebraicReference>,
+    constraint_system: JournalingConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
-) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystem::from(constraint_system);
+) -> Result<JournalingConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
     )?;
-    let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
         let constraint_system =
             optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
         assert!(check_register_operation_consistency(
-            &constraint_system,
+            constraint_system.system(),
             memory_bus_id
         ));
         stats_logger.log("memory optimization", &constraint_system);
