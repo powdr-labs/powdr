@@ -84,6 +84,24 @@ mod single_instruction_tests {
     }
 
     #[test]
+    fn single_sub() {
+        let program = [
+            // [x8] = [x7] - [x5]
+            sub(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_sub");
+    }
+
+    #[test]
+    fn single_and_0() {
+        let program = [
+            // [x8] = [x0] & 5
+            and(8, 0, 5, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_and_0");
+    }
+
+    #[test]
     fn single_loadw() {
         let program = [
             // Load x2 + 20 into x8
