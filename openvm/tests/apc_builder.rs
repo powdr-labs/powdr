@@ -71,6 +71,7 @@ fn assert_machine_output(
 }
 
 mod single_instruction_tests {
+    use super::compile;
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
 
@@ -99,6 +100,24 @@ mod single_instruction_tests {
             and(8, 0, 5, 0),
         ];
         assert_machine_output(program.to_vec(), "single_and_0");
+    }
+
+    #[test]
+    fn single_xor() {
+        let program = [
+            // [x8] = [x7] ^ [x5]
+            xor(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_xor");
+    }
+
+    #[test]
+    fn single_or() {
+        let program = [
+            // [x8] = [x7] | [x5]
+            or(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_or");
     }
 
     #[test]
