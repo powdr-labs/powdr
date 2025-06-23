@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
 use std::sync::Arc;
 
-use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{OriginalAirsBuilder, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist};
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
@@ -20,11 +20,11 @@ use openvm_stark_backend::{
 };
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::powdr::UniqueReferences;
-use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
     bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
 };
+use powdr_autoprecompiles::{DegreeBound, InstructionMachineHandler};
 use powdr_number::{BabyBearField, FieldElement};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -71,7 +71,8 @@ pub fn customize(
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
-    let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let original_airs_builder = OriginalAirsBuilder::new(original_config.clone())
+        .with_allowed_opcodes(instruction_allowlist());
     let bus_map = original_config.bus_map();
 
     // If we use PgoConfig::Cell, which creates APC for all eligible basic blocks,
@@ -112,19 +113,30 @@ pub fn customize(
                 &mut blocks,
                 &mut apc_cache,
                 pgo_program_idx_count,
-                &airs,
+                &original_airs_builder,
                 config.clone(),
                 bus_map.clone(),
-                &opcodes_allowlist,
             );
         }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             sort_blocks_by_pgo_instruction_cost(&mut blocks, pgo_program_idx_count);
-            cache_apc_for_all_acc_blocks(&mut apc_cache, &config, &blocks, &airs, bus_map);
+            cache_apc_for_all_acc_blocks(
+                &mut apc_cache,
+                &config,
+                &blocks,
+                &original_airs_builder,
+                bus_map,
+            );
         }
         PgoConfig::None => {
             sort_blocks_by_length(&mut blocks);
-            cache_apc_for_all_acc_blocks(&mut apc_cache, &config, &blocks, &airs, bus_map);
+            cache_apc_for_all_acc_blocks(
+                &mut apc_cache,
+                &config,
+                &blocks,
+                &original_airs_builder,
+                bus_map,
+            );
         }
     };
 
@@ -209,7 +221,12 @@ pub fn customize(
 
     CompiledProgram {
         exe,
-        vm_config: SpecializedConfig::new(original_config, extensions, config.implementation),
+        vm_config: SpecializedConfig::new(
+            original_config,
+            extensions,
+            config.implementation,
+            original_airs_builder.into_airs(),
+        ),
     }
 }
 
@@ -326,13 +343,13 @@ fn add_extra_targets<F: PrimeField32>(
     labels
 }
 
-fn generate_apc_cache<P: IntoOpenVm>(
-    block: &BasicBlock<OpenVmField<P>>,
-    airs: &OriginalAirs<P>,
+fn generate_apc_cache(
+    block: &BasicBlock<OpenVmField<BabyBearField>>,
+    airs: &OriginalAirsBuilder<BabyBearField>,
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: DegreeBound,
-) -> Result<CachedAutoPrecompile<P>, Error> {
+) -> Result<CachedAutoPrecompile<BabyBearField>, Error> {
     let (autoprecompile, subs) =
         generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
 
@@ -345,11 +362,11 @@ fn generate_apc_cache<P: IntoOpenVm>(
 
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
-fn cache_apc_for_all_acc_blocks<P: IntoOpenVm>(
-    apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
+fn cache_apc_for_all_acc_blocks(
+    apc_cache: &mut HashMap<usize, CachedAutoPrecompile<BabyBearField>>,
     powdr_config: &PowdrConfig,
-    blocks: &[BasicBlock<OpenVmField<P>>],
-    airs: &OriginalAirs<P>,
+    blocks: &[BasicBlock<OpenVmField<BabyBearField>>],
+    airs: &OriginalAirsBuilder<BabyBearField>,
     bus_map: BusMap,
 ) {
     let n_acc = powdr_config.autoprecompiles as usize;
@@ -399,13 +416,13 @@ fn cache_apc_for_all_acc_blocks<P: IntoOpenVm>(
 // 5: bitwise xor ->
 //    [a, b, 0, 0] byte range checks for a and b
 //    [a, b, c, 1] c = xor(a, b)
-fn generate_autoprecompile<P: IntoOpenVm>(
-    block: &BasicBlock<OpenVmField<P>>,
-    airs: &OriginalAirs<P>,
+fn generate_autoprecompile(
+    block: &BasicBlock<OpenVmField<BabyBearField>>,
+    airs: &OriginalAirsBuilder<BabyBearField>,
     apc_opcode: usize,
     bus_map: BusMap,
     degree_bound: DegreeBound,
-) -> Result<(SymbolicMachine<P>, Vec<Vec<u64>>), Error> {
+) -> Result<(SymbolicMachine<BabyBearField>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
         block.start_idx
@@ -419,7 +436,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
                 instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
             ]
             .iter()
-            .map(|f| P::from_openvm_field(*f))
+            .map(|f| BabyBearField::from_openvm_field(*f))
             .collect(),
         })
         .collect();
@@ -461,14 +478,13 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 // Note: This function can lead to OOM since it generates the apc for all blocks
-fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
-    blocks: &mut Vec<BasicBlock<OpenVmField<P>>>,
-    apc_cache: &mut HashMap<usize, CachedAutoPrecompile<P>>,
+fn sort_blocks_by_pgo_cell_cost_and_cache_apc(
+    blocks: &mut Vec<BasicBlock<OpenVmField<BabyBearField>>>,
+    apc_cache: &mut HashMap<usize, CachedAutoPrecompile<BabyBearField>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &OriginalAirs<P>,
+    airs: &OriginalAirsBuilder<BabyBearField>,
     config: PowdrConfig,
     bus_map: BusMap,
-    opcode_allowlist: &BTreeSet<usize>,
 ) {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -481,10 +497,6 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
-
-    // store air width by opcode, so that we don't repetitively calculate them later
-    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode(opcode_allowlist);
 
     // generate apc for all basic blocks and only cache the ones we eventually use
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -550,7 +562,7 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
-                .map(|instr| air_width_by_opcode[&instr.opcode])
+                .map(|instr| airs.get_opcode_air_width(instr.opcode.as_usize()).unwrap())
                 .sum();
             let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
             let execution_frequency = *pgo_program_idx_count
@@ -615,10 +627,11 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc<P: IntoOpenVm>(
         );
     }
 
-    let retained_blocks: Vec<BasicBlock<<P as IntoOpenVm>::Field>> = retained_blocks_with_stats
-        .into_iter()
-        .map(|(block, _, _, _)| block)
-        .collect();
+    let retained_blocks: Vec<BasicBlock<<BabyBearField as IntoOpenVm>::Field>> =
+        retained_blocks_with_stats
+            .into_iter()
+            .map(|(block, _, _, _)| block)
+            .collect();
 
     blocks.clear(); // have to clear first and extend because &mut doesn't allow reassignment
     blocks.extend(retained_blocks);

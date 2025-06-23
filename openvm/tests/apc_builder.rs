@@ -1,8 +1,10 @@
+use openvm_instructions::instruction;
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::extraction_utils::OriginalVmConfig;
+use powdr_openvm::extraction_utils::{OriginalAirsBuilder, OriginalVmConfig};
+use powdr_openvm::instruction_allowlist;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use pretty_assertions::assert_eq;
 use std::fs;
@@ -19,11 +21,12 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
 
     let original_config = OriginalVmConfig::new(sdk_vm_config);
 
-    let airs = original_config.airs().unwrap();
+    let air_builder = OriginalAirsBuilder::new(original_config.clone())
+        .with_allowed_opcodes(instruction_allowlist());
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
+        instruction_machine_handler: &air_builder,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),

@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
+use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::IntoOpenVm;
-use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
+use crate::{BabyBearSC, SpecializedConfig};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -26,10 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::MutexGuard;
 
-use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
-
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
-use crate::utils::symbolic_to_algebraic;
+use crate::utils::{get_pil, symbolic_to_algebraic, UnsupportedOpenVmReferenceError};
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
@@ -37,15 +35,107 @@ pub struct OriginalAirs<P> {
     air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
 }
 
-impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
-        self.opcode_to_air
-            .get(&VmOpcode::from_usize(opcode))
-            .and_then(|air_name| self.air_name_to_machine.get(air_name))
+pub struct OriginalAirsBuilder<P> {
+    config: OriginalVmConfig,
+    allowed_opcodes: HashSet<VmOpcode>,
+    /// The airs that are being built. This is a shared mutable state, as any apc being built can add new airs.
+    airs: Arc<Mutex<OriginalAirs<P>>>,
+}
+
+impl<P: IntoOpenVm> OriginalAirsBuilder<P> {
+    pub fn new(config: OriginalVmConfig) -> Self {
+        Self {
+            config,
+            airs: Default::default(),
+            allowed_opcodes: Default::default(),
+        }
+    }
+
+    pub fn with_allowed_opcodes(mut self, allowed_opcodes: BTreeSet<usize>) -> Self {
+        self.allowed_opcodes = allowed_opcodes
+            .into_iter()
+            .map(VmOpcode::from_usize)
+            .collect();
+        self
+    }
+
+    pub fn into_airs(self) -> OriginalAirs<P> {
+        self.airs.lock().unwrap().clone()
+    }
+}
+
+impl InstructionMachineHandler<BabyBearField> for OriginalAirsBuilder<BabyBearField> {
+    fn get_instruction_air(&self, opcode: usize) -> Result<SymbolicMachine<BabyBearField>, String> {
+        let opcode = VmOpcode::from_usize(opcode);
+
+        // Check if the opcode is in the allowed set
+        if !self.allowed_opcodes.contains(&opcode) {
+            return Err(format!("Opcode {opcode} is not in the allowed set"));
+        }
+
+        // Lock the airs to ensure thread safety. More precisely, if want to make sure that no other thread is going to insert our opcode before we try.
+        let mut guard = self.airs.lock().unwrap();
+
+        // Retrieve the air for the given opcode, if it is already in the airs
+        if let Some(air) = guard.get_instruction_air(opcode) {
+            return Ok(air.clone());
+        }
+
+        // If the air is not found, either the air does not exist or the opcode is not linked to it.
+        // Fetch the air name
+        let name = self.config.fetch_opcode_machine_name(opcode);
+
+        // Insert the opcode and machine into the airs
+        guard
+            .insert_opcode(opcode, name, || self.config.fetch_opcode_machine(opcode))
+            .map_err(|_| "Unsupported openvm reference".to_string())?;
+
+        Ok(guard.get_instruction_air(opcode).unwrap().clone())
+    }
+
+    fn get_opcode_air_width(&self, opcode: usize) -> Result<usize, String> {
+        let opcode = VmOpcode::from_usize(opcode);
+
+        // Check if the opcode is in the allowed set
+        if !self.allowed_opcodes.contains(&opcode) {
+            return Err(format!("Opcode {opcode} is not in the allowed set"));
+        }
+
+        // Retrieve the air for the given opcode, if it is already in the airs
+        if let Some(air) = self.airs.lock().unwrap().get_instruction_air(opcode) {
+            return Ok(air.unique_references().count());
+        }
+
+        // If the air is not found, either the air does not exist or the opcode is not linked to it.
+        // Fetch the air name
+        let name = self.config.fetch_opcode_machine_name(opcode);
+
+        // Insert the opcode and machine into the airs
+        self.airs
+            .lock()
+            .unwrap()
+            .insert_opcode(opcode, name, || self.config.fetch_opcode_machine(opcode))
+            .map_err(|e| "Unsupported openvm reference".to_string())?;
+
+        Ok(self
+            .airs
+            .lock()
+            .unwrap()
+            .get_instruction_air(opcode)
+            .map_or(0, |air| air.unique_references().count()))
     }
 }
 
 impl<P: IntoOpenVm> OriginalAirs<P> {
+    /// Returns the air for a given opcode, if it exists
+    /// Returns None if the opcode does not exist
+    /// Panics if the opcode exists but the air is not found
+    pub fn get_instruction_air(&self, opcode: VmOpcode) -> Option<&SymbolicMachine<P>> {
+        let air_name = self.opcode_to_air.get(&opcode)?;
+
+        Some(&self.air_name_to_machine[air_name])
+    }
+
     /// Insert a new opcode, generating the air if it does not exist
     /// Panics if the opcode already exists
     pub fn insert_opcode(
@@ -66,30 +156,6 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
 
         self.opcode_to_air.insert(opcode, air_name);
         Ok(())
-    }
-
-    /// Returns a map from opcode to the width of the AIR for that opcode.
-    /// We allow the caller to specify a set of opcodes that they are interested in.
-    pub fn air_width_per_opcode(&self, allow_list: &BTreeSet<usize>) -> HashMap<VmOpcode, usize> {
-        self.opcode_to_air
-            .iter()
-            .filter(|(opcode, _)| allow_list.contains(&opcode.as_usize()))
-            .scan(
-                HashMap::default(),
-                |width_by_air: &mut HashMap<&String, usize>,
-                 (opcode, air_name): (&VmOpcode, &String)| {
-                    let width = if let Some(width) = width_by_air.get(air_name) {
-                        *width
-                    } else {
-                        let machine = &self.air_name_to_machine[air_name];
-                        let width = machine.unique_references().count();
-                        width_by_air.insert(air_name, width);
-                        width
-                    };
-                    Some((*opcode, width))
-                },
-            )
-            .collect()
     }
 }
 
@@ -168,52 +234,43 @@ impl OriginalVmConfig {
         ChipComplexGuard { guard }
     }
 
-    /// Given a VM configuration and a set of used instructions, computes:
-    /// - The opcode -> AIR map
-    /// - The bus map
-    ///
-    /// Returns an error if the conversion from the OpenVM expression type fails.
-    pub fn airs(&self) -> Result<OriginalAirs<BabyBearField>, UnsupportedOpenVmReferenceError> {
+    /// Fetches the machine name for a given opcode
+    pub fn fetch_opcode_machine_name(&self, opcode: VmOpcode) -> String {
         let chip_complex = self.chip_complex();
 
-        let instruction_allowlist = instruction_allowlist();
+        let executor = chip_complex.inventory.get_executor(opcode).unwrap();
+        let air = executor.air();
+        get_name(air.clone())
+    }
 
-        let res = chip_complex
-            .inventory
-            .available_opcodes()
-            .filter(|op| {
-                // Filter out the opcode that we are not interested in
-                instruction_allowlist.contains(&op.as_usize())
-            })
-            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
-            .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
-                airs.insert_opcode(op, get_name(executor.air()), || {
-                    let air = executor.air();
-                    let columns = get_columns(air.clone());
-                    let constraints = get_constraints(air);
+    /// Fetches the machine for a given opcode
+    pub fn fetch_opcode_machine(
+        &self,
+        opcode: VmOpcode,
+    ) -> Result<SymbolicMachine<BabyBearField>, UnsupportedOpenVmReferenceError> {
+        let chip_complex = self.chip_complex();
 
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
-                        .collect::<Result<Vec<_>, _>>()?;
+        let executor = chip_complex.inventory.get_executor(opcode).unwrap();
+        let air = executor.air();
+        let columns = get_columns(air.clone());
+        let constraints = get_constraints(air);
 
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                        .collect::<Result<_, _>>()?;
+        let powdr_exprs = constraints
+            .constraints
+            .iter()
+            .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
+            .collect::<Result<Vec<_>, _>>()?;
 
-                    Ok(SymbolicMachine {
-                        constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                        bus_interactions: powdr_bus_interactions,
-                    })
-                })?;
+        let powdr_bus_interactions = constraints
+            .interactions
+            .iter()
+            .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+            .collect::<Result<_, _>>()?;
 
-                Ok(airs)
-            });
-
-        res
+        Ok(SymbolicMachine {
+            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+            bus_interactions: powdr_bus_interactions,
+        })
     }
 
     pub fn bus_map(&self) -> BusMap {
@@ -387,10 +444,12 @@ mod tests {
                 .system(SdkSystemConfig::default())
                 .build(),
         );
+        let air_builder = OriginalAirsBuilder::new(base_config.clone());
         let specialized_config = SpecializedConfig::new(
             base_config,
             vec![],
             crate::PrecompileImplementation::SingleRowChip,
+            air_builder.into_airs(),
         );
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();

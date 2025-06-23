@@ -243,7 +243,11 @@ pub struct VmConfig<'a, M, B> {
 
 pub trait InstructionMachineHandler<T> {
     /// Returns the AIR for the given opcode.
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+    fn get_instruction_air(&self, opcode: usize) -> Result<SymbolicMachine<T>, String>;
+
+    /// Returns the width of the air for the given opcode.
+    fn get_opcode_air_width(&self, opcode: usize) -> Result<usize, String>;
+
 }
 
 pub fn build<

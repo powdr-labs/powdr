@@ -46,9 +46,7 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::IntoParallelIterator,
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionMachineHandler, SymbolicBusInteraction,
-};
+use powdr_autoprecompiles::{expression::AlgebraicReference, SymbolicBusInteraction};
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -284,7 +282,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .map(|instruction| {
                 let opcode_id = instruction.opcode();
                 self.air_by_opcode_id
-                    .get_instruction_air(opcode_id.as_usize())
+                    .get_instruction_air(opcode_id)
                     .unwrap()
                     .bus_interactions
                     .iter()
