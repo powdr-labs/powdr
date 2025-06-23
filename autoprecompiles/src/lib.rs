@@ -11,6 +11,7 @@ use powdr_expression::{
     AlgebraicUnaryOperator,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::iter::once;
 use std::sync::Arc;
@@ -232,22 +233,47 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, M, B> {
+pub struct VmConfig<T, M, B> {
     /// Maps an opcode to its AIR.
-    pub instruction_machine_handler: &'a M,
+    pub instruction_machine_handler: M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
     pub bus_map: BusMap,
+    /// A marker for the field type
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T, M: InstructionMachineHandler<T>, B> VmConfig<T, M, B> {
+    pub fn new(
+        mut instruction_machine_handler: M,
+        bus_interaction_handler: B,
+        bus_map: BusMap,
+        opcodes: BTreeSet<usize>,
+    ) -> Self {
+
+        // Initialize the instruction machine handler with the given opcodes
+        instruction_machine_handler.init(opcodes);
+
+        VmConfig {
+            instruction_machine_handler,
+            bus_interaction_handler,
+            bus_map,
+            _marker: std::marker::PhantomData,
+        }
+    }
 }
 
 pub trait InstructionMachineHandler<T> {
+    /// Initializes the instruction machine handler to support a set of opcodes
+    /// Unsupported opcodes are silently ignored but requesting their AIR will return an error.
+    fn init(&mut self, opcodes: BTreeSet<usize>);
+
     /// Returns the AIR for the given opcode.
     fn get_instruction_air(&self, opcode: usize) -> Result<SymbolicMachine<T>, String>;
 
     /// Returns the width of the air for the given opcode.
     fn get_opcode_air_width(&self, opcode: usize) -> Result<usize, String>;
-
 }
 
 pub fn build<
@@ -256,26 +282,26 @@ pub fn build<
     M: InstructionMachineHandler<T>,
 >(
     program: Vec<SymbolicInstructionStatement<T>>,
-    vm_config: VmConfig<M, B>,
+    vm_config: &VmConfig<T, M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
-        vm_config.instruction_machine_handler,
+        &vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );
 
     let machine = optimizer::optimize(
         machine,
-        vm_config.bus_interaction_handler,
+        &vm_config.bus_interaction_handler,
         Some(opcode),
         degree_bound,
         &vm_config.bus_map,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine, vm_config.bus_map);
+    let machine = add_guards(machine, &vm_config.bus_map);
 
     Ok((machine, subs))
 }
@@ -326,7 +352,7 @@ fn add_guards_constraint<T: FieldElement>(
 /// - There is exactly one program bus send.
 fn add_guards<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
-    bus_map: BusMap,
+    bus_map: &BusMap,
 ) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();

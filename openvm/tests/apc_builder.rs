@@ -25,20 +25,19 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         .with_allowed_opcodes(instruction_allowlist());
     let bus_map = original_config.bus_map();
 
-    let vm_config = VmConfig {
-        instruction_machine_handler: &air_builder,
-        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
+    let vm_config = VmConfig::new(
+        air_builder,
+        OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
-        bus_map: bus_map.clone(),
-    };
+        bus_map.clone(), program.iter().map(|instruction| instruction.opcode).collect());
 
     let degree_bound = DegreeBound {
         identities: OPENVM_DEGREE_BOUND,
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
+    build(program, &vm_config, degree_bound, POWDR_OPCODE as u32)
         .unwrap()
         .0
         .render(&bus_map)

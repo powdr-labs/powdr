@@ -38,8 +38,7 @@ pub struct OriginalAirs<P> {
 pub struct OriginalAirsBuilder<P> {
     config: OriginalVmConfig,
     allowed_opcodes: HashSet<VmOpcode>,
-    /// The airs that are being built. This is a shared mutable state, as any apc being built can add new airs.
-    airs: Arc<Mutex<OriginalAirs<P>>>,
+    airs: OriginalAirs<P>,
 }
 
 impl<P: IntoOpenVm> OriginalAirsBuilder<P> {
@@ -60,69 +59,56 @@ impl<P: IntoOpenVm> OriginalAirsBuilder<P> {
     }
 
     pub fn into_airs(self) -> OriginalAirs<P> {
-        self.airs.lock().unwrap().clone()
+        self.airs
     }
 }
 
 impl InstructionMachineHandler<BabyBearField> for OriginalAirsBuilder<BabyBearField> {
+    fn init(&mut self, opcodes: BTreeSet<usize>) {
+        for opcode in opcodes {
+            let opcode = VmOpcode::from_usize(opcode);
+            if !self.allowed_opcodes.contains(&opcode) {
+                tracing::debug!("Skipping opcode {opcode} as it is not in the allowed set");
+                continue; // Skip opcodes not in the allowed set
+            }
+            // Insert the opcode into the airs
+            if let Err(err) = self.airs.insert_opcode(
+                opcode,
+                self.config.fetch_opcode_machine_name(opcode),
+                || self.config.fetch_opcode_machine(opcode),
+            ) {
+                tracing::debug!("Failed to insert opcode {opcode}: {err:?}");
+            };
+        }
+    }
+
     fn get_instruction_air(&self, opcode: usize) -> Result<SymbolicMachine<BabyBearField>, String> {
         let opcode = VmOpcode::from_usize(opcode);
 
-        // Check if the opcode is in the allowed set
         if !self.allowed_opcodes.contains(&opcode) {
-            return Err(format!("Opcode {opcode} is not in the allowed set"));
+            return Err(format!("Opcode {opcode} is not allowed"));
         }
 
-        // Lock the airs to ensure thread safety. More precisely, if want to make sure that no other thread is going to insert our opcode before we try.
-        let mut guard = self.airs.lock().unwrap();
-
-        // Retrieve the air for the given opcode, if it is already in the airs
-        if let Some(air) = guard.get_instruction_air(opcode) {
-            return Ok(air.clone());
-        }
-
-        // If the air is not found, either the air does not exist or the opcode is not linked to it.
-        // Fetch the air name
-        let name = self.config.fetch_opcode_machine_name(opcode);
-
-        // Insert the opcode and machine into the airs
-        guard
-            .insert_opcode(opcode, name, || self.config.fetch_opcode_machine(opcode))
-            .map_err(|_| "Unsupported openvm reference".to_string())?;
-
-        Ok(guard.get_instruction_air(opcode).unwrap().clone())
+        Ok(self
+            .airs
+            .get_instruction_air(opcode)
+            .cloned()
+            .unwrap_or_else(|| panic!("Opcode {opcode} was not passed to `init`")))
     }
 
     fn get_opcode_air_width(&self, opcode: usize) -> Result<usize, String> {
         let opcode = VmOpcode::from_usize(opcode);
 
-        // Check if the opcode is in the allowed set
         if !self.allowed_opcodes.contains(&opcode) {
-            return Err(format!("Opcode {opcode} is not in the allowed set"));
+            return Err(format!("Opcode {opcode} is not allowed"));
         }
 
         // Retrieve the air for the given opcode, if it is already in the airs
-        if let Some(air) = self.airs.lock().unwrap().get_instruction_air(opcode) {
-            return Ok(air.unique_references().count());
-        }
-
-        // If the air is not found, either the air does not exist or the opcode is not linked to it.
-        // Fetch the air name
-        let name = self.config.fetch_opcode_machine_name(opcode);
-
-        // Insert the opcode and machine into the airs
-        self.airs
-            .lock()
-            .unwrap()
-            .insert_opcode(opcode, name, || self.config.fetch_opcode_machine(opcode))
-            .map_err(|e| "Unsupported openvm reference".to_string())?;
-
         Ok(self
             .airs
-            .lock()
-            .unwrap()
             .get_instruction_air(opcode)
-            .map_or(0, |air| air.unique_references().count()))
+            .map(|air| air.unique_references().count())
+            .unwrap_or_else(|| panic!("Opcode {opcode} was not passed to `init`")))
     }
 }
 

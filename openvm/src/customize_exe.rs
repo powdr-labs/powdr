@@ -107,26 +107,24 @@ pub fn customize(
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
-    match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) => {
-            sort_blocks_by_pgo_cell_cost_and_cache_apc(
-                &mut blocks,
-                &mut apc_cache,
-                pgo_program_idx_count,
-                &original_airs_builder,
-                config.clone(),
-                bus_map.clone(),
-            );
-        }
+    let vm_config = match pgo_config {
+        PgoConfig::Cell(pgo_program_idx_count) => sort_blocks_by_pgo_cell_cost_and_cache_apc(
+            &mut blocks,
+            &mut apc_cache,
+            pgo_program_idx_count,
+            original_airs_builder,
+            config.clone(),
+            bus_map.clone(),
+        ),
         PgoConfig::Instruction(pgo_program_idx_count) => {
             sort_blocks_by_pgo_instruction_cost(&mut blocks, pgo_program_idx_count);
             cache_apc_for_all_acc_blocks(
                 &mut apc_cache,
                 &config,
                 &blocks,
-                &original_airs_builder,
+                original_airs_builder,
                 bus_map,
-            );
+            )
         }
         PgoConfig::None => {
             sort_blocks_by_length(&mut blocks);
@@ -134,9 +132,9 @@ pub fn customize(
                 &mut apc_cache,
                 &config,
                 &blocks,
-                &original_airs_builder,
+                original_airs_builder,
                 bus_map,
-            );
+            )
         }
     };
 
@@ -225,7 +223,7 @@ pub fn customize(
             original_config,
             extensions,
             config.implementation,
-            original_airs_builder.into_airs(),
+            vm_config.instruction_machine_handler.into_airs(),
         ),
     }
 }
@@ -345,13 +343,16 @@ fn add_extra_targets<F: PrimeField32>(
 
 fn generate_apc_cache(
     block: &BasicBlock<OpenVmField<BabyBearField>>,
-    airs: &OriginalAirsBuilder<BabyBearField>,
     apc_opcode: usize,
-    bus_map: BusMap,
     degree_bound: DegreeBound,
+    vm_config: &VmConfig<
+        BabyBearField,
+        OriginalAirsBuilder<BabyBearField>,
+        OpenVmBusInteractionHandler<BabyBearField>,
+    >,
 ) -> Result<CachedAutoPrecompile<BabyBearField>, Error> {
     let (autoprecompile, subs) =
-        generate_autoprecompile(block, airs, apc_opcode, bus_map, degree_bound)?;
+        generate_autoprecompile(block, apc_opcode, degree_bound, vm_config)?;
 
     Ok(CachedAutoPrecompile {
         apc_opcode,
@@ -366,11 +367,27 @@ fn cache_apc_for_all_acc_blocks(
     apc_cache: &mut HashMap<usize, CachedAutoPrecompile<BabyBearField>>,
     powdr_config: &PowdrConfig,
     blocks: &[BasicBlock<OpenVmField<BabyBearField>>],
-    airs: &OriginalAirsBuilder<BabyBearField>,
+    airs: OriginalAirsBuilder<BabyBearField>,
     bus_map: BusMap,
-) {
+) -> VmConfig<
+    BabyBearField,
+    OriginalAirsBuilder<BabyBearField>,
+    OpenVmBusInteractionHandler<BabyBearField>,
+> {
     let n_acc = powdr_config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
+
+    let vm_config = VmConfig::new(
+        airs,
+        OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_map.clone(),
+        blocks
+            .iter()
+            .skip(powdr_config.skip_autoprecompiles as usize)
+            .take(n_acc)
+            .flat_map(|b| b.statements.iter().map(|instr| instr.opcode.as_usize()))
+            .collect(),
+    );
 
     let apcs = blocks
         .par_iter()
@@ -393,19 +410,15 @@ fn cache_apc_for_all_acc_blocks(
 
             (
                 acc_block.start_idx,
-                generate_apc_cache(
-                    acc_block,
-                    airs,
-                    apc_opcode,
-                    bus_map.clone(),
-                    powdr_config.degree_bound,
-                )
-                .unwrap(),
+                generate_apc_cache(acc_block, apc_opcode, powdr_config.degree_bound, &vm_config)
+                    .unwrap(),
             )
         })
         .collect::<Vec<_>>();
 
     apc_cache.extend(apcs);
+
+    vm_config
 }
 
 // OpenVM relevant bus ids:
@@ -418,10 +431,13 @@ fn cache_apc_for_all_acc_blocks(
 //    [a, b, c, 1] c = xor(a, b)
 fn generate_autoprecompile(
     block: &BasicBlock<OpenVmField<BabyBearField>>,
-    airs: &OriginalAirsBuilder<BabyBearField>,
     apc_opcode: usize,
-    bus_map: BusMap,
     degree_bound: DegreeBound,
+    vm_config: &VmConfig<
+        BabyBearField,
+        OriginalAirsBuilder<BabyBearField>,
+        OpenVmBusInteractionHandler<BabyBearField>,
+    >,
 ) -> Result<(SymbolicMachine<BabyBearField>, Vec<Vec<u64>>), Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -440,12 +456,6 @@ fn generate_autoprecompile(
             .collect(),
         })
         .collect();
-
-    let vm_config = VmConfig {
-        instruction_machine_handler: airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
-        bus_map,
-    };
 
     let (precompile, subs) =
         powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
@@ -482,10 +492,14 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc(
     blocks: &mut Vec<BasicBlock<OpenVmField<BabyBearField>>>,
     apc_cache: &mut HashMap<usize, CachedAutoPrecompile<BabyBearField>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &OriginalAirsBuilder<BabyBearField>,
+    airs: OriginalAirsBuilder<BabyBearField>,
     config: PowdrConfig,
     bus_map: BusMap,
-) {
+) -> VmConfig<
+    BabyBearField,
+    OriginalAirsBuilder<BabyBearField>,
+    OpenVmBusInteractionHandler<BabyBearField>,
+> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -538,6 +552,16 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc(
         }
     }
 
+    let vm_config = VmConfig::new(
+        airs,
+        OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_map.clone(),
+        blocks
+            .iter()
+            .flat_map(|b| b.statements.iter().map(|instr| instr.opcode.as_usize()))
+            .collect(),
+    );
+
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     // returned caches and blocks are ordered by descending cost already because they are unzipped from the min heap
     let (new_apc_cache, retained_blocks_with_stats): (
@@ -548,21 +572,21 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc(
         .enumerate()
         .filter_map(|(i, block)| {
             // try to create apc for a candidate block
-            let apc_cache_entry = generate_apc_cache(
-                block,
-                airs,
-                POWDR_OPCODE + i,
-                bus_map.clone(),
-                config.degree_bound,
-            )
-            .ok()?; // if apc creation fails, filter out this candidate block
+            let apc_cache_entry =
+                generate_apc_cache(block, POWDR_OPCODE + i, config.degree_bound, &vm_config)
+                    .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
             let apc_cells_per_row = apc_cache_entry.autoprecompile.unique_references().count();
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
-                .map(|instr| airs.get_opcode_air_width(instr.opcode.as_usize()).unwrap())
+                .map(|instr| {
+                    vm_config
+                        .instruction_machine_handler
+                        .get_opcode_air_width(instr.opcode.as_usize())
+                        .unwrap()
+                })
                 .sum();
             let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
             let execution_frequency = *pgo_program_idx_count
@@ -635,6 +659,8 @@ fn sort_blocks_by_pgo_cell_cost_and_cache_apc(
 
     blocks.clear(); // have to clear first and extend because &mut doesn't allow reassignment
     blocks.extend(retained_blocks);
+
+    vm_config
 }
 
 fn sort_blocks_by_pgo_instruction_cost<F: PrimeField32>(
