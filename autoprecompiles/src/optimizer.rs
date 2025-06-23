@@ -23,7 +23,7 @@ use crate::{
 
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    bus_interaction_handler: &(impl BusInteractionHandler<T> + IsBusStateful<T> + Clone),
     opcode: Option<u32>,
     degree_bound: DegreeBound,
     bus_map: &BusMap,

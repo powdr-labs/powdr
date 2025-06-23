@@ -44,7 +44,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_constraints, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, get_constraints, OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
 
@@ -237,8 +237,8 @@ impl SpecializedConfig {
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBearField>>,
         implementation: PrecompileImplementation,
+        airs: OriginalAirs<BabyBearField>,
     ) -> Self {
-        let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(
             precompiles,
