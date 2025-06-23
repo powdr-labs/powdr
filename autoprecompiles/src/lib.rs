@@ -246,6 +246,11 @@ pub trait InstructionMachineHandler<T> {
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
 }
 
+pub struct Apc<T> {
+    pub machine: SymbolicMachine<T>,
+    pub subs: Vec<Vec<u64>>,
+}
+
 pub fn build<
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
@@ -255,7 +260,7 @@ pub fn build<
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
-) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
+) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
         vm_config.instruction_machine_handler,
@@ -273,7 +278,7 @@ pub fn build<
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
 
-    Ok((machine, subs))
+    Ok(Apc { machine, subs })
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
