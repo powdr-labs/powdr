@@ -37,6 +37,8 @@ where
 
         length = circuit_builder.plonk_circuit.len();
 
+        println!("Evaluating expression");
+
         circuit_builder.evaluate_expression(&quadratic_symbolic_expr,true);
 
         length = circuit_builder.plonk_circuit.len() - length;
@@ -111,6 +113,8 @@ where
         expr: &QuadraticSymbolicExpression<T, AlgebraicReference>,
         assert_zero: bool,
     ) -> Variable<AlgebraicReference> {
+        println!("Evaluating expression: {}", expr);
+        
         if let Some(var) = self.cache.get(expr) {
             return var.clone();
         }
@@ -254,6 +258,7 @@ where
                         (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
                     }
                 } else {
+                    println!("Evaluating left expression in quadratic: {}", left);
                     (T::ONE, self.evaluate_expression(left, false))
                 };
                 let (mulb, b) = if !right.is_quadratic() && right.linear.len() == 1 {
@@ -290,6 +295,7 @@ where
                         (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
                     }
                 } else {
+                    println!("Evaluating right expression in quadratic: {}", right);
                     (T::ONE, self.evaluate_expression(right, false))
                 };
                 self.plonk_circuit.add_gate(Gate {
@@ -330,9 +336,14 @@ where
         // Compute all the linear terms
         let mut iter = expr.linear.iter();
 
-        let mut linear_results = Vec::new();
+        let mut linear_results:Vec<(T,Variable<AlgebraicReference>)> = Vec::new();
 
         while let (Some((poly_a, c_a)), Some((poly_b, c_b))) = (iter.next(), iter.next()) {
+
+            println!(
+                "Adding linear gate for {} and {} with coefficients {} and {}",
+                poly_a, poly_b, c_a, c_b
+            );
             let temp_expr = QuadraticSymbolicExpression {
                 quadratic: Vec::new(),
                 linear: BTreeMap::from([
@@ -342,7 +353,7 @@ where
                 constant: SymbolicExpression::Concrete(T::ZERO),
             };
             if let Some(var) = self.cache.get(&temp_expr) {
-                linear_results.push(var.clone());
+                linear_results.push((T::ONE,var.clone()));
             } else {
                 self.plonk_circuit.add_gate(Gate {
                     q_l: c_a.try_to_number().expect("Expected a constant for q_l"),
@@ -354,7 +365,7 @@ where
                     ..Default::default()
                 });
                 self.temp_id_offset += 1;
-                linear_results.push(Variable::Tmp(self.temp_id_offset - 1));
+                linear_results.push((T::ONE, Variable::Tmp(self.temp_id_offset - 1)));
                 self.cache
                     .insert(temp_expr.clone(), Variable::Tmp(self.temp_id_offset - 1));
             }
@@ -362,25 +373,20 @@ where
 
         // Handle the last unpaired item if odd length
         if expr.linear.len() % 2 != 0 {
+            println!("Handling last unpaired linear term: {}", expr.linear.iter().last().unwrap().0);
+           // println!("linear results so far: {:?}", linear_results);
             if let Some((poly_a, c_a)) = expr.linear.iter().last() {
                 let temp_expr = QuadraticSymbolicExpression {
                     quadratic: Vec::new(),
                     linear: BTreeMap::from([(poly_a.clone(), c_a.clone())]),
-                    constant: c_a.clone() - c_a.clone(),
+                    constant: SymbolicExpression::Concrete(T::ZERO),
                 };
                 if let Some(var) = self.cache.get(&temp_expr) {
-                    temp = var.clone();
+                    linear_results.push((T::ONE,var.clone()));
                 } else {
-                    self.plonk_circuit.add_gate(Gate {
-                        q_l: c_a.try_to_number().expect("Expected a constant for q_l"),
-                        a: Variable::Witness(poly_a.clone()),
-                        q_o: -T::ONE,
-                        c: Variable::Tmp(self.temp_id_offset),
-                        ..Default::default()
-                    });
-                    self.temp_id_offset += 1;
-                    linear_results.push(Variable::Tmp(self.temp_id_offset - 1));
-                    self.cache.insert(temp_expr.clone(), temp.clone());
+
+                    linear_results.push((c_a.try_to_number().expect("Expected a constant for c_a"), Variable::Witness(poly_a.clone())));
+                    //self.cache.insert(temp_expr.clone(), Variable::Tmp(self.temp_id_offset - 1));
                 }
             }
         }
@@ -391,13 +397,24 @@ where
                     .iter()
                     .next()
                     .cloned()
-                    .unwrap_or(Variable::Unused);
+                    .unwrap_or((T::ONE, Variable::Unused)).1;
+               if linear_results.len() == 1 {
+                    self.plonk_circuit.add_gate(Gate {
+                        q_l: linear_results[0].0,
+                        a: temp.clone(),
+                        q_o: -T::ONE,
+                        c: Variable::Tmp(self.temp_id_offset),
+                        ..Default::default()
+                    });
+                    self.temp_id_offset += 1;
+                    temp = Variable::Tmp(self.temp_id_offset - 1);
+                }
             } else {
                 self.plonk_circuit.add_gate(Gate {
-                    q_l: T::ONE,
+                    q_l: linear_results[0].0,
                     a: temp.clone(),
                     q_r: T::ONE,
-                    b: linear_results[0].clone(),
+                    b: linear_results[0].clone().1,
                     q_o: -T::ONE,
                     c: Variable::Tmp(self.temp_id_offset),
                     ..Default::default()
@@ -406,11 +423,12 @@ where
                 temp = Variable::Tmp(self.temp_id_offset - 1);
             }
 
-            linear_results.iter().skip(1).for_each(|var| {
+            linear_results.iter().skip(1).for_each(|(mul,var)| {
+               // println!("plonk circuit til now in linear iter: {}", self.plonk_circuit);
                 self.plonk_circuit.add_gate(Gate {
                     q_l: T::ONE,
                     a: temp.clone(),
-                    q_r: T::ONE,
+                    q_r: *mul,
                     b: var.clone(),
                     q_o: -T::ONE,
                     c: Variable::Tmp(self.temp_id_offset),
@@ -479,7 +497,7 @@ mod tests {
 
         let expr1 = x.clone() * y.clone() - (-x.clone() * (x.clone() + y.clone()));
         let expr2 = -(c(3) - c(2) * x.clone() * y.clone()) + c(1);
-        let expr3 = c(1);
+        let expr3 = c(5) * (c(3) *  x.clone()+ c(10)) * (c(1) + y.clone());
         let machine = SymbolicMachine {
             constraints: vec![
                 SymbolicConstraint { expr: expr1 },

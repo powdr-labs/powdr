@@ -19,20 +19,20 @@ pub fn build_circuit<T>(
 where
     T: FieldElement,
 {
-    let mut circuit_builder = CircuitBuilder::<T>::new();
-    for constraint in &machine.constraints {
-        circuit_builder.evaluate_expression(&constraint.expr, true);
-    }
+    // let mut circuit_builder = CircuitBuilder::<T>::new();
+    // for constraint in &machine.constraints {
+    //     circuit_builder.evaluate_expression(&constraint.expr, true);
+    // }
 
-    build_circuit_from_quadratic_simbolic_expression(machine, bus_map);
+    build_circuit_from_quadratic_simbolic_expression(machine, bus_map)
 
-    for bus_interaction in &machine.bus_interactions {
-        add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder, bus_map);
-    }
+    // for bus_interaction in &machine.bus_interactions {
+    //     add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder, bus_map);
+    // }
 
     //println!("plonk circuit from algebraic expressions: {}", circuit_builder.plonk_circuit);
 
-    circuit_builder.build()
+    //circuit_builder.build()
 }
 
 pub struct CircuitBuilder<T> {
