@@ -1,0 +1,56 @@
+on:
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C target-cpu=native"
+  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
+  POWDR_OPENVM_SEGMENT_DELTA: 10000
+
+jobs:
+  test_apc:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+      - name: Run tests
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+
+      - name: Install cargo openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --tag v1.1.2 cargo-openvm
+
+      - name: Checkout openvm-reth-benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: powdr-labs/openvm-reth-benchmark
+          ref: apc-cli
+          path: openvm-reth-benchmark
+
+      - name: Patch openvm-reth-benchmark to use local powdr
+        run: |
+          cd openvm-reth-benchmark
+          mkdir -p .cargo
+          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+
+      - name: Run small execution test with APCs
+        run: |
+          cd openvm-reth-benchmark
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+          MODE="execute" APC=500 APC_SKIP=0 /usr/bin/time -v ./run.sh 2> out.err
