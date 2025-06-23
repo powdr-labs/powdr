@@ -263,7 +263,7 @@ pub fn customize(
         tracing::debug!("Chip stacking disabled");
         extensions
             .into_iter()
-            .map(PowdrStackedPrecompile::new_single)
+            .map(PowdrStackedPrecompile::from)
             .collect()
     };
 

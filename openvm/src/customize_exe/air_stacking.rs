@@ -71,7 +71,7 @@ fn group_into_stacked<P: IntoOpenVm>(
             "Precompile {} not stacked",
             &precompile.opcode.global_opcode().as_usize()
         );
-        return PowdrStackedPrecompile::new_single(precompile);
+        return precompile.into();
     }
 
     // handle largest precompile first

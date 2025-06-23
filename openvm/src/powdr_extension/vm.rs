@@ -104,11 +104,11 @@ pub struct PowdrStackedPrecompile<P: IntoOpenVm> {
     pub machine: SymbolicMachine<P>,
 }
 
-impl<P: IntoOpenVm> PowdrStackedPrecompile<P> {
-    pub fn new_single(precompile: PowdrPrecompile<P>) -> Self {
+impl<P: IntoOpenVm> From<PowdrPrecompile<P>> for PowdrStackedPrecompile<P> {
+    fn from(pcp: PowdrPrecompile<P>) -> Self {
         Self {
-            machine: precompile.machine.clone(),
-            precompiles: BTreeMap::from([(precompile.opcode.clone(), precompile)]),
+            machine: pcp.machine.clone(),
+            precompiles: BTreeMap::from([(pcp.opcode.clone(), pcp)]),
         }
     }
 }

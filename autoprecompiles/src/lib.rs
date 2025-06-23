@@ -65,11 +65,11 @@ impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SymbolicBusInteraction<T> {
     pub id: u64,
-    pub args: Vec<AlgebraicExpression<T>>,
     pub mult: AlgebraicExpression<T>,
+    pub args: Vec<AlgebraicExpression<T>>,
 }
 
 impl<T: Display> Display for SymbolicBusInteraction<T> {
@@ -246,6 +246,8 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     vm_config: VmConfig<T, B>,
     degree_bound: DegreeBound,
     opcode: u32,
+    // If true, disables the optimization of multipliying only constants when guarding with is_valid.
+    // Chip stacking needs variables to be guarded too.
     strict_is_valid_guards: bool,
 ) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
@@ -315,7 +317,7 @@ fn add_guards_constraint<T: FieldElement>(
 fn add_guards<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     bus_map: BusMap,
-    strict: bool,
+    is_strict: bool,
 ) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
@@ -328,7 +330,7 @@ fn add_guards<T: FieldElement>(
         id: max_id,
     });
 
-    machine.constraints = if strict {
+    machine.constraints = if is_strict {
         machine
             .constraints
             .into_iter()
@@ -370,7 +372,7 @@ fn add_guards<T: FieldElement>(
     for b in &mut machine.bus_interactions {
         // already handled exec and pc lookup bus types
         if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
-            if strict || !satisfies_zero_witness(&b.mult) {
+            if is_strict || !satisfies_zero_witness(&b.mult) {
                 // guard the multiplicity by `is_valid`
                 b.mult = is_valid.clone() * b.mult.clone();
                 // TODO this would not have to be cloned if we had *=
@@ -386,7 +388,7 @@ fn add_guards<T: FieldElement>(
 
     machine.constraints.extend(is_valid_mults);
 
-    if !strict {
+    if !is_strict {
         assert_eq!(
             pre_degree,
             machine.degree(),
