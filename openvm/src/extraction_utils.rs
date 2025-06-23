@@ -57,7 +57,7 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
-        // Insert the machine only if air_name isn't already present
+        // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
             let machine_instance = machine()?;
             self.air_name_to_machine
