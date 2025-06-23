@@ -52,13 +52,6 @@ enum Commands {
         input: Option<u32>,
     },
 
-    Pgo {
-        guest: String,
-
-        #[arg(long)]
-        input: Option<u32>,
-    },
-
     Prove {
         guest: String,
 
@@ -155,14 +148,6 @@ fn run_command(command: Commands) {
             } else {
                 prove()
             }
-        }
-
-        // Run Pgo on the original openvm program (without powdr extension)
-        // By default, Compile, Execute, and Prove all run Pgo first
-        // This command is only used to test the powdr_openvm::pgo API
-        Commands::Pgo { guest, input } => {
-            let program = powdr_openvm::compile_openvm(&guest, guest_opts).unwrap();
-            powdr_openvm::pgo(program, stdin_from(input)).unwrap();
         }
     }
 }
