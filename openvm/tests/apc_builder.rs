@@ -71,10 +71,10 @@ fn assert_machine_output(
 }
 
 mod single_instruction_tests {
-    use super::compile;
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
 
+    // ALU Chip instructions
     #[test]
     fn single_add_0() {
         let program = [
@@ -120,10 +120,12 @@ mod single_instruction_tests {
         assert_machine_output(program.to_vec(), "single_or");
     }
 
+    // Load/Store Chip instructions
+    // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
     #[test]
     fn single_loadw() {
         let program = [
-            // Load x2 + 20 into x8
+            // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
         assert_machine_output(program.to_vec(), "single_loadw");
@@ -132,12 +134,68 @@ mod single_instruction_tests {
     #[test]
     fn single_loadbu() {
         let program = [
-            // Load x2 + 21 into x8
+            // Load [x2 + 21]_2 into x8
             loadbu(8, 2, 21, 2, 1, 0),
         ];
         assert_machine_output(program.to_vec(), "single_loadbu");
     }
 
+    #[test]
+    fn single_loadhu() {
+        let program = [
+            // Load [x2 + 22]_2 but `needs_write=0`
+            loadhu(0, 2, 22, 2, 0, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadhu");
+    }
+
+    #[test]
+    fn single_storew() {
+        let program = [
+            // Store [x8] into [x2 - 4]_2
+            storew(8, 2, 4, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_storew");
+    }
+
+    #[test]
+    fn single_storeh() {
+        let program = [
+            // Store [x8] into [x2 - 6]_2
+            storeh(8, 2, 6, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_storeh");
+    }
+
+    #[test]
+    fn single_storeb() {
+        let program = [
+            // Store [x8] into [x2 + 3]_2
+            storeb(8, 2, 3, 2, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_storeb");
+    }
+
+    // Load/Store Sign Extend Chip instructions
+    #[test]
+    fn single_loadh() {
+        let program = [
+            // Load [x2 + 6]_2 into x8
+            loadh(8, 2, 6, 2, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadh");
+    }
+
+    #[test]
+    fn single_loadb() {
+        let program = [
+            // Load [x2 + 3]_2 into x8 but `needs_write=0`
+            loadb(0, 2, 3, 2, 0, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadb");
+    }
+
+    // Shift Chip instructions
     #[test]
     fn single_srl() {
         // Instruction 416 from the largest basic block of the Keccak guest program.
