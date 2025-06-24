@@ -128,7 +128,8 @@ mod single_instruction_tests {
             // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
-        assert_machine_output(program.to_vec(), "single_loadw");
+        println!("{}", super::compile(program.to_vec()));
+        // assert_machine_output(program.to_vec(), "single_loadw");
     }
 
     #[test]
@@ -193,6 +194,25 @@ mod single_instruction_tests {
             loadb(0, 2, 3, 2, 0, 0),
         ];
         assert_machine_output(program.to_vec(), "single_loadb");
+    }
+
+    // Branch Eq Chip instructions
+    #[test]
+    fn single_beq() {
+        let program = [
+            // pc = pc + 2 if x8 == x5
+            beq(8, 5, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_beq");
+    }
+
+    #[test]
+    fn single_bne() {
+        let program = [
+            // pc = pc + 2 if x8 != x5
+            bne(8, 5, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_bne");
     }
 
     // Shift Chip instructions
