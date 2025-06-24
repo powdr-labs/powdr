@@ -5,12 +5,15 @@ use std::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use num_traits::Zero;
+use powdr_expression::{AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator};
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::Condition,
+    symbolic_expression::{BinaryOperator, UnaryOperator},
+    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
@@ -930,24 +933,27 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
         write!(
             f,
             "{}",
-            self.transform_simplified::<PrettyPrintedQuadraticSymbolicExpression>()
-                .to_string()
+            self.transform_simplified(&|v| AlgebraicExpression::Reference(v.to_string()), &|s| {
+                symbolic_expression_to_algebraic(s, &|v| {
+                    AlgebraicExpression::Reference(v.to_string())
+                })
+            })
         )
     }
 }
 
 impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
-    pub fn transform_simplified<S>(&self) -> S
+    pub fn transform_simplified<S>(
+        &self,
+        var_converter: &impl Fn(&V) -> S,
+        symbolic_expression_converter: &impl Fn(&SymbolicExpression<T, V>) -> S,
+    ) -> S
     where
-        S: From<V>
-            + From<SymbolicExpression<T, V>>
-            + Add<Output = S>
-            + Sub<Output = S>
-            + Mul<Output = S>
-            + Neg<Output = S>
-            + Default,
+        S: Add<Output = S> + Sub<Output = S> + Mul<Output = S> + Neg<Output = S> + From<T>,
     {
-        let (sign, s) = self.transform_signed_simplified::<S>();
+        let (sign, s) = self.transform_signed_simplified::<S>(var_converter, &|expr| {
+            (false, symbolic_expression_converter(expr))
+        });
         if sign {
             -s
         } else {
@@ -955,43 +961,57 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
         }
     }
 
-    fn transform_signed_simplified<S>(&self) -> (bool, S)
+    pub fn transform_signed_simplified<S>(
+        &self,
+        var_converter: &impl Fn(&V) -> S,
+        symbolic_expression_converter: &impl Fn(&SymbolicExpression<T, V>) -> (bool, S),
+    ) -> (bool, S)
     where
-        S: From<V>
-            + From<SymbolicExpression<T, V>>
-            + Add<Output = S>
-            + Sub<Output = S>
-            + Mul<Output = S>
-            + Default,
+        S: Add<Output = S> + Sub<Output = S> + Mul<Output = S> + From<T>,
     {
-        self.quadratic
+        let items = self
+            .quadratic
             .iter()
             .map(|(a, b)| {
-                let (a_sign, a): (bool, S) = a.transform_signed_simplified();
-                let (b_sign, b) = b.transform_signed_simplified();
+                let (a_sign, a): (bool, S) =
+                    a.transform_signed_simplified(var_converter, symbolic_expression_converter);
+                let (b_sign, b) =
+                    b.transform_signed_simplified(var_converter, symbolic_expression_converter);
                 (a_sign ^ b_sign, a * b)
             })
             .chain(
                 self.linear
                     .iter()
                     .map(|(var, coeff)| match coeff.try_to_number() {
-                        Some(k) if k == 1.into() => (false, var.clone().into()),
-                        Some(k) if k == (-1).into() => (true, var.clone().into()),
+                        Some(k) if k == 1.into() => (false, var_converter(var)),
+                        Some(k) if k == (-1).into() => (true, var_converter(var)),
                         _ => {
-                            let (sign, coeff) = symbolic_expression_to_signed_simplified(coeff);
-                            (sign, S::from(coeff) * S::from(var.clone()))
+                            let (sign, coeff) = symbolic_expression_converter(coeff);
+                            (sign, coeff * var_converter(var))
                         }
                     }),
             )
             .chain(match self.constant.try_to_number() {
                 Some(k) if k == T::zero() => None,
-                _ => {
-                    let (sign, coeff) = symbolic_expression_to_signed_simplified(&self.constant);
-                    Some((sign, coeff.into()))
-                }
-            })
-            .reduce(|(n1, p1), (n2, p2)| (n1, if n1 == n2 { p1 + p2 } else { p1 - p2 }))
-            .unwrap_or((false, Default::default()))
+                _ => Some(symbolic_expression_converter(&self.constant)),
+            });
+
+        // Now order the items by negated and non-negated.
+        let (negated, positive): (Vec<S>, Vec<S>) = items.partition_map(|(sign, item)| {
+            if sign {
+                Either::Left(item)
+            } else {
+                Either::Right(item)
+            }
+        });
+        let positive = positive.into_iter().reduce(|acc, item| acc + item);
+        let negated = negated.into_iter().reduce(|acc, item| acc + item);
+        match (positive, negated) {
+            (Some(positive), Some(negated)) => (false, positive - negated),
+            (Some(positive), None) => (false, positive),
+            (None, Some(negated)) => (true, negated),
+            (None, None) => (false, S::from(T::from(0))),
+        }
     }
 }
 
@@ -1010,81 +1030,42 @@ fn symbolic_expression_to_signed_simplified<T: FieldElement, V: Clone + Ord + Di
     }
 }
 
-/// A pretty-printed version of a quadratic symbolic expression for use with
-/// `QuadraticSymbolicExpression::transform_simplified`.
-/// Note that the point where we required parentheses is highly dependent
-/// on the way this is used inside that function.
-struct PrettyPrintedQuadraticSymbolicExpression(String);
+// TODO find a good place for this.
 
-impl PrettyPrintedQuadraticSymbolicExpression {
-    fn to_string(&self) -> String {
-        self.0.to_string()
+fn symbolic_expression_to_algebraic<T: FieldElement, V, S>(
+    e: &SymbolicExpression<T, V>,
+    var_converter: &impl Fn(&V) -> AlgebraicExpression<T, S>,
+) -> AlgebraicExpression<T, S> {
+    match e {
+        SymbolicExpression::Concrete(v) => {
+            if v.is_in_lower_half() {
+                AlgebraicExpression::from(*v)
+            } else {
+                -AlgebraicExpression::from(-*v)
+            }
+        }
+        SymbolicExpression::Symbol(var, _) => var_converter(var),
+        SymbolicExpression::BinaryOperation(left, op, right, _) => {
+            let left = symbolic_expression_to_algebraic(left, var_converter);
+            let right = symbolic_expression_to_algebraic(right, var_converter);
+            let op = symbolic_op_to_algebraic(*op);
+            AlgebraicExpression::new_binary(left, op, right)
+        }
+        SymbolicExpression::UnaryOperation(op, inner, _) => match op {
+            UnaryOperator::Neg => AlgebraicExpression::new_unary(
+                AlgebraicUnaryOperator::Minus,
+                symbolic_expression_to_algebraic(inner, var_converter),
+            ),
+        },
     }
 }
 
-impl<V: Display> From<V> for PrettyPrintedQuadraticSymbolicExpression {
-    fn from(v: V) -> Self {
-        PrettyPrintedQuadraticSymbolicExpression(v.to_string())
-    }
-}
-
-impl Default for PrettyPrintedQuadraticSymbolicExpression {
-    fn default() -> Self {
-        PrettyPrintedQuadraticSymbolicExpression("0".to_string())
-    }
-}
-
-impl Add for PrettyPrintedQuadraticSymbolicExpression {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        PrettyPrintedQuadraticSymbolicExpression(format!(
-            "{} + {}",
-            self.to_string(),
-            rhs.to_string()
-        ))
-    }
-}
-
-impl Sub for PrettyPrintedQuadraticSymbolicExpression {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        PrettyPrintedQuadraticSymbolicExpression(format!(
-            "{} - {}",
-            self.to_string(),
-            rhs.to_string()
-        ))
-    }
-}
-
-impl Mul for PrettyPrintedQuadraticSymbolicExpression {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self::Output {
-        let s1 = self.to_string();
-        let s2 = rhs.to_string();
-        let s1 = if s1.contains(" + ") || s1.contains(" - ") {
-            format!("({s1})")
-        } else {
-            s1
-        };
-        let s2 = if s2.contains(" + ") || s2.contains(" - ") {
-            format!("({s2})")
-        } else {
-            s2
-        };
-        PrettyPrintedQuadraticSymbolicExpression(format!("{s1} * {s2}"))
-    }
-}
-
-impl Neg for PrettyPrintedQuadraticSymbolicExpression {
-    type Output = Self;
-    fn neg(self) -> Self::Output {
-        let s = self.to_string();
-        let s = if s.contains(" + ") || s.contains(" - ") || s.contains(" * ") {
-            format!("-({s})")
-        } else {
-            format!("-{s}")
-        };
-        PrettyPrintedQuadraticSymbolicExpression(s)
+fn symbolic_op_to_algebraic(op: BinaryOperator) -> AlgebraicBinaryOperator {
+    match op {
+        BinaryOperator::Add => AlgebraicBinaryOperator::Add,
+        BinaryOperator::Sub => AlgebraicBinaryOperator::Sub,
+        BinaryOperator::Mul => AlgebraicBinaryOperator::Mul,
+        BinaryOperator::Div => unreachable!(),
     }
 }
 

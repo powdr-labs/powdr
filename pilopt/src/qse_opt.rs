@@ -137,6 +137,12 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
+    expr.transform_simplified(
+        |v| variable_to_algebraic_expression(v.clone()),
+        |s| symbolic_expression_to_algebraic(s),
+    )
+
+        var_converter, symbolic_expression_converter)
     // Turn the expression into a list of to-be-summed items and try to
     // simplify on the way.
     let (quadratic, linear, constant) = expr.components();
