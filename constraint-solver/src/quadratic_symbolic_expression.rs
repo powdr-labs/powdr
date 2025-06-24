@@ -935,6 +935,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
         let var_converter = |v: &V| AlgebraicExpression::Reference(v.to_string());
 
         // We can ignore the sign for formatting.
+        // TODO maybe we should not remove the negation here
         let (_, expr) = self.transform_signed_simplified(&var_converter, &|e| {
             symbolic_expression_to_signed_algebraic(e, &var_converter)
         });
