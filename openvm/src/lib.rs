@@ -603,7 +603,15 @@ pub fn prove(
 // Produces execution count by pc_index
 // Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
 pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) -> HashMap<u32, u32> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let program = compile_openvm(guest, guest_opts).unwrap();
+    pgo(program, inputs)
+}
+
+pub fn pgo(
+    program: OriginalCompiledProgram,
+    inputs: StdIn,
+) -> HashMap<u32, u32> {
+    let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
     let collected = Arc::new(Mutex::new(Vec::new()));
