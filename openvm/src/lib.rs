@@ -600,14 +600,19 @@ pub fn prove(
     Ok(())
 }
 
-// Produces execution count by pc_index
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) -> HashMap<u32, u32> {
+// Same as execution_profile below but for guest path inputs.
+pub fn execution_profile_from_guest(
+    guest: &str,
+    guest_opts: GuestOptions,
+    inputs: StdIn,
+) -> HashMap<u32, u32> {
     let program = compile_openvm(guest, guest_opts).unwrap();
-    pgo(program, inputs)
+    execution_profile(program, inputs)
 }
 
-pub fn pgo(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
+// Produces execution count by pc_index
+// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
+pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
@@ -826,7 +831,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
@@ -862,7 +867,8 @@ mod tests {
     fn keccak_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
         prove_recursion(
@@ -887,7 +893,8 @@ mod tests {
     fn keccak_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_LARGE);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
         prove_recursion(
@@ -937,7 +944,8 @@ mod tests {
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         // Pgo Cell mode
         let start = Instant::now();
@@ -1002,7 +1010,7 @@ mod tests {
     fn guest_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
         test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
         test_guest_machine(PgoConfig::Cell(pgo_data));
     }
@@ -1030,7 +1038,7 @@ mod tests {
     fn keccak_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
+        let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
         test_keccak_machine(PgoConfig::Cell(pgo_data));
     }
