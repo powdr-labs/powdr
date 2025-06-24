@@ -29,7 +29,7 @@ pub enum EffectImpl<T: RuntimeConstant<V>, V> {
 }
 
 // TODO: This type is equivalent to a pre-refactoring version of `EffectImpl`.
-// It should be removed in a follow-up PR.
+// It should be removed in a follow-up PR & we should rename `EffectImpl` to `Effect`.
 pub type Effect<T, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 
 /// A bit decomposition of a value.
