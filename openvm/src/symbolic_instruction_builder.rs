@@ -3,6 +3,40 @@ use crate::opcode::*;
 use powdr_autoprecompiles::SymbolicInstructionStatement;
 use powdr_number::FieldElement;
 
+// Generic instructions (5 args, fixed f=0, g=0)
+macro_rules! build_instr5 {
+    (
+        $(
+            $(#[$doc:meta])*
+            ($name:ident, $code:expr)
+        ),+ $(,)?
+    ) => {
+        $(
+            $(#[$doc])*
+            pub fn $name<T: FieldElement>(
+                a: u32,
+                b: u32,
+                c: u32,
+                d: u32,
+                e: u32,
+            ) -> SymbolicInstructionStatement<T> {
+                SymbolicInstructionStatement {
+                    opcode: $code as usize,
+                    args: vec![
+                        T::from(a),
+                        T::from(b),
+                        T::from(c),
+                        T::from(d),
+                        T::from(e),
+                        T::zero(),
+                        T::zero(),
+                    ],
+                }
+            }
+        )+
+    };
+}
+
 // ALU instructions (4 args, fixed d=1, f=0, g=0)
 macro_rules! alu_ops {
     (
@@ -103,39 +137,57 @@ macro_rules! branch_ops {
     };
 }
 
-// All other instructions (5 args, fixed f=0, g=0)
-macro_rules! build_instr5 {
-    (
-        $(
-            $(#[$doc:meta])*
-            ($name:ident, $code:expr)
-        ),+ $(,)?
-    ) => {
-        $(
-            $(#[$doc])*
-            pub fn $name<T: FieldElement>(
-                a: u32,
-                b: u32,
-                c: u32,
-                d: u32,
-                e: u32,
-            ) -> SymbolicInstructionStatement<T> {
-                SymbolicInstructionStatement {
-                    opcode: $code as usize,
-                    args: vec![
-                        T::from(a),
-                        T::from(b),
-                        T::from(c),
-                        T::from(d),
-                        T::from(e),
-                        T::zero(),
-                        T::zero(),
-                    ],
-                }
-            }
-        )+
-    };
-}
+// Generic instructions
+build_instr5!(
+    /// Jump and link (Rdwrite adapter and JAL_LUI core):
+    /// - to_pc = pc + imm
+    /// - store(REG, rd_ptr, pc + 4)
+    (jal, OPCODE_JAL),
+    /// Load upper immediate (Rdwrite adapter and JAL_LUI core):
+    /// - store(REG, rd_ptr, imm * 2^8)
+    (lui, OPCODE_LUI),
+
+    /// Jump and link register (JALR adapter and JALR core):
+    /// - to_pc = load(REG, rs1_ptr) + imm
+    /// - store(REG, rd_ptr, pc + 4)
+    (jalr, OPCODE_JALR),
+
+    /// Add upper immediate to PC (but does not change PC) (Rdwrite adapter and AUIPC core):
+    /// - store(REG, rd_ptr, pc + imm * 2^8)
+    (auipc, OPCODE_AUIPC),
+
+    /// Multiplication (Mul adapter and Multiplication core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) % 2^32)
+    (mul, OPCODE_MUL),
+
+    /// Signed * signed multiplication high (Mul adapter and MULH core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) / 2^32), where `/` is integer division
+    (mulh, OPCODE_MULH),
+    /// Signed * unsigned multiplication high (Mul adapter and MULH core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) / 2^32), where `/` is integer division
+    (mulhsu, OPCODE_MULHSU),
+    /// Unsigned * unsigned multiplication high (Mul adapter and MULH core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) / 2^32), where `/` is integer division
+    (mulhu, OPCODE_MULHU),
+
+    /// Signed division (Mul adapter and Divrem core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) / load(REG, rs2_ptr)), where `/` is integer division
+    /// - Exception: store(REG, rd_ptr, -1) if `load(REG, rs2_ptr) == 0`
+    (div, OPCODE_DIV),
+    /// Unsigned division (Mul adapter and Divrem core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) / load(REG, rs2_ptr)), where `/` is integer division
+    /// - Exception: store(REG, rd_ptr, 2^32 - 1) if `load(REG, rs2_ptr) == 0`
+    (divu, OPCODE_DIVU),
+    /// Signed remainder (Mul adapter and Divrem core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) % load(REG, rs2_ptr))
+    (rem, OPCODE_REM),
+    /// Unsigned remainder (Mul adapter and Divrem core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) % load(REG, rs2_ptr))
+    (remu, OPCODE_REMU),
+
+    (hint_storew, OPCODE_HINT_STOREW),
+    (hint_buffer, OPCODE_HINT_BUFFER)
+);
 
 // ALU instructions
 alu_ops!(
@@ -224,56 +276,4 @@ branch_ops!(
     /// Branch greater than or equal unsigned (Branch adapter and Branch Lt core):
     /// - to_pc = pc + imm if load(REG, rs1_ptr) >= load(REG, rs2_ptr) else pc + 4
     (bgeu, OPCODE_BGEU),
-);
-
-// All other instructions
-build_instr5!(
-    /// Jump and link (Rdwrite adapter and JAL_LUI core):
-    /// - to_pc = pc + imm
-    /// - store(REG, rd_ptr, pc + 4)
-    (jal, OPCODE_JAL),
-    /// Load upper immediate (Rdwrite adapter and JAL_LUI core):
-    /// - store(REG, rd_ptr, imm * 2^8)
-    (lui, OPCODE_LUI),
-
-    /// Jump and link register (JALR adapter and JALR core):
-    /// - to_pc = load(REG, rs1_ptr) + imm
-    /// - store(REG, rd_ptr, pc + 4)
-    (jalr, OPCODE_JALR),
-
-    /// Add upper immediate to PC (but does not change PC) (Rdwrite adapter and AUIPC core):
-    /// - store(REG, rd_ptr, pc + imm * 2^8)
-    (auipc, OPCODE_AUIPC),
-
-    /// Multiplication (Mul adapter and Multiplication core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) % 2^32)
-    (mul, OPCODE_MUL),
-
-    /// Signed * signed multiplication high (Mul adapter and MULH core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) / 2^32), where `/` is integer division
-    (mulh, OPCODE_MULH),
-    /// Signed * unsigned multiplication high (Mul adapter and MULH core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) / 2^32), where `/` is integer division
-    (mulhsu, OPCODE_MULHSU),
-    /// Unsigned * unsigned multiplication high (Mul adapter and MULH core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) * load(REG, rs2_ptr) / 2^32), where `/` is integer division
-    (mulhu, OPCODE_MULHU),
-
-    /// Signed division (Mul adapter and Divrem core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) / load(REG, rs2_ptr)), where `/` is integer division
-    /// - Exception: store(REG, rd_ptr, -1) if `load(REG, rs2_ptr) == 0`
-    (div, OPCODE_DIV),
-    /// Unsigned division (Mul adapter and Divrem core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) / load(REG, rs2_ptr)), where `/` is integer division
-    /// - Exception: store(REG, rd_ptr, 2^32 - 1) if `load(REG, rs2_ptr) == 0`
-    (divu, OPCODE_DIVU),
-    /// Signed remainder (Mul adapter and Divrem core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) % load(REG, rs2_ptr))
-    (rem, OPCODE_REM),
-    /// Unsigned remainder (Mul adapter and Divrem core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) % load(REG, rs2_ptr))
-    (remu, OPCODE_REMU),
-
-    (hint_storew, OPCODE_HINT_STOREW),
-    (hint_buffer, OPCODE_HINT_BUFFER)
 );
