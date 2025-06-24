@@ -607,10 +607,7 @@ pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) ->
     pgo(program, inputs)
 }
 
-pub fn pgo(
-    program: OriginalCompiledProgram,
-    inputs: StdIn,
-) -> HashMap<u32, u32> {
+pub fn pgo(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
