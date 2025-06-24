@@ -137,9 +137,22 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
-    expr.transform_simplified(&|v| variable_to_algebraic_expression(v.clone()), &|s| {
-        symbolic_expression_to_algebraic(s)
-    })
+    let (sign, expr) = expr
+        .transform_signed_simplified(&|v| variable_to_algebraic_expression(v.clone()), &|s| {
+            symbolic_expression_to_signed_simplified(s)
+        });
+    if sign {
+        expr
+    } else {
+        -expr
+    }
+}
+
+fn symbolic_expression_to_signed_simplified<T: FieldElement>(
+    expr: &SymbolicExpression<T, Variable>,
+) -> (bool, AlgebraicExpression<T>) {
+    let (expr, sign) = extract_negation_if_possible(symbolic_expression_to_algebraic(expr));
+    (sign, expr)
 }
 
 fn symbolic_expression_to_algebraic<T: FieldElement>(

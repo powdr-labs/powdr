@@ -936,36 +936,30 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
 
         // We can ignore the sign for formatting.
         let (_, expr) = self.transform_signed_simplified(&var_converter, &|e| {
-            match symbolic_expression_to_algebraic(e, &var_converter) {
-                AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                    op: AlgebraicUnaryOperator::Minus,
-                    expr,
-                }) => (true, *expr),
-                e => (false, e),
-            }
+            symbolic_expression_to_signed_algebraic(e, &var_converter)
         });
         write!(f, "{expr}")
     }
 }
 
 impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
-    pub fn transform_simplified<S>(
-        &self,
-        var_converter: &impl Fn(&V) -> S,
-        symbolic_expression_converter: &impl Fn(&SymbolicExpression<T, V>) -> S,
-    ) -> S
-    where
-        S: Add<Output = S> + Sub<Output = S> + Mul<Output = S> + Neg<Output = S> + From<T>,
-    {
-        let (sign, s) = self.transform_signed_simplified::<S>(var_converter, &|expr| {
-            (false, symbolic_expression_converter(expr))
-        });
-        if sign {
-            -s
-        } else {
-            s
-        }
-    }
+    // pub fn transform_simplified<S>(
+    //     &self,
+    //     var_converter: &impl Fn(&V) -> S,
+    //     symbolic_expression_converter: &impl Fn(&SymbolicExpression<T, V>) -> S,
+    // ) -> S
+    // where
+    //     S: Add<Output = S> + Sub<Output = S> + Mul<Output = S> + Neg<Output = S> + From<T>,
+    // {
+    //     let (sign, s) = self.transform_signed_simplified::<S>(var_converter, &|expr| {
+    //         (false, symbolic_expression_converter(expr))
+    //     });
+    //     if sign {
+    //         -s
+    //     } else {
+    //         s
+    //     }
+    // }
 
     pub fn transform_signed_simplified<S>(
         &self,
@@ -1021,22 +1015,20 @@ impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V
     }
 }
 
-fn symbolic_expression_to_signed_simplified<T: FieldElement, V: Clone + Ord + Display>(
-    expr: &SymbolicExpression<T, V>,
-) -> (bool, SymbolicExpression<T, V>) {
-    match expr.try_to_number() {
-        Some(k) => {
-            if k.is_in_lower_half() {
-                (false, expr.clone())
-            } else {
-                (true, -expr)
-            }
-        }
-        _ => (false, expr.clone()),
+// TODO find a good place for these
+
+fn symbolic_expression_to_signed_algebraic<T: FieldElement, V, S>(
+    e: &SymbolicExpression<T, V>,
+    var_converter: &impl Fn(&V) -> AlgebraicExpression<T, S>,
+) -> (bool, AlgebraicExpression<T, S>) {
+    match symbolic_expression_to_algebraic(e, var_converter) {
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+            op: AlgebraicUnaryOperator::Minus,
+            expr,
+        }) => (true, *expr),
+        e => (false, e),
     }
 }
-
-// TODO find a good place for this.
 
 fn symbolic_expression_to_algebraic<T: FieldElement, V, S>(
     e: &SymbolicExpression<T, V>,
