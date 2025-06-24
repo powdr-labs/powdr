@@ -5,7 +5,10 @@ use std::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
-use crate::{effect::Condition, runtime_constant::RuntimeConstant};
+use crate::{
+    effect::Condition,
+    runtime_constant::{ReferencedSymbols, RuntimeConstant},
+};
 use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
@@ -296,6 +299,19 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
         *self += to_add;
     }
 
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
+            a.referenced_unknown_variables()
+                .chain(b.referenced_unknown_variables())
+        });
+        Box::new(quadratic.chain(self.linear.keys()))
+    }
+}
+
+impl<T: RuntimeConstant<V> + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
+    QuadraticSymbolicExpressionImpl<T, V>
+{
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
@@ -309,15 +325,6 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
             .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
         let constant = self.constant.referenced_symbols();
         Box::new(quadr.chain(linear).chain(constant))
-    }
-
-    /// Returns the referenced unknown variables. Might contain repetitions.
-    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
-            a.referenced_unknown_variables()
-                .chain(b.referenced_unknown_variables())
-        });
-        Box::new(quadratic.chain(self.linear.keys()))
     }
 }
 

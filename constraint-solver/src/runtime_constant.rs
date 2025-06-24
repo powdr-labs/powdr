@@ -39,11 +39,6 @@ pub trait RuntimeConstant<V>:
     /// Substitutes a variable with another constant.
     fn substitute(&mut self, variable: &V, substitution: &Self);
 
-    /// Returns an iterator over all referenced symbols in this constant.
-    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
-    where
-        V: 'a;
-
     /// Divides this constant by another constant, returning a new constant.
     fn field_div(&self, other: &Self) -> Self;
 
@@ -78,6 +73,13 @@ pub trait RuntimeConstant<V>:
     }
 }
 
+pub trait ReferencedSymbols<V> {
+    /// Returns an iterator over all referenced symbols in this constant.
+    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
+    where
+        V: 'a;
+}
+
 impl<T: FieldElement, V> RuntimeConstant<V> for T {
     type FieldType = T;
 
@@ -96,7 +98,9 @@ impl<T: FieldElement, V> RuntimeConstant<V> for T {
     fn field_div(&self, other: &Self) -> Self {
         *self / *other
     }
+}
 
+impl<T: FieldElement, V> ReferencedSymbols<V> for T {
     fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
     where
         V: 'a,

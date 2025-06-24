@@ -14,7 +14,7 @@ use std::{
 use powdr_number::FieldElement;
 
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpressionImpl;
-use crate::runtime_constant::RuntimeConstant;
+use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant};
 use crate::symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression;
 
 use super::range_constraint::RangeConstraint;
@@ -494,7 +494,11 @@ impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RuntimeConstant<V> for Symboli
     fn from_u64(k: u64) -> Self {
         SymbolicExpression::Concrete(T::from(k))
     }
+}
 
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> ReferencedSymbols<V>
+    for SymbolicExpression<T, V>
+{
     fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
     where
         V: 'a,
