@@ -1,3 +1,6 @@
+use core::slice;
+use std::collections::{BTreeMap, HashSet};
+
 use super::plonk_gates_builder::CircuitBuilderQuadratic;
 use crate::plonk::{Gate, NUMBER_OF_WITNESS_COLS};
 use powdr_autoprecompiles::bus_map::{
@@ -8,6 +11,7 @@ use powdr_autoprecompiles::bus_map::{
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 use super::air_to_plonkish::CircuitBuilder;
@@ -80,9 +84,12 @@ pub fn add_bus_to_plonk_circuit_from_quadratic_symbolic_expression<T>(
     bus_interaction: SymbolicBusInteraction<T>,
     circuit_builder: &mut CircuitBuilderQuadratic<T>,
     bus_map: &BusMap,
+    constraint_format: &mut BTreeMap<(bool, usize, usize), (u64,u64)>,
+    constraint_cache: &mut HashSet<QuadraticSymbolicExpression<T,AlgebraicReference>>
 ) where
     T: FieldElement,
 {
+    let mut length = circuit_builder.plonk_circuit.gates.len();
     let number_of_gates =
         (bus_interaction.args.len() as u32).div_ceil(NUMBER_OF_WITNESS_COLS as u32) as usize;
     let mut gates: Vec<Gate<T, AlgebraicReference>> =
@@ -108,6 +115,7 @@ pub fn add_bus_to_plonk_circuit_from_quadratic_symbolic_expression<T>(
         }
     }
 
+
     bus_interaction
         .args
         .iter()
@@ -123,7 +131,79 @@ pub fn add_bus_to_plonk_circuit_from_quadratic_symbolic_expression<T>(
         }))
         .for_each(|(arg, payload)| {
             *payload = circuit_builder
-                .evaluate_expression(&algebraic_to_quadratic_symbolic_expression(arg),false);
+                .evaluate_expression(&algebraic_to_quadratic_symbolic_expression(arg), false);
+
+            let quadratic_symbolic_expr = &algebraic_to_quadratic_symbolic_expression(arg);
+
+            if constraint_format
+                .get(&(
+                    quadratic_symbolic_expr.is_quadratic(),
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].0.linear.len()
+                    } else {
+                        quadratic_symbolic_expr.linear.len()
+                    },
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].1.linear.len()
+                    } else {
+                        0
+                    },
+                ))
+                .is_none()
+            {
+                 constraint_format.insert(
+                (
+                    quadratic_symbolic_expr.is_quadratic(),
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].0.linear.len()
+                    } else {
+                        quadratic_symbolic_expr.linear.len()
+                    },
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].1.linear.len()
+                    } else {
+                        0
+                    },
+                ),
+                (1,1)
+            );
+            constraint_cache.insert(quadratic_symbolic_expr.clone());
+        } else {
+            let (format_count,unique_count) = constraint_format
+                .get_mut(&(
+                    quadratic_symbolic_expr.is_quadratic(),
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].0.linear.len()
+                    } else {
+                        quadratic_symbolic_expr.linear.len()
+                    },
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].1.linear.len()
+                    } else {
+                        0
+                    },
+                ))
+                .unwrap();
+            *format_count += 1;
+
+            if !constraint_cache.contains(&quadratic_symbolic_expr) {
+                *unique_count += 1;
+                constraint_cache.insert(quadratic_symbolic_expr.clone());
+            }
+            }
+            if quadratic_symbolic_expr.is_quadratic() == false
+                && quadratic_symbolic_expr.linear.len() == 1
+            {
+
+
+                if circuit_builder.plonk_circuit.gates.len() > length {
+                    let slice = circuit_builder.plonk_circuit.gates[length..].to_vec();
+                    for gate in slice {
+                        println!("{gate}");
+                    }
+                }
+            }
+            length = circuit_builder.plonk_circuit.gates.len();
         });
 
     // Add the gates to the circuit.
@@ -201,11 +281,16 @@ bus: none, x, y, tmp_5, Unused, Unused
             mult: AlgebraicExpression::Number(BabyBearField::from(1)),
         };
 
+        let mut constraint_format = BTreeMap::new();
+        let mut constraint_cache=HashSet::new();
+
         let mut circuit_builder = CircuitBuilderQuadratic::new();
         add_bus_to_plonk_circuit_from_quadratic_symbolic_expression(
             bus_interaction,
             &mut circuit_builder,
             &bus_map,
+            &mut constraint_format,
+            &mut constraint_cache
         );
         let plonk_circuit = circuit_builder.build();
 

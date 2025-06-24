@@ -15,7 +15,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     env::consts::EXE_EXTENSION,
 };
 
@@ -27,61 +27,113 @@ where
     T: FieldElement,
 {
     let mut circuit_builder = CircuitBuilderQuadratic::<T>::new();
-    let mut length = 0;
+
+    let mut constraint_format: BTreeMap<(bool, usize, usize), (u64,u64)> = BTreeMap::new();
+    let mut constraint_cache=HashSet::new();
 
     tracing::debug!("number of constraints: {}", machine.constraints.len());
 
     for constraint in &machine.constraints {
         let quadratic_symbolic_expr = algebraic_to_quadratic_symbolic_expression(&constraint.expr);
-        println!("Adding constraint: {}", quadratic_symbolic_expr.to_string());
 
-        length = circuit_builder.plonk_circuit.len();
+        circuit_builder.evaluate_expression(&quadratic_symbolic_expr, true);
 
-        println!("Evaluating expression");
+        if constraint_format
+            .get(&(
+                quadratic_symbolic_expr.is_quadratic(),
+                if quadratic_symbolic_expr.is_quadratic() {
+                    quadratic_symbolic_expr.quadratic[0].0.linear.len()
+                } else {
+                    quadratic_symbolic_expr.linear.len()
+                },
+                if quadratic_symbolic_expr.is_quadratic() {
+                    quadratic_symbolic_expr.quadratic[0].1.linear.len()
+                } else {
+                    0
+                },
+            ))
+            .is_none()
+        {
+            constraint_format.insert(
+                (
+                    quadratic_symbolic_expr.is_quadratic(),
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].0.linear.len()
+                    } else {
+                        quadratic_symbolic_expr.linear.len()
+                    },
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].1.linear.len()
+                    } else {
+                        0
+                    },
+                ),
+                (1,1)
+            );
+            constraint_cache.insert(quadratic_symbolic_expr);
+        } else {
+            let (format_count,unique_count) = constraint_format
+                .get_mut(&(
+                    quadratic_symbolic_expr.is_quadratic(),
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].0.linear.len()
+                    } else {
+                        quadratic_symbolic_expr.linear.len()
+                    },
+                    if quadratic_symbolic_expr.is_quadratic() {
+                        quadratic_symbolic_expr.quadratic[0].1.linear.len()
+                    } else {
+                        0
+                    },
+                ))
+                .unwrap();
+            *format_count += 1;
 
-        circuit_builder.evaluate_expression(&quadratic_symbolic_expr,true);
-
-        length = circuit_builder.plonk_circuit.len() - length;
-        println!("Number of gates added: {}", length);
-        let slice = &circuit_builder.plonk_circuit.gates
-            [circuit_builder.plonk_circuit.gates.len() - length..];
-
-        for gate in slice {
-            println!("Gate: {}", gate);
+            if !constraint_cache.contains(&quadratic_symbolic_expr) {
+                *unique_count += 1;
+                constraint_cache.insert(quadratic_symbolic_expr);
+            }
         }
     }
+
     tracing::debug!(
         "number of gates for constraints: {}",
         circuit_builder.plonk_circuit.len()
     );
+
     tracing::debug!(
         "number of bus interactions: {}",
         machine.bus_interactions.len()
     );
 
     for bus_interaction in &machine.bus_interactions {
-        length = circuit_builder.plonk_circuit.len();
+        //length = circuit_builder.plonk_circuit.len();
         add_bus_to_plonk_circuit_from_quadratic_symbolic_expression(
             bus_interaction.clone(),
             &mut circuit_builder,
             bus_map,
+            &mut constraint_format,
+            &mut constraint_cache
         );
 
-        length = circuit_builder.plonk_circuit.len() - length;
-        println!("Number of gates added from bus interaction: {}", length);
+        //length = circuit_builder.plonk_circuit.len() - length;
+        //tracing::debug!("Number of gates added from bus interaction: {}", length);
 
-        let slice = &circuit_builder.plonk_circuit.gates
-            [circuit_builder.plonk_circuit.gates.len() - length..];
+        // let slice = &circuit_builder.plonk_circuit.gates
+        //     [circuit_builder.plonk_circuit.gates.len() - length..];
 
-        for gate in slice {
-            println!("Gate: {}", gate);
-        }
+        // for gate in slice {
+        //     tracing::debug!("Gate: {}", gate);
+        // }
     }
 
-    println!(
+    tracing::debug!(
         "Number of gates in plonk circuit: {}",
         circuit_builder.plonk_circuit.len()
     );
+    for constraint in constraint_format {
+        tracing::debug!("Constraint formats: {:?}", constraint);
+    }
 
     circuit_builder.build()
 }
@@ -90,7 +142,7 @@ pub struct CircuitBuilderQuadratic<T>
 where
     T: FieldElement,
 {
-    plonk_circuit: PlonkCircuit<T, AlgebraicReference>,
+    pub plonk_circuit: PlonkCircuit<T, AlgebraicReference>,
     temp_id_offset: usize,
     cache:
         HashMap<QuadraticSymbolicExpression<T, AlgebraicReference>, Variable<AlgebraicReference>>,
@@ -113,8 +165,6 @@ where
         expr: &QuadraticSymbolicExpression<T, AlgebraicReference>,
         assert_zero: bool,
     ) -> Variable<AlgebraicReference> {
-        println!("Evaluating expression: {}", expr);
-        
         if let Some(var) = self.cache.get(expr) {
             return var.clone();
         }
@@ -163,6 +213,8 @@ where
                         ..Default::default()
                     });
                     self.temp_id_offset += 1;
+                    self.cache
+                        .insert(expr.clone(), Variable::Tmp(self.temp_id_offset - 1));
                     return Variable::Tmp(self.temp_id_offset - 1);
                 }
             }
@@ -192,6 +244,9 @@ where
                 });
                 return Variable::Unused;
             } else {
+                if let Some(var)= self.cache.get(expr) {
+                    return var.clone();
+                }
                 self.plonk_circuit.add_gate(Gate {
                     a: Variable::Witness(expr.linear.keys().next().unwrap().clone()),
                     q_l: expr
@@ -210,6 +265,8 @@ where
                     ..Default::default()
                 });
                 self.temp_id_offset += 1;
+                self.cache
+                    .insert(expr.clone(), Variable::Tmp(self.temp_id_offset - 1));
                 return Variable::Tmp(self.temp_id_offset - 1);
             }
         }
@@ -258,7 +315,6 @@ where
                         (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
                     }
                 } else {
-                    println!("Evaluating left expression in quadratic: {}", left);
                     (T::ONE, self.evaluate_expression(left, false))
                 };
                 let (mulb, b) = if !right.is_quadratic() && right.linear.len() == 1 {
@@ -295,7 +351,6 @@ where
                         (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
                     }
                 } else {
-                    println!("Evaluating right expression in quadratic: {}", right);
                     (T::ONE, self.evaluate_expression(right, false))
                 };
                 self.plonk_circuit.add_gate(Gate {
@@ -336,14 +391,9 @@ where
         // Compute all the linear terms
         let mut iter = expr.linear.iter();
 
-        let mut linear_results:Vec<(T,Variable<AlgebraicReference>)> = Vec::new();
+        let mut linear_results: Vec<(T, Variable<AlgebraicReference>)> = Vec::new();
 
         while let (Some((poly_a, c_a)), Some((poly_b, c_b))) = (iter.next(), iter.next()) {
-
-            println!(
-                "Adding linear gate for {} and {} with coefficients {} and {}",
-                poly_a, poly_b, c_a, c_b
-            );
             let temp_expr = QuadraticSymbolicExpression {
                 quadratic: Vec::new(),
                 linear: BTreeMap::from([
@@ -353,7 +403,7 @@ where
                 constant: SymbolicExpression::Concrete(T::ZERO),
             };
             if let Some(var) = self.cache.get(&temp_expr) {
-                linear_results.push((T::ONE,var.clone()));
+                linear_results.push((T::ONE, var.clone()));
             } else {
                 self.plonk_circuit.add_gate(Gate {
                     q_l: c_a.try_to_number().expect("Expected a constant for q_l"),
@@ -373,8 +423,6 @@ where
 
         // Handle the last unpaired item if odd length
         if expr.linear.len() % 2 != 0 {
-            println!("Handling last unpaired linear term: {}", expr.linear.iter().last().unwrap().0);
-           // println!("linear results so far: {:?}", linear_results);
             if let Some((poly_a, c_a)) = expr.linear.iter().last() {
                 let temp_expr = QuadraticSymbolicExpression {
                     quadratic: Vec::new(),
@@ -382,10 +430,12 @@ where
                     constant: SymbolicExpression::Concrete(T::ZERO),
                 };
                 if let Some(var) = self.cache.get(&temp_expr) {
-                    linear_results.push((T::ONE,var.clone()));
+                    linear_results.push((T::ONE, var.clone()));
                 } else {
-
-                    linear_results.push((c_a.try_to_number().expect("Expected a constant for c_a"), Variable::Witness(poly_a.clone())));
+                    linear_results.push((
+                        c_a.try_to_number().expect("Expected a constant for c_a"),
+                        Variable::Witness(poly_a.clone()),
+                    ));
                     //self.cache.insert(temp_expr.clone(), Variable::Tmp(self.temp_id_offset - 1));
                 }
             }
@@ -397,8 +447,9 @@ where
                     .iter()
                     .next()
                     .cloned()
-                    .unwrap_or((T::ONE, Variable::Unused)).1;
-               if linear_results.len() == 1 {
+                    .unwrap_or((T::ONE, Variable::Unused))
+                    .1;
+                if linear_results.len() == 1 {
                     self.plonk_circuit.add_gate(Gate {
                         q_l: linear_results[0].0,
                         a: temp.clone(),
@@ -423,8 +474,8 @@ where
                 temp = Variable::Tmp(self.temp_id_offset - 1);
             }
 
-            linear_results.iter().skip(1).for_each(|(mul,var)| {
-               // println!("plonk circuit til now in linear iter: {}", self.plonk_circuit);
+            linear_results.iter().skip(1).for_each(|(mul, var)| {
+                // println!("plonk circuit til now in linear iter: {}", self.plonk_circuit);
                 self.plonk_circuit.add_gate(Gate {
                     q_l: T::ONE,
                     a: temp.clone(),
@@ -497,7 +548,7 @@ mod tests {
 
         let expr1 = x.clone() * y.clone() - (-x.clone() * (x.clone() + y.clone()));
         let expr2 = -(c(3) - c(2) * x.clone() * y.clone()) + c(1);
-        let expr3 = c(5) * (c(3) *  x.clone()+ c(10)) * (c(1) + y.clone());
+        let expr3 = c(5) * (c(3) * x.clone() + c(10)) * (c(1) + y.clone());
         let machine = SymbolicMachine {
             constraints: vec![
                 SymbolicConstraint { expr: expr1 },
