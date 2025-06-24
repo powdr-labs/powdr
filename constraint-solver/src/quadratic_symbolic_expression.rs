@@ -371,8 +371,10 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
     }
 }
 
-impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
-    QuadraticSymbolicExpressionImpl<T, V>
+impl<
+        T: RuntimeConstant<V> + Display + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
+        V: Ord + Clone + Hash + Eq + Display,
+    > QuadraticSymbolicExpressionImpl<T, V>
 {
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
@@ -690,7 +692,7 @@ impl<T: RuntimeConstant<V> + Display, V: Ord + Clone + Hash + Eq + Display>
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
 fn combine_to_conditional_assignment<
-    T: RuntimeConstant<V>,
+    T: RuntimeConstant<V> + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     left: &ProcessResult<T, V>,

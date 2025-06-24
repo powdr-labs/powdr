@@ -3,10 +3,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 use num_traits::{One, Zero};
 use powdr_number::FieldElement;
 
-use crate::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpressionImpl,
-    range_constraint::RangeConstraint,
-};
+use crate::range_constraint::RangeConstraint;
 
 /// Represents a run-time constant in the constraint solver.
 /// Any T: FieldElement can represent a run-time constant (which is also a compile-time constant),
@@ -25,7 +22,6 @@ pub trait RuntimeConstant<V>:
     + Eq
     + Zero
     + One
-    + TryInto<QuadraticSymbolicExpressionImpl<Self, V>>
 {
     type FieldType: FieldElement;
 
