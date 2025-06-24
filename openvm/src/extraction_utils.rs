@@ -70,10 +70,9 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
 
     /// Returns a map from opcode to the width of the AIR for that opcode.
     /// We allow the caller to specify a set of opcodes that they are interested in.
-    pub fn air_width_per_opcode(&self, allow_list: &BTreeSet<usize>) -> HashMap<VmOpcode, usize> {
+    pub fn air_width_per_opcode(&self) -> HashMap<VmOpcode, usize> {
         self.opcode_to_air
             .iter()
-            .filter(|(opcode, _)| allow_list.contains(&opcode.as_usize()))
             .scan(
                 HashMap::default(),
                 |width_by_air: &mut HashMap<&String, usize>,
@@ -89,6 +88,13 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
                     Some((*opcode, width))
                 },
             )
+            .collect()
+    }
+
+    pub fn allow_list(&self) -> BTreeSet<usize> {
+        self.opcode_to_air
+            .keys()
+            .map(|opcode| opcode.as_usize())
             .collect()
     }
 }

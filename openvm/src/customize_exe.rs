@@ -4,7 +4,7 @@ use std::iter::once;
 use std::sync::Arc;
 
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
-use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist};
+use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -67,21 +67,15 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     bus_map: &BusMap,
     config: &PowdrConfig,
     pgo_config: PgoConfig,
-    opcodes_allowlist: &BTreeSet<usize>,
 ) -> Vec<BlockWithApc<P>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) => create_apcs_with_cell_pgo(
-            blocks,
-            pgo_program_idx_count,
-            airs,
-            config,
-            bus_map,
-            opcodes_allowlist,
-        ),
+        PgoConfig::Cell(pgo_program_idx_count) => {
+            create_apcs_with_cell_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
+        }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
         }
@@ -106,7 +100,7 @@ pub fn customize(
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let opcodes_allowlist = instruction_allowlist();
+    let opcodes_allowlist = airs.allow_list();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
 
@@ -130,14 +124,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(
-        blocks,
-        &airs,
-        &bus_map,
-        &config,
-        pgo_config,
-        &opcodes_allowlist,
-    );
+    let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -459,7 +446,6 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
-    opcode_allowlist: &BTreeSet<usize>,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -475,7 +461,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     // store air width by opcode, so that we don't repetitively calculate them later
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode(opcode_allowlist);
+    let air_width_by_opcode = airs.air_width_per_opcode();
 
     // generate apc for all basic blocks and only cache the ones we eventually use
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
