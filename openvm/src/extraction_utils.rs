@@ -1,11 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
+use crate::IntoOpenVm;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
+use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
@@ -17,7 +19,9 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::powdr::UniqueReferences;
+use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
+use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::MutexGuard;
@@ -26,6 +30,68 @@ use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct OriginalAirs<P> {
+    opcode_to_air: HashMap<VmOpcode, String>,
+    air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
+}
+
+impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
+    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
+        self.opcode_to_air
+            .get(&VmOpcode::from_usize(opcode))
+            .and_then(|air_name| self.air_name_to_machine.get(air_name))
+    }
+}
+
+impl<P: IntoOpenVm> OriginalAirs<P> {
+    /// Insert a new opcode, generating the air if it does not exist
+    /// Panics if the opcode already exists
+    pub fn insert_opcode(
+        &mut self,
+        opcode: VmOpcode,
+        air_name: String,
+        machine: impl Fn() -> Result<SymbolicMachine<P>, UnsupportedOpenVmReferenceError>,
+    ) -> Result<(), UnsupportedOpenVmReferenceError> {
+        if self.opcode_to_air.contains_key(&opcode) {
+            panic!("Opcode {opcode} already exists");
+        }
+        // Insert the machine only if `air_name` isn't already present
+        if !self.air_name_to_machine.contains_key(&air_name) {
+            let machine_instance = machine()?;
+            self.air_name_to_machine
+                .insert(air_name.clone(), machine_instance);
+        }
+
+        self.opcode_to_air.insert(opcode, air_name);
+        Ok(())
+    }
+
+    /// Returns a map from opcode to the width of the AIR for that opcode.
+    /// We allow the caller to specify a set of opcodes that they are interested in.
+    pub fn air_width_per_opcode(&self, allow_list: &BTreeSet<usize>) -> HashMap<VmOpcode, usize> {
+        self.opcode_to_air
+            .iter()
+            .filter(|(opcode, _)| allow_list.contains(&opcode.as_usize()))
+            .scan(
+                HashMap::default(),
+                |width_by_air: &mut HashMap<&String, usize>,
+                 (opcode, air_name): (&VmOpcode, &String)| {
+                    let width = if let Some(width) = width_by_air.get(air_name) {
+                        *width
+                    } else {
+                        let machine = &self.air_name_to_machine[air_name];
+                        let width = machine.unique_references().count();
+                        width_by_air.insert(air_name, width);
+                        width
+                    };
+                    Some((*opcode, width))
+                },
+            )
+            .collect()
+    }
+}
 
 fn to_option<T>(mut v: Vec<T>) -> Option<T> {
     match v.len() {
@@ -107,17 +173,12 @@ impl OriginalVmConfig {
     /// - The bus map
     ///
     /// Returns an error if the conversion from the OpenVM expression type fails.
-    pub fn airs(
-        &self,
-    ) -> Result<
-        BTreeMap<usize, SymbolicMachine<powdr_number::BabyBearField>>,
-        UnsupportedOpenVmReferenceError,
-    > {
+    pub fn airs(&self) -> Result<OriginalAirs<BabyBearField>, UnsupportedOpenVmReferenceError> {
         let chip_complex = self.chip_complex();
 
         let instruction_allowlist = instruction_allowlist();
 
-        chip_complex
+        let res = chip_complex
             .inventory
             .available_opcodes()
             .filter(|op| {
@@ -125,31 +186,34 @@ impl OriginalVmConfig {
                 instruction_allowlist.contains(&op.as_usize())
             })
             .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
-            .map(|(op, executor)| {
-                let air = executor.air();
-                let columns = get_columns(air.clone());
-                let constraints = get_constraints(air);
+            .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
+                airs.insert_opcode(op, get_name(executor.air()), || {
+                    let air = executor.air();
+                    let columns = get_columns(air.clone());
+                    let constraints = get_constraints(air);
 
-                let powdr_exprs = constraints
-                    .constraints
-                    .iter()
-                    .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
-                    .collect::<Result<Vec<_>, _>>()?;
+                    let powdr_exprs = constraints
+                        .constraints
+                        .iter()
+                        .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
+                        .collect::<Result<Vec<_>, _>>()?;
 
-                let powdr_bus_interactions = constraints
-                    .interactions
-                    .iter()
-                    .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                    .collect::<Result<_, _>>()?;
+                    let powdr_bus_interactions = constraints
+                        .interactions
+                        .iter()
+                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                        .collect::<Result<_, _>>()?;
 
-                let symb_machine = SymbolicMachine {
-                    constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                    bus_interactions: powdr_bus_interactions,
-                };
+                    Ok(SymbolicMachine {
+                        constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                        bus_interactions: powdr_bus_interactions,
+                    })
+                })?;
 
-                Ok((op.as_usize(), symb_machine))
-            })
-            .collect::<Result<_, _>>()
+                Ok(airs)
+            });
+
+        res
     }
 
     pub fn bus_map(&self) -> BusMap {
@@ -236,6 +300,10 @@ pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
         .into_iter()
         .map(Arc::new)
         .collect()
+}
+
+pub fn get_name(air: Arc<dyn AnyRap<BabyBearSC>>) -> String {
+    air.name()
 }
 
 pub fn get_constraints(
