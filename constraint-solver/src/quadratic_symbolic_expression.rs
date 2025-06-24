@@ -943,24 +943,6 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
 }
 
 impl<T: FieldElement, V: Clone + Ord + Display> QuadraticSymbolicExpression<T, V> {
-    // pub fn transform_simplified<S>(
-    //     &self,
-    //     var_converter: &impl Fn(&V) -> S,
-    //     symbolic_expression_converter: &impl Fn(&SymbolicExpression<T, V>) -> S,
-    // ) -> S
-    // where
-    //     S: Add<Output = S> + Sub<Output = S> + Mul<Output = S> + Neg<Output = S> + From<T>,
-    // {
-    //     let (sign, s) = self.transform_signed_simplified::<S>(var_converter, &|expr| {
-    //         (false, symbolic_expression_converter(expr))
-    //     });
-    //     if sign {
-    //         -s
-    //     } else {
-    //         s
-    //     }
-    // }
-
     pub fn transform_signed_simplified<S>(
         &self,
         var_converter: &impl Fn(&V) -> S,
