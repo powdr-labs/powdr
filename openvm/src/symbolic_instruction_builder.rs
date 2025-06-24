@@ -3,41 +3,7 @@ use crate::opcode::*;
 use powdr_autoprecompiles::SymbolicInstructionStatement;
 use powdr_number::FieldElement;
 
-// Unified builder for all 5-argument instructions (padded to 7 args)
-macro_rules! build_instr5 {
-    (
-        $(
-            $(#[$doc:meta])*
-            ($name:ident, $code:expr)
-        ),+ $(,)?
-    ) => {
-        $(
-            $(#[$doc])*
-            pub fn $name<T: FieldElement>(
-                a: u32,
-                b: u32,
-                c: u32,
-                d: u32,
-                e: u32,
-            ) -> SymbolicInstructionStatement<T> {
-                SymbolicInstructionStatement {
-                    opcode: $code as usize,
-                    args: vec![
-                        T::from(a),
-                        T::from(b),
-                        T::from(c),
-                        T::from(d),
-                        T::from(e),
-                        T::zero(),
-                        T::zero(),
-                    ],
-                }
-            }
-        )+
-    };
-}
-
-// ALU instructions (7 args, fixed d=1, f=0, g=0)
+// ALU instructions (4 args, fixed d=1, f=0, g=0)
 macro_rules! alu_ops {
     (
         $(
@@ -70,7 +36,7 @@ macro_rules! alu_ops {
     };
 }
 
-// Load/Store (7 args, fixed d=1)
+// Load/Store and Load/Store Sign Extend instructions (6 args, fixed d=1)
 macro_rules! ls_ops {
     (
         $(
@@ -105,8 +71,140 @@ macro_rules! ls_ops {
     };
 }
 
-// 5-arg instructions
-build_instr5!(
+// Branch Lt and Branch Eq instructions (3 args, fixed d=1, e=1, f=0, g=0)
+macro_rules! branch_ops {
+    (
+        $(
+            $(#[$doc:meta])*
+            ($name:ident, $code:expr)
+        ),+ $(,)?
+    ) => {
+        $(
+            $(#[$doc])*
+            pub fn $name<T: FieldElement>(
+                rs1_ptr: u32,
+                rs2_ptr: u32,
+                imm: i32,
+            ) -> SymbolicInstructionStatement<T> {
+                SymbolicInstructionStatement {
+                    opcode: $code as usize,
+                    args: vec![
+                        T::from(rs1_ptr),
+                        T::from(rs2_ptr),
+                        T::from(imm),
+                        T::one(),
+                        T::one(),
+                        T::zero(),
+                        T::zero(),
+                    ],
+                }
+            }
+        )+
+    };
+}
+
+// All other instructions (5 args, fixed f=0, g=0)
+macro_rules! build_instr5 {
+    (
+        $(
+            $(#[$doc:meta])*
+            ($name:ident, $code:expr)
+        ),+ $(,)?
+    ) => {
+        $(
+            $(#[$doc])*
+            pub fn $name<T: FieldElement>(
+                a: u32,
+                b: u32,
+                c: u32,
+                d: u32,
+                e: u32,
+            ) -> SymbolicInstructionStatement<T> {
+                SymbolicInstructionStatement {
+                    opcode: $code as usize,
+                    args: vec![
+                        T::from(a),
+                        T::from(b),
+                        T::from(c),
+                        T::from(d),
+                        T::from(e),
+                        T::zero(),
+                        T::zero(),
+                    ],
+                }
+            }
+        )+
+    };
+}
+
+// ALU instructions
+alu_ops!(
+    /// Addition (ALU adapter and ALU core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) + load(rs2_as, rs2))
+    (add, OPCODE_ADD),
+    /// Subtraction (ALU adapter and ALU core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) - load(rs2_as, rs2))
+    (sub, OPCODE_SUB),
+    /// XOR (ALU adapter and ALU core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) XOR load(rs2_as, rs2))
+    (xor, OPCODE_XOR),
+    /// OR (ALU adapter and ALU core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) OR load(rs2_as, rs2))
+    (or, OPCODE_OR),
+    /// AND (ALU adapter and ALU core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) AND load(rs2_as, rs2))
+    (and, OPCODE_AND),
+
+    /// Shift left (ALU adapter and Shift core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) << (load(rs2_as, rs2) % 32))
+    (sll, OPCODE_SLL),
+    /// Shift right (ALU adapter and Shift core):
+    /// - store(REG, rd_ptr, load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32))
+    (srl, OPCODE_SRL),
+    /// Shift right arithmetic (signed) (ALU adapter and Shift core):
+    /// - store(REG, rd_ptr, sign_extend(load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32)))
+    (sra, OPCODE_SRA),
+
+    /// Less than signed (ALU adapter and Less than core):
+    /// - store(REG, rd_ptr, 1 if load(REG, rs1_ptr) < load(rs2_as, rs2) else 0)
+    (slt, OPCODE_SLT),
+    /// Less than unsigned (ALU adapter and Less than core):
+    /// - store(REG, rd_ptr, 1 if load(REG, rs1_ptr) < load(rs2_as, rs2) else 0)
+    (sltu, OPCODE_SLTU)
+);
+
+// Load/Store and Load/Store Sign Extend instructions
+ls_ops!(
+    /// Load word (Load/store adapter and Load sign extend core):
+    /// - store(REG, rd_ptr, load(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
+    (loadw, OPCODE_LOADW),
+    /// Load byte unsigned (Load/store adapter and Load sign extend core):
+    /// - store(REG, rd_ptr, load_byte_unsigned(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
+    (loadbu, OPCODE_LOADBU),
+    /// Load half-word unsigned (Load/store adapter and Load sign extend core):
+    /// - store(REG, rd_ptr, load_half_word_unsigned(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
+    (loadhu, OPCODE_LOADHU),
+
+    /// Store word (Load/store adapter and Loadstore core):
+    /// - store(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
+    (storew, OPCODE_STOREW),
+    /// Store half-word (Load/store adapter and Loadstore core):
+    /// - store_half_word(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
+    (storeh, OPCODE_STOREH),
+    /// Store byte (Load/store adapter and Loadstore core):
+    /// - store_byte(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
+    (storeb, OPCODE_STOREB),
+
+    /// Load byte signed (Load/store adapter and Load sign extend core):
+    /// - store(REG, rd_ptr, load_byte_signed(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
+    (loadb, OPCODE_LOADB),
+    /// Load half-word signed (Load/store adapter and Load sign extend core):
+    /// - store(REG, rd_ptr, load_half_word_signed(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
+    (loadh, OPCODE_LOADH)
+);
+
+// Branch Eq and Branch Lt instructions
+branch_ops!(
     /// Branch equal (Branch adapter and Branch Eq core):
     /// - to_pc = pc + imm if load(REG, rs1_ptr) == load(REG, rs2_ptr) else pc + 4
     (beq, OPCODE_BEQ),
@@ -126,7 +224,10 @@ build_instr5!(
     /// Branch greater than or equal unsigned (Branch adapter and Branch Lt core):
     /// - to_pc = pc + imm if load(REG, rs1_ptr) >= load(REG, rs2_ptr) else pc + 4
     (bgeu, OPCODE_BGEU),
+);
 
+// All other instructions
+build_instr5!(
     /// Jump and link (Rdwrite adapter and JAL_LUI core):
     /// - to_pc = pc + imm
     /// - store(REG, rd_ptr, pc + 4)
@@ -175,69 +276,4 @@ build_instr5!(
 
     (hint_storew, OPCODE_HINT_STOREW),
     (hint_buffer, OPCODE_HINT_BUFFER)
-);
-
-// Use macros to define ALU and LS ops
-alu_ops!(
-    /// Addition (ALU adapter and ALU core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) + load(rs2_as, rs2))
-    (add, OPCODE_ADD),
-    /// Subtraction (ALU adapter and ALU core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) - load(rs2_as, rs2))
-    (sub, OPCODE_SUB),
-    /// XOR (ALU adapter and ALU core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) XOR load(rs2_as, rs2))
-    (xor, OPCODE_XOR),
-    /// OR (ALU adapter and ALU core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) OR load(rs2_as, rs2))
-    (or, OPCODE_OR),
-    /// AND (ALU adapter and ALU core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) AND load(rs2_as, rs2))
-    (and, OPCODE_AND),
-
-    /// Shift left (ALU adapter and Shift core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) << (load(rs2_as, rs2) % 32))
-    (sll, OPCODE_SLL),
-    /// Shift right (ALU adapter and Shift core):
-    /// - store(REG, rd_ptr, load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32))
-    (srl, OPCODE_SRL),
-    /// Shift right arithmetic (signed) (ALU adapter and Shift core):
-    /// - store(REG, rd_ptr, sign_extend(load(REG, rs1_ptr) >> (load(rs2_as, rs2) % 32)))
-    (sra, OPCODE_SRA),
-
-    /// Less than signed (ALU adapter and Less than core):
-    /// - store(REG, rd_ptr, 1 if load(REG, rs1_ptr) < load(rs2_as, rs2) else 0)
-    (slt, OPCODE_SLT),
-    /// Less than unsigned (ALU adapter and Less than core):
-    /// - store(REG, rd_ptr, 1 if load(REG, rs1_ptr) < load(rs2_as, rs2) else 0)
-    (sltu, OPCODE_SLTU)
-);
-
-ls_ops!(
-    /// Load word (Load/store adapter and Load sign extend core):
-    /// - store(REG, rd_ptr, load(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
-    (loadw, OPCODE_LOADW),
-    /// Load byte unsigned (Load/store adapter and Load sign extend core):
-    /// - store(REG, rd_ptr, load_byte_unsigned(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
-    (loadbu, OPCODE_LOADBU),
-    /// Load half-word unsigned (Load/store adapter and Load sign extend core):
-    /// - store(REG, rd_ptr, load_half_word_unsigned(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
-    (loadhu, OPCODE_LOADHU),
-
-    /// Store word (Load/store adapter and Loadstore core):
-    /// - store(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
-    (storew, OPCODE_STOREW),
-    /// Store half-word (Load/store adapter and Loadstore core):
-    /// - store_half_word(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
-    (storeh, OPCODE_STOREH),
-    /// Store byte (Load/store adapter and Loadstore core):
-    /// - store_byte(mem_as, val(rs1) + imm, load(REG, rd_ptr)), where val(rs1) = load(REG, rs1_ptr)
-    (storeb, OPCODE_STOREB),
-
-    /// Load byte signed (Load/store adapter and Load sign extend core):
-    /// - store(REG, rd_ptr, load_byte_signed(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
-    (loadb, OPCODE_LOADB),
-    /// Load half-word signed (Load/store adapter and Load sign extend core):
-    /// - store(REG, rd_ptr, load_half_word_signed(mem_as, val(rs1) + imm)), where val(rs1) = load(REG, rs1_ptr)
-    (loadh, OPCODE_LOADH)
 );
