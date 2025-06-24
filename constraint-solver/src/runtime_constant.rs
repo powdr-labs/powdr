@@ -29,9 +29,6 @@ pub trait RuntimeConstant<V>:
 {
     type FieldType: FieldElement;
 
-    /// Creates a run-time constant from a variable.
-    fn from_symbol(symbol: V, rc: RangeConstraint<Self::FieldType>) -> Self;
-
     /// Tries to convert the constant to a single number. This works for compile-time constants.
     fn try_to_number(&self) -> Option<Self::FieldType>;
 
@@ -83,11 +80,6 @@ pub trait RuntimeConstant<V>:
 
 impl<T: FieldElement, V> RuntimeConstant<V> for T {
     type FieldType = T;
-
-    fn from_symbol(_symbol: V, _rc: RangeConstraint<Self::FieldType>) -> Self {
-        // This is the only thing that a generic field element does not support.
-        panic!("This type does not support a symbolic representation.")
-    }
 
     fn try_to_number(&self) -> Option<Self> {
         Some(*self)

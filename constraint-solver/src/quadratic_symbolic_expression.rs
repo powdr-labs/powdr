@@ -88,17 +88,21 @@ impl<F: FieldElement, T: RuntimeConstant<V, FieldType = F>, V> From<F>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq> QuadraticSymbolicExpressionImpl<T, V> {
+impl<F: FieldElement, V: Ord + Clone + Eq + Hash>
+    QuadraticSymbolicExpressionImpl<SymbolicExpression<F, V>, V>
+{
+    pub fn from_known_symbol(symbol: V, rc: RangeConstraint<F>) -> Self {
+        Self::from_runtime_constant(SymbolicExpression::from_symbol(symbol, rc))
+    }
+}
+
+impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpressionImpl<T, V> {
     pub fn from_runtime_constant(constant: T) -> Self {
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
             constant,
         }
-    }
-
-    pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T::FieldType>) -> Self {
-        Self::from_runtime_constant(T::from_symbol(symbol, rc))
     }
 
     pub fn from_unknown_variable(var: V) -> Self {
