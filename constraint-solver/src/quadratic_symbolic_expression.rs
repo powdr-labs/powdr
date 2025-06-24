@@ -7,7 +7,9 @@ use std::{
 
 use itertools::{Either, Itertools};
 use num_traits::Zero;
-use powdr_expression::{AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator};
+use powdr_expression::{
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
+};
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
@@ -930,15 +932,19 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
 
 impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.transform_simplified(&|v| AlgebraicExpression::Reference(v.to_string()), &|s| {
-                symbolic_expression_to_algebraic(s, &|v| {
-                    AlgebraicExpression::Reference(v.to_string())
-                })
-            })
-        )
+        let var_converter = |v: &V| AlgebraicExpression::Reference(v.to_string());
+
+        // We can ignore the sign for formatting.
+        let (_, expr) = self.transform_signed_simplified(&var_converter, &|e| {
+            match symbolic_expression_to_algebraic(e, &var_converter) {
+                AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                    op: AlgebraicUnaryOperator::Minus,
+                    expr,
+                }) => (true, *expr),
+                e => (false, e),
+            }
+        });
+        write!(f, "{expr}")
     }
 }
 
