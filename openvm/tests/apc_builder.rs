@@ -215,6 +215,43 @@ mod single_instruction_tests {
         assert_machine_output(program.to_vec(), "single_bne");
     }
 
+    // Branch Lt Chip instructions
+    #[test]
+    fn single_blt() {
+        let program = [
+            // pc = pc + 2 if x8 < x5 (signed)
+            blt(8, 5, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_blt");
+    }
+
+    #[test]
+    fn single_bltu() {
+        let program = [
+            // pc = pc + 2 if x8 < x5
+            bltu(8, 5, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_bltu");
+    }
+
+    #[test]
+    fn single_bge() {
+        let program = [
+            // pc = pc + 2 if x8 >= x5 (signed)
+            bge(8, 5, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_bge");
+    }
+
+    #[test]
+    fn single_bgeu() {
+        let program = [
+            // pc = pc + 2 if x8 >= x5
+            bgeu(8, 5, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_bgeu");
+    }
+
     // Shift Chip instructions
     #[test]
     fn single_srl() {

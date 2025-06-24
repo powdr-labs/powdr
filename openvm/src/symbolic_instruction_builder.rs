@@ -109,11 +109,9 @@ macro_rules! ls_ops {
 build_instr5!(
     /// Branch equal (Branch adapter and Branch Eq core):
     /// - to_pc = pc + imm if load(REG, rs1_ptr) == load(REG, rs2_ptr) else pc + 4
-    /// - arguments: `pc = pc + c` if `[a]_1 == [b]_1`, so `d` and `e` both must be `1`
     (beq, OPCODE_BEQ),
     /// Branch not equal (Branch adapter and Branch Eq core):
     /// - to_pc = pc + imm if load(REG, rs1_ptr) != load(REG, rs2_ptr) else pc + 4
-    /// - arguments: `pc = pc + c` if `[a]_1 != [b]_1`, so `d` and `e` both must be `1`
     (bne, OPCODE_BNE),
 
     /// Branch less than signed (Branch adapter and Branch Lt core):
