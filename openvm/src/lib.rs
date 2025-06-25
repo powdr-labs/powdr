@@ -936,7 +936,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin,
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1006,7 +1006,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone()),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1065,7 +1065,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
         test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_guest_machine(PgoConfig::Cell(pgo_data));
+        test_guest_machine(PgoConfig::Cell(pgo_data, None));
     }
 
     #[test]
