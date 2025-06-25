@@ -376,7 +376,7 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
 }
 
 impl<
-        T: RuntimeConstant + Display + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
+        T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
         V: Ord + Clone + Hash + Eq + Display,
     > QuadraticSymbolicExpressionImpl<T, V>
 {
@@ -696,7 +696,7 @@ impl<
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
 fn combine_to_conditional_assignment<
-    T: RuntimeConstant + ExpressionConvertible<T, V>,
+    T: RuntimeConstant + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     left: &ProcessResult<T, V>,
@@ -719,9 +719,13 @@ fn combine_to_conditional_assignment<
     // the same time (i.e. the "or" is exclusive), we can turn this into a
     // conditional assignment.
 
-    let diff = (first_assignment.clone() + -second_assignment.clone())
-        .try_to_expression(&|v| QuadraticSymbolicExpressionImpl::from_unknown_variable(v.clone()))
-        .ok()?;
+    let diff = first_assignment.clone() + -second_assignment.clone();
+    let diff: QuadraticSymbolicExpression<T::FieldType, V> = diff.try_to_expression(
+        &|n| QuadraticSymbolicExpression::from(*n),
+        &|v| QuadraticSymbolicExpressionImpl::from_unknown_variable(v.clone()),
+        &|e| e.try_to_number(),
+    )?;
+
     let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
     // Now if `rc + diff` is disjoint from `rc`, it means

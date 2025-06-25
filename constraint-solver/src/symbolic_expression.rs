@@ -14,7 +14,6 @@ use std::{
 use powdr_number::FieldElement;
 
 use crate::expression_convertible::ExpressionConvertible;
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpressionImpl;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 
 use super::range_constraint::RangeConstraint;
@@ -143,29 +142,28 @@ impl<T: FieldElement, V> ExpressionConvertible<T, V> for SymbolicExpression<T, V
     ///
     /// Fails in case a division operation is used.
     fn try_to_expression<
-        E: From<T>
-            + Add<E, Output = E>
-            + Sub<E, Output = E>
-            + Mul<E, Output = E>
-            + Neg<Output = E>
-            + TryInto<T>,
+        E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
     >(
         &self,
+        number_converter: &impl Fn(&T) -> E,
         var_converter: &impl Fn(&V) -> E,
+        try_to_number: &impl Fn(&E) -> Option<T>,
     ) -> Option<E> {
         Some(match self {
-            SymbolicExpression::Concrete(value) => (*value).into(),
+            SymbolicExpression::Concrete(value) => number_converter(value),
             SymbolicExpression::Symbol(var, _) => var_converter(var),
             SymbolicExpression::BinaryOperation(left, op, right, _) => {
-                let left = left.try_to_expression(var_converter)?;
-                let right = right.try_to_expression(var_converter)?;
+                let left =
+                    left.try_to_expression(number_converter, var_converter, try_to_number)?;
+                let right =
+                    right.try_to_expression(number_converter, var_converter, try_to_number)?;
                 match op {
                     BinaryOperator::Add => left + right,
                     BinaryOperator::Sub => left - right,
                     BinaryOperator::Mul => left * right,
                     BinaryOperator::Div => {
-                        if let Ok(right) = right.try_into() {
-                            left * (T::from(1) / right).into()
+                        if let Some(right) = try_to_number(&right) {
+                            left * number_converter(&(T::from(1) / right))
                         } else {
                             return None;
                         }
@@ -173,7 +171,8 @@ impl<T: FieldElement, V> ExpressionConvertible<T, V> for SymbolicExpression<T, V
                 }
             }
             SymbolicExpression::UnaryOperation(op, inner, _) => {
-                let inner = inner.try_to_expression(var_converter)?;
+                let inner =
+                    inner.try_to_expression(number_converter, var_converter, try_to_number)?;
                 match op {
                     UnaryOperator::Neg => -inner,
                 }
@@ -504,16 +503,6 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> One for SymbolicExpression<T, 
 
     fn is_one(&self) -> bool {
         self.is_known_one()
-    }
-}
-
-impl<T: FieldElement, V: Clone + Ord + Hash> TryFrom<SymbolicExpression<T, V>>
-    for QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>
-{
-    type Error = ();
-
-    fn try_from(e: SymbolicExpression<T, V>) -> Result<Self, Self::Error> {
-        panic!("Don't use")
     }
 }
 
