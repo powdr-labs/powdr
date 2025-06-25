@@ -124,3 +124,4 @@ jobs:
 
   test_apc:
     uses: ./.github/workflows/reth-bench.yml
+    secrets: inherit
