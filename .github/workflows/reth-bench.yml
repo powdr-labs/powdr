@@ -60,24 +60,32 @@ jobs:
         run: |
           source .venv/bin/activate
           cd openvm-reth-benchmark
+          rm -rf results
+          RES_DIR=results/$(date +'%Y-%m-%d-%H%M')-$(git -C .. rev-parse HEAD)
+          mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          MODE="execute" APC=500 psrecord --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png "./run.sh"
-          echo "openvm-reth-benchmark: $(git rev-parse HEAD)" > rev.txt
-          echo "powdr: $(git -C .. rev-parse HEAD)" >> rev.txt
-          python ../openvm/scripts/basic_metrics.py metrics.json > basic.txt
-          python ../openvm/scripts/basic_metrics.py --csv metrics.json > basic.csv
-          python ../openvm/scripts/plot_trace_cells.py -o trace_cells.png metrics.json > trace_cells.txt
+          # MODE="execute" APC=500 psrecord --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+          MODE="prove-stark" APC=10 psrecord --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+          echo "openvm-reth-benchmark: $(git rev-parse HEAD)" > $RES_DIR/rev.txt
+          echo "powdr: $(git -C .. rev-parse HEAD)" >> $RES_DIR/rev.txt
+          python ../openvm/scripts/basic_metrics.py metrics.json > $RES_DIR/basic.txt
+          python ../openvm/scripts/basic_metrics.py --csv metrics.json > $RES_DIR/basic.csv
+          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png metrics.json > $RES_DIR/trace_cells.txt
+          mv metrics.json $RES_DIR
 
       - name: upload results
         uses: actions/upload-artifact@v4
         with:
           name: reth-results
           path: |
-            openvm-reth-benchmark/rev.txt
-            openvm-reth-benchmark/metrics.json
-            openvm-reth-benchmark/psrecord.csv
-            openvm-reth-benchmark/psrecord.png
-            openvm-reth-benchmark/basic.txt
-            openvm-reth-benchmark/basic.csv
-            openvm-reth-benchmark/trace_cells.txt
-            openvm-reth-benchmark/trace_cells.png
+            openvm-reth-benchmark/results/*
+
+      - name: commit to bench results
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.BENCH_RESULTS_DEPLOY_KEY }}
+          external_repository: powdr-labs/bench-results
+          publish_dir: ./openvm-reth-benchmark/results
+          destination_dir: results
+          keep_files: true
+          enable_jekyll: true
