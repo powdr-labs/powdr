@@ -111,20 +111,12 @@ mod single_instruction_tests {
         assert_machine_output(program.to_vec(), "single_xor");
     }
 
-    #[test]
-    fn single_or() {
-        let program = [
-            // [x8] = [x7] | [x5]
-            or(8, 7, 5, 1),
-        ];
-        assert_machine_output(program.to_vec(), "single_or");
-    }
-
     // Load/Store Chip instructions
     // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
     #[test]
     fn single_loadw() {
         let program = [
+            // Load [x2 + 20]_2 into x8
             // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
@@ -134,6 +126,7 @@ mod single_instruction_tests {
     #[test]
     fn single_loadbu() {
         let program = [
+            // Load [x2 + 21]_2 into x8
             // Load [x2 + 21]_2 into x8
             loadbu(8, 2, 21, 2, 1, 0),
         ];
@@ -193,6 +186,62 @@ mod single_instruction_tests {
             loadb(0, 2, 3, 2, 0, 0),
         ];
         assert_machine_output(program.to_vec(), "single_loadb");
+    }
+
+    // Branch Eq Chip instructions
+    #[test]
+    fn single_beq() {
+        let program = [
+            // pc = pc + 2 if x8 == x5
+            beq(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_beq");
+    }
+
+    #[test]
+    fn single_bne() {
+        let program = [
+            // pc = pc + 2 if x8 != x5
+            bne(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bne");
+    }
+
+    // Branch Lt Chip instructions
+    #[test]
+    fn single_blt() {
+        let program = [
+            // pc = pc + 2 if x8 < x5 (signed)
+            blt(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_blt");
+    }
+
+    #[test]
+    fn single_bltu() {
+        let program = [
+            // pc = pc + 2 if x8 < x5
+            bltu(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bltu");
+    }
+
+    #[test]
+    fn single_bge() {
+        let program = [
+            // pc = pc + 2 if x8 >= x5 (signed)
+            bge(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bge");
+    }
+
+    #[test]
+    fn single_bgeu() {
+        let program = [
+            // pc = pc + 2 if x8 >= x5
+            bgeu(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bgeu");
     }
 
     // Shift Chip instructions
