@@ -49,8 +49,35 @@ jobs:
           echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
           echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
 
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm/scripts/requirements.txt
+          pip install psrecord   # for monitoring memory usage
+
       - name: Run small execution test with APCs
         run: |
+          source .venv/bin/activate
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          MODE="execute" APC=500 /usr/bin/time -v ./run.sh
+          MODE="execute" APC=500 psrecord --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png "./run.sh"
+          echo "openvm-reth-benchmark: $(git rev-parse HEAD)" > rev.txt
+          echo "powdr: $(git -C .. rev-parse HEAD)" >> rev.txt
+          python ../openvm/scripts/basic_metrics.py metrics.json > basic.txt
+          python ../openvm/scripts/basic_metrics.py --csv metrics.json > basic.csv
+          python ../openvm/scripts/plot_trace_cells.py -o trace_cells.png metrics.json > trace_cells.txt
+
+      - name: upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: reth-results
+          path: |
+            openvm-reth-benchmark/rev.txt
+            openvm-reth-benchmark/metrics.json
+            openvm-reth-benchmark/psrecord.csv
+            openvm-reth-benchmark/psrecord.png
+            openvm-reth-benchmark/basic.txt
+            openvm-reth-benchmark/basic.csv
+            openvm-reth-benchmark/trace_cells.txt
+            openvm-reth-benchmark/trace_cells.png
