@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     effect::Condition,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant},
+    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
 use num_traits::One;
@@ -201,7 +201,9 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant<V> + Substitutable<V>, V: Ord + Clone + Eq + Hash>
+    QuadraticSymbolicExpressionImpl<T, V>
+{
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
@@ -298,7 +300,9 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
 
         *self += to_add;
     }
+}
 
+impl<T, V> QuadraticSymbolicExpressionImpl<T, V> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadratic = self.quadratic.iter().flat_map(|(a, b)| {

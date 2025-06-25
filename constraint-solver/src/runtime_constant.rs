@@ -32,9 +32,6 @@ pub trait RuntimeConstant<V>:
     /// this will be a single value range constraint.
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
 
-    /// Substitutes a variable with another constant.
-    fn substitute(&mut self, variable: &V, substitution: &Self);
-
     /// Divides this constant by another constant, returning a new constant.
     fn field_div(&self, other: &Self) -> Self;
 
@@ -76,6 +73,11 @@ pub trait ReferencedSymbols<V> {
         V: 'a;
 }
 
+pub trait Substitutable<V> {
+    /// Substitutes a variable with another constant.
+    fn substitute(&mut self, variable: &V, substitution: &Self);
+}
+
 impl<T: FieldElement, V> RuntimeConstant<V> for T {
     type FieldType = T;
 
@@ -85,10 +87,6 @@ impl<T: FieldElement, V> RuntimeConstant<V> for T {
 
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
         RangeConstraint::from_value(*self)
-    }
-
-    fn substitute(&mut self, _variable: &V, _substitution: &Self) {
-        // No-op for numbers.
     }
 
     fn field_div(&self, other: &Self) -> Self {
@@ -103,5 +101,11 @@ impl<T: FieldElement, V> ReferencedSymbols<V> for T {
     {
         // No symbols in numbers.
         std::iter::empty()
+    }
+}
+
+impl<T: FieldElement, V> Substitutable<V> for T {
+    fn substitute(&mut self, _variable: &V, _substitution: &Self) {
+        // No-op for numbers.
     }
 }

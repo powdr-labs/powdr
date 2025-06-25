@@ -14,7 +14,7 @@ use std::{
 use powdr_number::FieldElement;
 
 use crate::quadratic_symbolic_expression::QuadraticSymbolicExpressionImpl;
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant};
+use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 use crate::symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression;
 
 use super::range_constraint::RangeConstraint;
@@ -483,10 +483,6 @@ impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RuntimeConstant<V> for Symboli
         SymbolicExpression::range_constraint(self)
     }
 
-    fn substitute(&mut self, variable: &V, substitution: &Self) {
-        SymbolicExpression::substitute(self, variable, substitution);
-    }
-
     fn field_div(&self, other: &Self) -> Self {
         SymbolicExpression::field_div(self, other)
     }
@@ -504,5 +500,11 @@ impl<T: FieldElement, V: Clone + Hash + Eq + Ord> ReferencedSymbols<V>
         V: 'a,
     {
         SymbolicExpression::referenced_symbols(self)
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> Substitutable<V> for SymbolicExpression<T, V> {
+    fn substitute(&mut self, variable: &V, substitution: &Self) {
+        SymbolicExpression::substitute(self, variable, substitution);
     }
 }
