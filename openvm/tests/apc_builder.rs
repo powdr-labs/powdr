@@ -75,7 +75,6 @@ mod single_instruction_tests {
     use powdr_openvm::symbolic_instruction_builder::*;
 
     // ALU Chip instructions
-    // ALU Chip instructions
     #[test]
     fn single_add_0() {
         let program = [
@@ -112,53 +111,6 @@ mod single_instruction_tests {
         assert_machine_output(program.to_vec(), "single_xor");
     }
 
-    #[test]
-    fn single_or() {
-        let program = [
-            // [x8] = [x7] | [x5]
-            or(8, 7, 5, 1),
-        ];
-        assert_machine_output(program.to_vec(), "single_or");
-    }
-
-    // Load/Store Chip instructions
-    // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
-    #[test]
-    fn single_sub() {
-        let program = [
-            // [x8] = [x7] - [x5]
-            sub(8, 7, 5, 1),
-        ];
-        assert_machine_output(program.to_vec(), "single_sub");
-    }
-
-    #[test]
-    fn single_and_0() {
-        let program = [
-            // [x8] = [x0] & 5
-            and(8, 0, 5, 0),
-        ];
-        assert_machine_output(program.to_vec(), "single_and_0");
-    }
-
-    #[test]
-    fn single_xor() {
-        let program = [
-            // [x8] = [x7] ^ [x5]
-            xor(8, 7, 5, 1),
-        ];
-        assert_machine_output(program.to_vec(), "single_xor");
-    }
-
-    #[test]
-    fn single_or() {
-        let program = [
-            // [x8] = [x7] | [x5]
-            or(8, 7, 5, 1),
-        ];
-        assert_machine_output(program.to_vec(), "single_or");
-    }
-
     // Load/Store Chip instructions
     // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
     #[test]
@@ -168,8 +120,7 @@ mod single_instruction_tests {
             // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
-        println!("{}", super::compile(program.to_vec()));
-        // assert_machine_output(program.to_vec(), "single_loadw");
+        assert_machine_output(program.to_vec(), "single_loadw");
     }
 
     #[test]
