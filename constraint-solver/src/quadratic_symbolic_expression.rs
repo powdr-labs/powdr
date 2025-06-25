@@ -167,7 +167,6 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpression
     }
 
     /// Returns the quadratic, linear and constant components of this expression.
-    #[allow(clippy::type_complexity)]
     pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
