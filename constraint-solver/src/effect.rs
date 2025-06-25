@@ -18,7 +18,7 @@ pub enum EffectImpl<T: RuntimeConstant, V> {
     /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T::FieldType>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
-    Assertion(Assertion<T, V>),
+    Assertion(Assertion<T>),
     /// A variable is assigned one of two alternative expressions, depending on a condition.
     ConditionalAssignment {
         variable: V,
@@ -88,36 +88,33 @@ impl<T: FieldElement, V: Display> Display for BitDecompositionComponent<T, V> {
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Assertion<T: RuntimeConstant, V> {
+pub struct Assertion<T: RuntimeConstant> {
     pub lhs: T,
     pub rhs: T,
     /// If this is true, we assert that both sides are equal.
     /// Otherwise, we assert that they are different.
     pub expected_equal: bool,
-    pub _marker: std::marker::PhantomData<V>,
 }
 
-impl<T: RuntimeConstant, V> Assertion<T, V> {
-    pub fn assert_is_zero(condition: T) -> EffectImpl<T, V> {
+impl<T: RuntimeConstant> Assertion<T> {
+    pub fn assert_is_zero<V>(condition: T) -> EffectImpl<T, V> {
         Self::assert_eq(condition, T::from_u64(0))
     }
-    pub fn assert_is_nonzero(condition: T) -> EffectImpl<T, V> {
+    pub fn assert_is_nonzero<V>(condition: T) -> EffectImpl<T, V> {
         Self::assert_neq(condition, T::from_u64(0))
     }
-    pub fn assert_eq(lhs: T, rhs: T) -> EffectImpl<T, V> {
+    pub fn assert_eq<V>(lhs: T, rhs: T) -> EffectImpl<T, V> {
         EffectImpl::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: true,
-            _marker: std::marker::PhantomData,
         })
     }
-    pub fn assert_neq(lhs: T, rhs: T) -> EffectImpl<T, V> {
+    pub fn assert_neq<V>(lhs: T, rhs: T) -> EffectImpl<T, V> {
         EffectImpl::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: false,
-            _marker: std::marker::PhantomData,
         })
     }
 }

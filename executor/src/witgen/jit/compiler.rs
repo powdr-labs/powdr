@@ -781,7 +781,6 @@ mod tests {
                 lhs: symbol(&ym1),
                 rhs: symbol(&x0),
                 expected_equal: true,
-                _marker: Default::default(),
             }),
         ];
         let known_inputs = vec![a0.clone()];

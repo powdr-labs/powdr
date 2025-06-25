@@ -30,7 +30,7 @@ where
     /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
-    Assertion(Assertion<SymbolicExpression<T, V>, V>),
+    Assertion(Assertion<SymbolicExpression<T, V>>),
     /// A call to a different machine, with bus ID, known inputs and argument variables.
     MachineCall(T, BitVec, Vec<V>),
     /// Compute one variable by executing a prover function (given by index) on the value of other variables.
