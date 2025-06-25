@@ -193,7 +193,7 @@ mod single_instruction_tests {
     fn single_beq() {
         let program = [
             // pc = pc + 2 if x8 == x5
-            beq(8, 5, 2, 1, 1),
+            beq(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_beq");
     }
@@ -202,7 +202,7 @@ mod single_instruction_tests {
     fn single_bne() {
         let program = [
             // pc = pc + 2 if x8 != x5
-            bne(8, 5, 2, 1, 1),
+            bne(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bne");
     }
@@ -212,7 +212,7 @@ mod single_instruction_tests {
     fn single_blt() {
         let program = [
             // pc = pc + 2 if x8 < x5 (signed)
-            blt(8, 5, 2, 1, 1),
+            blt(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_blt");
     }
@@ -221,7 +221,7 @@ mod single_instruction_tests {
     fn single_bltu() {
         let program = [
             // pc = pc + 2 if x8 < x5
-            bltu(8, 5, 2, 1, 1),
+            bltu(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bltu");
     }
@@ -230,7 +230,7 @@ mod single_instruction_tests {
     fn single_bge() {
         let program = [
             // pc = pc + 2 if x8 >= x5 (signed)
-            bge(8, 5, 2, 1, 1),
+            bge(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bge");
     }
@@ -239,7 +239,7 @@ mod single_instruction_tests {
     fn single_bgeu() {
         let program = [
             // pc = pc + 2 if x8 >= x5
-            bgeu(8, 5, 2, 1, 1),
+            bgeu(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bgeu");
     }
