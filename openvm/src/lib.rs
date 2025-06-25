@@ -103,7 +103,8 @@ mod plonk;
 #[derive(Default)]
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
-    Cell(HashMap<u32, u32>),
+    /// max total apc columns
+    Cell(HashMap<u32, u32>, usize),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
     /// disable PGO
@@ -111,15 +112,24 @@ pub enum PgoConfig {
     None,
 }
 
+const DEFAULT_MAX_TOTAL_APC_COLUMNS: usize = 50000;
+
 #[derive(Copy, Clone, Debug, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed
-    Cell,
+    /// max total apc columns
+    Cell(usize),
     /// cost = instruction per apc * times executed
     Instruction,
     /// disable PGO
     None,
+}
+
+impl Default for PgoType {
+    fn default() -> Self {
+        PgoType::Cell(DEFAULT_MAX_TOTAL_APC_COLUMNS)
+    }
 }
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
@@ -397,7 +407,8 @@ pub fn compile_guest(
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
     let pgo_program_idx_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) | PgoConfig::Instruction(pgo_program_idx_count) => {
+        PgoConfig::Cell(pgo_program_idx_count, _)
+        | PgoConfig::Instruction(pgo_program_idx_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
             pgo_program_idx_count

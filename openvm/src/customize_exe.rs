@@ -73,9 +73,14 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) => {
-            create_apcs_with_cell_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
-        }
+        PgoConfig::Cell(pgo_program_idx_count, max_total_apc_columns) => create_apcs_with_cell_pgo(
+            blocks,
+            pgo_program_idx_count,
+            max_total_apc_columns,
+            airs,
+            config,
+            bus_map,
+        ),
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
         }
@@ -183,19 +188,21 @@ pub fn customize(
                 assert_eq!(program.len(), len_before);
 
                 let is_valid_column = autoprecompile
-                    .machine
+                    .machine()
                     .unique_references()
                     .find(|c| &*c.name == "is_valid")
                     .unwrap();
+
+                let (machine, subs) = autoprecompile.into_parts();
 
                 PowdrPrecompile::new(
                     format!("PowdrAutoprecompile_{apc_opcode}"),
                     PowdrOpcode {
                         class_offset: apc_opcode,
                     },
-                    autoprecompile.machine,
+                    machine,
                     acc.into_iter()
-                        .zip_eq(autoprecompile.subs)
+                        .zip_eq(subs)
                         .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                         .collect(),
                     is_valid_column,
@@ -413,7 +420,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
 
     // Check that substitution values are unique over all instructions
-    assert!(apc.subs.iter().flatten().all_unique());
+    assert!(apc.subs().iter().flatten().all_unique());
 
     tracing::debug!(
         "Done generating autoprecompile for block at index {}",
@@ -443,6 +450,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
+    max_total_apc_columns: usize,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
@@ -482,7 +490,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     impl<P: IntoOpenVm> ApcCandidate<P> {
         fn cost(&self) -> usize {
-            self.execution_frequency * self.cells_saved_per_row
+            (self.execution_frequency * self.cells_saved_per_row) / self.block_with_apc.apc.width()
         }
     }
 
@@ -523,7 +531,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.machine.unique_references().count();
+            let apc_cells_per_row = apc.width();
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
@@ -564,6 +572,14 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         )
         .into_iter()
         .skip(config.skip_autoprecompiles as usize)
+        .scan(0, |column_count, block| {
+            *column_count += block.block_with_apc.apc.width();
+            if *column_count >= max_total_apc_columns {
+                None // stop if we already reached the max column count
+            } else {
+                Some(block)
+            }
+        })
         .map(|c| {
             tracing::debug!(
                 "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
