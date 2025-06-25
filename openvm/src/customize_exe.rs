@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
+use std::collections::{BTreeSet, BinaryHeap, HashMap};
 use std::iter::once;
 use std::sync::Arc;
 
-use crate::extraction_utils::OriginalVmConfig;
-use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist};
+use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -23,7 +23,7 @@ use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
-    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement, SymbolicMachine,
+    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement,
 };
 use powdr_autoprecompiles::{Apc, DegreeBound};
 use powdr_number::{BabyBearField, FieldElement};
@@ -63,25 +63,19 @@ struct BlockWithApc<P: IntoOpenVm> {
 
 fn generate_apcs_with_pgo<P: IntoOpenVm>(
     blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: &OriginalAirs<P>,
     bus_map: &BusMap,
     config: &PowdrConfig,
     pgo_config: PgoConfig,
-    opcodes_allowlist: &BTreeSet<usize>,
 ) -> Vec<BlockWithApc<P>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) => create_apcs_with_cell_pgo(
-            blocks,
-            pgo_program_idx_count,
-            airs,
-            config,
-            bus_map,
-            opcodes_allowlist,
-        ),
+        PgoConfig::Cell(pgo_program_idx_count) => {
+            create_apcs_with_cell_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
+        }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
         }
@@ -106,7 +100,7 @@ pub fn customize(
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let opcodes_allowlist = instruction_allowlist();
+    let opcodes_allowlist = airs.allow_list();
 
     let labels = add_extra_targets(&exe.program, labels.clone());
 
@@ -130,14 +124,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(
-        blocks,
-        &airs,
-        &bus_map,
-        &config,
-        pgo_config,
-        &opcodes_allowlist,
-    );
+    let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -341,7 +328,7 @@ fn add_extra_targets<F: PrimeField32>(
 fn create_apcs_for_all_blocks<P: IntoOpenVm>(
     blocks: Vec<BasicBlock<OpenVmField<P>>>,
     powdr_config: &PowdrConfig,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: &OriginalAirs<P>,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {
     let n_acc = powdr_config.autoprecompiles as usize;
@@ -394,7 +381,7 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
 //    [a, b, c, 1] c = xor(a, b)
 fn generate_autoprecompile<P: IntoOpenVm>(
     block: &BasicBlock<OpenVmField<P>>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: &OriginalAirs<P>,
     apc_opcode: usize,
     bus_map: &BusMap,
     degree_bound: DegreeBound,
@@ -418,7 +405,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         .collect();
 
     let vm_config = VmConfig {
-        instruction_machines: airs,
+        instruction_machine_handler: airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
@@ -456,10 +443,9 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
-    opcode_allowlist: &BTreeSet<usize>,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -475,11 +461,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     // store air width by opcode, so that we don't repetitively calculate them later
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs
-        .iter()
-        .filter(|&(i, _)| (opcode_allowlist.contains(i)))
-        .map(|(i, air)| (*i, air.unique_references().count()))
-        .collect::<HashMap<_, _>>();
+    let air_width_by_opcode = airs.air_width_per_opcode();
 
     // generate apc for all basic blocks and only cache the ones we eventually use
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -545,7 +527,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
-                .map(|instr| air_width_by_opcode[&instr.opcode.as_usize()])
+                .map(|instr| air_width_by_opcode[&instr.opcode])
                 .sum();
             let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
             let execution_frequency = *pgo_program_idx_count
@@ -599,7 +581,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {
@@ -642,7 +624,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
 
 fn create_apcs_with_no_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &BTreeMap<usize, SymbolicMachine<P>>,
+    airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {

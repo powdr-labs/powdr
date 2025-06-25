@@ -104,7 +104,7 @@ fn run_command(command: Commands) {
             input,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
@@ -118,7 +118,7 @@ fn run_command(command: Commands) {
             input,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
@@ -135,7 +135,7 @@ fn run_command(command: Commands) {
             metrics,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             let prove =
@@ -168,7 +168,7 @@ fn stdin_from(input: Option<u32>) -> StdIn {
     s
 }
 
-fn get_pgo_config(
+fn pgo_config(
     guest: String,
     guest_opts: GuestOptions,
     pgo: PgoType,
@@ -176,13 +176,19 @@ fn get_pgo_config(
 ) -> PgoConfig {
     match pgo {
         PgoType::Cell => {
-            let pc_idx_count =
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
+            let pc_idx_count = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
             PgoConfig::Cell(pc_idx_count)
         }
         PgoType::Instruction => {
-            let pc_idx_count =
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
+            let pc_idx_count = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
             PgoConfig::Instruction(pc_idx_count)
         }
         PgoType::None => PgoConfig::None,
