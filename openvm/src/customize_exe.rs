@@ -450,7 +450,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    max_total_apc_columns: usize,
+    max_total_apc_columns: Option<usize>,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
@@ -574,11 +574,13 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         .skip(config.skip_autoprecompiles as usize)
         .scan(0, |column_count, block| {
             *column_count += block.block_with_apc.apc.width();
-            if *column_count >= max_total_apc_columns {
-                None // stop if we already reached the max column count
-            } else {
-                Some(block)
+            if let Some(max_total_apc_columns) = max_total_apc_columns {
+                // if we have a limit on the total number of columns, check if we reached it
+                if *column_count >= max_total_apc_columns {
+                    return None; // stop if we already reached the max column count
+                }
             }
+            Some(block)
         })
         .map(|c| {
             tracing::debug!(

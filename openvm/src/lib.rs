@@ -104,7 +104,7 @@ mod plonk;
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
     /// max total apc columns
-    Cell(HashMap<u32, u32>, usize),
+    Cell(HashMap<u32, u32>, Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
     /// disable PGO
@@ -112,14 +112,12 @@ pub enum PgoConfig {
     None,
 }
 
-const DEFAULT_MAX_TOTAL_APC_COLUMNS: usize = 50000;
-
 #[derive(Copy, Clone, Debug, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed
     /// max total apc columns
-    Cell(usize),
+    Cell(Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction,
     /// disable PGO
@@ -128,7 +126,7 @@ pub enum PgoType {
 
 impl Default for PgoType {
     fn default() -> Self {
-        PgoType::Cell(DEFAULT_MAX_TOTAL_APC_COLUMNS)
+        PgoType::Cell(None)
     }
 }
 
@@ -1095,6 +1093,6 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data));
+        test_keccak_machine(PgoConfig::Cell(pgo_data, None));
     }
 }
