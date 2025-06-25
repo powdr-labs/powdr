@@ -75,7 +75,7 @@ pub struct BranchResult<'a, T: FieldElement, FixedEval> {
     /// The code common to both branches.
     pub common_code: Vec<Effect<T, Variable>>,
     /// The condition of the branch.
-    pub condition: Condition<SymbolicExpression<T, Variable>, Variable>,
+    pub condition: Condition<SymbolicExpression<T, Variable>>,
     /// The two branches.
     pub branches: [WitgenInference<'a, T, FixedEval>; 2],
 }

@@ -10,7 +10,7 @@ use crate::{
 
 /// The effect of solving a symbolic equation.
 #[derive(Clone, PartialEq, Eq)]
-pub enum EffectImpl<T: RuntimeConstant<V>, V> {
+pub enum EffectImpl<T: RuntimeConstant, V> {
     /// Variable can be assigned a value.
     Assignment(V, T),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
@@ -22,7 +22,7 @@ pub enum EffectImpl<T: RuntimeConstant<V>, V> {
     /// A variable is assigned one of two alternative expressions, depending on a condition.
     ConditionalAssignment {
         variable: V,
-        condition: Condition<T, V>,
+        condition: Condition<T>,
         in_range_value: T,
         out_of_range_value: T,
     },
@@ -39,14 +39,14 @@ pub type Effect<T, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 /// This effect can only be created if the equation has a unique solution.
 /// It might be that it leads to a contradiction, which should result in an assertion failure.
 #[derive(Clone, PartialEq, Eq)]
-pub struct BitDecomposition<T: RuntimeConstant<V>, V> {
+pub struct BitDecomposition<T: RuntimeConstant, V> {
     /// The value that is decomposed.
     pub value: T,
     /// The components of the decomposition.
     pub components: Vec<BitDecompositionComponent<T::FieldType, V>>,
 }
 
-impl<T: RuntimeConstant<V> + Display, V: Display> Display for BitDecomposition<T, V> {
+impl<T: RuntimeConstant + Display, V: Display> Display for BitDecomposition<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BitDecomposition { value, components } = self;
         write!(f, "{} := {value};", components.iter().format(" + "))
@@ -88,7 +88,7 @@ impl<T: FieldElement, V: Display> Display for BitDecompositionComponent<T, V> {
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Assertion<T: RuntimeConstant<V>, V> {
+pub struct Assertion<T: RuntimeConstant, V> {
     pub lhs: T,
     pub rhs: T,
     /// If this is true, we assert that both sides are equal.
@@ -97,7 +97,7 @@ pub struct Assertion<T: RuntimeConstant<V>, V> {
     pub _marker: std::marker::PhantomData<V>,
 }
 
-impl<T: RuntimeConstant<V>, V> Assertion<T, V> {
+impl<T: RuntimeConstant, V> Assertion<T, V> {
     pub fn assert_is_zero(condition: T) -> EffectImpl<T, V> {
         Self::assert_eq(condition, T::from_u64(0))
     }
@@ -123,7 +123,7 @@ impl<T: RuntimeConstant<V>, V> Assertion<T, V> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct Condition<T: RuntimeConstant<V>, V> {
+pub struct Condition<T: RuntimeConstant> {
     pub value: T,
     pub condition: RangeConstraint<T::FieldType>,
 }

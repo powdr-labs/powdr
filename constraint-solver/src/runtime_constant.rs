@@ -8,7 +8,7 @@ use crate::range_constraint::RangeConstraint;
 /// Represents a run-time constant in the constraint solver.
 /// Any T: FieldElement can represent a run-time constant (which is also a compile-time constant),
 /// but the trait lets us represent run-time constants symbolically as well.
-pub trait RuntimeConstant<V>:
+pub trait RuntimeConstant:
     Sized
     + Neg<Output = Self>
     + Clone
@@ -78,7 +78,7 @@ pub trait Substitutable<V> {
     fn substitute(&mut self, variable: &V, substitution: &Self);
 }
 
-impl<T: FieldElement, V> RuntimeConstant<V> for T {
+impl<T: FieldElement> RuntimeConstant for T {
     type FieldType = T;
 
     fn try_to_number(&self) -> Option<Self> {

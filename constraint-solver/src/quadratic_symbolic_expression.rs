@@ -19,12 +19,12 @@ use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
 #[derive(Default)]
-pub struct ProcessResult<T: RuntimeConstant<V>, V> {
+pub struct ProcessResult<T: RuntimeConstant, V> {
     pub effects: Vec<EffectImpl<T, V>>,
     pub complete: bool,
 }
 
-impl<T: RuntimeConstant<V>, V> ProcessResult<T, V> {
+impl<T: RuntimeConstant, V> ProcessResult<T, V> {
     pub fn empty() -> Self {
         Self {
             effects: vec![],
@@ -79,7 +79,7 @@ pub type QuadraticSymbolicExpression<T, V> =
 // Note that we can't also implement `From<T>` for `QuadraticSymbolicExpressionImpl<T, V>`,
 // because it could be that `T::FieldType == T`, and the two implementations would conflict.
 // Use `QuadraticSymbolicExpressionImpl::from_runtime_constant` instead.
-impl<F: FieldElement, T: RuntimeConstant<V, FieldType = F>, V> From<F>
+impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> From<F>
     for QuadraticSymbolicExpressionImpl<T, V>
 {
     fn from(k: T::FieldType) -> Self {
@@ -99,7 +99,7 @@ impl<F: FieldElement, V: Ord + Clone + Eq + Hash>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpressionImpl<T, V> {
     pub fn from_runtime_constant(constant: T) -> Self {
         Self {
             quadratic: Default::default(),
@@ -201,7 +201,7 @@ impl<T: RuntimeConstant<V>, V: Ord + Clone + Eq + Hash> QuadraticSymbolicExpress
     }
 }
 
-impl<T: RuntimeConstant<V> + Substitutable<V>, V: Ord + Clone + Eq + Hash>
+impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash>
     QuadraticSymbolicExpressionImpl<T, V>
 {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
@@ -313,7 +313,7 @@ impl<T, V> QuadraticSymbolicExpressionImpl<T, V> {
     }
 }
 
-impl<T: RuntimeConstant<V> + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
+impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
     QuadraticSymbolicExpressionImpl<T, V>
 {
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
@@ -376,7 +376,7 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
 }
 
 impl<
-        T: RuntimeConstant<V> + Display + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
+        T: RuntimeConstant + Display + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
         V: Ord + Clone + Hash + Eq + Display,
     > QuadraticSymbolicExpressionImpl<T, V>
 {
@@ -696,7 +696,7 @@ impl<
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
 fn combine_to_conditional_assignment<
-    T: RuntimeConstant<V> + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
+    T: RuntimeConstant + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     left: &ProcessResult<T, V>,
@@ -754,7 +754,7 @@ fn combine_to_conditional_assignment<
 /// Tries to combine range constraint results from two alternative branches.
 /// In some cases, if both branches produce a complete range constraint for the same variable,
 /// and those range constraints can be combined without loss, the result is complete as well.
-fn combine_range_constraints<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq + Display>(
+fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
 ) -> ProcessResult<T, V> {
@@ -802,7 +802,7 @@ fn combine_range_constraints<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq +
     }
 }
 
-fn assignment_if_satisfies_range_constraints<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq>(
+fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     var: V,
     value: T,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
@@ -815,7 +815,7 @@ fn assignment_if_satisfies_range_constraints<T: RuntimeConstant<V>, V: Ord + Clo
 }
 
 /// Turns an effect into a range constraint on a variable.
-fn effect_to_range_constraint<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq>(
+fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     effect: &EffectImpl<T, V>,
 ) -> Option<(V, RangeConstraint<T::FieldType>)> {
     match effect {
@@ -825,9 +825,7 @@ fn effect_to_range_constraint<T: RuntimeConstant<V>, V: Ord + Clone + Hash + Eq>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Add
-    for QuadraticSymbolicExpressionImpl<T, V>
-{
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpressionImpl<T, V> {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
 
     fn add(mut self, rhs: Self) -> Self {
@@ -836,7 +834,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Add
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Add
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Add
     for &QuadraticSymbolicExpressionImpl<T, V>
 {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
@@ -846,7 +844,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Add
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq>
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq>
     AddAssign<QuadraticSymbolicExpressionImpl<T, V>> for QuadraticSymbolicExpressionImpl<T, V>
 {
     fn add_assign(&mut self, rhs: Self) {
@@ -862,7 +860,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Sub
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sub
     for &QuadraticSymbolicExpressionImpl<T, V>
 {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
@@ -872,9 +870,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Sub
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Sub
-    for QuadraticSymbolicExpressionImpl<T, V>
-{
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sub for QuadraticSymbolicExpressionImpl<T, V> {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -882,7 +878,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Sub
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord> QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord> QuadraticSymbolicExpressionImpl<T, V> {
     fn negate(&mut self) {
         for (first, _) in &mut self.quadratic {
             first.negate()
@@ -894,7 +890,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord> QuadraticSymbolicExpressionImpl<T, V
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord> Neg for QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord> Neg for QuadraticSymbolicExpressionImpl<T, V> {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
 
     fn neg(mut self) -> Self {
@@ -903,7 +899,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord> Neg for QuadraticSymbolicExpressionI
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord> Neg for &QuadraticSymbolicExpressionImpl<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord> Neg for &QuadraticSymbolicExpressionImpl<T, V> {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
 
     fn neg(self) -> Self::Output {
@@ -912,7 +908,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord> Neg for &QuadraticSymbolicExpression
 }
 
 /// Multiply by known symbolic expression.
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<&T>
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul<&T>
     for QuadraticSymbolicExpressionImpl<T, V>
 {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
@@ -923,7 +919,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<&T>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<T>
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul<T>
     for QuadraticSymbolicExpressionImpl<T, V>
 {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
@@ -933,7 +929,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul<T>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> MulAssign<&T>
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> MulAssign<&T>
     for QuadraticSymbolicExpressionImpl<T, V>
 {
     fn mul_assign(&mut self, rhs: &T) {
@@ -951,9 +947,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> MulAssign<&T>
     }
 }
 
-impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul
-    for QuadraticSymbolicExpressionImpl<T, V>
-{
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpressionImpl<T, V> {
     type Output = QuadraticSymbolicExpressionImpl<T, V>;
 
     fn mul(self, rhs: QuadraticSymbolicExpressionImpl<T, V>) -> Self {
@@ -971,7 +965,7 @@ impl<T: RuntimeConstant<V>, V: Clone + Ord + Hash + Eq> Mul
     }
 }
 
-impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display> Display
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
     for QuadraticSymbolicExpressionImpl<T, V>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -984,9 +978,7 @@ impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display> Display
     }
 }
 
-impl<T: RuntimeConstant<V> + Display, V: Clone + Ord + Display>
-    QuadraticSymbolicExpressionImpl<T, V>
-{
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> QuadraticSymbolicExpressionImpl<T, V> {
     fn to_signed_string(&self) -> (bool, String) {
         self.quadratic
             .iter()

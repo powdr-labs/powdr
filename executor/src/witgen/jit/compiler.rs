@@ -535,7 +535,7 @@ fn format_bit_decomposition<T: FieldElement>(
 }
 
 fn format_condition<T: FieldElement>(
-    Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>, Variable>,
+    Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>>,
 ) -> String {
     let value = format!("IntType::from({})", format_expression(value));
     let (min, max) = condition.range();

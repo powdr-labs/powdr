@@ -21,7 +21,7 @@ use super::variable::Variable;
 #[derive(Clone, PartialEq, Eq)]
 pub enum Effect<T: FieldElement, V>
 where
-    SymbolicExpression<T, V>: RuntimeConstant<V>,
+    SymbolicExpression<T, V>: RuntimeConstant,
 {
     /// Variable can be assigned a value.
     Assignment(V, SymbolicExpression<T, V>),
@@ -37,7 +37,7 @@ where
     ProverFunctionCall(ProverFunctionCall<V>),
     /// A branch on a variable.
     Branch(
-        Condition<SymbolicExpression<T, V>, V>,
+        Condition<SymbolicExpression<T, V>>,
         Vec<Effect<T, V>>,
         Vec<Effect<T, V>>,
     ),
@@ -99,7 +99,7 @@ impl<T: FieldElement> Effect<T, Variable> {
 
 impl<T: FieldElement, V: Hash + Eq> Effect<T, V>
 where
-    SymbolicExpression<T, V>: RuntimeConstant<V>,
+    SymbolicExpression<T, V>: RuntimeConstant,
 {
     /// Returns an iterator over all referenced variables, both read and written.
     pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
@@ -220,7 +220,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 }
 
 fn format_condition<T: FieldElement>(
-    Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>, Variable>,
+    Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>>,
 ) -> String {
     let (min, max) = condition.range();
     match min.cmp(&max) {

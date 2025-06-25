@@ -472,7 +472,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash> TryFrom<SymbolicExpression<T, V>>
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RuntimeConstant<V> for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RuntimeConstant for SymbolicExpression<T, V> {
     type FieldType = T;
 
     fn try_to_number(&self) -> Option<Self::FieldType> {
