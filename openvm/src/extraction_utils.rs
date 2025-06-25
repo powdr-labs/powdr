@@ -97,6 +97,73 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
             .map(|opcode| opcode.as_usize())
             .collect()
     }
+
+    pub fn stats(&self) -> String {
+        let constraint_count_stats = summarize(self.air_name_to_machine.values(), |machine| {
+            machine.constraints.len() as f64
+        });
+
+        let bus_interaction_count_stats = summarize(self.air_name_to_machine.values(), |machine| {
+            machine.bus_interactions.len() as f64
+        });
+
+        let unique_references_stats = summarize(self.air_name_to_machine.values(), |machine| {
+            machine.unique_references().count() as f64
+        });
+
+        format!(
+            "Airs stats:\n\
+             - Constraint count: {constraint_count_stats:?}\n\
+             - Bus interaction count: {bus_interaction_count_stats:?}\n\
+             - Unique references count: {unique_references_stats:?}"
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct Stats {
+    pub count: usize,
+    pub mean: f64,
+    pub median: f64,
+    pub min: f64,
+    pub max: f64,
+    pub std_dev: f64,
+}
+
+pub fn summarize<I, F, T>(iter: I, f: F) -> Option<Stats>
+where
+    I: IntoIterator<Item = T>,
+    F: FnMut(T) -> f64,
+{
+    let mut values: Vec<f64> = iter.into_iter().map(f).collect();
+    let n = values.len();
+    if n == 0 {
+        return None;
+    }
+
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let sum: f64 = values.iter().sum();
+    let mean = sum / n as f64;
+
+    let median = if n % 2 == 0 {
+        (values[n / 2 - 1] + values[n / 2]) / 2.0
+    } else {
+        values[n / 2]
+    };
+
+    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+
+    let std_dev = variance.sqrt();
+
+    Some(Stats {
+        count: n,
+        mean,
+        median,
+        min: *values.first().unwrap(),
+        max: *values.last().unwrap(),
+        std_dev,
+    })
 }
 
 fn to_option<T>(mut v: Vec<T>) -> Option<T> {

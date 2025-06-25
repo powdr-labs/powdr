@@ -129,6 +129,8 @@ openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git"
   "bench-metrics",
 ] }
 
+tikv-jemalloc-ctl = { version = "0.6", features = ["profiling", "stats"] }
+
 [profile.pr-tests]
 inherits = "dev"
 opt-level = 3

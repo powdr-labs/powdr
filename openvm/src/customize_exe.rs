@@ -87,6 +87,63 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     res
 }
 
+pub fn summarize<I, F, T>(iter: I, f: F) -> Option<Stats>
+where
+    I: IntoIterator<Item = T>,
+    F: FnMut(T) -> f64,
+{
+    let mut values: Vec<f64> = iter.into_iter().map(f).collect();
+    let n = values.len();
+    if n == 0 {
+        return None;
+    }
+
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let sum: f64 = values.iter().sum();
+    let mean = sum / n as f64;
+
+    let median = if n % 2 == 0 {
+        (values[n / 2 - 1] + values[n / 2]) / 2.0
+    } else {
+        values[n / 2]
+    };
+
+    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+
+    let std_dev = variance.sqrt();
+
+    Some(Stats {
+        count: n,
+        mean,
+        median,
+        min: *values.first().unwrap(),
+        max: *values.last().unwrap(),
+        std_dev,
+    })
+}
+
+#[derive(Debug)]
+pub struct Stats {
+    pub count: usize,
+    pub mean: f64,
+    pub median: f64,
+    pub min: f64,
+    pub max: f64,
+    pub std_dev: f64,
+}
+
+pub fn print_and_dump(file_name: &'static str) {
+    tikv_jemalloc_ctl::epoch::advance().unwrap(); // forces internal jemalloc statistics update
+    let file_name = format!("/tmp/jeprof/{file_name}\0");
+    let file_name = Box::leak(file_name.into_boxed_str());
+    println!("Total rss at {file_name}: {} bytes", tikv_jemalloc_ctl::stats::resident::read().unwrap());
+    println!("Total allocated at {file_name}: {} bytes", tikv_jemalloc_ctl::stats::allocated::read().unwrap());
+    println!("Total mapped at {file_name}: {} bytes", tikv_jemalloc_ctl::stats::mapped::read().unwrap());
+    println!("Total active at {file_name}: {} bytes", tikv_jemalloc_ctl::stats::active::read().unwrap());
+    tikv_jemalloc_ctl::raw::write_str("prof.dump\0".as_bytes(), file_name.as_bytes()).unwrap();
+}
+
 pub fn customize(
     OriginalCompiledProgram {
         mut exe,
@@ -98,6 +155,9 @@ pub fn customize(
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+
+    print_and_dump("start");
+
     let bus_map = original_config.bus_map();
 
     let opcodes_allowlist = airs.allow_list();
@@ -124,7 +184,21 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
+    print_and_dump("before_apc_creation");
+
     let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
+
+    print_and_dump("after_apc_creation");
+
+    let summary = summarize(blocks_with_apcs.iter(), |b| {
+        b.apc.machine.constraints.len() as f64 + b.apc.machine.bus_interactions.len() as f64
+    })
+    .unwrap();
+
+    println!(
+        "Autoprecompiles summary: count={}, mean={}, median={}, min={}, max={}, std_dev={}",
+        summary.count, summary.mean, summary.median, summary.min, summary.max, summary.std_dev
+    );
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -203,6 +277,8 @@ pub fn customize(
             },
         )
         .collect();
+
+    print_and_dump("after_adjusting_program");
 
     CompiledProgram {
         exe,
@@ -506,6 +582,8 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             other.cost().cmp(&self.cost())
         }
     }
+
+    print_and_dump("before_reduce");
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     blocks
