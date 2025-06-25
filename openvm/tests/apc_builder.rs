@@ -23,7 +23,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machines: &airs,
+        instruction_machine_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
@@ -37,7 +37,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
 
     build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
         .unwrap()
-        .0
+        .machine
         .render(&bus_map)
 }
 
@@ -74,6 +74,7 @@ mod single_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
 
+    // ALU Chip instructions
     // ALU Chip instructions
     #[test]
     fn single_add_0() {
@@ -123,8 +124,47 @@ mod single_instruction_tests {
     // Load/Store Chip instructions
     // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
     #[test]
+    fn single_sub() {
+        let program = [
+            // [x8] = [x7] - [x5]
+            sub(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_sub");
+    }
+
+    #[test]
+    fn single_and_0() {
+        let program = [
+            // [x8] = [x0] & 5
+            and(8, 0, 5, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_and_0");
+    }
+
+    #[test]
+    fn single_xor() {
+        let program = [
+            // [x8] = [x7] ^ [x5]
+            xor(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_xor");
+    }
+
+    #[test]
+    fn single_or() {
+        let program = [
+            // [x8] = [x7] | [x5]
+            or(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_or");
+    }
+
+    // Load/Store Chip instructions
+    // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
+    #[test]
     fn single_loadw() {
         let program = [
+            // Load [x2 + 20]_2 into x8
             // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
@@ -135,6 +175,7 @@ mod single_instruction_tests {
     #[test]
     fn single_loadbu() {
         let program = [
+            // Load [x2 + 21]_2 into x8
             // Load [x2 + 21]_2 into x8
             loadbu(8, 2, 21, 2, 1, 0),
         ];
