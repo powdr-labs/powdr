@@ -15,3 +15,4 @@ pub mod symbolic_to_quadratic;
 pub mod test_utils;
 pub mod utils;
 pub mod variable_update;
+pub mod expression_convertible;

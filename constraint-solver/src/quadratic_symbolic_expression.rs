@@ -7,6 +7,7 @@ use std::{
 
 use crate::{
     effect::Condition,
+    expression_convertible::ExpressionConvertible,
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
@@ -695,7 +696,7 @@ impl<
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
 fn combine_to_conditional_assignment<
-    T: RuntimeConstant + TryInto<QuadraticSymbolicExpressionImpl<T, V>>,
+    T: RuntimeConstant + ExpressionConvertible<T, V>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     left: &ProcessResult<T, V>,
@@ -718,10 +719,9 @@ fn combine_to_conditional_assignment<
     // the same time (i.e. the "or" is exclusive), we can turn this into a
     // conditional assignment.
 
-    let diff: QuadraticSymbolicExpressionImpl<T, V> = (first_assignment.clone()
-        + -second_assignment.clone())
-    .try_into()
-    .ok()?;
+    let diff = (first_assignment.clone() + -second_assignment.clone())
+        .try_to_expression(&|v| QuadraticSymbolicExpressionImpl::from_unknown_variable(v.clone()))
+        .ok()?;
     let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
     // Now if `rc + diff` is disjoint from `rc`, it means
