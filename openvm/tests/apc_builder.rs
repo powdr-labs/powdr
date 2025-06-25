@@ -269,7 +269,7 @@ mod complex_tests {
             add(8, 8, 16777200, 0),
             storew(4, 8, 12, 2, 1, 0),
             auipc(4, 0, 0, 1, 0),
-            blt(4, 4, 1780, 1, 0),
+            jalr(4, 4, 1780, 1, 0),
         ];
 
         assert_machine_output(program.to_vec(), "guest_top_block");
