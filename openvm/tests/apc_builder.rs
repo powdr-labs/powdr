@@ -257,16 +257,14 @@ mod single_instruction_tests {
     fn single_sll() {
         // r68 = r40 << 3
         let program = [sll(68, 40, 3, 0)];
-        println!("{}", super::compile(program.to_vec()));
-        // assert_machine_output(program.to_vec(), "single_sll");
+        assert_machine_output(program.to_vec(), "single_sll");
     }
 
     #[test]
     fn single_sra() {
         // r68 = sign_extend(r40 >> val(R3))
         let program = [sra(68, 40, 3, 1)];
-        println!("{}", super::compile(program.to_vec()));
-        // assert_machine_output(program.to_vec(), "single_sra");
+        assert_machine_output(program.to_vec(), "single_sra");
     }
 }
 
