@@ -249,8 +249,7 @@ mod single_instruction_tests {
     fn single_srl() {
         // Instruction 416 from the largest basic block of the Keccak guest program.
         let program = [srl(68, 40, 25, 0)];
-        println!("{}", super::compile(program.to_vec()));
-        // assert_machine_output(program.to_vec(), "single_srl");
+        assert_machine_output(program.to_vec(), "single_srl");
     }
 
     #[test]
