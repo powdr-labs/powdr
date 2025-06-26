@@ -495,7 +495,10 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
         fn value(&self) -> usize {
             // For an APC which is called once and saves 1 cell, this would be 1.
-            let value = self.execution_frequency.checked_mul(self.cells_saved_per_row).unwrap();
+            let value = self
+                .execution_frequency
+                .checked_mul(self.cells_saved_per_row)
+                .unwrap();
             // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
             // Therefore, we scale it up by a constant factor.
             value.checked_mul(1000).unwrap()
@@ -589,15 +592,12 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
     // Debug print blocks by descending cost
     for block in &blocks {
         let start_idx = block.start_idx;
-        let count = pgo_program_idx_count[&(start_idx as u32)];
-        let cost = count * (block.statements.len() as u32);
+        let frequency = pgo_program_idx_count[&(start_idx as u32)];
+        let number_of_instructions = block.statements.len();
+        let value = frequency * number_of_instructions as u32;
 
         tracing::debug!(
-            "Basic block start_idx: {}, value: {}, frequency: {}, number_of_instructions: {}",
-            start_idx,
-            cost,
-            count,
-            block.statements.len(),
+            "Basic block start_idx: {start_idx}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
         );
     }
 
