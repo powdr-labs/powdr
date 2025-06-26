@@ -574,6 +574,13 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         .skip(config.skip_autoprecompiles as usize)
         .scan(0, |column_count, block| {
             *column_count += block.block_with_apc.apc.width();
+            println!(
+                "Adding autoprecompile for block at index {} with apc opcode {} with {} columns, total columns: {}",
+                block.block_with_apc.block.start_idx,
+                block.block_with_apc.opcode,
+                block.block_with_apc.apc.width(),
+                column_count,
+            );  
             if let Some(max_total_apc_columns) = max_total_apc_columns {
                 // if we have a limit on the total number of columns, check if we reached it
                 if *column_count >= max_total_apc_columns {
