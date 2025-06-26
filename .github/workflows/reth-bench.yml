@@ -64,13 +64,12 @@ jobs:
           RES_DIR=results/$(date +'%Y-%m-%d-%H%M')-$(git -C .. rev-parse HEAD)
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          # MODE="execute" APC=500 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
-          MODE="execute" APC=10 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+          MODE="prove-app" APC=10 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
           echo "openvm-reth-benchmark: $(git rev-parse HEAD)" > $RES_DIR/rev.txt
           echo "powdr: $(git -C .. rev-parse HEAD)" >> $RES_DIR/rev.txt
           python ../openvm/scripts/basic_metrics.py metrics.json > $RES_DIR/basic.txt
           python ../openvm/scripts/basic_metrics.py --csv metrics.json > $RES_DIR/basic.csv
-          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png metrics.json > $RES_DIR/trace_cells.txt
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png metrics.json > $RES_DIR/trace_cells.txt
           mv metrics.json $RES_DIR
 
       - name: upload results
