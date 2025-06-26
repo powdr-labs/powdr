@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
-use std::iter::once;
 use std::sync::Arc;
 
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
@@ -491,8 +490,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     impl<P: IntoOpenVm> ApcCandidate<P> {
         fn cost(&self) -> usize {
-            (self.execution_frequency * self.cells_saved_per_row)
-                / self.block_with_apc.apc.width_post_optimization()
+            (self.execution_frequency * self.cells_saved_per_row) / self.width_post_optimization
         }
     }
 
@@ -545,54 +543,44 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                 .unwrap_or(&0) as usize;
 
             // build a 1-element heap
-            Some(
-                once(ApcCandidate {
-                    block_with_apc: BlockWithApc {
-                        opcode: POWDR_OPCODE + i,
-                        block,
-                        apc,
-                    },
-                    execution_frequency,
-                    cells_saved_per_row,
-                    width_post_optimization: apc_cells_per_row,
-                })
-                .collect(),
-            )
+            let mut heap = BinaryHeap::new();
+            heap.push(ApcCandidate {
+                block_with_apc: BlockWithApc {
+                    opcode: POWDR_OPCODE + i,
+                    block,
+                    apc,
+                },
+                execution_frequency,
+                cells_saved_per_row,
+                width_post_optimization: apc_cells_per_row,
+            });
+            Some((heap, apc_cells_per_row))
         })
-        .reduce(
-            // identity: empty heap
-            BinaryHeap::new,
+        .reduce_with(|(mut heap_a, mut columns_a), (mut heap_b, _)| {
             // merge two heaps, pruning back to max_cache
-            |mut heap_acc, mut heap| {
-                for apc_candidate in heap.drain() {
-                    heap_acc.push(apc_candidate);
-                    if heap_acc.len() > max_cache {
-                        heap_acc.pop();
+            for apc_candidate in heap_b.drain() {
+                let width_post_optimization = apc_candidate.width_post_optimization;
+                heap_a.push(apc_candidate);
+                if heap_a.len() > max_cache {
+                    let apc_removed = heap_a.pop().unwrap();
+                    columns_a -= apc_removed.width_post_optimization;
+                }
+                if let Some(max_total_apc_columns) = max_total_apc_columns {
+                    // if we have a limit on the total number of columns, check if we reached it
+                    if columns_a + width_post_optimization >= max_total_apc_columns {
+                        let apc_removed = heap_a.pop().unwrap();
+                        columns_a -= apc_removed.width_post_optimization;
+                        // Cannot stop yet because a new candidate might be ranked higher and remove some of the current entries in the heap
                     }
                 }
-                heap_acc
-            },
-        )
+            }
+            (heap_a, columns_a)
+        })
+        .unwrap()
+        .0
         .into_iter()
         .rev()
         .skip(config.skip_autoprecompiles as usize)
-        .scan(0, |column_count, block| {
-            *column_count += block.width_post_optimization;
-            println!(
-                "Adding autoprecompile for block at index {} with apc opcode {} with {} columns, total columns: {}",
-                block.block_with_apc.block.start_idx,
-                block.block_with_apc.opcode,
-                block.width_post_optimization,
-                column_count,
-            );
-            if let Some(max_total_apc_columns) = max_total_apc_columns {
-                // if we have a limit on the total number of columns, check if we reached it
-                if *column_count >= max_total_apc_columns {
-                    return None; // stop if we already reached the max column count
-                }
-            }
-            Some(block)
-        })
         .map(|c| {
             println!(
                 "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
