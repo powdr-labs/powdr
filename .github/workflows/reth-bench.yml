@@ -71,6 +71,8 @@ jobs:
           python ../openvm/scripts/basic_metrics.py --csv metrics.json > $RES_DIR/basic.csv
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png metrics.json > $RES_DIR/trace_cells.txt
           mv metrics.json $RES_DIR
+          # save run link
+          echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> github_run.txt
 
       - name: upload results
         uses: actions/upload-artifact@v4

@@ -48,11 +48,11 @@ def extract_metrics(filename):
     metrics["inner_recursion_proof_time_ms"] = pd.to_numeric(internal[internal["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
 
     metrics["non_powdr_cells"] = pd.to_numeric(non_powdr_air[non_powdr_air["metric"] == "cells"]["value"]).sum()
-    metrics["powdr_cells"] = metrics["app_proof_cells"] - metrics["non_powdr_cells"]
+    metrics["powdr_cells"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "cells"]["value"]).sum()
+    assert(metrics["powdr_cells"] == metrics["app_proof_cells"] - metrics["non_powdr_cells"])
     metrics["non_powdr_ratio"] = metrics["non_powdr_cells"] / metrics["app_proof_cells"]
-    # TODO: I think the metrics for PowdrAir are wrong because they
-    # override each other, due to having the same name based on the rust type
-    # metrics["powdr_cells"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "cells"]["value"]).sum()
+
+    metrics["powdr_rows"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "rows"]["value"]).sum()
 
     return metrics
 
