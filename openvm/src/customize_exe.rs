@@ -491,8 +491,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     impl<P: IntoOpenVm> ApcCandidate<P> {
         fn cost(&self) -> usize {
-            (self.execution_frequency * self.cells_saved_per_row)
-                / self.block_with_apc.apc.width_post_optimization()
+            (self.execution_frequency * self.cells_saved_per_row) / self.width_post_optimization
         }
     }
 
@@ -573,8 +572,8 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                 heap_acc
             },
         )
+        .into_sorted_vec()
         .into_iter()
-        .rev()
         .skip(config.skip_autoprecompiles as usize)
         .scan(0, |column_count, block| {
             *column_count += block.width_post_optimization;

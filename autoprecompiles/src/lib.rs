@@ -256,9 +256,7 @@ impl<T: Clone + Ord + std::fmt::Display> Apc<T> {
     pub fn width_post_optimization(&self) -> usize {
         // The T bount above is required for `Children` trait of `SymbolicMachine`
         // `Children` trait is required to invoke `unique_references()` method
-        self.machine
-            .unique_references()
-            .count()
+        self.machine.unique_references().count()
     }
 }
 
