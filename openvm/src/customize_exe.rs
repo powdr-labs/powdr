@@ -486,11 +486,13 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         block_with_apc: BlockWithApc<P>,
         execution_frequency: usize,
         cells_saved_per_row: usize,
+        width_post_optimization: usize, // only tag this field in Pgo::Cell, the only place it's needed
     }
 
     impl<P: IntoOpenVm> ApcCandidate<P> {
         fn cost(&self) -> usize {
-            (self.execution_frequency * self.cells_saved_per_row) / self.block_with_apc.apc.width()
+            (self.execution_frequency * self.cells_saved_per_row)
+                / self.block_with_apc.apc.width_post_optimization()
         }
     }
 
@@ -531,7 +533,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width();
+            let apc_cells_per_row = apc.width_post_optimization();
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
@@ -552,6 +554,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                     },
                     execution_frequency,
                     cells_saved_per_row,
+                    width_post_optimization: apc_cells_per_row,
                 })
                 .collect(),
             )
@@ -573,14 +576,14 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         .into_iter()
         .skip(config.skip_autoprecompiles as usize)
         .scan(0, |column_count, block| {
-            *column_count += block.block_with_apc.apc.width();
+            *column_count += block.width_post_optimization;
             println!(
                 "Adding autoprecompile for block at index {} with apc opcode {} with {} columns, total columns: {}",
                 block.block_with_apc.block.start_idx,
                 block.block_with_apc.opcode,
-                block.block_with_apc.apc.width(),
+                block.width_post_optimization,
                 column_count,
-            );  
+            );
             if let Some(max_total_apc_columns) = max_total_apc_columns {
                 // if we have a limit on the total number of columns, check if we reached it
                 if *column_count >= max_total_apc_columns {

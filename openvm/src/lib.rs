@@ -1057,12 +1057,20 @@ mod tests {
         //     [m.width, m.constraints, m.bus_interactions],
         //     [2011, 166, 1783]
         // );
-        
+
         // width of powdr airs only
-        println!("Created {} apcs out of max {}, total powdr column count {}", metrics.len(), GUEST_KECCAK_APC, metrics.iter().map(|m| m.width).sum::<usize>());
-        metrics.iter().for_each(
-            |m| println!("{}: width = {}, constraints = {}, bus_interactions = {}", m.name, m.width, m.constraints, m.bus_interactions)
+        println!(
+            "Created {} apcs out of max {}, total powdr column count {}",
+            metrics.len(),
+            GUEST_KECCAK_APC,
+            metrics.iter().map(|m| m.width).sum::<usize>()
         );
+        metrics.iter().for_each(|m| {
+            println!(
+                "{}: width = {}, constraints = {}, bus_interactions = {}",
+                m.name, m.width, m.constraints, m.bus_interactions
+            )
+        });
     }
 
     #[test]
