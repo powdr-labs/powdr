@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
 use std::iter::once;
 use std::sync::Arc;
@@ -494,7 +494,7 @@ fn fractional_knapsack<E: KnapsackItem + Send>(
 
     elements
         .into_par_iter()
-        .map(|e| once(KnapsackItemWrapper { item: e }).collect())
+        .map(|e| once(Reverse(KnapsackItemWrapper { item: e })).collect())
         .reduce(BinaryHeap::new, |mut acc, mut heap| {
             for elem in heap.drain() {
                 acc.push(elem);
@@ -506,7 +506,7 @@ fn fractional_knapsack<E: KnapsackItem + Send>(
         })
         .into_sorted_vec()
         .into_iter()
-        .map(|e| e.item)
+        .map(|Reverse(e)| e.item)
         .scan(0, move |cumulative_cost, e| {
             *cumulative_cost += e.cost();
             (*cumulative_cost <= max_cost).then_some(e)
@@ -612,9 +612,9 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     .skip(config.skip_autoprecompiles as usize)
     .map(|c| {
         println!(
-            "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
+            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
             c.block_with_apc.block.start_idx,
-            c.cost(),
+            c.value() / c.cost(),
             c.execution_frequency,
             c.cells_saved_per_row,
         );
@@ -657,7 +657,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
         let cost = count * (block.statements.len() as u32);
 
         tracing::debug!(
-            "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
+            "Basic block start_idx: {}, value: {}, frequency: {}, number_of_instructions: {}",
             start_idx,
             cost,
             count,
@@ -732,11 +732,11 @@ mod tests {
         let max_count = 10;
         let max_cost = 1;
 
-        // In case of tie, the first item should be chosen
+        // In case of tie, the second item (with larger index) should be chosen
         for _ in 0..10 {
             let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
             assert_eq!(result.len(), 1);
-            assert_eq!(result[0].index, 0);
+            assert_eq!(result[0].index, 1);
         }
     }
 
@@ -751,8 +751,8 @@ mod tests {
         for _ in 0..10 {
             let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
             assert_eq!(result.len(), 2);
-            assert_eq!(result[0].index, 1);
-            assert_eq!(result[1].index, 0);
+            assert_eq!(result[0].index, 0);
+            assert_eq!(result[1].index, 1);
         }
     }
 
@@ -767,27 +767,28 @@ mod tests {
         let max_count = 10;
         let max_cost = 3;
 
-        // Only the last item fits, since it has the highest density and its cost is 3
+        // Only the first two items fit, since their costs add up to 3 and they have the highest density
         for _ in 0..10 {
             let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].index, 2);
+            assert_eq!(result.as_slice(), &items[0..2]);
         }
     }
 
     #[test]
     fn many_with_ties() {
         let items = vec![
-            TestItem::new(0, 1, 10),
             TestItem::new(1, 1, 10),
-            TestItem::new(2, 2, 5),
+            TestItem::new(0, 1, 10),
             TestItem::new(3, 2, 5),
+            TestItem::new(2, 2, 5),
             TestItem::new(4, 3, 3),
         ];
 
         let max_count = 10;
         let max_cost = 7;
 
+        // Only the first four items fit, since they have the highest density and their costs add up to 6 with the final item blowing up the max_cost.
+        // Due to the same density, tie is broken by items with higher index coming up first.
         for _ in 0..10 {
             let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
             assert_eq!(result.as_slice(), &items[0..4]);
