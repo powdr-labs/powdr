@@ -297,7 +297,7 @@ pub(crate) trait KnapsackItem {
 pub(crate) fn fractional_knapsack<E: KnapsackItem + Send>(
     elements: impl IntoParallelIterator<Item = E>,
     max_count: usize,
-    max_cost: usize,
+    max_cost: Option<usize>,
 ) -> impl Iterator<Item = E> {
     struct KnapsackItemWrapper<E> {
         item: E,
@@ -347,7 +347,11 @@ pub(crate) fn fractional_knapsack<E: KnapsackItem + Send>(
         .map(|Reverse(e)| e.item)
         .scan(0, move |cumulative_cost, e| {
             *cumulative_cost += e.cost();
-            (*cumulative_cost <= max_cost).then_some(e)
+            if let Some(max_cost) = max_cost {
+                (*cumulative_cost <= max_cost).then_some(e)
+            } else {
+                Some(e)
+            }
         })
 }
 
@@ -395,7 +399,8 @@ mod tests {
 
         // In case of tie, the second item (with larger index) should be chosen
         for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            let result: Vec<_> =
+                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.len(), 1);
             assert_eq!(result[0].index, 1);
         }
@@ -410,7 +415,8 @@ mod tests {
 
         // All items fit, so both should be returned in the order of their (density, index)
         for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            let result: Vec<_> =
+                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.len(), 2);
             assert_eq!(result[0].index, 0);
             assert_eq!(result[1].index, 1);
@@ -430,7 +436,8 @@ mod tests {
 
         // Only the first two items fit, since their costs add up to 3 and they have the highest density
         for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            let result: Vec<_> =
+                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.as_slice(), &items[0..2]);
         }
     }
@@ -451,7 +458,8 @@ mod tests {
         // Only the first four items fit, since they have the highest density and their costs add up to 6 with the final item blowing up the max_cost.
         // Due to the same density, tie is broken by items with higher index coming up first.
         for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            let result: Vec<_> =
+                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.as_slice(), &items[0..4]);
         }
     }

@@ -539,7 +539,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             })
         }),
         max_cache,
-        max_total_apc_columns.unwrap(),
+        max_total_apc_columns,
     )
     .skip(config.skip_autoprecompiles as usize)
     .map(|c| {
