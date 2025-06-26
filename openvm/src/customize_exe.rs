@@ -446,6 +446,73 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     Ok(SymbolicBusInteraction { id, mult, args })
 }
 
+trait KnapsackItem {
+    /// Cost of the item, used for sorting and knapsack algorithm.
+    fn cost(&self) -> usize;
+    /// Value of the item, used for sorting and knapsack algorithm.
+    fn value(&self) -> usize;
+    /// Tie breaker for the case when two candidates have the same cost and value.
+    fn tie_breaker(&self) -> usize;
+}
+
+/// Fractional knapsack algorithm that uses parallel iterators to find the best items.
+fn fractional_knapsack<E: KnapsackItem + Send>(
+    elements: impl IntoParallelIterator<Item = E>,
+    max_count: usize,
+    max_cost: usize,
+) -> impl Iterator<Item = E> {
+    struct KnapsackItemWrapper<E> {
+        item: E,
+    }
+
+    impl<E: KnapsackItem> KnapsackItemWrapper<E> {
+        fn density(&self) -> (usize, usize) {
+            (
+                self.item.value() / self.item.cost(),
+                self.item.tie_breaker(),
+            )
+        }
+    }
+
+    impl<E: KnapsackItem> PartialEq for KnapsackItemWrapper<E> {
+        fn eq(&self, other: &Self) -> bool {
+            self.density() == other.density()
+        }
+    }
+
+    impl<E: KnapsackItem> Eq for KnapsackItemWrapper<E> {}
+    impl<E: KnapsackItem> Ord for KnapsackItemWrapper<E> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.density().cmp(&other.density())
+        }
+    }
+    impl<E: KnapsackItem> PartialOrd for KnapsackItemWrapper<E> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    elements
+        .into_par_iter()
+        .map(|e| once(KnapsackItemWrapper { item: e }).collect())
+        .reduce(BinaryHeap::new, |mut acc, mut heap| {
+            for elem in heap.drain() {
+                acc.push(elem);
+                if acc.len() > max_count {
+                    acc.pop();
+                }
+            }
+            acc
+        })
+        .into_sorted_vec()
+        .into_iter()
+        .map(|e| e.item)
+        .scan(0, move |cumulative_cost, e| {
+            *cumulative_cost += e.cost();
+            (*cumulative_cost <= max_cost).then_some(e)
+        })
+}
+
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
@@ -486,41 +553,26 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         block_with_apc: BlockWithApc<P>,
         execution_frequency: usize,
         cells_saved_per_row: usize,
-        width_post_optimization: usize, // only tag this field in Pgo::Cell, the only place it's needed
+        width: usize, // only tag this field in Pgo::Cell, the only place it's needed
     }
 
-    impl<P: IntoOpenVm> ApcCandidate<P> {
+    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
         fn cost(&self) -> usize {
-            (self.execution_frequency * self.cells_saved_per_row) / self.width_post_optimization
+            self.width
         }
-    }
 
-    impl<P: IntoOpenVm> PartialEq for ApcCandidate<P> {
-        fn eq(&self, other: &Self) -> bool {
-            self.cost() == other.cost()
+        fn value(&self) -> usize {
+            self.execution_frequency * self.cells_saved_per_row
         }
-    }
 
-    impl<P: IntoOpenVm> Eq for ApcCandidate<P> {}
-
-    impl<P: IntoOpenVm> PartialOrd for ApcCandidate<P> {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    // order apc candidates by reverse cost, so that our BinaryHeap pops the smallest costed apc candidate first
-    impl<P: IntoOpenVm> Ord for ApcCandidate<P> {
-        fn cmp(&self, other: &Self) -> Ordering {
-            other.cost().cmp(&self.cost())
+        fn tie_breaker(&self) -> usize {
+            self.block_with_apc.opcode
         }
     }
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    blocks
-        .into_par_iter()
-        .enumerate()
-        .filter_map(|(i, block)| {
+    fractional_knapsack(
+        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             // try to create apc for a candidate block
             let apc = generate_autoprecompile(
                 &block,
@@ -532,7 +584,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width_post_optimization();
+            let apc_cells_per_row = apc.width();
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
@@ -543,67 +595,33 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                 .get(&(block.start_idx as u32))
                 .unwrap_or(&0) as usize;
 
-            // build a 1-element heap
-            Some(
-                once(ApcCandidate {
-                    block_with_apc: BlockWithApc {
-                        opcode: POWDR_OPCODE + i,
-                        block,
-                        apc,
-                    },
-                    execution_frequency,
-                    cells_saved_per_row,
-                    width_post_optimization: apc_cells_per_row,
-                })
-                .collect(),
-            )
-        })
-        .reduce(
-            // identity: empty heap
-            BinaryHeap::new,
-            // merge two heaps, pruning back to max_cache
-            |mut heap_acc, mut heap| {
-                for apc_candidate in heap.drain() {
-                    heap_acc.push(apc_candidate);
-                    if heap_acc.len() > max_cache {
-                        heap_acc.pop();
-                    }
-                }
-                heap_acc
-            },
-        )
-        .into_sorted_vec()
-        .into_iter()
-        .skip(config.skip_autoprecompiles as usize)
-        .scan(0, |column_count, block| {
-            *column_count += block.width_post_optimization;
-            println!(
-                "Adding autoprecompile for block at index {} with apc opcode {} with {} columns, total columns: {}",
-                block.block_with_apc.block.start_idx,
-                block.block_with_apc.opcode,
-                block.width_post_optimization,
-                column_count,
-            );
-            if let Some(max_total_apc_columns) = max_total_apc_columns {
-                // if we have a limit on the total number of columns, check if we reached it
-                if *column_count >= max_total_apc_columns {
-                    return None; // stop if we already reached the max column count
-                }
-            }
-            Some(block)
-        })
-        .map(|c| {
-            println!(
-                "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
-                c.block_with_apc.block.start_idx,
-                c.cost(),
-                c.execution_frequency,
-                c.cells_saved_per_row,
-            );
+            Some(ApcCandidate {
+                block_with_apc: BlockWithApc {
+                    opcode: POWDR_OPCODE + i,
+                    block,
+                    apc,
+                },
+                execution_frequency,
+                cells_saved_per_row,
+                width: apc_cells_per_row,
+            })
+        }),
+        max_cache,
+        max_total_apc_columns.unwrap(),
+    )
+    .skip(config.skip_autoprecompiles as usize)
+    .map(|c| {
+        println!(
+            "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
+            c.block_with_apc.block.start_idx,
+            c.cost(),
+            c.execution_frequency,
+            c.cells_saved_per_row,
+        );
 
-            c.block_with_apc
-        })
-        .collect()
+        c.block_with_apc
+    })
+    .collect()
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
@@ -670,4 +688,56 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
     }
 
     create_apcs_for_all_blocks(blocks, config, airs, bus_map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    struct TestItem {
+        index: usize,
+        cost: usize,
+        value: usize,
+    }
+
+    impl KnapsackItem for TestItem {
+        fn cost(&self) -> usize {
+            self.cost
+        }
+
+        fn value(&self) -> usize {
+            self.value
+        }
+
+        fn tie_breaker(&self) -> usize {
+            self.index
+        }
+    }
+
+    #[test]
+    fn tie() {
+        let items = vec![
+            TestItem {
+                index: 0,
+                cost: 1,
+                value: 10,
+            },
+            TestItem {
+                index: 1,
+                cost: 1,
+                value: 10,
+            },
+        ];
+
+        let max_count = 10;
+        let max_cost = 1;
+
+        // In case of tie, the first item should be chosen
+        for _ in 0..10 {
+            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].index, 0);
+        }
+    }
 }

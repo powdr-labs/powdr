@@ -251,18 +251,9 @@ pub struct Apc<T> {
     subs: Vec<Vec<u64>>,
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Apc<T> {
-    // Not stored with the Apc because it's only useful in Pgo::Cell, so we call this function on demand
-    pub fn width_post_optimization(&self) -> usize {
-        // The T bount above is required for `Children` trait of `SymbolicMachine`
-        // `Children` trait is required to invoke `unique_references()` method
+impl<T: FieldElement> Apc<T> {
+    pub fn width(&self) -> usize {
         self.machine.unique_references().count()
-    }
-}
-
-impl<T> Apc<T> {
-    pub fn width_before_optimization(&self) -> usize {
-        self.subs.iter().map(|s| s.len()).sum()
     }
 
     pub fn subs(&self) -> &[Vec<u64>] {
