@@ -578,8 +578,8 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         })
         .unwrap()
         .0
+        .into_sorted_vec()
         .into_iter()
-        .rev()
         .skip(config.skip_autoprecompiles as usize)
         .map(|c| {
             println!(
