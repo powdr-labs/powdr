@@ -694,7 +694,7 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     struct TestItem {
         index: usize,
         cost: usize,
@@ -790,12 +790,7 @@ mod tests {
 
         for _ in 0..10 {
             let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
-            assert_eq!(result.len(), 4);
-            // The first two items are tied, so the first one should be chosen
-            assert_eq!(result[0].index, 0);
-            assert_eq!(result[1].index, 1);
-            assert_eq!(result[2].index, 2);
-            assert_eq!(result[3].index, 3);
+            assert_eq!(result.as_slice(), &items[0..4]);
         }
     }
 }
