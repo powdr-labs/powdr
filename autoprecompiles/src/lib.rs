@@ -258,9 +258,7 @@ impl<T: Clone + Ord + std::fmt::Display> Apc<T> {
         // `Children` trait is required to invoke `unique_references()` method
         self.machine
             .unique_references()
-            .map(|c| c.id)
-            .max()
-            .unwrap_or(0) as usize
+            .count()
     }
 }
 
