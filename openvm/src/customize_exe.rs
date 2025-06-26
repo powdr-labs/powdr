@@ -574,6 +574,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             },
         )
         .into_iter()
+        .rev()
         .skip(config.skip_autoprecompiles as usize)
         .scan(0, |column_count, block| {
             *column_count += block.width_post_optimization;
@@ -593,7 +594,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             Some(block)
         })
         .map(|c| {
-            tracing::debug!(
+            println!(
                 "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
                 c.block_with_apc.block.start_idx,
                 c.cost(),
