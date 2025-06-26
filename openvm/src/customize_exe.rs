@@ -494,7 +494,11 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         }
 
         fn value(&self) -> usize {
-            self.execution_frequency * self.cells_saved_per_row
+            // For an APC which is called once and saves 1 cell, this would be 1.
+            let value = self.execution_frequency.checked_mul(self.cells_saved_per_row).unwrap();
+            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+            // Therefore, we scale it up by a constant factor.
+            value.checked_mul(1000).unwrap()
         }
 
         fn tie_breaker(&self) -> usize {
