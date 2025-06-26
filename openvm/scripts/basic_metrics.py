@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import json
 import argparse
 from collections import OrderedDict
@@ -11,50 +12,47 @@ def extract_metrics(filename):
     metrics = OrderedDict()
 
     entries = [
-        (dict(c["labels"]), { "metric": c["metric"], "value": c["value"] })
+        dict(c["labels"]) | { "metric": c["metric"], "value": c["value"] }
         for c in metrics_json["counter"] + metrics_json["gauge"]
     ]
 
+    df = pd.DataFrame(entries)
+
+    # "group" has different values if coming from reth benchmark or the powdr cli
+    app = df[df["group"].fillna('').str.startswith("app_proof")]
+    if len(app) == 0:
+        app = df[df["group"].fillna('').str.startswith("reth")]
+    if len(app) == 0:
+        print("Invalid metrics.json", file=sys.stderr)
+        exit(1)
+
+    leaf = df[df["group"].fillna('').str.startswith("leaf")]
+    internal = df[df["group"].fillna('').str.startswith("internal")]
+
+    powdr_air = app[app["air_name"].fillna('').str.startswith("PowdrAir")]
+    non_powdr_air = app[~app["air_name"].fillna('').str.startswith("PowdrAir")]
+
     metrics["filename"] = filename
 
-    metrics["num_segments"] = [metric["value"]
-        for _, metric in entries
-        if metric["metric"] == "num_segments"][0]
+    metrics["num_segments"] = pd.to_numeric(app[app["metric"] == "num_segments"]["value"]).sum()
 
-    metrics["app_proof_cells"] = sum([int(metric["value"])
-        for labels, metric in entries
-        if labels.get("group") == "app_proof"
-        and metric["metric"] == "total_cells"])
+    metrics["app_proof_cells"] = pd.to_numeric(app[app["metric"] == "total_cells"]["value"]).sum()
 
-    # TODO: I think the metrics for PowdrAir airs are wrong because they
-    # override each other due to having the same name
+    metrics["app_proof_time_ms"] = pd.to_numeric(app[app["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
 
-    # metrics["powdr_cells"] = sum([int(metric["value"])
-    #     for labels, metric in entries
-    #     if labels.get("group") == "app_proof"
-    #     and labels.get("air_name")
-    #     and labels.get("air_name").startswith("PowdrAir")
-    #     and metric["metric"] == "cells"])
+    metrics["app_execute_time_ms"] = pd.to_numeric(app[app["metric"] == "execute_time_ms"]["value"]).sum()
 
-    metrics["app_proof_time_ms"] = sum([int(metric["value"])
-        for labels, metric in entries
-        if labels.get("group") == "app_proof"
-        and metric["metric"] == "stark_prove_excluding_trace_time_ms"])
+    metrics["app_trace_gen_time_ms"] = pd.to_numeric(app[app["metric"] == "trace_gen_time_ms"]["value"]).sum()
 
-    metrics["leaf_recursion_time_ms"] = sum([int(metric["value"])
-        for labels, metric in entries
-        if labels.get("group", "").startswith("leaf")
-        and metric["metric"] == "stark_prove_excluding_trace_time_ms"])
+    metrics["leaf_proof_time_ms"] = pd.to_numeric(leaf[leaf["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
+    metrics["inner_recursion_proof_time_ms"] = pd.to_numeric(internal[internal["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
 
-    metrics["inner_recursion_time_ms"] = sum([int(metric["value"])
-        for labels, metric in entries
-        if labels.get("group", "").startswith("internal")
-        and metric["metric"] == "stark_prove_excluding_trace_time_ms"])
-
-    metrics["app_trace_gen_time_ms"] = sum([int(metric["value"])
-        for labels, metric in entries
-        if labels.get("group") == "app_proof"
-        and metric["metric"] == "trace_gen_time_ms"])
+    metrics["non_powdr_cells"] = pd.to_numeric(non_powdr_air[non_powdr_air["metric"] == "cells"]["value"]).sum()
+    metrics["powdr_cells"] = metrics["app_proof_cells"] - metrics["non_powdr_cells"]
+    metrics["non_powdr_ratio"] = metrics["non_powdr_cells"] / metrics["app_proof_cells"]
+    # TODO: I think the metrics for PowdrAir are wrong because they
+    # override each other, due to having the same name based on the rust type
+    # metrics["powdr_cells"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "cells"]["value"]).sum()
 
     return metrics
 
