@@ -16,9 +16,11 @@ use crate::expression::{AlgebraicExpression, AlgebraicReference};
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> QuadraticSymbolicExpression<T, AlgebraicReference> {
-    powdr_expression::conversion::convert(expr, &mut |reference| {
-        QuadraticSymbolicExpression::from_unknown_variable(reference.clone())
-    })
+    powdr_expression::conversion::convert(
+        expr,
+        &mut |reference| QuadraticSymbolicExpression::from_unknown_variable(reference.clone()),
+        &|n| QuadraticSymbolicExpression::from_number(*n),
+    )
 }
 
 /// Turns a quadratic symbolic expression back into an algebraic expression.

@@ -77,18 +77,58 @@ pub struct QuadraticSymbolicExpressionImpl<T, V> {
 pub type QuadraticSymbolicExpression<T, V> =
     QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>;
 
-// Note that we can't also implement `From<T>` for `QuadraticSymbolicExpressionImpl<T, V>`,
-// because it could be that `T::FieldType == T`, and the two implementations would conflict.
-// Use `QuadraticSymbolicExpressionImpl::from_runtime_constant` instead.
-impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> From<F>
-    for QuadraticSymbolicExpressionImpl<T, V>
-{
-    fn from(k: T::FieldType) -> Self {
+// // Note that we can't also implement `From<T>` for `QuadraticSymbolicExpressionImpl<T, V>`,
+// // because it could be that `T::FieldType == T`, and the two implementations would conflict.
+// // Use `QuadraticSymbolicExpressionImpl::from_runtime_constant` instead.
+// impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> From<F>
+//     for QuadraticSymbolicExpressionImpl<T, V>
+// {
+//     fn from(k: T::FieldType) -> Self {
+//         Self {
+//             quadratic: Default::default(),
+//             linear: Default::default(),
+//             constant: T::from(k),
+//         }
+//     }
+// }
+
+impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> QuadraticSymbolicExpressionImpl<T, V> {
+    pub fn from_number(k: F) -> Self {
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
             constant: T::from(k),
         }
+    }
+}
+
+impl<T: RuntimeConstant, V: Clone + Ord + Eq + Hash> Zero
+    for QuadraticSymbolicExpressionImpl<T, V>
+{
+    fn zero() -> Self {
+        Self {
+            quadratic: Default::default(),
+            linear: Default::default(),
+            constant: T::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.try_to_known().is_some_and(|k| k.is_known_zero())
+    }
+}
+
+impl<T: RuntimeConstant, V: Clone + Ord + Eq + Hash> One for QuadraticSymbolicExpressionImpl<T, V> {
+    fn one() -> Self {
+        Self {
+            quadratic: Default::default(),
+            linear: Default::default(),
+            constant: T::one(),
+        }
+    }
+
+    fn is_one(&self) -> bool {
+        self.try_to_known().is_some_and(|k| k.is_known_one())
     }
 }
 
@@ -721,7 +761,7 @@ fn combine_to_conditional_assignment<
 
     let diff = first_assignment.clone() + -second_assignment.clone();
     let diff: QuadraticSymbolicExpression<T::FieldType, V> = diff.try_to_expression(
-        &|n| QuadraticSymbolicExpression::from(*n),
+        &|n| QuadraticSymbolicExpression::from_number(*n),
         &|v| QuadraticSymbolicExpressionImpl::from_unknown_variable(v.clone()),
         &|e| e.try_to_number(),
     )?;
@@ -1173,7 +1213,7 @@ mod tests {
 
     #[test]
     fn unsolvable() {
-        let r = Qse::from(GoldilocksField::from(10)).solve(&NoRangeConstraints);
+        let r = Qse::from_number(GoldilocksField::from(10)).solve(&NoRangeConstraints);
         assert!(r.is_err());
     }
 
@@ -1181,14 +1221,12 @@ mod tests {
     fn unsolvable_with_vars() {
         let x = &Qse::from_known_symbol("X", Default::default());
         let y = &Qse::from_known_symbol("Y", Default::default());
-        let mut constr = x + y - GoldilocksField::from(10).into();
+        let mut constr = x + y - constant(10);
         // We cannot solve it, but we can also not learn anything new from it.
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
-        assert!(Qse::from(GoldilocksField::from(10))
-            .solve(&NoRangeConstraints)
-            .is_err());
+        assert!(constant(10).solve(&NoRangeConstraints).is_err());
 
         // The same with range constraints that disallow zero.
         constr.substitute_by_known(
@@ -1202,14 +1240,12 @@ mod tests {
                 RangeConstraint::from_range(100.into(), 102.into()),
             ),
         );
-        assert!(Qse::from(GoldilocksField::from(10))
-            .solve(&NoRangeConstraints)
-            .is_err());
+        assert!(constant(10).solve(&NoRangeConstraints).is_err());
     }
 
     #[test]
     fn solvable_without_vars() {
-        let constr = Qse::from(GoldilocksField::zero());
+        let constr = constant(0);
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete && result.effects.is_empty());
     }
@@ -1219,9 +1255,9 @@ mod tests {
         let y = Qse::from_known_symbol("y", Default::default());
         let x = Qse::from_unknown_variable("X");
         // 2 * X + 7 * y - 10 = 0
-        let two = Qse::from(GoldilocksField::from(2));
-        let seven = Qse::from(GoldilocksField::from(7));
-        let ten = Qse::from(GoldilocksField::from(10));
+        let two = constant(2);
+        let seven = constant(7);
+        let ten = constant(10);
         let constr = two * x + seven * y - ten;
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete);
@@ -1239,8 +1275,8 @@ mod tests {
         let z = Qse::from_known_symbol("z", Default::default());
         let x = Qse::from_unknown_variable("X");
         // z * X + 7 * y - 10 = 0
-        let seven = Qse::from(GoldilocksField::from(7));
-        let ten = Qse::from(GoldilocksField::from(10));
+        let seven = constant(7);
+        let ten = constant(10);
         let mut constr = z * x + seven * y - ten.clone();
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
         let result = constr.solve(&NoRangeConstraints).unwrap();
@@ -1275,10 +1311,9 @@ mod tests {
         let c = Qse::from_unknown_variable("c");
         let z = Qse::from_known_symbol("Z", Default::default());
         // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
-        let ten = Qse::from(GoldilocksField::from(10));
-        let constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
-            - b * Qse::from(GoldilocksField::from(0x10000))
-            + c * Qse::from(GoldilocksField::from(0x1000000))
+        let ten = constant(10);
+        let constr: Qse = a * constant(0x100) - b * constant(0x10000)
+            + c * constant(0x1000000)
             + ten.clone()
             + z.clone();
         // Without range constraints on a, this is not solvable.
@@ -1330,12 +1365,10 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let range_constraints =
             HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
-        let ten = Qse::from(GoldilocksField::from(10));
-        let constr = a * Qse::from(GoldilocksField::from(0x100))
-            + b * Qse::from(GoldilocksField::from(0x10000))
-            + c * Qse::from(GoldilocksField::from(0x1000000))
-            + ten.clone()
-            - z.clone();
+        let ten = constant(10);
+        let constr =
+            a * constant(0x100) + b * constant(0x10000) + c * constant(0x1000000) + ten.clone()
+                - z.clone();
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete);
         let effects = result
@@ -1362,8 +1395,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let a = Qse::from_unknown_variable("a");
         let b = Qse::from_known_symbol("b", rc.clone());
         let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
-        let ten = Qse::from(GoldilocksField::from(10));
-        let two_pow8 = Qse::from(GoldilocksField::from(0x100));
+        let ten = constant(10);
+        let two_pow8 = constant(0x100);
         let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
@@ -1420,9 +1453,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_bit_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let one = Qse::from(GoldilocksField::from(1));
-        let three = Qse::from(GoldilocksField::from(3));
-        let five = Qse::from(GoldilocksField::from(5));
+        let one = constant(1);
+        let three = constant(3);
+        let five = constant(5);
 
         // All these constraints should be equivalent to a bit constraint.
         let constraints = [
@@ -1443,8 +1476,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_complete_range_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let three = Qse::from(GoldilocksField::from(3));
-        let four = Qse::from(GoldilocksField::from(4));
+        let three = constant(3);
+        let four = constant(4);
 
         // `a` can be 3 or 4, which is can be completely represented by
         // RangeConstraint::from_range(3, 4), so the identity should be
@@ -1464,8 +1497,8 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn detect_incomplete_range_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let three = Qse::from(GoldilocksField::from(3));
-        let five = Qse::from(GoldilocksField::from(5));
+        let three = constant(3);
+        let five = constant(5);
 
         // `a` can be 3 or 5, so there is a range constraint
         // RangeConstraint::from_range(3, 5) on `a`.

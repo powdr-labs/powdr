@@ -10,10 +10,10 @@ use super::{
 pub fn convert<T: FieldElement, R, Target>(
     expr: &AlgebraicExpression<T, R>,
     reference_converter: &mut impl FnMut(&R) -> Target,
+    number_converter: &impl Fn(&T) -> Target,
 ) -> Target
 where
-    Target: From<T>
-        + Clone
+    Target: Clone
         + std::ops::Add<Output = Target>
         + std::ops::Sub<Output = Target>
         + std::ops::Mul<Output = Target>
@@ -21,10 +21,10 @@ where
 {
     match expr {
         AlgebraicExpression::Reference(r) => reference_converter(r),
-        AlgebraicExpression::Number(n) => (*n).into(),
+        AlgebraicExpression::Number(n) => number_converter(n),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = convert(left, reference_converter);
-            let right = convert(right, reference_converter);
+            let left = convert(left, reference_converter, number_converter);
+            let right = convert(right, reference_converter, number_converter);
             match op {
                 AlgebraicBinaryOperator::Add => left + right,
                 AlgebraicBinaryOperator::Sub => left - right,
@@ -32,7 +32,7 @@ where
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
-            AlgebraicUnaryOperator::Minus => -convert(expr, reference_converter),
+            AlgebraicUnaryOperator::Minus => -convert(expr, reference_converter, number_converter),
         },
     }
 }

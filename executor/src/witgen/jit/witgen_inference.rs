@@ -232,7 +232,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Set a variable to a fixed value.
     pub fn set_variable(&mut self, variable: Variable, value: T) -> Result<Vec<Variable>, Error> {
         self.process_equation(
-            &(QuadraticSymbolicExpression::from_unknown_variable(variable) - value.into()),
+            &(QuadraticSymbolicExpression::from_unknown_variable(variable)
+                - QuadraticSymbolicExpression::from_number(value)),
         )
     }
 
@@ -466,7 +467,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 self,
             ),
             Expression::PublicReference(_) | Expression::Challenge(_) => todo!(),
-            Expression::Number(n) => (*n).into(),
+            Expression::Number(n) => QuadraticSymbolicExpression::from_number(*n),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.evaluate(left, row_offset, require_concretely_known);
                 let right = self.evaluate(right, row_offset, require_concretely_known);

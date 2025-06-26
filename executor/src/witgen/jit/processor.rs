@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
@@ -111,7 +112,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 }
                 Identity::Polynomial(identity) => algebraic_expression_to_queue_items(
                     &identity.expression,
-                    T::zero(),
+                    QuadraticSymbolicExpression::zero(),
                     *row_offset,
                     &witgen,
                 )
