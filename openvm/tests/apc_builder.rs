@@ -117,7 +117,6 @@ mod single_instruction_tests {
     fn single_loadw() {
         let program = [
             // Load [x2 + 20]_2 into x8
-            // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
         assert_machine_output(program.to_vec(), "single_loadw");
@@ -126,7 +125,6 @@ mod single_instruction_tests {
     #[test]
     fn single_loadbu() {
         let program = [
-            // Load [x2 + 21]_2 into x8
             // Load [x2 + 21]_2 into x8
             loadbu(8, 2, 21, 2, 1, 0),
         ];
@@ -193,7 +191,7 @@ mod single_instruction_tests {
     fn single_beq() {
         let program = [
             // pc = pc + 2 if x8 == x5
-            beq(8, 5, 2, 1, 1),
+            beq(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_beq");
     }
@@ -202,7 +200,7 @@ mod single_instruction_tests {
     fn single_bne() {
         let program = [
             // pc = pc + 2 if x8 != x5
-            bne(8, 5, 2, 1, 1),
+            bne(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bne");
     }
@@ -212,7 +210,7 @@ mod single_instruction_tests {
     fn single_blt() {
         let program = [
             // pc = pc + 2 if x8 < x5 (signed)
-            blt(8, 5, 2, 1, 1),
+            blt(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_blt");
     }
@@ -221,7 +219,7 @@ mod single_instruction_tests {
     fn single_bltu() {
         let program = [
             // pc = pc + 2 if x8 < x5
-            bltu(8, 5, 2, 1, 1),
+            bltu(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bltu");
     }
@@ -230,7 +228,7 @@ mod single_instruction_tests {
     fn single_bge() {
         let program = [
             // pc = pc + 2 if x8 >= x5 (signed)
-            bge(8, 5, 2, 1, 1),
+            bge(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bge");
     }
@@ -239,7 +237,7 @@ mod single_instruction_tests {
     fn single_bgeu() {
         let program = [
             // pc = pc + 2 if x8 >= x5
-            bgeu(8, 5, 2, 1, 1),
+            bgeu(8, 5, 2),
         ];
         assert_machine_output(program.to_vec(), "single_bgeu");
     }
@@ -283,7 +281,7 @@ mod complex_tests {
             add(8, 8, 16777200, 0),
             storew(4, 8, 12, 2, 1, 0),
             auipc(4, 0, 0, 1, 0),
-            blt(4, 4, 1780, 1, 0),
+            jalr(4, 4, 1780, 1, 0),
         ];
 
         assert_machine_output(program.to_vec(), "guest_top_block");
