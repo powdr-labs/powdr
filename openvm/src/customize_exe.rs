@@ -559,19 +559,36 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         .reduce_with(|(mut heap_a, mut columns_a), (mut heap_b, _)| {
             // merge two heaps, pruning back to max_cache
             for apc_candidate in heap_b.drain() {
-                let width_post_optimization = apc_candidate.width_post_optimization;
-                heap_a.push(apc_candidate);
+                let apc_candidate_width_post_optimization = apc_candidate.width_post_optimization;
+                heap_a.push(apc_candidate); // must always push first so that we can rank the cost to determine the ones to pop
+                columns_a += apc_candidate_width_post_optimization;
+
                 if heap_a.len() > max_cache {
                     let apc_removed = heap_a.pop().unwrap();
                     columns_a -= apc_removed.width_post_optimization;
                 }
+
                 if let Some(max_total_apc_columns) = max_total_apc_columns {
                     // if we have a limit on the total number of columns, check if we reached it
-                    if columns_a + width_post_optimization >= max_total_apc_columns {
+                    while columns_a >= max_total_apc_columns {
                         let apc_removed = heap_a.pop().unwrap();
+                        println!(
+                            "Removing autoprecompile with cost {} and width {} to stay within the limit of {} columns",
+                            apc_removed.cost(),
+                            apc_removed.width_post_optimization,
+                            max_total_apc_columns
+                        );
                         columns_a -= apc_removed.width_post_optimization;
+                        println!(
+                            "Current total columns: {}, max allowed: {}",
+                            columns_a, max_total_apc_columns
+                        );
                         // Cannot stop yet because a new candidate might be ranked higher and remove some of the current entries in the heap
                     }
+                    println!(
+                        "No apc removed despite a max limit Current total columns: {}, max allowed: {}",
+                        columns_a, max_total_apc_columns
+                    );
                 }
             }
             (heap_a, columns_a)
