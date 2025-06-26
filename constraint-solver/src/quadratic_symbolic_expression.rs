@@ -77,21 +77,6 @@ pub struct QuadraticSymbolicExpressionImpl<T, V> {
 pub type QuadraticSymbolicExpression<T, V> =
     QuadraticSymbolicExpressionImpl<SymbolicExpression<T, V>, V>;
 
-// // Note that we can't also implement `From<T>` for `QuadraticSymbolicExpressionImpl<T, V>`,
-// // because it could be that `T::FieldType == T`, and the two implementations would conflict.
-// // Use `QuadraticSymbolicExpressionImpl::from_runtime_constant` instead.
-// impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> From<F>
-//     for QuadraticSymbolicExpressionImpl<T, V>
-// {
-//     fn from(k: T::FieldType) -> Self {
-//         Self {
-//             quadratic: Default::default(),
-//             linear: Default::default(),
-//             constant: T::from(k),
-//         }
-//     }
-// }
-
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> QuadraticSymbolicExpressionImpl<T, V> {
     pub fn from_number(k: F) -> Self {
         Self {
@@ -266,7 +251,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash>
         // TODO can we do that without moving everything?
         // In the end, the order does not matter much.
 
-        let mut to_add = QuadraticSymbolicExpressionImpl::from_runtime_constant(T::zero());
+        let mut to_add = QuadraticSymbolicExpressionImpl::zero();
         self.quadratic.retain_mut(|(l, r)| {
             l.substitute_by_known(variable, substitution);
             r.substitute_by_known(variable, substitution);
@@ -306,7 +291,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash>
             return;
         }
 
-        let mut to_add = QuadraticSymbolicExpressionImpl::from_runtime_constant(T::zero());
+        let mut to_add = QuadraticSymbolicExpressionImpl::zero();
         for (var, coeff) in std::mem::take(&mut self.linear) {
             if var == *variable {
                 to_add += substitution.clone() * coeff;
@@ -977,7 +962,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> MulAssign<&T>
 {
     fn mul_assign(&mut self, rhs: &T) {
         if rhs.is_known_zero() {
-            *self = Self::from_runtime_constant(T::zero());
+            *self = Self::zero();
         } else {
             for (first, _) in &mut self.quadratic {
                 *first *= rhs;
@@ -1127,7 +1112,7 @@ mod tests {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let zero = Qse::from_runtime_constant(SymbolicExpression::from_u64(0));
+        let zero = Qse::zero();
         let t: Qse = x * y + a;
         assert_eq!(t.to_string(), "(X) * (Y) + A");
         assert_eq!((t.clone() * zero).to_string(), "0");
