@@ -248,7 +248,6 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                 lhs,
                 rhs,
                 expected_equal,
-                ..
             }) => InterpreterAction::Assertion(
                 var_mapper.map_expr_to_rpn(lhs),
                 var_mapper.map_expr_to_rpn(rhs),

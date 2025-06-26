@@ -11,9 +11,8 @@ use std::{
     sync::Arc,
 };
 
-use powdr_number::FieldElement;
+use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::expression_convertible::ExpressionConvertible;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 
 use super::range_constraint::RangeConstraint;

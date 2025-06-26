@@ -7,13 +7,12 @@ use std::{
 
 use crate::{
     effect::Condition,
-    expression_convertible::ExpressionConvertible,
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
-use powdr_number::{log2_exact, FieldElement, LargeInt};
+use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
 use super::range_constraint::RangeConstraint;
@@ -327,17 +326,6 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash>
     }
 }
 
-impl<T, V> QuadraticSymbolicExpressionImpl<T, V> {
-    /// Returns the referenced unknown variables. Might contain repetitions.
-    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
-            a.referenced_unknown_variables()
-                .chain(b.referenced_unknown_variables())
-        });
-        Box::new(quadratic.chain(self.linear.keys()))
-    }
-}
-
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
     QuadraticSymbolicExpressionImpl<T, V>
 {
@@ -354,6 +342,17 @@ impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
             .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
         let constant = self.constant.referenced_symbols();
         Box::new(quadr.chain(linear).chain(constant))
+    }
+}
+
+impl<T, V> QuadraticSymbolicExpressionImpl<T, V> {
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
+            a.referenced_unknown_variables()
+                .chain(b.referenced_unknown_variables())
+        });
+        Box::new(quadratic.chain(self.linear.keys()))
     }
 }
 

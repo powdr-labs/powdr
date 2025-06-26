@@ -1,13 +1,9 @@
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    runtime_constant::RuntimeConstant,
-    symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
+    quadratic_symbolic_expression::QuadraticSymbolicExpression, runtime_constant::RuntimeConstant,
+    symbolic_expression::SymbolicExpression,
 };
-use powdr_expression::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
-    AlgebraicUnaryOperator,
-};
-use powdr_number::FieldElement;
+use powdr_expression::{AlgebraicUnaryOperation, AlgebraicUnaryOperator};
+use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 
@@ -16,10 +12,9 @@ use crate::expression::{AlgebraicExpression, AlgebraicReference};
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> QuadraticSymbolicExpression<T, AlgebraicReference> {
-    powdr_expression::conversion::convert(
-        expr,
-        &mut |reference| QuadraticSymbolicExpression::from_unknown_variable(reference.clone()),
+    expr.to_expression(
         &|n| QuadraticSymbolicExpression::from_number(*n),
+        &|reference| QuadraticSymbolicExpression::from_unknown_variable(reference.clone()),
     )
 }
 
@@ -86,37 +81,16 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
 fn symbolic_expression_to_algebraic<T: FieldElement>(
     e: &SymbolicExpression<T, AlgebraicReference>,
 ) -> AlgebraicExpression<T> {
-    match e {
-        SymbolicExpression::Concrete(v) => {
+    e.to_expression(
+        &|v| {
             if v.is_in_lower_half() {
                 AlgebraicExpression::from(*v)
             } else {
                 -AlgebraicExpression::from(-*v)
             }
-        }
-        SymbolicExpression::Symbol(r, _) => AlgebraicExpression::Reference(r.clone()),
-        SymbolicExpression::BinaryOperation(left, op, right, _) => {
-            let left = Box::new(symbolic_expression_to_algebraic(left));
-            let right = Box::new(symbolic_expression_to_algebraic(right));
-            let op = symbolic_op_to_algebraic(*op);
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right })
-        }
-        SymbolicExpression::UnaryOperation(op, inner, _) => match op {
-            UnaryOperator::Neg => AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                expr: Box::new(symbolic_expression_to_algebraic(inner)),
-                op: AlgebraicUnaryOperator::Minus,
-            }),
         },
-    }
-}
-
-fn symbolic_op_to_algebraic(op: BinaryOperator) -> AlgebraicBinaryOperator {
-    match op {
-        BinaryOperator::Add => AlgebraicBinaryOperator::Add,
-        BinaryOperator::Sub => AlgebraicBinaryOperator::Sub,
-        BinaryOperator::Mul => AlgebraicBinaryOperator::Mul,
-        BinaryOperator::Div => unreachable!(),
-    }
+        &|r| AlgebraicExpression::Reference(r.clone()),
+    )
 }
 
 /// If `e` is negated, returns the expression without negation and `true`,

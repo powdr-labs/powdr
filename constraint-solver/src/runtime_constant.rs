@@ -5,9 +5,11 @@ use powdr_number::FieldElement;
 
 use crate::range_constraint::RangeConstraint;
 
-/// Represents a run-time constant in the constraint solver.
-/// Any T: FieldElement can represent a run-time constant (which is also a compile-time constant),
-/// but the trait lets us represent run-time constants symbolically as well.
+/// Represents a run-time constant in the constraint solver, built over
+/// a base field type.
+/// The base field type itself (i.e. any T: FieldElement) represents a run-time constant
+/// (which is also a compile-time constant), but the trait lets us represent run-time
+/// constants symbolically as well.
 pub trait RuntimeConstant:
     Sized
     + Neg<Output = Self>
@@ -25,7 +27,7 @@ pub trait RuntimeConstant:
 {
     type FieldType: FieldElement;
 
-    /// Tries to convert the constant to a single number. This works for compile-time constants.
+    /// Tries to convert the constant to a single number. This always works for compile-time constants.
     fn try_to_number(&self) -> Option<Self::FieldType>;
 
     /// Returns the range constraint for this constant. For compile-time constants,

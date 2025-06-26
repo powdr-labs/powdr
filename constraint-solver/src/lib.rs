@@ -3,7 +3,6 @@
 pub mod boolean_extractor;
 pub mod constraint_system;
 pub mod effect;
-pub mod expression_convertible;
 pub mod indexed_constraint_system;
 pub mod inliner;
 pub mod journaling_constraint_system;
