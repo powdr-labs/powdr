@@ -83,7 +83,7 @@ jobs:
       - name: commit to bench results
         uses: peaceiris/actions-gh-pages@v4
         with:
-          deploy_key: ${{ secrets.BENCH_RESULTS_DEPLOY_KEY }}
+          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
           external_repository: powdr-labs/bench-results
           publish_dir: ./openvm-reth-benchmark/results
           destination_dir: results
