@@ -1,11 +1,10 @@
-use std::cmp::{Ordering, Reverse};
-use std::collections::{BTreeSet, BinaryHeap, HashMap};
-use std::iter::once;
+use std::collections::{BTreeSet, HashMap};
+
 use std::sync::Arc;
 
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
-use crate::utils::UnsupportedOpenVmReferenceError;
+use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
@@ -446,73 +445,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     Ok(SymbolicBusInteraction { id, mult, args })
 }
 
-trait KnapsackItem {
-    /// Cost of the item, used for sorting and knapsack algorithm.
-    fn cost(&self) -> usize;
-    /// Value of the item, used for sorting and knapsack algorithm.
-    fn value(&self) -> usize;
-    /// Tie breaker for the case when two candidates have the same cost and value.
-    fn tie_breaker(&self) -> usize;
-}
-
-/// Fractional knapsack algorithm that uses parallel iterators to find the best items.
-fn fractional_knapsack<E: KnapsackItem + Send>(
-    elements: impl IntoParallelIterator<Item = E>,
-    max_count: usize,
-    max_cost: usize,
-) -> impl Iterator<Item = E> {
-    struct KnapsackItemWrapper<E> {
-        item: E,
-    }
-
-    impl<E: KnapsackItem> KnapsackItemWrapper<E> {
-        fn density(&self) -> (usize, usize) {
-            (
-                self.item.value() / self.item.cost(),
-                self.item.tie_breaker(),
-            )
-        }
-    }
-
-    impl<E: KnapsackItem> PartialEq for KnapsackItemWrapper<E> {
-        fn eq(&self, other: &Self) -> bool {
-            self.density() == other.density()
-        }
-    }
-
-    impl<E: KnapsackItem> Eq for KnapsackItemWrapper<E> {}
-    impl<E: KnapsackItem> Ord for KnapsackItemWrapper<E> {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.density().cmp(&other.density())
-        }
-    }
-    impl<E: KnapsackItem> PartialOrd for KnapsackItemWrapper<E> {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    elements
-        .into_par_iter()
-        .map(|e| once(Reverse(KnapsackItemWrapper { item: e })).collect())
-        .reduce(BinaryHeap::new, |mut acc, mut heap| {
-            for elem in heap.drain() {
-                acc.push(elem);
-                if acc.len() > max_count {
-                    acc.pop();
-                }
-            }
-            acc
-        })
-        .into_sorted_vec()
-        .into_iter()
-        .map(|Reverse(e)| e.item)
-        .scan(0, move |cumulative_cost, e| {
-            *cumulative_cost += e.cost();
-            (*cumulative_cost <= max_cost).then_some(e)
-        })
-}
-
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
@@ -688,110 +620,4 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
     }
 
     create_apcs_for_all_blocks(blocks, config, airs, bus_map)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct TestItem {
-        index: usize,
-        cost: usize,
-        value: usize,
-    }
-
-    impl TestItem {
-        fn new(index: usize, cost: usize, density: usize) -> Self {
-            Self {
-                index,
-                cost,
-                value: cost * density,
-            }
-        }
-    }
-
-    impl KnapsackItem for TestItem {
-        fn cost(&self) -> usize {
-            self.cost
-        }
-
-        fn value(&self) -> usize {
-            self.value
-        }
-
-        fn tie_breaker(&self) -> usize {
-            self.index
-        }
-    }
-
-    #[test]
-    fn tie() {
-        let items = vec![TestItem::new(0, 1, 10), TestItem::new(1, 1, 10)];
-
-        let max_count = 10;
-        let max_cost = 1;
-
-        // In case of tie, the second item (with larger index) should be chosen
-        for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].index, 1);
-        }
-    }
-
-    #[test]
-    fn all_items_fit() {
-        let items = vec![TestItem::new(0, 1, 2), TestItem::new(1, 2, 1)];
-
-        let max_count = 10;
-        let max_cost = 3;
-
-        // All items fit, so both should be returned in the order of their (density, index)
-        for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
-            assert_eq!(result.len(), 2);
-            assert_eq!(result[0].index, 0);
-            assert_eq!(result[1].index, 1);
-        }
-    }
-
-    #[test]
-    fn some_items_fit() {
-        let items = vec![
-            TestItem::new(0, 1, 3),
-            TestItem::new(1, 2, 2),
-            TestItem::new(2, 3, 1),
-        ];
-
-        let max_count = 10;
-        let max_cost = 3;
-
-        // Only the first two items fit, since their costs add up to 3 and they have the highest density
-        for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
-            assert_eq!(result.as_slice(), &items[0..2]);
-        }
-    }
-
-    #[test]
-    fn many_with_ties() {
-        let items = vec![
-            TestItem::new(1, 1, 10),
-            TestItem::new(0, 1, 10),
-            TestItem::new(3, 2, 5),
-            TestItem::new(2, 2, 5),
-            TestItem::new(4, 3, 3),
-        ];
-
-        let max_count = 10;
-        let max_cost = 7;
-
-        // Only the first four items fit, since they have the highest density and their costs add up to 6 with the final item blowing up the max_cost.
-        // Due to the same density, tie is broken by items with higher index coming up first.
-        for _ in 0..10 {
-            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
-            assert_eq!(result.as_slice(), &items[0..4]);
-        }
-    }
 }
