@@ -847,7 +847,7 @@ mod tests {
     const GUEST_KECCAK_ITER: u32 = 1_000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
     const GUEST_KECCAK_ITER_LARGE: u32 = 25_000;
-    const GUEST_KECCAK_APC: u64 = 100;
+    const GUEST_KECCAK_APC: u64 = 1;
     const GUEST_KECCAK_APC_PGO: u64 = 10;
     const GUEST_KECCAK_APC_PGO_LARGE: u64 = 100;
     const GUEST_KECCAK_SKIP: u64 = 0;
@@ -1048,29 +1048,15 @@ mod tests {
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let metrics = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
+        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
-        // assert_eq!(machines.len(), 1);
-        // let m = &machines[0];
-        // assert_eq!(
-        //     [m.width, m.constraints, m.bus_interactions],
-        //     [2011, 166, 1783]
-        // );
-
-        // width of powdr airs only
-        println!(
-            "Created {} apcs out of max {}, total powdr column count {}",
-            metrics.len(),
-            GUEST_KECCAK_APC,
-            metrics.iter().map(|m| m.width).sum::<usize>()
+        assert_eq!(machines.len(), 1);
+        let m = &machines[0];
+        assert_eq!(
+            [m.width, m.constraints, m.bus_interactions],
+            [2011, 166, 1783]
         );
-        metrics.iter().for_each(|m| {
-            println!(
-                "{}: width = {}, constraints = {}, bus_interactions = {}",
-                m.name, m.width, m.constraints, m.bus_interactions
-            )
-        });
     }
 
     #[test]
@@ -1106,7 +1092,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-        // test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data, Some(6000)));
+        test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
+        test_keccak_machine(PgoConfig::Cell(pgo_data, None));
     }
 }

@@ -543,7 +543,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     )
     .skip(config.skip_autoprecompiles as usize)
     .map(|c| {
-        println!(
+        tracing::debug!(
             "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
             c.block_with_apc.block.start_idx,
             c.value() / c.cost(),
