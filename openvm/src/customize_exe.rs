@@ -701,6 +701,16 @@ mod tests {
         value: usize,
     }
 
+    impl TestItem {
+        fn new(index: usize, cost: usize, density: usize) -> Self {
+            Self {
+                index,
+                cost,
+                value: cost * density,
+            }
+        }
+    }
+
     impl KnapsackItem for TestItem {
         fn cost(&self) -> usize {
             self.cost
@@ -717,18 +727,7 @@ mod tests {
 
     #[test]
     fn tie() {
-        let items = vec![
-            TestItem {
-                index: 0,
-                cost: 1,
-                value: 10,
-            },
-            TestItem {
-                index: 1,
-                cost: 1,
-                value: 10,
-            },
-        ];
+        let items = vec![TestItem::new(0, 1, 10), TestItem::new(1, 1, 10)];
 
         let max_count = 10;
         let max_cost = 1;
@@ -738,6 +737,65 @@ mod tests {
             let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
             assert_eq!(result.len(), 1);
             assert_eq!(result[0].index, 0);
+        }
+    }
+
+    #[test]
+    fn all_items_fit() {
+        let items = vec![TestItem::new(0, 1, 2), TestItem::new(1, 2, 1)];
+
+        let max_count = 10;
+        let max_cost = 3;
+
+        // All items fit, so both should be returned in the order of their (density, index)
+        for _ in 0..10 {
+            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0].index, 1);
+            assert_eq!(result[1].index, 0);
+        }
+    }
+
+    #[test]
+    fn some_items_fit() {
+        let items = vec![
+            TestItem::new(0, 1, 3),
+            TestItem::new(1, 2, 2),
+            TestItem::new(2, 3, 1),
+        ];
+
+        let max_count = 10;
+        let max_cost = 3;
+
+        // Only the last item fits, since it has the highest density and its cost is 3
+        for _ in 0..10 {
+            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].index, 2);
+        }
+    }
+
+    #[test]
+    fn many_with_ties() {
+        let items = vec![
+            TestItem::new(0, 1, 10),
+            TestItem::new(1, 1, 10),
+            TestItem::new(2, 2, 5),
+            TestItem::new(3, 2, 5),
+            TestItem::new(4, 3, 3),
+        ];
+
+        let max_count = 10;
+        let max_cost = 7;
+
+        for _ in 0..10 {
+            let result: Vec<_> = fractional_knapsack(items.clone(), max_count, max_cost).collect();
+            assert_eq!(result.len(), 4);
+            // The first two items are tied, so the first one should be chosen
+            assert_eq!(result[0].index, 0);
+            assert_eq!(result[1].index, 1);
+            assert_eq!(result[2].index, 2);
+            assert_eq!(result[3].index, 3);
         }
     }
 }
