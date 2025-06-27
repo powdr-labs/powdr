@@ -5,8 +5,9 @@ openvm::entry!(main);
 
 use core::hint::black_box;
 
-use openvm::io::{reveal, read};
+use openvm::io::{read,reveal_u32};
 use sha2::{Sha256, Digest};
+use digest::generic_array::GenericArray;
 
 pub fn main() {
     let n: u32 = read();
@@ -14,8 +15,8 @@ pub fn main() {
      for _ in 0..n {
         let mut hasher = Sha256::new();
         hasher.update(&output);
-        output.copy_from_slice(&hasher.finalize());
+        hasher.finalize_into(GenericArray::from_mut_slice(&mut output));
     }
 
-    reveal(output[0] as u32, 0);
+    reveal_u32(output[0] as u32, 0);
 }
