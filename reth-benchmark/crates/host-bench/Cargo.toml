@@ -1,0 +1,72 @@
+[package]
+version = "0.1.0"
+name = "openvm-reth-benchmark"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tokio.workspace = true
+eyre.workspace = true
+url.workspace = true
+tracing-subscriber = "0.3.18"
+tracing.workspace = true
+dotenv = "0.15.0"
+clap = { version = "4.5.7", features = ["derive", "env"] }
+serde.workspace = true
+bincode = { workspace = true, features = ["std"] }
+metrics = "0.23.0"
+hex = "0.4.3"
+serde_json.workspace = true
+
+# workspace
+openvm-host-executor.workspace = true
+openvm-client-executor.workspace = true
+
+# alloy
+alloy-primitives.workspace = true
+alloy-provider.workspace = true
+alloy-rpc-client.workspace = true
+alloy-transport.workspace = true
+
+# reth
+reth-primitives.workspace = true
+
+# openvm
+openvm = { workspace = true }
+openvm-build = { workspace = true }
+openvm-transpiler = { workspace = true }
+openvm-rv32im-circuit = { workspace = true }
+openvm-algebra-circuit = { workspace = true }
+openvm-bigint-circuit = { workspace = true }
+openvm-ecc-circuit = { workspace = true }
+openvm-pairing-circuit = { workspace = true }
+openvm-circuit = { workspace = true }
+openvm-native-recursion = { workspace = true, features = ["static-verifier"] }
+openvm-benchmarks-prove = { workspace = true, features = ["parallel"] }
+openvm-stark-sdk = { workspace = true }
+openvm-sdk = { workspace = true }
+openvm-native-compiler = { workspace = true }
+derive_more = "1.0.0"
+
+# halo2
+halo2-axiom = { version = "0.5.0", default-features = false }
+
+# powdr
+powdr-openvm = { workspace = true }
+powdr-riscv-elf = { workspace = true }
+powdr-number = { workspace = true }
+powdr-autoprecompiles = { workspace = true }
+
+[features]
+default = ["mimalloc", "bench-metrics", "evm-verify"]
+bench-metrics = ["openvm-benchmarks-prove/bench-metrics"]
+evm-prove = ["openvm-sdk/evm-prove"]
+evm-verify = ["evm-prove", "openvm-sdk/evm-verify"]
+profiling = ["openvm-sdk/profiling", "openvm-benchmarks-prove/profiling"]
+mimalloc = ["openvm-benchmarks-prove/mimalloc"]
+jemalloc = ["openvm-benchmarks-prove/jemalloc"]
+nightly-features = ["openvm-benchmarks-prove/nightly-features"]
+# x86 only:
+halo2-asm = ["halo2-axiom/asm"]

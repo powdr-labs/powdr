@@ -1,0 +1,55 @@
+[package]
+name = "openvm-client-executor"
+description = ""
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+eyre.workspace = true
+serde.workspace = true
+serde_with.workspace = true
+
+# workspace
+openvm-witness-db.workspace = true
+openvm-mpt.workspace = true
+openvm-primitives.workspace = true
+
+# reth
+reth-consensus.workspace = true
+reth-ethereum-primitives = { workspace = true, features = [
+    "serde-bincode-compat",
+] }
+reth-ethereum-consensus.workspace = true
+reth-execution-types.workspace = true
+reth-primitives = { workspace = true }
+reth-primitives-traits.workspace = true
+reth-trie.workspace = true
+reth-evm.workspace = true
+reth-evm-ethereum.workspace = true
+reth-revm.workspace = true
+
+# revm
+revm.workspace = true
+revm-primitives.workspace = true
+
+# alloy
+alloy-primitives = { workspace = true, features = ["rayon", "map-foldhash"] }
+alloy-consensus.workspace = true
+itertools = "0.13.0"
+
+[target.'cfg(target_os = "zkvm")'.dependencies]
+# revm-primitives = { workspace = true, features = ["hashbrown"] }
+alloy-primitives = { workspace = true, features = ["native-keccak"] }
+# revm must have feature `kzg-rs` or `openvm-kzg` enabled. Due to patching we cannot enable `openvm-kzg` here.
+
+[target.'cfg(not(target_os = "zkvm"))'.dependencies]
+revm = { workspace = true, features = ["c-kzg"] }
+
+[dev-dependencies]
+
+[features]

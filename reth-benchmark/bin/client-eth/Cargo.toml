@@ -1,0 +1,71 @@
+[workspace]
+[package]
+name = "openvm-client-eth"
+description = ""
+edition = "2021"
+
+[dependencies]
+# workspace
+openvm-client-executor = { path = "../../crates/executor/client" }
+revm-precompile = { version = "21.0.0", default-features = false, features = [
+    "openvm",
+] }
+
+# openvm
+openvm = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1", features = [
+    "std",
+] }
+openvm-keccak256-guest = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1" }
+openvm-algebra-guest = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1" }
+openvm-ecc-guest = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1" }
+openvm-pairing = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1", features = [
+    "bn254",
+    "bls12_381",
+] }
+k256 = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1" }
+
+# Statically turns off logging
+log = { version = "0.4", features = ["max_level_off", "release_max_level_off"] }
+tracing = { version = "0.1", features = [
+    "max_level_off",
+    "release_max_level_off",
+] }
+
+[features]
+default = ["kzg-intrinsics"]
+heap-embedded-alloc = ["openvm/heap-embedded-alloc"]
+kzg-intrinsics = [
+    "revm-precompile/openvm-kzg-intrinsics",
+] # uses OpenVM BLS12-381 intrinsic functions
+
+[patch.crates-io]
+revm = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-primitives = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-interpreter = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-precompile = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-database = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-database-interface = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-state = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+revm-bytecode = { git = "https://github.com/axiom-crypto/revm", branch = "v75-openvm" }
+k256 = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1" }
+ruint = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.2.1-rc.1" }
+
+# Local Patching:
+# revm = { path = "../../../revm/crates/revm" }
+# revm-primitives = { path = "../../../revm/crates/primitives" }
+# revm-interpreter = { path = "../../../revm/crates/interpreter" }
+# revm-precompile = { path = "../../../revm/crates/precompile" }
+# revm-database = { path = "../../../revm/crates/database" }
+# revm-database-interface = { path = "../../../revm/crates/database/interface" }
+# revm-state = { path = "../../../revm/crates/state" }
+# revm-bytecode = { path = "../../../revm/crates/bytecode" }
+
+[profile.release]
+panic = "abort"
+lto = "fat"
+strip = false
+
+[profile.profiling]
+inherits = "release"
+debug = 2
+strip = false

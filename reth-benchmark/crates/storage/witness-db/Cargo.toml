@@ -1,0 +1,17 @@
+[package]
+name = "openvm-witness-db"
+description = ""
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+# workspace
+openvm-primitives.workspace = true
+
+# reth
+reth-storage-errors.workspace = true
+reth-revm.workspace = true

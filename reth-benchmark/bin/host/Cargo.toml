@@ -1,0 +1,25 @@
+[package]
+name = "openvm-reth-benchmark-bin"
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+exclude.workspace = true
+version.workspace = true
+
+[dependencies]
+clap_builder = "4.5.34"
+eyre.workspace = true
+openvm-reth-benchmark = { workspace = true, default-features = false }
+openvm-stark-sdk.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["openvm-reth-benchmark/default"]
+bench-metrics = ["openvm-reth-benchmark/bench-metrics"]
+profiling = ["openvm-reth-benchmark/profiling"]
+mimalloc = ["openvm-reth-benchmark/mimalloc"]
+jemalloc = ["openvm-reth-benchmark/jemalloc"]
+nightly-features = ["openvm-reth-benchmark/nightly-features"]
+halo2-asm = ["openvm-reth-benchmark/halo2-asm"]
