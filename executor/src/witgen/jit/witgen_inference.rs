@@ -15,6 +15,7 @@ use powdr_constraint_solver::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
     range_constraint::RangeConstraint,
+    runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;

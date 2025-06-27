@@ -75,24 +75,6 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             SymbolicExpression::Symbol(symbol, rc)
         }
     }
-
-    pub fn range_constraint(&self) -> RangeConstraint<T> {
-        match self {
-            SymbolicExpression::Concrete(v) => RangeConstraint::from_value(*v),
-            SymbolicExpression::Symbol(.., rc)
-            | SymbolicExpression::BinaryOperation(.., rc)
-            | SymbolicExpression::UnaryOperation(.., rc) => rc.clone(),
-        }
-    }
-
-    pub fn try_to_number(&self) -> Option<T> {
-        match self {
-            SymbolicExpression::Concrete(n) => Some(*n),
-            SymbolicExpression::Symbol(..)
-            | SymbolicExpression::BinaryOperation(..)
-            | SymbolicExpression::UnaryOperation(..) => None,
-        }
-    }
 }
 
 impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
@@ -439,29 +421,6 @@ impl<T: FieldElement, V: Clone + Eq> MulAssign for SymbolicExpression<T, V> {
 }
 
 impl<T: FieldElement, V: Clone + Eq> SymbolicExpression<T, V> {
-    /// Field element division.
-    /// If you use this, you must ensure that the divisor is not zero.
-    pub fn field_div(&self, rhs: &Self) -> Self {
-        if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
-            assert!(b != &T::from(0));
-            SymbolicExpression::Concrete(*a / *b)
-        } else if self.is_known_zero() {
-            SymbolicExpression::Concrete(T::from(0))
-        } else if rhs.is_known_one() {
-            self.clone()
-        } else if rhs.is_known_minus_one() {
-            -self
-        } else {
-            // TODO other simplifications like `-x / -y => x / y`, `-x / concrete => x / -concrete`, etc.
-            SymbolicExpression::BinaryOperation(
-                Arc::new(self.clone()),
-                BinaryOperator::Div,
-                Arc::new(rhs.clone()),
-                Default::default(),
-            )
-        }
-    }
-
     /// Returns the multiplicative inverse in the field.
     pub fn field_inverse(&self) -> Self {
         if let SymbolicExpression::Concrete(x) = self {
@@ -509,15 +468,44 @@ impl<T: FieldElement, V: Clone + Eq> RuntimeConstant for SymbolicExpression<T, V
     type FieldType = T;
 
     fn try_to_number(&self) -> Option<Self::FieldType> {
-        SymbolicExpression::try_to_number(self)
+        match self {
+            SymbolicExpression::Concrete(n) => Some(*n),
+            SymbolicExpression::Symbol(..)
+            | SymbolicExpression::BinaryOperation(..)
+            | SymbolicExpression::UnaryOperation(..) => None,
+        }
     }
 
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType> {
-        SymbolicExpression::range_constraint(self)
+        match self {
+            SymbolicExpression::Concrete(v) => RangeConstraint::from_value(*v),
+            SymbolicExpression::Symbol(.., rc)
+            | SymbolicExpression::BinaryOperation(.., rc)
+            | SymbolicExpression::UnaryOperation(.., rc) => rc.clone(),
+        }
     }
 
-    fn field_div(&self, other: &Self) -> Self {
-        SymbolicExpression::field_div(self, other)
+    /// Field element division.
+    /// If you use this, you must ensure that the divisor is not zero.
+    fn field_div(&self, rhs: &Self) -> Self {
+        if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
+            assert!(b != &T::from(0));
+            SymbolicExpression::Concrete(*a / *b)
+        } else if self.is_known_zero() {
+            SymbolicExpression::Concrete(T::from(0))
+        } else if rhs.is_known_one() {
+            self.clone()
+        } else if rhs.is_known_minus_one() {
+            -self
+        } else {
+            // TODO other simplifications like `-x / -y => x / y`, `-x / concrete => x / -concrete`, etc.
+            SymbolicExpression::BinaryOperation(
+                Arc::new(self.clone()),
+                BinaryOperator::Div,
+                Arc::new(rhs.clone()),
+                Default::default(),
+            )
+        }
     }
 
     fn from_u64(k: u64) -> Self {

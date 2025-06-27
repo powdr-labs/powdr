@@ -677,6 +677,7 @@ mod tests {
     use powdr_ast::analyzed::AlgebraicReference;
     use powdr_ast::analyzed::FunctionValueDefinition;
     use powdr_constraint_solver::range_constraint::RangeConstraint;
+    use powdr_constraint_solver::runtime_constant::RuntimeConstant;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
