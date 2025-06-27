@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use std::sync::Arc;
 
@@ -508,6 +508,30 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             self.block_with_apc.opcode
         }
     }
+
+    // calculate the number of columns (powdr and non powdr)
+    let count = blocks
+        .iter()
+        .flat_map(|b| b.statements.iter().map(|instr| instr.opcode))
+        .collect::<HashSet<_>>()
+        .iter()
+        .unique_by(|op| {
+            println!("Calculating air name for opcode: {}", op);
+            let res = airs.air_name(op).unwrap().clone();
+            println!("Opcode: {}, air name: {}", op, res);
+            res
+        })
+        .map(|op| 
+            {
+                let res = air_width_by_opcode[&op];
+                println!("Opcode: {}, width: {}", op, res);
+                res
+            })
+        .sum::<usize>();
+
+    println!("Total number of columns in all basic blocks: {}", count);
+
+
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     fractional_knapsack(
