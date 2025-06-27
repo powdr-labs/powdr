@@ -148,7 +148,7 @@ The benchmark command accepts additional arguments that can be used to configure
 
 ### Github Workflow
 
-A github actions workflow for running the benchmark via workflow dispatch is available [here](.github/workflows/reth-benchmark.yml).
+A github actions workflow for running the benchmark via workflow dispatch is available here.
 
 ### What are good testing blocks
 
