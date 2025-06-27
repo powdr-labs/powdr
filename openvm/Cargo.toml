@@ -32,6 +32,7 @@ openvm-bigint-circuit.workspace = true
 openvm-bigint-transpiler.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
+openvm-pairing-guest.workspace = true
 openvm-native-circuit.workspace = true
 openvm-native-recursion.workspace = true
 

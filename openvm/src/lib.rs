@@ -1,6 +1,7 @@
 use derive_more::From;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
+use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::InitFileGenerator;
 use openvm_circuit::arch::{
@@ -9,6 +10,9 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
+use openvm_ecc_circuit::WeierstrassExtension;
+use openvm_pairing_circuit::{PairingCurve, PairingExtension};
+use openvm_pairing_guest::bn254::{BN254_COMPLEX_STRUCT_NAME, BN254_MODULUS, BN254_ORDER};
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
@@ -289,6 +293,18 @@ pub fn compile_openvm(
         .rv32m(Default::default())
         .io(Default::default())
         .keccak(Default::default())
+        .modular(ModularExtension::new(vec![
+            BN254_MODULUS.clone(),
+            BN254_ORDER.clone(),
+        ]))
+        .fp2(Fp2Extension::new(vec![(
+            BN254_COMPLEX_STRUCT_NAME.to_string(),
+            BN254_MODULUS.clone(),
+        )]))
+        .ecc(WeierstrassExtension::new(vec![
+            PairingCurve::Bn254.curve_config()
+        ]))
+        .pairing(PairingExtension::new(vec![PairingCurve::Bn254]))
         .build();
 
     let sdk = Sdk::default();
