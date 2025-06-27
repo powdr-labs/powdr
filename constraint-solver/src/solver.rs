@@ -203,7 +203,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
 
     fn apply_effect(&mut self, effect: Effect<T, Variable<V>>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr.into()),
+            Effect::Assignment(v, expr) => self.apply_assignment(
+                &v,
+                &QuadraticSymbolicExpression::from_runtime_constant(expr),
+            ),
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
@@ -223,7 +226,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.apply_assignment(variable, &value.into());
+                self.apply_assignment(variable, &QuadraticSymbolicExpression::from_number(value));
             } else {
                 // The range constraint was updated.
                 log::trace!("({variable}: {range_constraint})");

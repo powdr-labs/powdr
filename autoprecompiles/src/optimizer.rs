@@ -4,7 +4,6 @@ use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journaling_constraint_system::JournalingConstraintSystem,
     quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 
@@ -249,7 +248,7 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
     BusInteraction {
-        bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
+        bus_id: QuadraticSymbolicExpression::from_number(P::from(bus_interaction.id)),
         payload: bus_interaction
             .args
             .iter()

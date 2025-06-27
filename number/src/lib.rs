@@ -9,14 +9,17 @@ mod koala_bear;
 mod mersenne31;
 #[macro_use]
 mod plonky3_macros;
+mod expression_convertible;
 mod serialize;
 mod traits;
+
 pub use serialize::{
     buffered_write_file, read_polys_csv_file, write_polys_csv_file, CsvRenderMode, ReadWrite,
 };
 
 pub use baby_bear::BabyBearField;
 pub use bn254::Bn254Field;
+pub use expression_convertible::ExpressionConvertible;
 pub use goldilocks::GoldilocksField;
 pub use koala_bear::KoalaBearField;
 pub use mersenne31::Mersenne31Field;

@@ -10,5 +10,5 @@ pub fn var(name: Var) -> Qse {
 }
 
 pub fn constant(value: u64) -> Qse {
-    GoldilocksField::from(value).into()
+    Qse::from_number(GoldilocksField::from(value))
 }

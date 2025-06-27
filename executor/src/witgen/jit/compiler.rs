@@ -377,6 +377,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             lhs,
             rhs,
             expected_equal,
+            ..
         }) => format!(
             "assert!({} {} {});",
             format_expression(lhs),
@@ -534,7 +535,7 @@ fn format_bit_decomposition<T: FieldElement>(
 }
 
 fn format_condition<T: FieldElement>(
-    Condition { value, condition }: &Condition<T, Variable>,
+    Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>>,
 ) -> String {
     let value = format!("IntType::from({})", format_expression(value));
     let (min, max) = condition.range();
@@ -676,6 +677,7 @@ mod tests {
     use powdr_ast::analyzed::AlgebraicReference;
     use powdr_ast::analyzed::FunctionValueDefinition;
     use powdr_constraint_solver::range_constraint::RangeConstraint;
+    use powdr_constraint_solver::runtime_constant::RuntimeConstant;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -770,7 +772,7 @@ mod tests {
             assignment(&x0, number(7) * symbol(&a0)),
             assignment(&cv1, symbol(&x0)),
             Effect::MachineCall(
-                7.into(),
+                GoldilocksField::from(7),
                 [false, true].into_iter().collect(),
                 vec![r1.clone(), cv1.clone()],
             ),
