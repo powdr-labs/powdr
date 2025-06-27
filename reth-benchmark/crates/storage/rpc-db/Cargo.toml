@@ -1,0 +1,26 @@
+[package]
+name = "openvm-rpc-db"
+description = ""
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+rayon.workspace = true
+rustc-hash.workspace = true
+
+# reth
+reth-primitives.workspace = true
+reth-storage-errors.workspace = true
+reth-revm.workspace = true
+reth-trie.workspace = true
+
+# alloy
+alloy-provider.workspace = true
+alloy-rlp.workspace = true
+alloy-rpc-types.workspace = true
