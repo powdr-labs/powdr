@@ -15,16 +15,3 @@ openvm-pairing = { git = "https://github.com/powdr-labs/openvm.git", default-fea
 openvm-pairing-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false, features = ["bn254"] }
 
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
-
-# [features]
-# default = []
-# halo2curves = ["openvm-pairing-guest/halo2curves"]
-
-# [profile.release]
-# panic = "abort"
-# lto = "thin"    # faster compile time
-
-# [profile.profiling]
-# inherits = "release"
-# debug = 2
-# strip = false
