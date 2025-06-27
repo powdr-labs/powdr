@@ -95,7 +95,7 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     }
 }
 
-impl<T: FieldElement, S: Clone + Ord + Hash + Eq> SymbolicExpression<T, S> {
+impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
     /// Applies a variable substitution and returns a modified version if there was a change.
     pub fn compute_substitution(&self, variable: &S, substitution: &Self) -> Option<Self> {
         match self {
@@ -265,7 +265,7 @@ impl<T: FieldElement, V> From<T> for SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Add for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -295,20 +295,20 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &SymbolicExpression<T,
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Add for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn add(self, rhs: Self) -> Self::Output {
         &self + &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> AddAssign for SymbolicExpression<T, V> {
     fn add_assign(&mut self, rhs: Self) {
         *self = self.clone() + rhs;
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Sub for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -334,14 +334,14 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for &SymbolicExpression<T,
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Sub for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn sub(self, rhs: Self) -> Self::Output {
         &self - &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Neg for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Neg for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn neg(self) -> Self::Output {
@@ -390,14 +390,14 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Neg for &SymbolicExpression<T,
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Neg for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Neg for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn neg(self) -> Self::Output {
         -&self
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for &SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Mul for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -425,20 +425,20 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for &SymbolicExpression<T,
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Mul for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn mul(self, rhs: Self) -> Self {
         &self * &rhs
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> MulAssign for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> MulAssign for SymbolicExpression<T, V> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs;
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> SymbolicExpression<T, V> {
     /// Field element division.
     /// If you use this, you must ensure that the divisor is not zero.
     pub fn field_div(&self, rhs: &Self) -> Self {
@@ -485,7 +485,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Zero for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> Zero for SymbolicExpression<T, V> {
     fn zero() -> Self {
         SymbolicExpression::Concrete(T::from(0))
     }
@@ -495,7 +495,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Zero for SymbolicExpression<T,
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> One for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> One for SymbolicExpression<T, V> {
     fn one() -> Self {
         SymbolicExpression::Concrete(T::from(1))
     }
@@ -505,7 +505,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> One for SymbolicExpression<T, 
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> RuntimeConstant for SymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Eq> RuntimeConstant for SymbolicExpression<T, V> {
     type FieldType = T;
 
     fn try_to_number(&self) -> Option<Self::FieldType> {
