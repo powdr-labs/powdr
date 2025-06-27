@@ -8,6 +8,7 @@ pub mod opcode;
 mod vm;
 
 mod plonk;
+mod bitwise_bus;
 
 pub use opcode::PowdrOpcode;
 pub use vm::{OriginalInstruction, PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrPrecompile};
