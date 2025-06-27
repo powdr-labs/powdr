@@ -97,6 +97,10 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
             .map(|opcode| opcode.as_usize())
             .collect()
     }
+
+    pub fn air_name(&self, opcode: &VmOpcode) -> Option<&String> {
+        self.opcode_to_air.get(opcode)
+    }
 }
 
 fn to_option<T>(mut v: Vec<T>) -> Option<T> {
