@@ -247,8 +247,26 @@ pub trait InstructionMachineHandler<T> {
 }
 
 pub struct Apc<T> {
-    pub machine: SymbolicMachine<T>,
-    pub subs: Vec<Vec<u64>>,
+    machine: SymbolicMachine<T>,
+    subs: Vec<Vec<u64>>,
+}
+
+impl<T: FieldElement> Apc<T> {
+    pub fn width(&self) -> usize {
+        self.machine.unique_references().count()
+    }
+
+    pub fn subs(&self) -> &[Vec<u64>] {
+        &self.subs
+    }
+
+    pub fn machine(&self) -> &SymbolicMachine<T> {
+        &self.machine
+    }
+
+    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+        (self.machine, self.subs)
+    }
 }
 
 pub fn build<

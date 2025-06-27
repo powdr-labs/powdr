@@ -29,7 +29,7 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, default_value_t = PgoType::Cell)]
+        #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
         #[arg(long)]
@@ -45,7 +45,7 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, default_value_t = PgoType::Cell)]
+        #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
         #[arg(long)]
@@ -69,7 +69,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         recursion: bool,
 
-        #[arg(long, default_value_t = PgoType::Cell)]
+        #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
         #[arg(long)]
@@ -175,13 +175,13 @@ fn pgo_config(
     input: Option<u32>,
 ) -> PgoConfig {
     match pgo {
-        PgoType::Cell => {
+        PgoType::Cell(max_total_apc_columns) => {
             let pc_idx_count = powdr_openvm::execution_profile_from_guest(
                 &guest,
                 guest_opts.clone(),
                 stdin_from(input),
             );
-            PgoConfig::Cell(pc_idx_count)
+            PgoConfig::Cell(pc_idx_count, max_total_apc_columns)
         }
         PgoType::Instruction => {
             let pc_idx_count = powdr_openvm::execution_profile_from_guest(

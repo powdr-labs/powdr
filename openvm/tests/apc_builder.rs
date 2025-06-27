@@ -37,7 +37,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
 
     build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
         .unwrap()
-        .machine
+        .machine()
         .render(&bus_map)
 }
 
