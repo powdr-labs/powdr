@@ -65,6 +65,7 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     bus_map: &BusMap,
     config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
 ) -> Vec<BlockWithApc<P>> {
     // sort basic blocks by:
@@ -72,12 +73,13 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, max_total_apc_columns) => create_apcs_with_cell_pgo(
+        PgoConfig::Cell(pgo_program_idx_count, max_total_columns) => create_apcs_with_cell_pgo(
             blocks,
             pgo_program_idx_count,
-            max_total_apc_columns,
+            max_total_columns,
             airs,
             config,
+            original_config,
             bus_map,
         ),
         PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -128,7 +130,14 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
+    let blocks_with_apcs = generate_apcs_with_pgo(
+        blocks,
+        &airs,
+        &bus_map,
+        &config,
+        &original_config,
+        pgo_config,
+    );
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -449,9 +458,10 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    max_total_apc_columns: Option<usize>,
+    max_total_columns: Option<usize>,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
@@ -508,6 +518,18 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             self.block_with_apc.opcode
         }
     }
+
+    let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
+        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
+        let total_non_apc_columns = chip_inventory_air_widths
+            .iter()
+            .map(|(air_name, width)| {
+                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
+                width
+            })
+            .sum::<usize>();
+        max_total_columns - total_non_apc_columns
+    });
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     fractional_knapsack(
