@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
-use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_simbolic_expression;
+use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_symbolic_expression;
 use crate::BusMap;
 use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;
@@ -24,7 +24,7 @@ where
     //     circuit_builder.evaluate_expression(&constraint.expr, true);
     // }
 
-    build_circuit_from_quadratic_simbolic_expression(machine, bus_map)
+    build_circuit_from_quadratic_symbolic_expression(machine, bus_map)
 
     // for bus_interaction in &machine.bus_interactions {
     //     add_bus_to_plonk_circuit(bus_interaction.clone(), &mut circuit_builder, bus_map);

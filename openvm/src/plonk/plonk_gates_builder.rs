@@ -3,8 +3,6 @@ use crate::plonk::bus_interaction_handler::{
 };
 
 use super::{Gate, PlonkCircuit, Variable};
-use crate::plonk::air_to_plonkish::CircuitBuilder;
-use openvm::platform::print;
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::expression_conversion::algebraic_to_quadratic_symbolic_expression;
@@ -16,10 +14,9 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    env::consts::EXE_EXTENSION,
 };
 
-pub fn build_circuit_from_quadratic_simbolic_expression<T>(
+pub fn build_circuit_from_quadratic_symbolic_expression<T>(
     machine: &SymbolicMachine<T>,
     bus_map: &BusMap,
 ) -> PlonkCircuit<T, AlgebraicReference>
@@ -535,7 +532,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::bus_map::default_openvm_bus_map;
-    use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_simbolic_expression;
+    use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_symbolic_expression;
     use crate::plonk::test_utils::{c, var};
     use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use pretty_assertions::assert_eq;
@@ -561,7 +558,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{}",
-                build_circuit_from_quadratic_simbolic_expression(&machine, &bus_map)
+                build_circuit_from_quadratic_symbolic_expression(&machine, &bus_map)
             ),
             "bus: none, x * y = tmp_1
 bus: none, -x = tmp_3
@@ -585,7 +582,7 @@ bus: none, -tmp_0 = 0
         assert_eq!(
             format!(
                 "{}",
-                build_circuit_from_quadratic_simbolic_expression(&machine, &bus_map)
+                build_circuit_from_quadratic_symbolic_expression(&machine, &bus_map)
             ),
             "bus: none, x = 0
 "
