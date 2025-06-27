@@ -1,11 +1,10 @@
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, BinaryHeap, HashMap};
-use std::iter::once;
+use std::collections::{BTreeSet, HashMap};
+
 use std::sync::Arc;
 
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
-use crate::utils::UnsupportedOpenVmReferenceError;
+use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
@@ -66,6 +65,7 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     bus_map: &BusMap,
     config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
 ) -> Vec<BlockWithApc<P>> {
     // sort basic blocks by:
@@ -73,9 +73,15 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) => {
-            create_apcs_with_cell_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
-        }
+        PgoConfig::Cell(pgo_program_idx_count, max_total_columns) => create_apcs_with_cell_pgo(
+            blocks,
+            pgo_program_idx_count,
+            max_total_columns,
+            airs,
+            config,
+            original_config,
+            bus_map,
+        ),
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
         }
@@ -124,7 +130,14 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
+    let blocks_with_apcs = generate_apcs_with_pgo(
+        blocks,
+        &airs,
+        &bus_map,
+        &config,
+        &original_config,
+        pgo_config,
+    );
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -183,19 +196,21 @@ pub fn customize(
                 assert_eq!(program.len(), len_before);
 
                 let is_valid_column = autoprecompile
-                    .machine
+                    .machine()
                     .unique_references()
                     .find(|c| &*c.name == "is_valid")
                     .unwrap();
+
+                let (machine, subs) = autoprecompile.into_parts();
 
                 PowdrPrecompile::new(
                     format!("PowdrAutoprecompile_{apc_opcode}"),
                     PowdrOpcode {
                         class_offset: apc_opcode,
                     },
-                    autoprecompile.machine,
+                    machine,
                     acc.into_iter()
-                        .zip_eq(autoprecompile.subs)
+                        .zip_eq(subs)
                         .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                         .collect(),
                     is_valid_column,
@@ -413,7 +428,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
 
     // Check that substitution values are unique over all instructions
-    assert!(apc.subs.iter().flatten().all_unique());
+    assert!(apc.subs().iter().flatten().all_unique());
 
     tracing::debug!(
         "Done generating autoprecompile for block at index {}",
@@ -443,8 +458,10 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
+    max_total_columns: Option<usize>,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
@@ -478,40 +495,45 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         block_with_apc: BlockWithApc<P>,
         execution_frequency: usize,
         cells_saved_per_row: usize,
+        width: usize, // only tag this field in Pgo::Cell, the only place it's needed
     }
 
-    impl<P: IntoOpenVm> ApcCandidate<P> {
+    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
         fn cost(&self) -> usize {
-            self.execution_frequency * self.cells_saved_per_row
+            self.width
+        }
+
+        fn value(&self) -> usize {
+            // For an APC which is called once and saves 1 cell, this would be 1.
+            let value = self
+                .execution_frequency
+                .checked_mul(self.cells_saved_per_row)
+                .unwrap();
+            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+            // Therefore, we scale it up by a constant factor.
+            value.checked_mul(1000).unwrap()
+        }
+
+        fn tie_breaker(&self) -> usize {
+            self.block_with_apc.opcode
         }
     }
 
-    impl<P: IntoOpenVm> PartialEq for ApcCandidate<P> {
-        fn eq(&self, other: &Self) -> bool {
-            self.cost() == other.cost()
-        }
-    }
-
-    impl<P: IntoOpenVm> Eq for ApcCandidate<P> {}
-
-    impl<P: IntoOpenVm> PartialOrd for ApcCandidate<P> {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    // order apc candidates by reverse cost, so that our BinaryHeap pops the smallest costed apc candidate first
-    impl<P: IntoOpenVm> Ord for ApcCandidate<P> {
-        fn cmp(&self, other: &Self) -> Ordering {
-            other.cost().cmp(&self.cost())
-        }
-    }
+    let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
+        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
+        let total_non_apc_columns = chip_inventory_air_widths
+            .iter()
+            .map(|(air_name, width)| {
+                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
+                width
+            })
+            .sum::<usize>();
+        max_total_columns - total_non_apc_columns
+    });
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    blocks
-        .into_par_iter()
-        .enumerate()
-        .filter_map(|(i, block)| {
+    fractional_knapsack(
+        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             // try to create apc for a candidate block
             let apc = generate_autoprecompile(
                 &block,
@@ -523,7 +545,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.machine.unique_references().count();
+            let apc_cells_per_row = apc.width();
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
@@ -534,48 +556,33 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                 .get(&(block.start_idx as u32))
                 .unwrap_or(&0) as usize;
 
-            // build a 1-element heap
-            Some(
-                once(ApcCandidate {
-                    block_with_apc: BlockWithApc {
-                        opcode: POWDR_OPCODE + i,
-                        block,
-                        apc,
-                    },
-                    execution_frequency,
-                    cells_saved_per_row,
-                })
-                .collect(),
-            )
-        })
-        .reduce(
-            // identity: empty heap
-            BinaryHeap::new,
-            // merge two heaps, pruning back to max_cache
-            |mut heap_acc, mut heap| {
-                for apc_candidate in heap.drain() {
-                    heap_acc.push(apc_candidate);
-                    if heap_acc.len() > max_cache {
-                        heap_acc.pop();
-                    }
-                }
-                heap_acc
-            },
-        )
-        .into_iter()
-        .skip(config.skip_autoprecompiles as usize)
-        .map(|c| {
-            tracing::debug!(
-                "Basic block start_idx: {}, cost: {}, frequency: {}, cells_saved_per_row: {}",
-                c.block_with_apc.block.start_idx,
-                c.cost(),
-                c.execution_frequency,
-                c.cells_saved_per_row,
-            );
+            Some(ApcCandidate {
+                block_with_apc: BlockWithApc {
+                    opcode: POWDR_OPCODE + i,
+                    block,
+                    apc,
+                },
+                execution_frequency,
+                cells_saved_per_row,
+                width: apc_cells_per_row,
+            })
+        }),
+        max_cache,
+        max_total_apc_columns,
+    )
+    .skip(config.skip_autoprecompiles as usize)
+    .map(|c| {
+        tracing::debug!(
+            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
+            c.block_with_apc.block.start_idx,
+            c.value() / c.cost(),
+            c.execution_frequency,
+            c.cells_saved_per_row,
+        );
 
-            c.block_with_apc
-        })
-        .collect()
+        c.block_with_apc
+    })
+    .collect()
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
@@ -607,15 +614,12 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
     // Debug print blocks by descending cost
     for block in &blocks {
         let start_idx = block.start_idx;
-        let count = pgo_program_idx_count[&(start_idx as u32)];
-        let cost = count * (block.statements.len() as u32);
+        let frequency = pgo_program_idx_count[&(start_idx as u32)];
+        let number_of_instructions = block.statements.len();
+        let value = frequency * number_of_instructions as u32;
 
         tracing::debug!(
-            "Basic block start_idx: {}, cost: {}, frequency: {}, number_of_instructions: {}",
-            start_idx,
-            cost,
-            count,
-            block.statements.len(),
+            "Basic block start_idx: {start_idx}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
         );
     }
 

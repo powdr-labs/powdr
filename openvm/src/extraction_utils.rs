@@ -271,6 +271,20 @@ impl OriginalVmConfig {
                        // Create a new chip complex
         self.sdk_config.create_chip_complex()
     }
+
+    pub fn chip_inventory_air_widths(&self) -> HashMap<String, usize> {
+        self.chip_complex()
+            .inventory
+            .executors()
+            .iter()
+            .map(|executor| {
+                let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
+                let name = air.name();
+                let width = air.width();
+                (name, width)
+            })
+            .collect::<HashMap<_, _>>()
+    }
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
