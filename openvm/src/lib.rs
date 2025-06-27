@@ -103,7 +103,7 @@ mod plonk;
 #[derive(Default)]
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
-    /// max total apc columns
+    /// max total columns
     Cell(HashMap<u32, u32>, Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
@@ -116,7 +116,7 @@ pub enum PgoConfig {
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed
-    /// max total apc columns
+    /// max total columns
     Cell(Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction,
