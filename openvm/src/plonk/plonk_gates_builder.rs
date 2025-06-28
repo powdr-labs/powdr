@@ -1,6 +1,4 @@
-use crate::plonk::bus_interaction_handler::{
-    add_bus_to_plonk_circuit, add_bus_to_plonk_circuit_from_quadratic_symbolic_expression,
-};
+use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit_from_quadratic_symbolic_expression;
 
 use super::{Gate, PlonkCircuit, Variable};
 use powdr_autoprecompiles::bus_map::BusMap;
@@ -12,9 +10,7 @@ use powdr_constraint_solver::{
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub fn build_circuit_from_quadratic_symbolic_expression<T>(
     machine: &SymbolicMachine<T>,
@@ -25,8 +21,8 @@ where
 {
     let mut circuit_builder = CircuitBuilderQuadratic::<T>::new();
 
-    let mut constraint_format: BTreeMap<(bool, usize, usize), (u64,u64)> = BTreeMap::new();
-    let mut constraint_cache=HashSet::new();
+    let mut constraint_format: BTreeMap<(bool, usize, usize), (u64, u64)> = BTreeMap::new();
+    let mut constraint_cache = HashSet::new();
 
     tracing::debug!("number of constraints: {}", machine.constraints.len());
 
@@ -65,11 +61,11 @@ where
                         0
                     },
                 ),
-                (1,1)
+                (1, 1),
             );
             constraint_cache.insert(quadratic_symbolic_expr);
         } else {
-            let (format_count,unique_count) = constraint_format
+            let (format_count, unique_count) = constraint_format
                 .get_mut(&(
                     quadratic_symbolic_expr.is_quadratic(),
                     if quadratic_symbolic_expr.is_quadratic() {
@@ -110,18 +106,8 @@ where
             &mut circuit_builder,
             bus_map,
             &mut constraint_format,
-            &mut constraint_cache
+            &mut constraint_cache,
         );
-
-        //length = circuit_builder.plonk_circuit.len() - length;
-        //tracing::debug!("Number of gates added from bus interaction: {}", length);
-
-        // let slice = &circuit_builder.plonk_circuit.gates
-        //     [circuit_builder.plonk_circuit.gates.len() - length..];
-
-        // for gate in slice {
-        //     tracing::debug!("Gate: {}", gate);
-        // }
     }
 
     tracing::debug!(
@@ -241,7 +227,7 @@ where
                 });
                 return Variable::Unused;
             } else {
-                if let Some(var)= self.cache.get(expr) {
+                if let Some(var) = self.cache.get(expr) {
                     return var.clone();
                 }
                 self.plonk_circuit.add_gate(Gate {
@@ -279,77 +265,36 @@ where
             if let Some(var) = self.cache.get(&temp_expr) {
                 quadratic_result.push(var.clone());
             } else {
-                let (mula, a) = if !left.is_quadratic() && left.linear.len() == 1 {
-                    if left.constant == SymbolicExpression::Concrete(T::ZERO) {
-                        (
-                            left.linear
-                                .values()
-                                .next()
-                                .unwrap()
-                                .try_to_number()
-                                .expect("expected a constant"),
-                            Variable::Witness(left.linear.keys().next().unwrap().clone()),
-                        )
+                let mut simplify_expr = |expr: &QuadraticSymbolicExpression<T,AlgebraicReference>| -> (T, Variable<AlgebraicReference>) {
+                    if !expr.is_quadratic() && expr.linear.len() == 1 {
+                        let (witness, coeff) = expr.linear.iter().next().unwrap();
+                        if expr.constant == SymbolicExpression::Concrete(T::ZERO) {
+                            (
+                                coeff.try_to_number().expect("expected a constant"),
+                                Variable::Witness(witness.clone()),
+                            )
+                        } else {
+                            self.plonk_circuit.add_gate(Gate {
+                                a: Variable::Witness(witness.clone()),
+                                q_l: coeff.try_to_number().expect("Expected a constant for q_l"),
+                                q_o: -T::ONE,
+                                q_const: expr
+                                    .constant
+                                    .try_to_number()
+                                    .expect("Expected a constant for q_const"),
+                                c: Variable::Tmp(self.temp_id_offset),
+                                ..Default::default()
+                            });
+                            self.temp_id_offset += 1;
+                            (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
+                        }
                     } else {
-                        self.plonk_circuit.add_gate(Gate {
-                            a: Variable::Witness(left.linear.keys().next().unwrap().clone()),
-                            q_l: left
-                                .linear
-                                .values()
-                                .next()
-                                .unwrap()
-                                .try_to_number()
-                                .expect("Expected a constant for q_l"),
-                            q_o: -T::ONE,
-                            q_const: left
-                                .constant
-                                .try_to_number()
-                                .expect("Expected a constant for q_const"),
-                            c: Variable::Tmp(self.temp_id_offset),
-                            ..Default::default()
-                        });
-                        self.temp_id_offset += 1;
-                        (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
+                        (T::ONE, self.evaluate_expression(expr, false))
                     }
-                } else {
-                    (T::ONE, self.evaluate_expression(left, false))
                 };
-                let (mulb, b) = if !right.is_quadratic() && right.linear.len() == 1 {
-                    if right.constant == SymbolicExpression::Concrete(T::ZERO) {
-                        (
-                            right
-                                .linear
-                                .values()
-                                .next()
-                                .unwrap()
-                                .try_to_number()
-                                .expect("expected a constant"),
-                            Variable::Witness(right.linear.keys().next().unwrap().clone()),
-                        )
-                    } else {
-                        self.plonk_circuit.add_gate(Gate {
-                            a: Variable::Witness(right.linear.keys().next().unwrap().clone()),
-                            q_l: right
-                                .linear
-                                .values()
-                                .next()
-                                .unwrap()
-                                .try_to_number()
-                                .expect("Expected a constant for q_l"),
-                            q_o: -T::ONE,
-                            q_const: right
-                                .constant
-                                .try_to_number()
-                                .expect("Expected a constant for q_const"),
-                            c: Variable::Tmp(self.temp_id_offset),
-                            ..Default::default()
-                        });
-                        self.temp_id_offset += 1;
-                        (T::ONE, Variable::Tmp(self.temp_id_offset - 1))
-                    }
-                } else {
-                    (T::ONE, self.evaluate_expression(right, false))
-                };
+
+                let (mula, a) = simplify_expr(left);
+                let (mulb, b) = simplify_expr(right);
                 self.plonk_circuit.add_gate(Gate {
                     a,
                     b,

@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use super::{Gate, PlonkCircuit, Variable};
-use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_symbolic_expression;
 use crate::BusMap;
 use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
