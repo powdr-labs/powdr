@@ -1,4 +1,4 @@
-use openvm_circuit_primitives::xor::XorLookupAir;
+use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
     p3_air::{Air, BaseAir},
@@ -6,14 +6,14 @@ use openvm_stark_backend::{
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
 };
-use struct_reflection::{StructReflection,StructReflectionHelper};
+use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+use std::borrow::Borrow;
+use struct_reflection::{StructReflection, StructReflectionHelper};
 
-
-
-
-// This BitwiseLookupAir capture the bitwise bus interaction with structure: 
+// This BitwiseLookupAir captures the bitwise bus interaction with structure:
 // bus_interaction(BITWISE_LOOKUP, [A, B, C, <const>], D * <const>);
-#[derive(StructReflection)]
+#[repr(C)]
+#[derive(AlignedBorrow, StructReflection)]
 pub struct BitwiseLookupColumns<T> {
     q_const_arg: T,
     q_const_mult: T,
@@ -24,13 +24,9 @@ pub struct BitwiseLookupColumns<T> {
     d: T,
 }
 
-
-
-
-
-
 pub struct BitwiseLookupAir<F> {
     pub _marker: std::marker::PhantomData<F>,
+    bus_map: BusMap,
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for BitwiseLookupAir<F> {
@@ -47,8 +43,6 @@ impl<F: PrimeField32> BaseAir<F> for BitwiseLookupAir<F> {
 
 impl<F: PrimeField32> BaseAirWithPublicValues<F> for BitwiseLookupAir<F> {}
 
-
-
 impl<AB: InteractionBuilder> Air<AB> for BitwiseLookupAir<AB::F>
 where
     AB::F: PrimeField32,
@@ -57,18 +51,23 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
 
-        let PlonkColumns {
-            q_l,
-            q_r,
-            q_o,
-            q_mul,
-            q_const,
+        let BitwiseLookupColumns {
+            q_const_arg,
+            q_const_mult,
             a,
             b,
             c,
+            d,
         } = (*local).borrow();
 
-        builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::BitwiseLookup)
+                .expect("BusType::BitwiseLookup not found in bus_map") as u16,
+            vec![*a, *b, *c, *q_const_arg],
+            *d * *q_const_mult,
+            1,
+        );
     }
 }
 

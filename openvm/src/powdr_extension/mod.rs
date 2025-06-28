@@ -7,8 +7,8 @@ pub mod opcode;
 /// The integration of our extension with the VM
 mod vm;
 
-mod plonk;
 mod bitwise_bus;
+mod plonk;
 
 pub use opcode::PowdrOpcode;
 pub use vm::{OriginalInstruction, PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrPrecompile};

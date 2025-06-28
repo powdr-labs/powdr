@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BusMap, PrecompileImplementation};
 
+use super::bitwise_bus::chip::BitwiseLookupChip;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
@@ -119,6 +120,7 @@ impl<P: IntoOpenVm> PowdrExtension<P> {
 pub enum PowdrExecutor<P: IntoOpenVm> {
     Powdr(PowdrChip<P>),
     Plonk(PlonkChip<P>),
+    BitwiseLookupChip(BitwiseLookupChip<P>),
 }
 
 // These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
@@ -131,6 +133,9 @@ where
         match self {
             PowdrExecutor::Powdr(powdr_chip) => powdr_chip.generate_air_proof_input(),
             PowdrExecutor::Plonk(plonk_chip) => plonk_chip.generate_air_proof_input(),
+            PowdrExecutor::BitwiseLookupChip(bitwise_chip) => {
+                bitwise_chip.generate_air_proof_input()
+            }
         }
     }
 
@@ -138,6 +143,7 @@ where
         match self {
             PowdrExecutor::Powdr(powdr_chip) => powdr_chip.air(),
             PowdrExecutor::Plonk(plonk_chip) => plonk_chip.air(),
+            PowdrExecutor::BitwiseLookupChip(bitwise_chip) => bitwise_chip.air(),
         }
     }
 }
@@ -152,6 +158,9 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrExecutor<P> {
         match self {
             PowdrExecutor::Powdr(powdr_chip) => powdr_chip.execute(memory, instruction, from_state),
             PowdrExecutor::Plonk(plonk_chip) => plonk_chip.execute(memory, instruction, from_state),
+            PowdrExecutor::BitwiseLookupChip(bitwise_chip) => {
+                bitwise_chip.execute(memory, instruction, from_state)
+            }
         }
     }
 
@@ -159,6 +168,7 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrExecutor<P> {
         match self {
             PowdrExecutor::Powdr(powdr_chip) => powdr_chip.get_opcode_name(opcode),
             PowdrExecutor::Plonk(plonk_chip) => plonk_chip.get_opcode_name(opcode),
+            PowdrExecutor::BitwiseLookupChip(bitwise_chip) => bitwise_chip.get_opcode_name(opcode),
         }
     }
 }
