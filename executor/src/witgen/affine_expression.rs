@@ -592,7 +592,7 @@ impl<K, T: FieldElement> std::ops::Mul<T> for AffineExpression<K, T> {
                 }
                 AffineExpression::ManyVars(mut coefficients, offset) => {
                     for (_, v) in coefficients.iter_mut() {
-                        *v = *v * factor;
+                        *v *= factor;
                     }
                     AffineExpression::ManyVars(coefficients, offset * factor)
                 }
