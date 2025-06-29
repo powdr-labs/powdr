@@ -1,3 +1,4 @@
+use super::plonk_gates_builder::CircuitBuilderQuadratic;
 use crate::plonk::{Gate, NUMBER_OF_WITNESS_COLS};
 use powdr_autoprecompiles::bus_map::{
     BusMap,
@@ -6,10 +7,9 @@ use powdr_autoprecompiles::bus_map::{
     },
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
+use powdr_autoprecompiles::expression_conversion::algebraic_to_quadratic_symbolic_expression;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
-
-use super::air_to_plonkish::CircuitBuilder;
 
 /// Allocates a bus interaction to the PLONK circuit.
 /// The bus interaction is expected to be in the form:
@@ -19,9 +19,9 @@ use super::air_to_plonkish::CircuitBuilder;
 /// row 0: args0     args1     args2     
 /// row 1: args3     ...       ...         
 /// ...
-pub fn add_bus_to_plonk_circuit<T>(
+pub fn add_bus_to_plonk_circuit_from_quadratic_symbolic_expression<T>(
     bus_interaction: SymbolicBusInteraction<T>,
-    circuit_builder: &mut CircuitBuilder<T>,
+    circuit_builder: &mut CircuitBuilderQuadratic<T>,
     bus_map: &BusMap,
 ) where
     T: FieldElement,
@@ -65,7 +65,8 @@ pub fn add_bus_to_plonk_circuit<T>(
             ]
         }))
         .for_each(|(arg, payload)| {
-            *payload = circuit_builder.evaluate_expression(arg, false);
+            *payload = circuit_builder
+                .evaluate_expression(&algebraic_to_quadratic_symbolic_expression(arg), false);
         });
 
     // Add the gates to the circuit.
@@ -85,7 +86,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn test_add_memory_bus_to_plonk_circuit() {
+    fn test_add_memory_bus_to_plonk_circuit_quadratic() {
         let bus_map = default_openvm_bus_map();
 
         let x = var("x", 0);
@@ -105,8 +106,12 @@ mod tests {
             mult: AlgebraicExpression::Number(BabyBearField::from(1)),
         };
 
-        let mut circuit_builder = CircuitBuilder::new();
-        add_bus_to_plonk_circuit(bus_interaction, &mut circuit_builder, &bus_map);
+        let mut circuit_builder = CircuitBuilderQuadratic::new();
+        add_bus_to_plonk_circuit_from_quadratic_symbolic_expression(
+            bus_interaction,
+            &mut circuit_builder,
+            &bus_map,
+        );
         let plonk_circuit = circuit_builder.build();
 
         assert_eq!(
