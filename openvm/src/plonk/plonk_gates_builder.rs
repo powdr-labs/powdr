@@ -10,7 +10,7 @@ use powdr_constraint_solver::{
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 pub fn build_circuit_from_quadratic_symbolic_expression<T>(
     machine: &SymbolicMachine<T>,
@@ -20,9 +20,6 @@ where
     T: FieldElement,
 {
     let mut circuit_builder = CircuitBuilderQuadratic::<T>::new();
-
-    let mut constraint_format: BTreeMap<(bool, usize, usize), (u64, u64)> = BTreeMap::new();
-    let mut constraint_cache = HashSet::new();
 
     tracing::debug!("number of constraints: {}", machine.constraints.len());
 
@@ -47,8 +44,6 @@ where
             bus_interaction.clone(),
             &mut circuit_builder,
             bus_map,
-            &mut constraint_format,
-            &mut constraint_cache,
         );
     }
 
@@ -116,7 +111,6 @@ where
                 return Variable::Witness(expr.linear.keys().next().unwrap().clone());
             }
         }
-
 
         let mut quadratic_result: Vec<Variable<AlgebraicReference>> = Vec::new();
 
@@ -251,63 +245,52 @@ where
             }
         }
 
-        if !linear_results.is_empty() {
-            if temp == Variable::Unused {
-                temp = linear_results
-                    .iter()
-                    .next()
-                    .cloned()
-                    .unwrap_or((T::ONE, Variable::Unused))
-                    .1;
-                if linear_results.len() == 1 {
-                    self.plonk_circuit.add_gate(Gate {
-                        q_l: linear_results[0].0,
-                        a: temp.clone(),
-                        q_o: -T::ONE,
-                        c: Variable::Tmp(self.temp_id_offset),
-                        ..Default::default()
-                    });
-                    self.temp_id_offset += 1;
-                    temp = Variable::Tmp(self.temp_id_offset - 1);
-                }
-            } else {
-                self.plonk_circuit.add_gate(Gate {
-                    q_l: linear_results[0].0,
-                    a: temp.clone(),
-                    q_r: T::ONE,
-                    b: linear_results[0].clone().1,
-                    q_o: -T::ONE,
-                    c: Variable::Tmp(self.temp_id_offset),
-                    ..Default::default()
-                });
-                self.temp_id_offset += 1;
-                temp = Variable::Tmp(self.temp_id_offset - 1);
-            }
-
-            linear_results.iter().skip(1).for_each(|(mul, var)| {
-                // println!("plonk circuit til now in linear iter: {}", self.plonk_circuit);
-                self.plonk_circuit.add_gate(Gate {
-                    q_l: T::ONE,
-                    a: temp.clone(),
-                    q_r: *mul,
-                    b: var.clone(),
-                    q_o: -T::ONE,
-                    c: Variable::Tmp(self.temp_id_offset),
-                    ..Default::default()
-                });
-                self.temp_id_offset += 1;
-                temp = Variable::Tmp(self.temp_id_offset - 1);
-            });
+        if temp == Variable::Unused
+            && linear_results.len() == 1
+            && expr.constant == SymbolicExpression::Concrete(T::ZERO)
+            && !assert_zero
+            && linear_results[0].0 == T::ONE
+        {
+            return linear_results[0].1.clone();
         }
 
-        if temp != Variable::Unused {
-            if expr.constant != SymbolicExpression::Concrete(T::ZERO) {
-                self.plonk_circuit.gates.last_mut().unwrap().q_const = expr
-                    .constant
-                    .try_to_number()
-                    .expect("Expected a constant for q_const");
-            }
-        } else {
+        if !linear_results.is_empty() {
+            temp = linear_results
+                .iter()
+                .cloned()
+                .fold(temp.clone(), |acc, (mul, var)| {
+                    if let Variable::Unused = acc {
+                        if linear_results.len() == 1 {
+                            self.plonk_circuit.add_gate(Gate {
+                                q_l: linear_results[0].0,
+                                a: var.clone(),
+                                q_o: -T::ONE,
+                                c: Variable::Tmp(self.temp_id_offset),
+                                ..Default::default()
+                            });
+                            self.temp_id_offset += 1;
+                            Variable::Tmp(self.temp_id_offset - 1)
+                        } else {
+                            var.clone()
+                        }
+                    } else {
+                        self.plonk_circuit.add_gate(Gate {
+                            q_l: T::ONE,
+                            a: acc.clone(),
+                            q_r: mul,
+                            b: var.clone(),
+                            q_o: -T::ONE,
+                            c: Variable::Tmp(self.temp_id_offset),
+                            ..Default::default()
+                        });
+                        self.temp_id_offset += 1;
+                        Variable::Tmp(self.temp_id_offset - 1)
+                    }
+                });
+        }
+
+        // When a bus interaction has constants as arguments
+        if temp == Variable::Unused {
             self.plonk_circuit.add_gate(Gate {
                 q_const: expr
                     .constant
@@ -321,10 +304,17 @@ where
             temp = Variable::Tmp(self.temp_id_offset - 1);
         }
 
+        if expr.constant != SymbolicExpression::Concrete(T::ZERO) {
+            self.plonk_circuit.gates.last_mut().unwrap().q_const = expr
+                .constant
+                .try_to_number()
+                .expect("Expected a constant for q_const");
+        }
+
         self.cache.insert(expr.clone(), temp.clone());
 
         if assert_zero {
-            self.plonk_circuit.gates.last_mut().unwrap().q_o = -T::ZERO;
+            self.plonk_circuit.gates.last_mut().unwrap().q_o = T::ZERO;
             self.plonk_circuit.gates.last_mut().unwrap().c = Variable::Unused;
             Variable::Unused
         } else {
@@ -373,12 +363,14 @@ mod tests {
                 "{}",
                 build_circuit_from_quadratic_symbolic_expression(&machine, &bus_map)
             ),
-            "bus: none, x * y = tmp_1
-bus: none, -x = tmp_3
-bus: none, x + y = tmp_4
-bus: none, tmp_3 * tmp_4 = tmp_2
-bus: none, tmp_1 + -tmp_2 = tmp_0
-bus: none, -tmp_0 = 0
+            "bus: none, x * y = tmp_0
+bus: none, x + y = tmp_1
+bus: none, x * tmp_1 = tmp_2
+bus: none, tmp_0 + tmp_2 = 0
+bus: none, 2 * x * y + -2 = 0
+bus: none, 15 * x + 50 = tmp_5
+bus: none, y + 1 = tmp_6
+bus: none, tmp_5 * tmp_6 = 0
 "
         );
     }

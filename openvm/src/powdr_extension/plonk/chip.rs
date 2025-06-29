@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use crate::plonk::air_to_plonkish::build_circuit;
+use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_symbolic_expression;
 use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
 use crate::powdr_extension::plonk::air::PlonkColumns;
@@ -132,7 +132,8 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let plonk_circuit = build_circuit(&self.machine, &self.bus_map);
+        let plonk_circuit =
+            build_circuit_from_quadratic_symbolic_expression(&self.machine, &self.bus_map);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());

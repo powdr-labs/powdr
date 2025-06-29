@@ -4,7 +4,6 @@ use std::fmt::{self, Display};
 
 use powdr_autoprecompiles::bus_map::BusType;
 
-pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
 pub mod plonk_gates_builder;
 

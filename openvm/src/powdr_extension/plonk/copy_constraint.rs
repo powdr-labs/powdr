@@ -88,7 +88,7 @@ pub fn generate_permutation_columns<F, P>(
 #[cfg(test)]
 mod tests {
     use crate::bus_map::default_openvm_bus_map;
-    use crate::plonk::air_to_plonkish::build_circuit;
+    use crate::plonk::plonk_gates_builder::build_circuit_from_quadratic_symbolic_expression;
     use crate::plonk::test_utils::var;
     use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
     use crate::powdr_extension::plonk::copy_constraint::FieldAlgebra;
@@ -116,13 +116,11 @@ mod tests {
             bus_interactions: vec![],
         };
 
-        let plonk_circuit = build_circuit(&machine, &bus_map);
+        let plonk_circuit = build_circuit_from_quadratic_symbolic_expression(&machine, &bus_map);
         let width = 26;
         let number_of_calls = 2;
         let height = number_of_calls * plonk_circuit.len();
         let mut values = F::zero_vec(height * width);
-
-        println!("circuit: {}", build_circuit(&machine, &bus_map));
 
         generate_permutation_columns::<F, P>(&mut values, &plonk_circuit, number_of_calls, width);
 
@@ -131,14 +129,12 @@ mod tests {
             vec![0, 1, 2, 3, 4, 5, 6, 10, 3, 4],
             vec![5, 6, 7, 8, 9, 0, 1, 11, 8, 9],
             vec![10, 11, 12, 13, 14, 2, 7, 15, 13, 14],
-            vec![15, 16, 17, 18, 19, 12, 16, 20, 18, 19],
-            vec![20, 21, 22, 23, 24, 17, 21, 22, 23, 24],
+            vec![15, 16, 17, 18, 19, 12, 16, 17, 18, 19],
             // Second call
-            vec![25, 26, 27, 28, 29, 30, 31, 35, 28, 29],
-            vec![30, 31, 32, 33, 34, 25, 26, 36, 33, 34],
-            vec![35, 36, 37, 38, 39, 27, 32, 40, 38, 39],
-            vec![40, 41, 42, 43, 44, 37, 41, 45, 43, 44],
-            vec![45, 46, 47, 48, 49, 42, 46, 47, 48, 49],
+            vec![20, 21, 22, 23, 24, 25, 26, 30, 23, 24],
+            vec![25, 26, 27, 28, 29, 20, 21, 31, 28, 29],
+            vec![30, 31, 32, 33, 34, 22, 27, 35, 33, 34],
+            vec![35, 36, 37, 38, 39, 32, 36, 37, 38, 39],
         ];
 
         // Get the values corresponding to a_id, b_id, c_id, d_id, e_id, a_perm, b_perm, c_perm, d_perm, e_perm
@@ -154,12 +150,14 @@ mod tests {
         }
 
         assert_eq!(
-            format!("{}", build_circuit(&machine, &bus_map)),
-            "bus: none, x * y = tmp_2
-bus: none, x + y = tmp_3
-bus: none, tmp_2 + -tmp_3 = tmp_1
-bus: none, -tmp_1 = tmp_0
-bus: none, tmp_0 * z = 0
+            format!(
+                "{}",
+                build_circuit_from_quadratic_symbolic_expression(&machine, &bus_map)
+            ),
+            "bus: none, -x * y = tmp_0
+bus: none, x + y = tmp_1
+bus: none, tmp_0 + tmp_1 = tmp_2
+bus: none, tmp_2 * z = 0
 "
         );
     }
