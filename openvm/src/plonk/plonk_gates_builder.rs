@@ -21,23 +21,11 @@ where
 {
     let mut circuit_builder = CircuitBuilderQuadratic::<T>::new();
 
-    tracing::debug!("number of constraints: {}", machine.constraints.len());
-
     for constraint in &machine.constraints {
         let quadratic_symbolic_expr = algebraic_to_quadratic_symbolic_expression(&constraint.expr);
 
         circuit_builder.evaluate_expression(&quadratic_symbolic_expr, true);
     }
-
-    tracing::debug!(
-        "number of gates for constraints: {}",
-        circuit_builder.plonk_circuit.len()
-    );
-
-    tracing::debug!(
-        "number of bus interactions: {}",
-        machine.bus_interactions.len()
-    );
 
     for bus_interaction in &machine.bus_interactions {
         add_bus_to_plonk_circuit_from_quadratic_symbolic_expression(
@@ -47,10 +35,6 @@ where
         );
     }
 
-    tracing::debug!(
-        "Number of gates in plonk circuit: {}",
-        circuit_builder.plonk_circuit.len()
-    );
     circuit_builder.build()
 }
 
