@@ -1,9 +1,19 @@
 on:
   workflow_dispatch:
+    inputs:
+      run_tests:
+        required: false
+        type: boolean
   workflow_call:
+    inputs:
+      run_tests:
+        required: true
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
+  IS_NIGHTLY_TEST: true
+  POWDR_GENERATE_PROOFS: "true"
   RUSTFLAGS: "-C target-cpu=native"
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 10000
@@ -26,8 +36,10 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      # - name: Run tests
-      #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+
+      - name: Run tests
+        if: ${{ inputs.run_tests == true }}
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
         run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev 815b3cc cargo-openvm
