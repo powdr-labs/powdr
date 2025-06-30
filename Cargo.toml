@@ -182,4 +182,3 @@ iter_over_hash_type = "deny"
 # openvm-pairing-transpiler = { path = "../openvm/extensions/pairing/transpiler" }
 # openvm-native-circuit = { path = "../openvm/extensions/native/circuit" }
 # openvm-native-recursion = { path = "../openvm/extensions/native/recursion" }
- 
