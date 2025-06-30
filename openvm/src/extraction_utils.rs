@@ -372,9 +372,9 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
-pub struct AirWidth {
-    pub base_width: usize,
-    pub log_up_width: usize,
+pub struct AirWidths {
+    pub base: usize,
+    pub log_up: usize,
 }
 
 impl std::fmt::Display for AirWidth {
