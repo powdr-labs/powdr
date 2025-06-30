@@ -500,7 +500,6 @@ pub struct OriginalCompiledProgram {
     pub sdk_vm_config: SdkVmConfig,
 }
 
-#[derive(Debug)]
 pub struct AirMetrics {
     pub name: String,
     pub width: AirWidth,
@@ -1051,7 +1050,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
-            [m.width, m.constraints, m.bus_interactions],
+            [m.width.base_width, m.constraints, m.bus_interactions],
             [2011, 166, 1783]
         );
     }
