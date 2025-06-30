@@ -62,12 +62,12 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
     /// have at least one unknown.
-    pub quadratic: Vec<(Self, Self)>,
+    quadratic: Vec<(Self, Self)>,
     /// Linear terms of the form `a * X`, where `a` is a (symbolically) known
     /// value and `X` is an unknown variable.
-    pub linear: BTreeMap<V, SymbolicExpression<T, V>>,
+    linear: BTreeMap<V, SymbolicExpression<T, V>>,
     /// Constant term, a (symbolically) known value.
-    pub constant: SymbolicExpression<T, V>,
+    constant: SymbolicExpression<T, V>,
 }
 
 impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExpression<T, V> {
@@ -87,6 +87,17 @@ impl<T: FieldElement, V> From<T> for QuadraticSymbolicExpression<T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
+    pub fn new(
+        quadratic: Vec<(Self, Self)>,
+        linear: BTreeMap<V, SymbolicExpression<T, V>>,
+        constant: SymbolicExpression<T, V>,
+    ) -> Self {
+        Self {
+            quadratic,
+            linear,
+            constant,
+        }
+    }
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
         SymbolicExpression::from_symbol(symbol, rc).into()
     }
@@ -159,6 +170,20 @@ impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
         &SymbolicExpression<T, V>,
     ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
+    pub fn linear_len(&self) -> usize {
+        self.linear.len()
+    }
+
+    pub fn get_quadratic_terms(&self) -> &[(Self, Self)] {
+        &self.quadratic
+    }
+    pub fn get_linear_terms(&self) -> &BTreeMap<V, SymbolicExpression<T, V>> {
+        &self.linear
+    }
+    pub fn get_constant(&self) -> &SymbolicExpression<T, V> {
+        &self.constant
     }
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.

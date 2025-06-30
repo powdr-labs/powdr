@@ -69,12 +69,13 @@ where
             return var.clone();
         }
 
-        if !expr.is_quadratic() && expr.linear.len() == 1 {
+        // If the expression is 1 * variable, we can return the variable directly
+        if !expr.is_quadratic() && expr.linear_len() == 1 {
             if assert_zero {
                 self.plonk_circuit.add_gate(Gate {
-                    a: Variable::Witness(expr.linear.keys().next().unwrap().clone()),
+                    a: Variable::Witness(expr.get_linear_terms().keys().next().unwrap().clone()),
                     q_l: expr
-                        .linear
+                        .get_linear_terms()
                         .values()
                         .next()
                         .unwrap()
@@ -82,28 +83,29 @@ where
                         .expect("Expected a constant for q_l"),
                     q_o: -T::ZERO,
                     q_const: expr
-                        .constant
+                        .get_constant()
                         .try_to_number()
                         .expect("Expected a constant for q_const"),
                     c: Variable::Unused,
                     ..Default::default()
                 });
                 return Variable::Unused;
-            } else if *expr.linear.values().next().unwrap() == SymbolicExpression::Concrete(T::ONE)
-                && expr.constant == SymbolicExpression::Concrete(T::ZERO)
+            } else if *expr.get_linear_terms().values().next().unwrap()
+                == SymbolicExpression::Concrete(T::ONE)
+                && *expr.get_constant() == SymbolicExpression::Concrete(T::ZERO)
             {
-                return Variable::Witness(expr.linear.keys().next().unwrap().clone());
+                return Variable::Witness(expr.get_linear_terms().keys().next().unwrap().clone());
             }
         }
 
+        // Compute all the quadratic terms
         let mut quadratic_result: Vec<Variable<AlgebraicReference>> = Vec::new();
-
-        expr.quadratic.iter().for_each(|(left, right)| {
-            let temp_expr = QuadraticSymbolicExpression {
-                quadratic: [(left.clone(), right.clone())].to_vec(),
-                linear: BTreeMap::new(),
-                constant: SymbolicExpression::Concrete(T::ZERO),
-            };
+        expr.get_quadratic_terms().iter().for_each(|(left, right)| {
+            let temp_expr = QuadraticSymbolicExpression::new(
+                [(left.clone(), right.clone())].to_vec(),
+                BTreeMap::new(),
+                SymbolicExpression::Concrete(T::ZERO),
+            );
             if let Some(var) = self.cache.get(&temp_expr) {
                 quadratic_result.push(var.clone());
             } else {
@@ -112,9 +114,9 @@ where
                     AlgebraicReference,
                 >|
                  -> (T, Variable<AlgebraicReference>) {
-                    if !expr.is_quadratic() && expr.linear.len() == 1 {
-                        let (witness, coeff) = expr.linear.iter().next().unwrap();
-                        if expr.constant == SymbolicExpression::Concrete(T::ZERO) {
+                    if !expr.is_quadratic() && expr.linear_len() == 1 {
+                        let (witness, coeff) = expr.get_linear_terms().iter().next().unwrap();
+                        if *expr.get_constant() == SymbolicExpression::Concrete(T::ZERO) {
                             (
                                 coeff.try_to_number().expect("expected a constant"),
                                 Variable::Witness(witness.clone()),
@@ -125,7 +127,7 @@ where
                                 q_l: coeff.try_to_number().expect("Expected a constant for q_l"),
                                 q_o: -T::ONE,
                                 q_const: expr
-                                    .constant
+                                    .get_constant()
                                     .try_to_number()
                                     .expect("Expected a constant for q_const"),
                                 c: Variable::Tmp(self.temp_id_offset),
@@ -178,19 +180,16 @@ where
             });
 
         // Compute all the linear terms
-        let mut iter = expr.linear.iter();
+        let mut iter = expr.get_linear_terms().iter();
 
         let mut linear_results: Vec<(T, Variable<AlgebraicReference>)> = Vec::new();
 
         while let (Some((poly_a, c_a)), Some((poly_b, c_b))) = (iter.next(), iter.next()) {
-            let temp_expr = QuadraticSymbolicExpression {
-                quadratic: Vec::new(),
-                linear: BTreeMap::from([
-                    (poly_a.clone(), c_a.clone()),
-                    (poly_b.clone(), c_b.clone()),
-                ]),
-                constant: SymbolicExpression::Concrete(T::ZERO),
-            };
+            let temp_expr = QuadraticSymbolicExpression::new(
+                Vec::new(),
+                BTreeMap::from([(poly_a.clone(), c_a.clone()), (poly_b.clone(), c_b.clone())]),
+                SymbolicExpression::Concrete(T::ZERO),
+            );
             if let Some(var) = self.cache.get(&temp_expr) {
                 linear_results.push((T::ONE, var.clone()));
             } else {
@@ -211,13 +210,13 @@ where
         }
 
         // Handle the last unpaired item if odd length
-        if expr.linear.len() % 2 != 0 {
-            if let Some((poly_a, c_a)) = expr.linear.iter().last() {
-                let temp_expr = QuadraticSymbolicExpression {
-                    quadratic: Vec::new(),
-                    linear: BTreeMap::from([(poly_a.clone(), c_a.clone())]),
-                    constant: SymbolicExpression::Concrete(T::ZERO),
-                };
+        if expr.linear_len() % 2 != 0 {
+            if let Some((poly_a, c_a)) = expr.get_linear_terms().iter().last() {
+                let temp_expr = QuadraticSymbolicExpression::new(
+                    Vec::new(),
+                    BTreeMap::from([(poly_a.clone(), c_a.clone())]),
+                    SymbolicExpression::Concrete(T::ZERO),
+                );
                 if let Some(var) = self.cache.get(&temp_expr) {
                     linear_results.push((T::ONE, var.clone()));
                 } else {
@@ -231,7 +230,7 @@ where
 
         if temp == Variable::Unused
             && linear_results.len() == 1
-            && expr.constant == SymbolicExpression::Concrete(T::ZERO)
+            && *expr.get_constant() == SymbolicExpression::Concrete(T::ZERO)
             && !assert_zero
             && linear_results[0].0 == T::ONE
         {
@@ -277,7 +276,7 @@ where
         if temp == Variable::Unused {
             self.plonk_circuit.add_gate(Gate {
                 q_const: expr
-                    .constant
+                    .get_constant()
                     .try_to_number()
                     .expect("Expected a constant for q_const"),
                 q_o: -T::ONE,
@@ -288,9 +287,9 @@ where
             temp = Variable::Tmp(self.temp_id_offset - 1);
         }
 
-        if expr.constant != SymbolicExpression::Concrete(T::ZERO) {
+        if *expr.get_constant() != SymbolicExpression::Concrete(T::ZERO) {
             self.plonk_circuit.gates.last_mut().unwrap().q_const = expr
-                .constant
+                .get_constant()
                 .try_to_number()
                 .expect("Expected a constant for q_const");
         }
