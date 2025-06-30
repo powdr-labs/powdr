@@ -357,32 +357,32 @@ fn jump_destination<F: PrimeField32>(
         == Rv32BranchEqual256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchEqualOpcode::BEQ.local_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == Rv32BranchEqual256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchEqualOpcode::BNE.local_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == Rv32BranchLessThan256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchLessThanOpcode::BLT.local_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == Rv32BranchLessThan256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU.local_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == Rv32BranchLessThan256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchLessThanOpcode::BGE.local_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
         == Rv32BranchLessThan256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU.local_usize()
     {
-        todo!()
+        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else {
         InstructionJumpBehaviour::ContinueNext
     }
