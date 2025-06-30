@@ -144,7 +144,7 @@ jobs:
           args: "--all-targets"
 
   test_apc_reth_compilation:
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
