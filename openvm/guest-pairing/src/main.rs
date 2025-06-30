@@ -31,12 +31,9 @@ fn main() {
     let mut g2_vec = Vec::with_capacity(elements);
 
     for idx in 0..elements {
-        // At each idx, there is (G1, G2) which is 6 Fp points
         let read_fq_at = |n: usize| {
             debug_assert!(n < PAIR_ELEMENT_LEN / 32);
             let start = idx * PAIR_ELEMENT_LEN + n * 32;
-            // SAFETY: We're reading `6 * 32 == PAIR_ELEMENT_LEN` bytes from `input[idx..]`
-            // per iteration. This is guaranteed to be in-bounds.
             let slice = unsafe { input.get_unchecked(start..start + 32) };
             Fq::from_be_bytes_mod_order(&slice[..32])
         };

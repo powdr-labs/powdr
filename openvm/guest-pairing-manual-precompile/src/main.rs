@@ -9,6 +9,7 @@ openvm::init!();
 
 const PAIR_ELEMENT_LEN: usize = 32 * (2 + 4); // 1 G1Affine (2 Fp), 1 G2Affine (4 Fp)
 
+// code mostly taken from openvm repo guest benchmarks
 pub fn main() {
     let input = hex::decode(
         "\
@@ -32,18 +33,13 @@ pub fn main() {
     let mut p = Vec::with_capacity(elements);
     let mut q = Vec::with_capacity(elements);
 
-    // read points
     for idx in 0..elements {
-        // At each idx, there is (G1, G2) which is 6 Fp points
         let read_fq_at = |n: usize| {
             debug_assert!(n < PAIR_ELEMENT_LEN / 32);
             let start = idx * PAIR_ELEMENT_LEN + n * 32;
-            // SAFETY: We're reading `6 * 32 == PAIR_ELEMENT_LEN` bytes from `input[idx..]`
-            // per iteration. This is guaranteed to be in-bounds.
             let slice = unsafe { input.get_unchecked(start..start + 32) };
             Fp::from_be_bytes(&slice[..32])
         };
-        // https://eips.ethereum.org/EIPS/eip-197, Fp2 is encoded as (a, b) where a * i + b
         let g1_x = read_fq_at(0);
         let g1_y = read_fq_at(1);
         let g2_x_c1 = read_fq_at(2);
