@@ -172,10 +172,6 @@ impl<T: FieldElement, V: Ord + Clone + Eq> QuadraticSymbolicExpression<T, V> {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
 
-    pub fn linear_len(&self) -> usize {
-        self.linear.len()
-    }
-
     pub fn get_quadratic_terms(&self) -> &[(Self, Self)] {
         &self.quadratic
     }

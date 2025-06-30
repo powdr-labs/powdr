@@ -70,7 +70,7 @@ where
         }
 
         // If the expression is 1 * variable, we can return the variable directly
-        if !expr.is_quadratic() && expr.linear_len() == 1 {
+        if !expr.is_quadratic() && expr.get_linear_terms().len() == 1 {
             if assert_zero {
                 self.plonk_circuit.add_gate(Gate {
                     a: Variable::Witness(expr.get_linear_terms().keys().next().unwrap().clone()),
@@ -114,7 +114,7 @@ where
                     AlgebraicReference,
                 >|
                  -> (T, Variable<AlgebraicReference>) {
-                    if !expr.is_quadratic() && expr.linear_len() == 1 {
+                    if !expr.is_quadratic() && expr.get_linear_terms().len() == 1 {
                         let (witness, coeff) = expr.get_linear_terms().iter().next().unwrap();
                         if *expr.get_constant() == SymbolicExpression::Concrete(T::ZERO) {
                             (
@@ -210,7 +210,7 @@ where
         }
 
         // Handle the last unpaired item if odd length
-        if expr.linear_len() % 2 != 0 {
+        if expr.get_linear_terms().len() % 2 != 0 {
             if let Some((poly_a, c_a)) = expr.get_linear_terms().iter().last() {
                 let temp_expr = QuadraticSymbolicExpression::new(
                     Vec::new(),
