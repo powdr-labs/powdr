@@ -4,11 +4,19 @@ on:
       run_tests:
         required: false
         type: boolean
+      apcs:
+        required: true
+        default: "100"
+        type: string
   workflow_call:
     inputs:
       run_tests:
         required: true
         type: boolean
+      apcs:
+        required: false
+        default: "100"
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,7 +76,7 @@ jobs:
           pip install -r openvm/scripts/requirements.txt
           pip install psrecord   # for monitoring memory usage
 
-      - name: Run small execution test with APCs
+      - name: Run prove test with APCs
         run: |
           source .venv/bin/activate
           cd openvm-reth-benchmark
@@ -76,7 +84,7 @@ jobs:
           RES_DIR=results/$(date +'%Y-%m-%d-%H%M')-$(git -C .. rev-parse HEAD)
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          MODE="prove-app" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+          MODE="prove-app" APC=${{ input.apcs }} psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
           echo "openvm-reth-benchmark: $(git rev-parse HEAD)" > $RES_DIR/rev.txt
           echo "powdr: $(git -C .. rev-parse HEAD)" >> $RES_DIR/rev.txt
           python ../openvm/scripts/basic_metrics.py metrics.json > $RES_DIR/basic.txt
