@@ -3,7 +3,7 @@ use openvm_ecc_guest::AffinePoint;
 #[allow(unused_imports)]
 use {
     openvm_pairing::bn254::{Bn254, Bn254G1Affine, Fp, Fp2},
-    openvm_pairing_guest::pairing::PairingCheck,
+    openvm_pairing::PairingCheck,
 };
 
 openvm::init!();
@@ -11,7 +11,6 @@ openvm::init!();
 const PAIR_ELEMENT_LEN: usize = 32 * (2 + 4); // 1 G1Affine (2 Fp), 1 G2Affine (4 Fp)
 
 pub fn main() {
-    // copied from https://github.com/bluealloy/revm/blob/9e39df5dbc5fdc98779c644629b28b8bee75794a/crates/precompile/src/bn128.rs#L395
     let input = hex::decode(
         "\
             1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\

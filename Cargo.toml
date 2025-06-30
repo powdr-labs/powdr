@@ -113,6 +113,7 @@ openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev 
 openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "26bb25be" }
 openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "26bb25be" }
 openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "26bb25be" }
+openvm-pairing-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "26bb25be" }
 openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "26bb25be", default-features = false }
 openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "26bb25be", default-features = false }
 
