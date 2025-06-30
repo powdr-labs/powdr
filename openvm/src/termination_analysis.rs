@@ -7,7 +7,6 @@ use itertools::Itertools;
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
-use openvm_rv32im_circuit::Rv32AuipcChip;
 use openvm_stark_backend::p3_field::PrimeField32;
 
 use crate::{
@@ -27,7 +26,7 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
     known_to_panic: impl IntoIterator<Item = &'a BasicBlock<F>>,
 ) /*-> impl Iterator<Item = (&'a BasicBlock<F>, PanicBehaviour)> */
 {
-    let known_to_panic: HashSet<BasicBlockIdentifier> =
+    let mut known_to_panic: HashSet<BasicBlockIdentifier> =
         known_to_panic.into_iter().map(Into::into).collect();
     let basic_blocks_by_identifier = blocks
         .iter()
@@ -69,7 +68,68 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
             }
         }
     }
+    let blocks_with_jump_behaviour = blocks
+        .iter()
+        .map(|b| (BasicBlockIdentifier::from(b), jump_behaviour(b)))
+        .collect::<Vec<_>>();
+    loop {
+        let new_blocks_to_panic =
+            propagate_panic(blocks_with_jump_behaviour.iter(), &known_to_panic).collect_vec();
+        if new_blocks_to_panic.is_empty() {
+            break;
+        }
+        known_to_panic.extend(new_blocks_to_panic);
+    }
+    println!("=============== AT END blocks =================");
+    for (id, block) in basic_blocks_by_identifier
+        .iter()
+        .sorted_by_key(|(id, _)| *id)
+    {
+        println!(
+            "{id} (known {}to panic):\n{}",
+            if known_to_panic.contains(id) {
+                ""
+            } else {
+                "not "
+            },
+            block.pretty_print(openvm_instruction_formatter)
+        )
+    }
+    println!("=============== =================");
+
     todo!();
+}
+
+fn propagate_panic<'a>(
+    blocks: impl Iterator<Item = &'a (BasicBlockIdentifier, BlockEndJumpBehaviour)> + 'a,
+    known_to_panic: &'a HashSet<BasicBlockIdentifier>,
+) -> impl Iterator<Item = BasicBlockIdentifier> + 'a {
+    blocks
+        .filter(move |(block_id, jump)| {
+            if known_to_panic.contains(block_id) {
+                // If the block is already known to panic, we can skip it.
+                return true;
+            }
+            match jump {
+                BlockEndJumpBehaviour::Unknown => false,
+                BlockEndJumpBehaviour::ContinueNext(next) => {
+                    // If the next block is known to panic, this block also panics.
+                    known_to_panic.contains(next)
+                }
+                BlockEndJumpBehaviour::UnconditionalJump(next) => {
+                    // If the next block is known to panic, this block also panics.
+                    known_to_panic.contains(next)
+                }
+                BlockEndJumpBehaviour::ConditionalJump { jump_to, next } => {
+                    known_to_panic.contains(jump_to) && known_to_panic.contains(next)
+                }
+                BlockEndJumpBehaviour::JumpAndLink { jump_to, return_to } => {
+                    // If the jump target is known to panic, this block also panics, because it does not return.
+                    known_to_panic.contains(jump_to) || known_to_panic.contains(return_to)
+                }
+            }
+        })
+        .map(|(block_id, _)| *block_id)
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -102,23 +162,40 @@ impl Display for BasicBlockIdentifier {
 /// Returns the identifiers of successors of this basic block or
 /// an error if we cannot determine the successors for certain.
 fn successors<F: PrimeField32>(block: &BasicBlock<F>) -> Result<Vec<BasicBlockIdentifier>, ()> {
+    match jump_behaviour(block) {
+        BlockEndJumpBehaviour::Unknown => Err(()),
+        BlockEndJumpBehaviour::ContinueNext(next) => Ok(vec![next]),
+        BlockEndJumpBehaviour::UnconditionalJump(next) => Ok(vec![next]),
+        BlockEndJumpBehaviour::ConditionalJump { jump_to, next } => Ok(vec![jump_to, next]),
+        BlockEndJumpBehaviour::JumpAndLink { jump_to, return_to } => {
+            // TODO there might be calls to functions that do not return.
+            Ok(vec![jump_to, return_to])
+        }
+    }
+}
+
+fn jump_behaviour<F: PrimeField32>(block: &BasicBlock<F>) -> BlockEndJumpBehaviour {
     // TODO assert that all statements except for the last one are "InstructionJumpBehaviour::ContinueNext"
     let second_to_last = block.statements.iter().rev().nth(1);
     let last = block.statements.last().unwrap();
     let addr = F::from_canonical_u64(((block.start_idx + block.statements.len() - 1) * 4) as u64);
     let next_block = BasicBlockIdentifier(block.start_idx + block.statements.len());
     match jump_destination(addr, last, second_to_last) {
-        InstructionJumpBehaviour::Unknown => Err(()),
-        InstructionJumpBehaviour::ContinueNext => Ok(vec![next_block]),
+        InstructionJumpBehaviour::Unknown => BlockEndJumpBehaviour::Unknown,
+        InstructionJumpBehaviour::ContinueNext => BlockEndJumpBehaviour::ContinueNext(next_block),
         InstructionJumpBehaviour::UnconditionalJump(addr) => {
-            Ok(vec![BasicBlockIdentifier::from_address(addr)])
+            BlockEndJumpBehaviour::UnconditionalJump(BasicBlockIdentifier::from_address(addr))
         }
-        InstructionJumpBehaviour::ConditionalJump(addr) => {
-            Ok(vec![BasicBlockIdentifier::from_address(addr), next_block])
-        }
+        InstructionJumpBehaviour::ConditionalJump(addr) => BlockEndJumpBehaviour::ConditionalJump {
+            jump_to: BasicBlockIdentifier::from_address(addr),
+            next: next_block,
+        },
         InstructionJumpBehaviour::JumpAndLink(addr) => {
             // TODO there might be calls to functions that do not return.
-            Ok(vec![BasicBlockIdentifier::from_address(addr), next_block])
+            BlockEndJumpBehaviour::JumpAndLink {
+                jump_to: BasicBlockIdentifier::from_address(addr),
+                return_to: next_block,
+            }
         }
     }
 }
@@ -135,6 +212,26 @@ enum InstructionJumpBehaviour {
     /// Jumps to the given address but also returns.
     /// TODO we could call functions that never return.
     JumpAndLink(u32),
+}
+
+enum BlockEndJumpBehaviour {
+    /// Might go anywhere.
+    Unknown,
+    /// Only continues on the next instruction.
+    ContinueNext(BasicBlockIdentifier),
+    /// Only jumps to the given address.
+    UnconditionalJump(BasicBlockIdentifier),
+    /// Might jump to the given address, but might also continue.
+    ConditionalJump {
+        jump_to: BasicBlockIdentifier,
+        next: BasicBlockIdentifier,
+    },
+    /// Jumps to the given address but also returns.
+    /// TODO we could call functions that never return.
+    JumpAndLink {
+        jump_to: BasicBlockIdentifier,
+        return_to: BasicBlockIdentifier,
+    },
 }
 
 /// Returns `Ok(Some(offset))` where `offset` is the relative pc offset of the instruction this
