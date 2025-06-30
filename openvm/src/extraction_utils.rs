@@ -11,9 +11,8 @@ use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::interaction::fri_log_up::{
-    find_interaction_chunks, STARK_LU_NUM_CHALLENGES,
+    find_interaction_chunks, STARK_LU_NUM_CHALLENGES, STARK_LU_NUM_EXPOSED_VALUES,
 };
-use openvm_stark_backend::interaction::rap::InteractionPhaseAirBuilder;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };
@@ -30,7 +29,6 @@ use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::MutexGuard;
-use tracing::Dispatch;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
@@ -340,22 +338,23 @@ pub fn get_constraints(
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let name = air.name();
     let base_width = air.width();
-    let builder = symbolic_builder_with_degree(air, None);
-    let max_degree = builder.max_constraint_degree();
+    let app_log_blow_up = 2;
+    let max_degree = (1 << app_log_blow_up) + 1;
     let SymbolicConstraints {
         constraints,
         interactions,
-    } = builder.constraints();
+    } = get_constraints(air);
     let perm_width = find_interaction_chunks(&interactions, max_degree)
         .interaction_partitions()
         .len()
         + 1;
     let challenge_width = STARK_LU_NUM_CHALLENGES;
+    let exposed_width = STARK_LU_NUM_EXPOSED_VALUES;
     AirMetrics {
         name,
         width: AirWidth {
             base_width,
-            log_up_width: perm_width + challenge_width,
+            log_up_width: perm_width + challenge_width + exposed_width,
         },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
