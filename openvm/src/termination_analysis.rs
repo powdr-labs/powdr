@@ -38,11 +38,11 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         .sorted_by_key(|(id, _)| *id)
     {
         println!(
-            "{id} (known {}to panic):\n{}",
+            "{id} ({} known to panic):\n{}",
             if known_to_panic.contains(id) {
-                ""
+                "IS"
             } else {
-                "not "
+                "not"
             },
             block.pretty_print(openvm_instruction_formatter)
         )
@@ -78,6 +78,10 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         if new_blocks_to_panic.is_empty() {
             break;
         }
+        println!(
+            "New blocks that are known to panic: {}",
+            new_blocks_to_panic.iter().format(", ")
+        );
         known_to_panic.extend(new_blocks_to_panic);
     }
     println!("=============== AT END blocks =================");
@@ -86,16 +90,44 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         .sorted_by_key(|(id, _)| *id)
     {
         println!(
-            "{id} (known {}to panic):\n{}",
+            "{id} ({} known to panic), -> [{}]:\n{}",
             if known_to_panic.contains(id) {
-                ""
+                "IS"
             } else {
-                "not "
+                "not"
             },
+            successors(block)
+                .map(|s| s.iter().format(", ").to_string())
+                .unwrap_or_else(|_| "unknown".to_string()),
             block.pretty_print(openvm_instruction_formatter)
         )
     }
     println!("=============== =================");
+
+    println!(
+        "======================= Final analysis =================\n{} out of {} blocks known to panic",
+        known_to_panic.len(),
+        basic_blocks_by_identifier.len()
+    );
+    for (id, block) in basic_blocks_by_identifier
+        .iter()
+        .sorted_by_key(|(id, _)| *id)
+    {
+        if known_to_panic.contains(id) {
+            continue;
+        }
+        match jump_behaviour(block) {
+            BlockEndJumpBehaviour::ConditionalJump { jump_to, next } => {
+                if known_to_panic.contains(&jump_to) {
+                    println!(
+                        "{id} (not known to panic), might jump to {jump_to} or continue to {next},\nbut the jump target is known to panic, so we can make it unconditional:\n{}",
+                        block.pretty_print(openvm_instruction_formatter)
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
 
     todo!();
 }
@@ -108,7 +140,7 @@ fn propagate_panic<'a>(
         .filter(move |(block_id, jump)| {
             if known_to_panic.contains(block_id) {
                 // If the block is already known to panic, we can skip it.
-                return true;
+                return false;
             }
             match jump {
                 BlockEndJumpBehaviour::Unknown => false,
