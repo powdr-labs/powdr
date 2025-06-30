@@ -502,7 +502,7 @@ pub struct OriginalCompiledProgram {
 
 pub struct AirMetrics {
     pub name: String,
-    pub width: AirWidth,
+    pub widths: AirWidths,
     pub constraints: usize,
     pub bus_interactions: usize,
 }
