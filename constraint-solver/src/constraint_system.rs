@@ -2,6 +2,7 @@ use crate::{
     effect::Effect,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
+    runtime_constant::RuntimeConstant,
 };
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -17,7 +18,7 @@ pub struct ConstraintSystem<T: FieldElement, V> {
     pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for ConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

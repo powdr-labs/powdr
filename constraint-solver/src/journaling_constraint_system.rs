@@ -103,7 +103,9 @@ impl<T: FieldElement, V> JournalingConstraintSystem<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for JournalingConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display
+    for JournalingConstraintSystem<T, V>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.system)
     }
