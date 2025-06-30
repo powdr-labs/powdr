@@ -14,12 +14,3 @@ supported_moduli = [
 
 [app_vm_config.pairing]
 supported_curves = ["Bn254"]
-
-# [[app_vm_config.ecc.supported_curves]]
-# struct_name =
-# modulus = "21888242871839275222246405745257275088696311157297823662689037894645226208583"
-# scalar = "21888242871839275222246405745257275088548364400416034343698204186575808495617"
-# a = "0"
-# b = "3"
-
-
