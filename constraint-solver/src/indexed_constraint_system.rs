@@ -241,7 +241,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     ) {
         let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
         let field = bus_interaction.fields_mut().nth(field_index).unwrap();
-        *field = value.into();
+        *field = QuadraticSymbolicExpression::from_number(value);
     }
 
     /// Substitute an unknown variable by a QuadraticSymbolicExpression in the whole system.
@@ -417,7 +417,7 @@ fn substitute_by_unknown_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for IndexedConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for IndexedConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.constraint_system)
     }
@@ -475,8 +475,7 @@ mod tests {
 
         s.substitute_by_unknown(
             &"z",
-            &(Qse::from_unknown_variable("x")
-                + Qse::from(SymbolicExpression::from(GoldilocksField::from(7)))),
+            &(Qse::from_unknown_variable("x") + Qse::from_number(GoldilocksField::from(7))),
         );
 
         assert_eq!(

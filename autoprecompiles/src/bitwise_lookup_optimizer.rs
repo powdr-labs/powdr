@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
@@ -40,14 +41,14 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
             // The bus interaction is equivalent to "x and y are bytes and z = 0".
             to_byte_constrain.extend([x.clone(), y.clone()]);
             // If it is not zero, we could also add it as a new constraint.
-            assert!(z == &T::from(0).into());
+            assert!(z.is_zero());
             false
         } else if op == 1.into() {
             // The bus interaction is equivalent to "x, y and z are bytes and z = x ^ y".
 
             // If any argument is zero, the other two have to be equal.
             let mut args = vec![x, y, z];
-            if let Some(zero_pos) = args.iter().position(|e| *e == &T::from(0).into()) {
+            if let Some(zero_pos) = args.iter().position(|e| e.is_zero()) {
                 args.remove(zero_pos);
                 // The two remaning expressions in args are equal and bytes.
                 let [a, b] = args.try_into().unwrap();
@@ -82,25 +83,25 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
         .unique()
         .collect_vec();
     if to_byte_constrain.len() % 2 != 0 {
-        to_byte_constrain.push(T::from(0).into());
+        to_byte_constrain.push(Zero::zero());
     }
     for (x, y) in to_byte_constrain.into_iter().tuples() {
         system.bus_interactions.push(BusInteraction {
-            bus_id: T::from(bitwise_lookup_bus_id).into(),
-            payload: vec![x.clone(), y.clone(), T::from(0).into(), T::from(0).into()],
-            multiplicity: T::from(1).into(),
+            bus_id: QuadraticSymbolicExpression::from_number(T::from(bitwise_lookup_bus_id)),
+            payload: vec![x.clone(), y.clone(), Zero::zero(), Zero::zero()],
+            multiplicity: One::one(),
         });
     }
     system.algebraic_constraints.extend(new_constraints);
     system
 }
 
-fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Ord>(
+fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Hash + Eq + Ord>(
     bus_int: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
     bitwise_lookup_bus_id: u64,
 ) -> bool {
-    bus_int.bus_id == T::from(bitwise_lookup_bus_id).into()
-        && bus_int.multiplicity == T::from(1).into()
+    bus_int.bus_id == QuadraticSymbolicExpression::from_number(T::from(bitwise_lookup_bus_id))
+        && bus_int.multiplicity.is_one()
 }
 
 /// Returns all expressions that are byte-constrained in the machine.

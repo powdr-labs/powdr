@@ -3,7 +3,7 @@
 
 openvm::entry!(main);
 
-use openvm::io::{reveal, read};
+use openvm::io::{read, reveal_u32};
 
 pub fn main() {
     let n: u32 = read();
@@ -18,5 +18,5 @@ pub fn main() {
         panic!();
     }
 
-    reveal(a, 0);
+    reveal_u32(a, 0);
 }

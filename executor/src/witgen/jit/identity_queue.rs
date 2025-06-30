@@ -12,6 +12,7 @@ use powdr_ast::{
 };
 use powdr_constraint_solver::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
     variable_update::{UpdateKind, VariableUpdate},
 };
