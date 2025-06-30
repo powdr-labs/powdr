@@ -372,6 +372,7 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
+#[derive(Default)]
 pub struct AirWidth {
     pub base_width: usize,
     pub log_up_width: usize,
