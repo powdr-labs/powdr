@@ -1125,7 +1125,7 @@ mod tests {
             GUEST_KECCAK,
             GuestOptions::default(),
             config,
-            PgoConfig::Cell(pgo_data, Some(10000)),
+            PgoConfig::Cell(pgo_data, Some(10_000)), // limit to 10_000 total columns
         )
         .unwrap();
 
@@ -1150,6 +1150,8 @@ mod tests {
             });
 
         // Check all APC
+        assert_eq!(powdr_metrics.len(), 34); // Number of APC chips
+
         let total_powdr_metrics = sum_up_air_metrics(powdr_metrics);
         assert_eq!(
             [
@@ -1162,8 +1164,10 @@ mod tests {
         );
 
         // Check non-APC metrics
-        let total_non_apc_metrics =
-            sum_up_air_metrics(compiled_program.air_metrics(AirMetricsType::NonPowdr));
+        let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
+        assert_eq!(non_powdr_metrics.len(), 16); // Number of non-APC chips
+
+        let total_non_apc_metrics = sum_up_air_metrics(non_powdr_metrics);
         assert_eq!(
             [
                 total_non_apc_metrics.width.base_width,
