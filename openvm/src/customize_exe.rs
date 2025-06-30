@@ -125,17 +125,19 @@ pub fn customize(
         blocks.len()
     );
 
+    let label_by_start_idx = |start_idx: usize| {
+        let adjusted_pc = OPENVM_INIT_PC + (start_idx as u32) * 4;
+        debug_info.symbols.try_get_one(adjusted_pc)
+    };
+
     let known_to_panic = blocks.iter().filter(|b| {
-        let adjusted_pc = OPENVM_INIT_PC + (b.start_idx as u32) * 4;
-        if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
+        label_by_start_idx(b.start_idx).is_some_and(|label| {
             // TODO adjust this
             label.contains("panic_fmt")
-        } else {
-            false
-        }
+        })
     });
 
-    analyze_basic_blocks(&blocks, known_to_panic);
+    analyze_basic_blocks(&blocks, known_to_panic, &label_by_start_idx);
 
     let blocks = blocks
         .into_iter()

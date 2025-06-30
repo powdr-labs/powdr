@@ -8,6 +8,7 @@ use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Op
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::p3_field::PrimeField32;
+use powdr_riscv_elf::debug_info::DebugInfo;
 
 use crate::{
     customize_exe::{BasicBlock, OPENVM_INIT_PC},
@@ -24,6 +25,7 @@ pub enum PanicBehaviour {
 pub fn analyze_basic_blocks<'a, F: PrimeField32>(
     blocks: &'a [BasicBlock<F>],
     known_to_panic: impl IntoIterator<Item = &'a BasicBlock<F>>,
+    label_by_start_idx: &impl Fn(usize) -> Option<&'a str>,
 ) /*-> impl Iterator<Item = (&'a BasicBlock<F>, PanicBehaviour)> */
 {
     let mut known_to_panic: HashSet<BasicBlockIdentifier> =
@@ -38,12 +40,13 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         .sorted_by_key(|(id, _)| *id)
     {
         println!(
-            "{id} ({} known to panic):\n{}",
+            "{id} ({} known to panic), {}:\n{}",
             if known_to_panic.contains(id) {
                 "IS"
             } else {
                 "not"
             },
+            label_by_start_idx(block.start_idx).unwrap_or("no label"),
             block.pretty_print(openvm_instruction_formatter)
         )
     }
@@ -90,7 +93,8 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         .sorted_by_key(|(id, _)| *id)
     {
         println!(
-            "{id} ({} known to panic), -> [{}]:\n{}",
+            "{id} {} ({} known to panic), -> [{}]:\n{}",
+            label_by_start_idx(block.start_idx).unwrap_or("no label"),
             if known_to_panic.contains(id) {
                 "IS"
             } else {
@@ -120,7 +124,8 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
             BlockEndJumpBehaviour::ConditionalJump { jump_to, next } => {
                 if known_to_panic.contains(&jump_to) {
                     println!(
-                        "{id} (not known to panic), might jump to {jump_to} or continue to {next},\nbut the jump target is known to panic, so we can make it unconditional:\n{}",
+                        "{id}: {} (not known to panic), might jump to {jump_to} or continue to {next},\nbut the jump target is known to panic, so we can make it unconditional:\n{}",
+                        label_by_start_idx(block.start_idx).unwrap_or("[no label]"),
                         block.pretty_print(openvm_instruction_formatter)
                     );
                 }
