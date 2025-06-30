@@ -333,14 +333,14 @@ pub fn get_name(air: Arc<dyn AnyRap<BabyBearSC>>) -> String {
 pub fn get_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
-    let builder = get_symbolic_builder(air);
+    let builder = symbolic_builder_with_degree(air, None);
     builder.constraints()
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let name = air.name();
     let base_width = air.width();
-    let builder = get_symbolic_builder(air);
+    let builder = symbolic_builder_with_degree(air, None);
     let max_degree = builder.max_constraint_degree();
     let SymbolicConstraints {
         constraints,
@@ -362,14 +362,15 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     }
 }
 
-pub fn get_symbolic_builder(
+pub fn symbolic_builder_with_degree(
     air: Arc<dyn AnyRap<BabyBearSC>>,
+    max_constraint_degree: Option<usize>,
 ) -> SymbolicRapBuilder<p3_baby_bear::BabyBear> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);
     let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
-    air_keygen_builder.get_symbolic_builder(None)
+    air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
 #[derive(Debug)]
