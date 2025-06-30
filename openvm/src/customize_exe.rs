@@ -5,9 +5,9 @@ use std::sync::Arc;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
-use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
+use crate::{AirMetrics, IntoOpenVm};
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction;
@@ -519,13 +519,13 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         }
     }
 
-    let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
-        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
-        let total_non_apc_columns = chip_inventory_air_widths
+    let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
+        let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
+        let total_non_apc_columns = chip_inventory_air_metrics
             .iter()
-            .map(|(air_name, air_width)| {
-                tracing::debug!("Chip inventory air {} has {}", air_name, air_width);
-                air_width.base_width + air_width.log_up_width
+            .map(|AirMetrics { name, width, .. }| {
+                tracing::debug!("Chip inventory air {} has {}", name, width);
+                width.base_width + width.log_up_width
             })
             .sum::<usize>();
         max_total_columns - total_non_apc_columns

@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::IntoOpenVm;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
+use crate::{AirMetrics, IntoOpenVm};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -278,25 +278,16 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_widths(&self) -> HashMap<String, AirWidth> {
+    pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
         self.chip_complex()
             .inventory
             .executors()
             .iter()
             .map(|executor| {
                 let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
-                let name = air.name();
-                let base_width = air.width();
-                let log_up_width = get_log_up_width(air.clone());
-                (
-                    name,
-                    AirWidth {
-                        base_width,
-                        log_up_width,
-                    },
-                )
+                get_air_metrics(air)
             })
-            .collect::<HashMap<_, _>>()
+            .collect::<Vec<_>>()
     }
 }
 
@@ -346,15 +337,29 @@ pub fn get_constraints(
     builder.constraints()
 }
 
-pub fn get_log_up_width(air: Arc<dyn AnyRap<BabyBearSC>>) -> usize {
+pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
+    let name = air.name();
+    let base_width = air.width();
     let builder = get_symbolic_builder(air);
     let max_degree = builder.max_constraint_degree();
-    let perm_width = find_interaction_chunks(&builder.constraints().interactions, max_degree)
+    let SymbolicConstraints {
+        constraints,
+        interactions,
+    } = builder.constraints();
+    let perm_width = find_interaction_chunks(&interactions, max_degree)
         .interaction_partitions()
         .len()
         + 1;
     let challenge_width = STARK_LU_NUM_CHALLENGES;
-    perm_width + challenge_width
+    AirMetrics {
+        name,
+        width: AirWidth {
+            base_width,
+            log_up_width: perm_width + challenge_width,
+        },
+        constraints: constraints.len(),
+        bus_interactions: interactions.len(),
+    }
 }
 
 pub fn get_symbolic_builder(
@@ -367,6 +372,7 @@ pub fn get_symbolic_builder(
     air_keygen_builder.get_symbolic_builder(None)
 }
 
+#[derive(Debug)]
 pub struct AirWidth {
     pub base_width: usize,
     pub log_up_width: usize,
