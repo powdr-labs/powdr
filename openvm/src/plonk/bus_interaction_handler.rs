@@ -118,12 +118,11 @@ mod tests {
             format!("{plonk_circuit}"),
             "bus: none, 42 = tmp_0
 bus: none, x + y = tmp_1
-bus: none, x * y = tmp_3
-bus: none, -tmp_3 = tmp_2
-bus: none, 5 * y = tmp_4
-bus: none, 1 = tmp_5
-bus: memory, tmp_0, tmp_1, y, tmp_2, tmp_4
-bus: none, x, y, tmp_5, Unused, Unused
+bus: none, -x * y = tmp_2
+bus: none, 5 * y = tmp_3
+bus: none, 1 = tmp_4
+bus: memory, tmp_0, tmp_1, y, tmp_2, tmp_3
+bus: none, x, y, tmp_4, Unused, Unused
 "
         )
     }
