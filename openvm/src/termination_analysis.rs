@@ -7,6 +7,7 @@ use itertools::Itertools;
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
+use openvm_rv32im_circuit::Rv32AuipcChip;
 use openvm_stark_backend::p3_field::PrimeField32;
 
 use crate::{
@@ -102,16 +103,21 @@ impl Display for BasicBlockIdentifier {
 /// an error if we cannot determine the successors for certain.
 fn successors<F: PrimeField32>(block: &BasicBlock<F>) -> Result<Vec<BasicBlockIdentifier>, ()> {
     // TODO assert that all statements except for the last one are "InstructionJumpBehaviour::ContinueNext"
+    let second_to_last = block.statements.iter().rev().nth(1);
     let last = block.statements.last().unwrap();
     let addr = F::from_canonical_u64(((block.start_idx + block.statements.len() - 1) * 4) as u64);
     let next_block = BasicBlockIdentifier(block.start_idx + block.statements.len());
-    match jump_destination(addr, last) {
+    match jump_destination(addr, last, second_to_last) {
         InstructionJumpBehaviour::Unknown => Err(()),
         InstructionJumpBehaviour::ContinueNext => Ok(vec![next_block]),
         InstructionJumpBehaviour::UnconditionalJump(addr) => {
             Ok(vec![BasicBlockIdentifier::from_address(addr)])
         }
         InstructionJumpBehaviour::ConditionalJump(addr) => {
+            Ok(vec![BasicBlockIdentifier::from_address(addr), next_block])
+        }
+        InstructionJumpBehaviour::JumpAndLink(addr) => {
+            // TODO there might be calls to functions that do not return.
             Ok(vec![BasicBlockIdentifier::from_address(addr), next_block])
         }
     }
@@ -126,7 +132,9 @@ enum InstructionJumpBehaviour {
     UnconditionalJump(u32),
     /// Might jump to the given address, but might also continue.
     ConditionalJump(u32),
-    // TODO What about "jump and link" and "return"?
+    /// Jumps to the given address but also returns.
+    /// TODO we could call functions that never return.
+    JumpAndLink(u32),
 }
 
 /// Returns `Ok(Some(offset))` where `offset` is the relative pc offset of the instruction this
@@ -135,6 +143,7 @@ enum InstructionJumpBehaviour {
 fn jump_destination<F: PrimeField32>(
     address: F,
     instruction: &Instruction<F>,
+    previous: Option<&Instruction<F>>,
 ) -> InstructionJumpBehaviour {
     let opcode = instruction.opcode.as_usize();
 
@@ -189,8 +198,68 @@ fn jump_destination<F: PrimeField32>(
             .global_opcode()
             .as_usize()
     {
-        // dynamic jump, TODO but might be static if we use register 0?
-        InstructionJumpBehaviour::Unknown
+        let offset: i32 = if instruction.b.is_zero() {
+            // zero offset from register
+            0
+        } else if previous.is_some_and(|previous| {
+            previous.opcode.as_usize()
+                == openvm_rv32im_transpiler::Rv32AuipcOpcode::AUIPC
+                    .global_opcode()
+                    .as_usize()
+                && previous.a == instruction.b
+        }) {
+            // Typical auipc-jalr-pattern.
+            (previous.unwrap().c.as_canonical_u32() << 8) as i32 - 4
+        } else {
+            return InstructionJumpBehaviour::Unknown;
+        };
+
+        //     {
+        //         let dest = if previous.a == instruction.b {
+        //             // Typical auipc-jalr-pattern.
+        //             let auipc_imm = (previous.c.as_canonical_u32() << 8) as i32 - 4;
+        //             let jalr_imm_neg = instruction.g.as_canonical_u32() != 0;
+        //             let dest = auipc_imm + jalr_imm;
+        //             let dest = if dest > 0 {
+        //                 address + F::from_canonical_u32(dest as u32)
+        //             } else {
+        //                 address - F::from_canonical_u32((-dest) as u32)
+        //             };
+        //             // TODO what about negative dest?
+        //             println!(
+        //                 "auipc-jalr pattern: auipc_imm = {auipc_imm:#x}, jalr_imm = {jalr_imm:#x}, jalr_imm_neg = {jalr_imm_neg}"
+        //             );
+        //             println!("dest relative {:#x}", (auipc_imm + jalr_imm - 4) as i32);
+        //             // }
+        //             // return InstructionJumpBehaviour::JumpAndLink(
+        //             //     (address + previous.c * F::from_canonical_u16(256) + instruction.c
+        //             //         - F::from_canonical_u16(4))
+        //             //     .as_canonical_u32(),
+        //             // );
+        //             dest
+        //         } else if instruction.b.is_zero() {
+        //             let jalr_imm = (instruction.c.as_canonical_u32() as u16) as i16 as i32; // is only 0xffff
+        //             let jalr_imm_neg = instruction.g.as_canonical_u32() != 0;
+        //         } else {
+        //             return InstructionJumpBehaviour::Unknown;
+        //         };
+        //     } else {
+        //         todo!();
+        //     }
+        // };
+        let jalr_imm = (instruction.c.as_canonical_u32() as u16) as i16 as i32; // is only 0xffff
+        let dest = jalr_imm + offset;
+        let dest = if dest > 0 {
+            address + F::from_canonical_u32(dest as u32)
+        } else {
+            address - F::from_canonical_u32((-dest) as u32)
+        };
+
+        if instruction.a.is_zero() {
+            return InstructionJumpBehaviour::UnconditionalJump(dest.as_canonical_u32());
+        } else {
+            return InstructionJumpBehaviour::JumpAndLink(dest.as_canonical_u32());
+        }
     } else if opcode
         == Rv32BranchEqual256Opcode::CLASS_OFFSET
             + openvm_rv32im_transpiler::BranchEqualOpcode::BEQ.local_usize()

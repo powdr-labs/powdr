@@ -125,7 +125,17 @@ pub fn customize(
         blocks.len()
     );
 
-    analyze_basic_blocks(&blocks, std::iter::empty());
+    let known_to_panic = blocks.iter().filter(|b| {
+        let adjusted_pc = OPENVM_INIT_PC + (b.start_idx as u32) * 4;
+        if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
+            // TODO adjust this
+            label.contains("panic_fmt")
+        } else {
+            false
+        }
+    });
+
+    analyze_basic_blocks(&blocks, known_to_panic);
 
     let blocks = blocks
         .into_iter()
