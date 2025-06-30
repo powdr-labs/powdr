@@ -1,10 +1,12 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
-use std::collections::BTreeMap;
 use std::iter::once;
 
 use derive_more::From;
+use powdr_autoprecompiles::expression::AlgebraicReference;
 
+use crate::extraction_utils::OriginalAirs;
+use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
 use openvm_circuit::{
@@ -25,13 +27,11 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     Chip,
 };
-use powdr_autoprecompiles::powdr::Column;
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
 use crate::{BusMap, PrecompileImplementation};
 
-use super::chip::SharedChips;
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
@@ -42,6 +42,7 @@ pub struct PowdrExtension<P: IntoOpenVm> {
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
+    pub airs: OriginalAirs<P>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -74,8 +75,7 @@ pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub opcode: PowdrOpcode,
     pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    pub original_airs: BTreeMap<usize, SymbolicMachine<P>>,
-    pub is_valid_column: Column,
+    pub is_valid_column: AlgebraicReference,
 }
 
 impl<P: IntoOpenVm> PowdrPrecompile<P> {
@@ -84,15 +84,13 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         opcode: PowdrOpcode,
         machine: SymbolicMachine<P>,
         original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        original_airs: BTreeMap<usize, SymbolicMachine<P>>,
-        is_valid_column: Column,
+        is_valid_column: AlgebraicReference,
     ) -> Self {
         Self {
             name,
             opcode,
             machine,
             original_instructions,
-            original_airs,
             is_valid_column,
         }
     }
@@ -104,12 +102,14 @@ impl<P: IntoOpenVm> PowdrExtension<P> {
         base_config: SdkVmConfig,
         implementation: PrecompileImplementation,
         bus_map: BusMap,
+        airs: OriginalAirs<P>,
     ) -> Self {
         Self {
             precompiles,
             base_config,
             implementation,
             bus_map,
+            airs,
         }
     }
 }
@@ -183,10 +183,10 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
         let offline_memory = builder.system_base().offline_memory();
 
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = *builder
+        let bitwise_lookup = builder
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
             .first()
-            .unwrap();
+            .cloned();
         let range_checker = *builder
             .find_chip::<SharedVariableRangeCheckerChip>()
             .first()
@@ -196,31 +196,34 @@ impl<P: IntoOpenVm> VmExtension<OpenVmField<P>> for PowdrExtension<P> {
             .first()
             .cloned();
 
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair =
+            PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
+
         for precompile in &self.precompiles {
             let powdr_chip: PowdrExecutor<P> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
+                    self.airs.clone(),
                     offline_memory.clone(),
                     self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
+                    shared_chips_pair.clone(),
                 )
                 .into(),
-                PrecompileImplementation::PlonkChip => PlonkChip::new(
-                    precompile.clone(),
-                    offline_memory.clone(),
-                    self.base_config.clone(),
-                    SharedChips::new(
-                        bitwise_lookup.clone(),
-                        range_checker.clone(),
-                        tuple_range_checker.cloned(),
-                    ),
-                    self.bus_map.clone(),
-                )
-                .into(),
+                PrecompileImplementation::PlonkChip => {
+                    let copy_constraint_bus_id = builder.new_bus_idx();
+
+                    PlonkChip::new(
+                        precompile.clone(),
+                        self.airs.clone(),
+                        offline_memory.clone(),
+                        self.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        self.bus_map.clone(),
+                        copy_constraint_bus_id,
+                    )
+                    .into()
+                }
             };
 
             inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;

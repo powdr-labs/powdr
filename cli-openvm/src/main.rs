@@ -1,11 +1,15 @@
 use eyre::Result;
+use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
+use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
-use openvm_stark_sdk::config::setup_tracing_with_log_level;
-use powdr_openvm::{CompiledProgram, GuestOptions, IntoOpenVm, PgoConfig, PowdrConfig};
+use openvm_stark_sdk::bench::serialize_metric_snapshot;
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrConfig};
 
-use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use std::io;
+use clap::{CommandFactory, Parser, Subcommand};
+use std::{io, path::PathBuf};
 use tracing::Level;
+use tracing_forest::ForestLayer;
+use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
 #[derive(Parser)]
 #[command(name = "powdr-openvm", author, version, about, long_about = None)]
@@ -25,8 +29,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
-        pgo: CliPgoType,
+        #[arg(long, default_value_t = PgoType::default())]
+        pgo: PgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -41,15 +45,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         skip: usize,
 
-        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
-        pgo: CliPgoType,
-
-        #[arg(long)]
-        input: Option<u32>,
-    },
-
-    Pgo {
-        guest: String,
+        #[arg(long, default_value_t = PgoType::default())]
+        pgo: PgoType,
 
         #[arg(long)]
         input: Option<u32>,
@@ -72,18 +69,21 @@ enum Commands {
         #[arg(default_value_t = false)]
         recursion: bool,
 
-        #[arg(long, value_enum, default_value_t = CliPgoType::Cell)]
-        pgo: CliPgoType,
+        #[arg(long, default_value_t = PgoType::default())]
+        pgo: PgoType,
 
         #[arg(long)]
         input: Option<u32>,
+
+        #[arg(long)]
+        metrics: Option<PathBuf>,
     },
 }
 
 fn main() -> Result<(), io::Error> {
     let args = Cli::parse();
 
-    setup_tracing_with_log_level(Level::WARN);
+    setup_tracing_with_log_level(Level::INFO);
 
     if let Some(command) = args.command {
         run_command(command);
@@ -104,7 +104,7 @@ fn run_command(command: Commands) {
             input,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
@@ -118,7 +118,7 @@ fn run_command(command: Commands) {
             input,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
@@ -132,28 +132,27 @@ fn run_command(command: Commands) {
             recursion,
             pgo,
             input,
+            metrics,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = get_pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
-            powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
-        }
-
-        // Run Pgo on the original openvm program (without powdr extension)
-        // By default, Compile, Execute, and Prove all run Pgo first
-        // This command is only used to test the powdr_openvm::pgo API
-        Commands::Pgo { guest, input } => {
-            let program = powdr_openvm::compile_openvm(&guest, guest_opts).unwrap();
-            powdr_openvm::pgo(program, stdin_from(input)).unwrap();
+            let prove =
+                || powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
+            if let Some(metrics_path) = metrics {
+                run_with_metric_collection_to_file(
+                    std::fs::File::create(metrics_path).expect("Failed to create metrics file"),
+                    prove,
+                );
+            } else {
+                prove()
+            }
         }
     }
 }
 
-fn write_program_to_file<P: IntoOpenVm>(
-    program: CompiledProgram<P>,
-    filename: &str,
-) -> Result<(), io::Error> {
+fn write_program_to_file(program: CompiledProgram, filename: &str) -> Result<(), io::Error> {
     use std::fs::File;
 
     let mut file = File::create(filename)?;
@@ -169,33 +168,52 @@ fn stdin_from(input: Option<u32>) -> StdIn {
     s
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum CliPgoType {
-    /// cost = cells saved per apc * times executed
-    Cell,
-    /// cost = instruction per apc * times executed
-    Instruction,
-    /// disable PGO
-    None,
-}
-
-fn get_pgo_config(
+fn pgo_config(
     guest: String,
     guest_opts: GuestOptions,
-    pgo: CliPgoType,
+    pgo: PgoType,
     input: Option<u32>,
 ) -> PgoConfig {
     match pgo {
-        CliPgoType::Cell => {
-            let pc_idx_count =
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
-            PgoConfig::Cell(pc_idx_count)
+        PgoType::Cell(max_total_apc_columns) => {
+            let pc_idx_count = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
+            PgoConfig::Cell(pc_idx_count, max_total_apc_columns)
         }
-        CliPgoType::Instruction => {
-            let pc_idx_count =
-                powdr_openvm::get_pc_idx_count(&guest, guest_opts.clone(), stdin_from(input));
+        PgoType::Instruction => {
+            let pc_idx_count = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
             PgoConfig::Instruction(pc_idx_count)
         }
-        CliPgoType::None => PgoConfig::None,
+        PgoType::None => PgoConfig::None,
     }
+}
+
+fn setup_tracing_with_log_level(level: Level) {
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(format!("{level},p3_=warn")));
+    let subscriber = Registry::default()
+        .with(env_filter)
+        .with(ForestLayer::default())
+        .with(MetricsLayer::new());
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+}
+
+/// export stark-backend metrics to the given file
+pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce() -> R) -> R {
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let recorder = TracingContextLayer::all().layer(recorder);
+    metrics::set_global_recorder(recorder).unwrap();
+    let res = f();
+
+    serde_json::to_writer_pretty(&file, &serialize_metric_snapshot(snapshotter.snapshot()))
+        .unwrap();
+    res
 }

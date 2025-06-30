@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
-use powdr_autoprecompiles::legacy_expression::{AlgebraicExpression, AlgebraicReference};
+use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -206,11 +206,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::bus_map::default_openvm_bus_map;
     use crate::plonk::air_to_plonkish::build_circuit;
     use crate::plonk::test_utils::{c, var};
-    use powdr_autoprecompiles::{
-        openvm::default_openvm_bus_map, SymbolicConstraint, SymbolicMachine,
-    };
+    use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
     use pretty_assertions::assert_eq;
 
     #[test]

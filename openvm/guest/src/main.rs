@@ -16,5 +16,5 @@ pub fn main() {
     panic!();
     // }
 
-    // reveal(a, 0);
+    // reveal_u32(a, 0);
 }

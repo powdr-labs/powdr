@@ -6,11 +6,7 @@ use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_number::FieldElement;
 
-use crate::{
-    legacy_expression::{AlgebraicReference, PolynomialType},
-    powdr::UniqueColumns,
-    SymbolicMachine,
-};
+use crate::{powdr::UniqueReferences, SymbolicMachine};
 
 pub struct StatsLogger {
     start_time: Instant,
@@ -34,6 +30,7 @@ impl StatsLogger {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stats {
     num_constraints: usize,
     num_bus_interactions: usize,
@@ -55,17 +52,12 @@ impl<P: FieldElement> From<&SymbolicMachine<P>> for Stats {
         Stats {
             num_constraints: machine.constraints.len(),
             num_bus_interactions: machine.bus_interactions.len(),
-            num_witness_columns: machine
-                .unique_columns()
-                .filter(|col| col.id.ptype == PolynomialType::Committed)
-                .count(),
+            num_witness_columns: machine.unique_references().count(),
         }
     }
 }
 
-impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn> From<&ConstraintSystem<P, V>>
-    for Stats
-{
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&ConstraintSystem<P, V>> for Stats {
     fn from(constraint_system: &ConstraintSystem<P, V>) -> Self {
         Stats {
             num_constraints: constraint_system.algebraic_constraints.len(),
@@ -73,28 +65,16 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn> From<&Constr
             num_witness_columns: constraint_system
                 .expressions()
                 .flat_map(|e| e.referenced_variables())
-                .filter(|var| var.is_witness_column())
                 .unique()
                 .count(),
         }
     }
 }
 
-impl<P: FieldElement, V: Ord + Clone + Hash + Eq + IsWitnessColumn>
-    From<&JournalingConstraintSystem<P, V>> for Stats
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&JournalingConstraintSystem<P, V>>
+    for Stats
 {
     fn from(constraint_system: &JournalingConstraintSystem<P, V>) -> Self {
         Stats::from(constraint_system.system())
-    }
-}
-
-pub trait IsWitnessColumn {
-    /// Returns true if the variable is a witness column (for statistical purposes).
-    fn is_witness_column(&self) -> bool;
-}
-
-impl IsWitnessColumn for AlgebraicReference {
-    fn is_witness_column(&self) -> bool {
-        self.poly_id.ptype == PolynomialType::Committed
     }
 }
