@@ -281,36 +281,26 @@ fn jump_destination<F: PrimeField32>(
         == openvm_rv32im_transpiler::BranchEqualOpcode::BEQ
             .global_opcode()
             .as_usize()
-    {
-        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchEqualOpcode::BNE
-            .global_opcode()
-            .as_usize()
-    {
-        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
-            .global_opcode()
-            .as_usize()
-    {
-        todo!()
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU
-            .global_opcode()
-            .as_usize()
-    {
-        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
-            .global_opcode()
-            .as_usize()
-    {
-        InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
-    } else if opcode
-        == openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
-            .global_opcode()
-            .as_usize()
+        || opcode
+            == openvm_rv32im_transpiler::BranchEqualOpcode::BNE
+                .global_opcode()
+                .as_usize()
+        || opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BLT
+                .global_opcode()
+                .as_usize()
+        || opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BLTU
+                .global_opcode()
+                .as_usize()
+        || opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BGE
+                .global_opcode()
+                .as_usize()
+        || opcode
+            == openvm_rv32im_transpiler::BranchLessThanOpcode::BGEU
+                .global_opcode()
+                .as_usize()
     {
         InstructionJumpBehaviour::ConditionalJump((address + instruction.c).as_canonical_u32())
     } else if opcode
