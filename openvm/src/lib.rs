@@ -841,7 +841,7 @@ mod tests {
     const GUEST_KECCAK_ITER: u32 = 1_000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
     const GUEST_KECCAK_ITER_LARGE: u32 = 25_000;
-    const GUEST_KECCAK_APC: u64 = 100;
+    const GUEST_KECCAK_APC: u64 = 1;
     const GUEST_KECCAK_APC_PGO: u64 = 10;
     const GUEST_KECCAK_APC_PGO_LARGE: u64 = 100;
     const GUEST_KECCAK_SKIP: u64 = 0;
@@ -1048,15 +1048,12 @@ mod tests {
         let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
-        machines
-            .iter()
-            .for_each(|m| tracing::debug!("Keccak machine: {m:?}"));
-        // assert_eq!(machines.len(), 1);
-        // let m = &machines[0];
-        // assert_eq!(
-        //     [m.width, m.constraints, m.bus_interactions],
-        //     [2011, 166, 1783]
-        // );
+        assert_eq!(machines.len(), 1);
+        let m = &machines[0];
+        assert_eq!(
+            [m.width, m.constraints, m.bus_interactions],
+            [2011, 166, 1783]
+        );
     }
 
     #[test]
@@ -1092,7 +1089,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-        // test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data, Some(6000)));
+        test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
+        test_keccak_machine(PgoConfig::Cell(pgo_data, None));
     }
 }
