@@ -237,40 +237,38 @@ where
             return linear_results[0].1.clone();
         }
 
-        if !linear_results.is_empty() {
-            temp = linear_results
-                .iter()
-                .cloned()
-                .fold(temp.clone(), |acc, (mul, var)| {
-                    if let Variable::Unused = acc {
-                        if linear_results.len() == 1 {
-                            self.plonk_circuit.add_gate(Gate {
-                                q_l: linear_results[0].0,
-                                a: var.clone(),
-                                q_o: -T::ONE,
-                                c: Variable::Tmp(self.temp_id_offset),
-                                ..Default::default()
-                            });
-                            self.temp_id_offset += 1;
-                            Variable::Tmp(self.temp_id_offset - 1)
-                        } else {
-                            var.clone()
-                        }
-                    } else {
+        temp = linear_results
+            .iter()
+            .cloned()
+            .fold(temp.clone(), |acc, (mul, var)| {
+                if let Variable::Unused = acc {
+                    if linear_results.len() == 1 {
                         self.plonk_circuit.add_gate(Gate {
-                            q_l: T::ONE,
-                            a: acc.clone(),
-                            q_r: mul,
-                            b: var.clone(),
+                            q_l: linear_results[0].0,
+                            a: var.clone(),
                             q_o: -T::ONE,
                             c: Variable::Tmp(self.temp_id_offset),
                             ..Default::default()
                         });
                         self.temp_id_offset += 1;
                         Variable::Tmp(self.temp_id_offset - 1)
+                    } else {
+                        var.clone()
                     }
-                });
-        }
+                } else {
+                    self.plonk_circuit.add_gate(Gate {
+                        q_l: T::ONE,
+                        a: acc.clone(),
+                        q_r: mul,
+                        b: var.clone(),
+                        q_o: -T::ONE,
+                        c: Variable::Tmp(self.temp_id_offset),
+                        ..Default::default()
+                    });
+                    self.temp_id_offset += 1;
+                    Variable::Tmp(self.temp_id_offset - 1)
+                }
+            });
 
         // When a bus interaction has constants as arguments
         if temp == Variable::Unused {
@@ -287,7 +285,8 @@ where
             temp = Variable::Tmp(self.temp_id_offset - 1);
         }
 
-        if *expr.get_constant() != SymbolicExpression::Concrete(T::ZERO) {
+        if temp != Variable::Unused && *expr.get_constant() != SymbolicExpression::Concrete(T::ZERO)
+        {
             self.plonk_circuit.gates.last_mut().unwrap().q_const = expr
                 .get_constant()
                 .try_to_number()
