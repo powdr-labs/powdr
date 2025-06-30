@@ -189,10 +189,13 @@ fn jump_destination<F: PrimeField32>(
             .global_opcode()
             .as_usize()
     {
-        // TODO we might treat JAL the same way as a conditional jump.
-        // is this correct? If the destination always panics, then we do not continue here.
-
-        InstructionJumpBehaviour::Unknown
+        if instruction.a.is_zero() {
+            InstructionJumpBehaviour::UnconditionalJump(
+                (address + instruction.c).as_canonical_u32(),
+            )
+        } else {
+            InstructionJumpBehaviour::JumpAndLink((address + instruction.c).as_canonical_u32())
+        }
     } else if opcode
         == openvm_rv32im_transpiler::Rv32JalrOpcode::JALR
             .global_opcode()
@@ -213,40 +216,6 @@ fn jump_destination<F: PrimeField32>(
         } else {
             return InstructionJumpBehaviour::Unknown;
         };
-
-        //     {
-        //         let dest = if previous.a == instruction.b {
-        //             // Typical auipc-jalr-pattern.
-        //             let auipc_imm = (previous.c.as_canonical_u32() << 8) as i32 - 4;
-        //             let jalr_imm_neg = instruction.g.as_canonical_u32() != 0;
-        //             let dest = auipc_imm + jalr_imm;
-        //             let dest = if dest > 0 {
-        //                 address + F::from_canonical_u32(dest as u32)
-        //             } else {
-        //                 address - F::from_canonical_u32((-dest) as u32)
-        //             };
-        //             // TODO what about negative dest?
-        //             println!(
-        //                 "auipc-jalr pattern: auipc_imm = {auipc_imm:#x}, jalr_imm = {jalr_imm:#x}, jalr_imm_neg = {jalr_imm_neg}"
-        //             );
-        //             println!("dest relative {:#x}", (auipc_imm + jalr_imm - 4) as i32);
-        //             // }
-        //             // return InstructionJumpBehaviour::JumpAndLink(
-        //             //     (address + previous.c * F::from_canonical_u16(256) + instruction.c
-        //             //         - F::from_canonical_u16(4))
-        //             //     .as_canonical_u32(),
-        //             // );
-        //             dest
-        //         } else if instruction.b.is_zero() {
-        //             let jalr_imm = (instruction.c.as_canonical_u32() as u16) as i16 as i32; // is only 0xffff
-        //             let jalr_imm_neg = instruction.g.as_canonical_u32() != 0;
-        //         } else {
-        //             return InstructionJumpBehaviour::Unknown;
-        //         };
-        //     } else {
-        //         todo!();
-        //     }
-        // };
         let jalr_imm = (instruction.c.as_canonical_u32() as u16) as i16 as i32; // is only 0xffff
         let dest = jalr_imm + offset;
         let dest = if dest > 0 {
