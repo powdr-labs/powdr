@@ -12,8 +12,8 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::iter::once;
 use std::sync::Arc;
-use std::{collections::BTreeMap, iter::once};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
@@ -232,27 +232,59 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, T: FieldElement, B> {
+pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
-    pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
+    pub instruction_machine_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
     pub bus_map: BusMap,
 }
 
-pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
+pub trait InstructionMachineHandler<T> {
+    /// Returns the AIR for the given opcode.
+    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+}
+
+pub struct Apc<T> {
+    machine: SymbolicMachine<T>,
+    subs: Vec<Vec<u64>>,
+}
+
+impl<T: FieldElement> Apc<T> {
+    pub fn width(&self) -> usize {
+        self.machine.unique_references().count()
+    }
+
+    pub fn subs(&self) -> &[Vec<u64>] {
+        &self.subs
+    }
+
+    pub fn machine(&self) -> &SymbolicMachine<T> {
+        &self.machine
+    }
+
+    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+        (self.machine, self.subs)
+    }
+}
+
+pub fn build<
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    M: InstructionMachineHandler<T>,
+>(
     program: Vec<SymbolicInstructionStatement<T>>,
-    vm_config: VmConfig<T, B>,
+    vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
     // If true, disables the optimization of multipliying only constants when guarding with is_valid.
     // Chip stacking needs variables to be guarded too.
     strict_is_valid_guards: bool,
-) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
+) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
-        vm_config.instruction_machines,
+        vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );
 
@@ -267,7 +299,7 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map, strict_is_valid_guards);
 
-    Ok((machine, subs))
+    Ok(Apc { machine, subs })
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

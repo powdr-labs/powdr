@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    extraction_utils::OriginalAirs,
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
@@ -46,7 +47,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, SymbolicBusInteraction, SymbolicMachine,
+    expression::AlgebraicReference, InstructionMachineHandler, SymbolicBusInteraction,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -59,7 +60,7 @@ pub use periphery::PowdrPeripheryInstances;
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<P: IntoOpenVm> {
     instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
+    air_by_opcode_id: OriginalAirs<P>,
     pub is_valid_poly_id: u64,
     inventory: DummyInventory<OpenVmField<P>>,
     number_of_calls: usize,
@@ -69,7 +70,7 @@ pub struct PowdrExecutor<P: IntoOpenVm> {
 impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn new(
         instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        air_by_opcode_id: BTreeMap<usize, SymbolicMachine<P>>,
+        air_by_opcode_id: OriginalAirs<P>,
         is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
@@ -283,7 +284,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .map(|instruction| {
                 let opcode_id = instruction.opcode().as_usize();
                 self.air_by_opcode_id
-                    .get(&opcode_id)
+                    .get_instruction_air(opcode_id)
                     .unwrap()
                     .bus_interactions
                     .iter()

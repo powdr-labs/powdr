@@ -2,6 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use crate::extraction_utils::OriginalAirs;
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
@@ -49,7 +50,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<P>,
-        original_airs: BTreeMap<usize, SymbolicMachine<P>>,
+        original_airs: OriginalAirs<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,

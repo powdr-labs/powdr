@@ -39,7 +39,7 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
+pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display + Hash>(
     system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
 ) -> bool {
@@ -89,7 +89,7 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V> {
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.

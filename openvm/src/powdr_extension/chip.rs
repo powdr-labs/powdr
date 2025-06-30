@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    powdr_extension::executor::PowdrPeripheryInstances, traits::OpenVmField,
-    utils::algebraic_to_symbolic, IntoOpenVm,
+    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
+    traits::OpenVmField, utils::algebraic_to_symbolic, IntoOpenVm,
 };
 
 use super::{executor::PowdrExecutor, PowdrStackedPrecompile};
@@ -56,7 +56,7 @@ pub struct PowdrChip<P: IntoOpenVm> {
 impl<P: IntoOpenVm> PowdrChip<P> {
     pub(crate) fn new(
         precompile: PowdrStackedPrecompile<P>,
-        original_airs: BTreeMap<usize, powdr_autoprecompiles::SymbolicMachine<P>>,
+        original_airs: OriginalAirs<P>,
         memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,

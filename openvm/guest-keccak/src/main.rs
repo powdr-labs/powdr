@@ -5,7 +5,7 @@ openvm::entry!(main);
 
 use core::hint::black_box;
 
-use openvm::io::{reveal, read};
+use openvm::io::{read, reveal_u32};
 use tiny_keccak::{Hasher, Keccak};
 
 pub fn main() {
@@ -17,5 +17,5 @@ pub fn main() {
         hasher.finalize(&mut output);
     }
 
-    reveal(output[0] as u32, 0);
+    reveal_u32(output[0] as u32, 0);
 }

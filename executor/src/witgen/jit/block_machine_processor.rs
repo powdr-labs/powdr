@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
@@ -85,7 +86,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let selector = &bus_receive.selected_payload.selector;
         queue_items.extend(algebraic_expression_to_queue_items(
             selector,
-            T::one(),
+            QuadraticSymbolicExpression::one(),
             self.latch_row as i32,
             &witgen,
         ));
@@ -94,7 +95,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             // Set the known argument to the concrete value.
             queue_items.extend(algebraic_expression_to_queue_items(
                 &bus_receive.selected_payload.expressions[index],
-                value,
+                QuadraticSymbolicExpression::from_number(value),
                 self.latch_row as i32,
                 &witgen,
             ));
@@ -106,7 +107,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             if other_selector != selector {
                 queue_items.extend(algebraic_expression_to_queue_items(
                     other_selector,
-                    T::zero(),
+                    QuadraticSymbolicExpression::zero(),
                     self.latch_row as i32,
                     &witgen,
                 ));

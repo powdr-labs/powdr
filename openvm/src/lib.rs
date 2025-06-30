@@ -1,7 +1,8 @@
 use derive_more::From;
 use eyre::Result;
-use itertools::multiunzip;
+use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
+use openvm_circuit::arch::InitFileGenerator;
 use openvm_circuit::arch::{
     instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
     SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
@@ -24,6 +25,7 @@ use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrStackedPrecompile};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
 use std::{
@@ -44,6 +46,7 @@ use tracing_subscriber::{
 };
 
 use crate::extraction_utils::{export_pil, get_constraints, OriginalVmConfig};
+use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::traits::OpenVmField;
 
 mod air_builder;
@@ -56,7 +59,7 @@ mod utils;
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
-pub use customize_exe::instruction_allowlist;
+pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use traits::IntoOpenVm;
 
@@ -99,7 +102,8 @@ mod plonk;
 #[derive(Default)]
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
-    Cell(HashMap<u32, u32>),
+    /// max total columns
+    Cell(HashMap<u32, u32>, Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
     /// disable PGO
@@ -111,11 +115,18 @@ pub enum PgoConfig {
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed
-    Cell,
+    /// max total columns
+    Cell(Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction,
     /// disable PGO
     None,
+}
+
+impl Default for PgoType {
+    fn default() -> Self {
+        PgoType::Cell(None)
+    }
 }
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
@@ -123,6 +134,23 @@ pub enum PgoType {
 pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
     powdr: PowdrExtension<BabyBearField>,
+}
+
+// For generation of the init file, we delegate to the underlying SdkVmConfig.
+impl InitFileGenerator for SpecializedConfig {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.sdk_config.config().generate_init_file_contents()
+    }
+
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> eyre::Result<()> {
+        self.sdk_config
+            .config()
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -282,7 +310,13 @@ pub fn compile_openvm(
     path.push(guest);
     let target_path = path.to_str().unwrap();
 
-    let elf = sdk.build(guest_opts, target_path, &Default::default())?;
+    let elf = sdk.build(
+        guest_opts,
+        &sdk_vm_config,
+        target_path,
+        &Default::default(),
+        Default::default(),
+    )?;
 
     // Transpile the ELF into a VmExe. Note that this happens using the sdk transpiler only, our extension does not use a transpiler.
     let exe = sdk.transpile(elf, sdk_vm_config.transpiler())?;
@@ -370,7 +404,50 @@ pub fn compile_guest(
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
+
+    // Optional tally of opcode freqency (only enabled for debug level logs)
+    if tracing::enabled!(Level::DEBUG) {
+        tally_opcode_frequency(&pgo_config, &original_program.exe);
+    }
+
     compile_exe(guest, guest_opts, original_program, config, pgo_config)
+}
+
+fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
+    let pgo_program_idx_count = match pgo_config {
+        PgoConfig::Cell(pgo_program_idx_count, _)
+        | PgoConfig::Instruction(pgo_program_idx_count) => {
+            // If execution count of each pc is available, we tally the opcode execution frequency
+            tracing::debug!("Opcode execution frequency:");
+            pgo_program_idx_count
+        }
+        PgoConfig::None => {
+            // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
+            tracing::debug!("Opcode frequency in program:");
+            // Create a dummy HashMap that returns 1 for each pc
+            &(0..exe.program.instructions_and_debug_infos.len())
+                .map(|i| (i as u32, 1))
+                .collect::<HashMap<_, _>>()
+        }
+    };
+
+    exe.program
+        .instructions_and_debug_infos
+        .iter()
+        .enumerate()
+        .fold(HashMap::new(), |mut acc, (i, instr)| {
+            let opcode = instr.as_ref().unwrap().0.opcode;
+            if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
+                *acc.entry(opcode).or_insert(0) += count;
+            }
+            acc
+        })
+        .into_iter()
+        .sorted_by_key(|(_, count)| Reverse(*count))
+        .for_each(|(opcode, count)| {
+            // Log the opcode and its count
+            tracing::debug!("   {}: {count}", openvm_opcode_formatter(&opcode));
+        });
 }
 
 pub fn compile_exe(
@@ -483,63 +560,6 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     Ok(())
 }
 
-pub fn pgo(
-    program: OriginalCompiledProgram,
-    inputs: StdIn,
-) -> Result<HashMap<u32, u32>, Box<dyn std::error::Error>> {
-    // in memory collector storage
-    let collected = Arc::new(Mutex::new(Vec::new()));
-    let collector_layer = PgoCollector {
-        pc: collected.clone(),
-    };
-
-    // build subscriber
-    let subscriber = Registry::default().with(collector_layer);
-
-    // prepare for execute
-    let OriginalCompiledProgram { exe, sdk_vm_config } = program;
-    let sdk = Sdk::default();
-
-    // dispatch constructs a local subscriber at trace level that is invoked during pgo but doesn't override the global one at info level
-    let dispatch = Dispatch::new(subscriber);
-    tracing::dispatcher::with_default(&dispatch, || {
-        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
-            .unwrap();
-    });
-
-    // collect the pc's during execution
-    let pc = collected.lock().unwrap().clone();
-
-    // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
-    let pc_base = exe.program.pc_base;
-    let step = exe.program.step;
-    let pc_index_count = pc
-        .iter()
-        .fold(std::collections::HashMap::new(), |mut acc, pc| {
-            let pc_index = (*pc as u32 - pc_base) / step;
-            *acc.entry(pc_index).or_insert(0u32) += 1;
-            acc
-        });
-
-    // the smallest pc is the same as the base_pc if there's no stdin
-    let pc_min = pc.iter().min().unwrap();
-    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
-
-    // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc.len());
-
-    if tracing::enabled!(Level::DEBUG) {
-        // print pc_index map in descending order of pc_index count
-        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-        pc_index_count_sorted.iter().for_each(|(pc, count)| {
-            tracing::debug!("pc_index {}: {}", pc, count);
-        });
-    }
-
-    Ok(pc_index_count)
-}
-
 pub fn prove(
     program: &CompiledProgram,
     mock: bool,
@@ -643,11 +663,71 @@ pub fn prove(
     Ok(())
 }
 
-pub fn get_pc_idx_count(guest: &str, guest_opts: GuestOptions, inputs: StdIn) -> HashMap<u32, u32> {
+// Same as execution_profile below but for guest path inputs.
+pub fn execution_profile_from_guest(
+    guest: &str,
+    guest_opts: GuestOptions,
+    inputs: StdIn,
+) -> HashMap<u32, u32> {
     let program = compile_openvm(guest, guest_opts).unwrap();
-    // times executed by program index, where index = (pc - base_pc) / step
-    // help determine the basic blocks to create autoprecompile for
-    pgo(program, inputs).unwrap()
+    execution_profile(program, inputs)
+}
+
+// Produces execution count by pc_index
+// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
+pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
+    let OriginalCompiledProgram { exe, sdk_vm_config } = program;
+
+    // in memory collector storage
+    let collected = Arc::new(Mutex::new(Vec::new()));
+    let collector_layer = PgoCollector {
+        pc: collected.clone(),
+    };
+
+    // build subscriber
+    let subscriber = Registry::default().with(collector_layer);
+
+    // prepare for execute
+    let sdk = Sdk::default();
+
+    // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
+    let dispatch = Dispatch::new(subscriber);
+    tracing::dispatcher::with_default(&dispatch, || {
+        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
+            .unwrap();
+    });
+
+    // collect the pc's during execution
+    let pc = collected.lock().unwrap().clone();
+
+    // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
+    let pc_base = exe.program.pc_base;
+    let step = exe.program.step;
+    let pc_index_count = pc
+        .iter()
+        .fold(std::collections::HashMap::new(), |mut acc, pc| {
+            let pc_index = (*pc as u32 - pc_base) / step;
+            *acc.entry(pc_index).or_insert(0u32) += 1;
+            acc
+        });
+
+    // the smallest pc is the same as the base_pc if there's no stdin
+    let pc_min = pc.iter().min().unwrap();
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+
+    // print the total and by pc counts
+    tracing::debug!("Pgo captured {} pc's", pc.len());
+
+    if tracing::enabled!(Level::DEBUG) {
+        // print pc_index map in descending order of pc_index count
+        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
+        pc_index_count_sorted.iter().for_each(|(pc, count)| {
+            tracing::debug!("pc_index {}: {}", pc, count);
+        });
+    }
+
+    pc_index_count
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber
@@ -814,7 +894,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin.clone());
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
@@ -850,7 +930,8 @@ mod tests {
     fn keccak_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
         prove_recursion(
@@ -865,7 +946,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin,
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -875,7 +956,8 @@ mod tests {
     fn keccak_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_LARGE);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
         prove_recursion(
@@ -925,7 +1007,8 @@ mod tests {
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         // Pgo Cell mode
         let start = Instant::now();
@@ -933,7 +1016,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone()),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -990,9 +1073,9 @@ mod tests {
     fn guest_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let pgo_data = get_pc_idx_count(GUEST, GuestOptions::default(), stdin);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
         test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_guest_machine(PgoConfig::Cell(pgo_data));
+        test_guest_machine(PgoConfig::Cell(pgo_data, None));
     }
 
     #[test]
@@ -1018,8 +1101,8 @@ mod tests {
     fn keccak_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let pgo_data = get_pc_idx_count(GUEST_KECCAK, GuestOptions::default(), stdin);
+        let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data));
+        test_keccak_machine(PgoConfig::Cell(pgo_data, None));
     }
 }

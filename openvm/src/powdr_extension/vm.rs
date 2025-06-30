@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use derive_more::From;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
+use crate::extraction_utils::OriginalAirs;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
 use openvm_circuit::arch::{InstructionExecutor, VmInventoryError};
@@ -41,7 +42,7 @@ pub struct PowdrExtension<P: IntoOpenVm> {
     pub base_config: SdkVmConfig,
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
-    pub airs: BTreeMap<usize, SymbolicMachine<P>>,
+    pub airs: OriginalAirs<P>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -119,7 +120,7 @@ impl<P: IntoOpenVm> PowdrExtension<P> {
         base_config: SdkVmConfig,
         implementation: PrecompileImplementation,
         bus_map: BusMap,
-        airs: BTreeMap<usize, SymbolicMachine<P>>,
+        airs: OriginalAirs<P>,
     ) -> Self {
         Self {
             precompiles,
