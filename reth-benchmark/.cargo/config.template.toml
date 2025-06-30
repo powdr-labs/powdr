@@ -1,0 +1,59 @@
+[net]
+git-fetch-with-cli = true
+
+[patch."https://github.com/openvm-org/stark-backend.git"]
+openvm-stark-backend = { git = "ssh://git@github.com/openvm-org/stark-backend.git", rev = "$STARK_BACKEND_REV" }
+openvm-stark-sdk = { git = "ssh://git@github.com/openvm-org/stark-backend.git", rev = "$STARK_BACKEND_REV" }
+
+[patch."https://github.com/openvm-org/openvm.git"]
+openvm-benchmarks-prove = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-sdk = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+cargo-openvm = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-mod-circuit-builder = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-poseidon2-air = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-circuit-primitives = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-circuit-primitives-derive = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-build = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-instructions = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-instructions-derive = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-macros-common = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-platform = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-circuit-derive = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+
+openvm-algebra-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-algebra-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-algebra-guest = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-algebra-moduli-macros = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-algebra-complex-macros = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-bigint-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-bigint-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-bigint-guest = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-ecc-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-ecc-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-ecc-guest = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-ecc-sw-macros = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-keccak256-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-keccak256-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-keccak256-guest = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-native-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-native-compiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-native-compiler-derive = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-native-recursion = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-pairing-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-pairing-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-pairing-guest = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-rv32-adapters = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-rv32im-circuit = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-rv32im-transpiler = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+openvm-rv32im-guest = { git = "ssh://git@github.com/openvm-org/openvm.git", rev = "$OPENVM_REV" }
+
+# OpenVM
+# Extensions
+# [patch.crates-io]
+# revm = { path = "../revm/crates/revm" }
+# revm-primitives = { path = "../revm/crates/primitives" }
+# revm-interpreter = { path = "../revm/crates/interpreter" }
+# revm-precompile = { path = "../revm/crates/precompile" }

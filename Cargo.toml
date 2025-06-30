@@ -39,7 +39,7 @@ members = [
   "cli-openvm",
 ]
 
-exclude = ["riscv-runtime"]
+exclude = ["riscv-runtime", "reth-benchmark"]
 
 [workspace.package]
 version = "0.1.4"
