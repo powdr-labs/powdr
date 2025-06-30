@@ -337,7 +337,7 @@ pub fn get_constraints(
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let name = air.name();
-    let base_width = air.width();
+    let base = air.width();
     let app_log_blow_up = 2;
     let max_degree = (1 << app_log_blow_up) + 1;
     let SymbolicConstraints {
@@ -352,9 +352,9 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let exposed_width = STARK_LU_NUM_EXPOSED_VALUES;
     AirMetrics {
         name,
-        width: AirWidth {
-            base_width,
-            log_up_width: perm_width + challenge_width + exposed_width,
+        widths: AirWidths {
+            base,
+            log_up: perm_width + challenge_width + exposed_width,
         },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
@@ -377,14 +377,14 @@ pub struct AirWidths {
     pub log_up: usize,
 }
 
-impl std::fmt::Display for AirWidth {
+impl std::fmt::Display for AirWidths {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "Total Width: {} (Base: {}, Log Up: {})",
-            self.base_width + self.log_up_width,
-            self.base_width,
-            self.log_up_width
+            self.base + self.log_up,
+            self.base,
+            self.log_up
         )
     }
 }
