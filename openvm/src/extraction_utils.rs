@@ -9,6 +9,11 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
+use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
+use openvm_stark_backend::interaction::fri_log_up::{
+    find_interaction_chunks, STARK_LU_NUM_CHALLENGES,
+};
+use openvm_stark_backend::interaction::rap::InteractionPhaseAirBuilder;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };
@@ -25,6 +30,7 @@ use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::MutexGuard;
+use tracing::Dispatch;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
@@ -272,7 +278,7 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_widths(&self) -> HashMap<String, usize> {
+    pub fn chip_inventory_air_widths(&self) -> HashMap<String, AirWidth> {
         self.chip_complex()
             .inventory
             .executors()
@@ -280,8 +286,15 @@ impl OriginalVmConfig {
             .map(|executor| {
                 let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
                 let name = air.name();
-                let width = air.width();
-                (name, width)
+                let base_width = air.width();
+                let log_up_width = get_log_up_width(air.clone());
+                (
+                    name,
+                    AirWidth {
+                        base_width,
+                        log_up_width,
+                    },
+                )
             })
             .collect::<HashMap<_, _>>()
     }
@@ -329,12 +342,46 @@ pub fn get_name(air: Arc<dyn AnyRap<BabyBearSC>>) -> String {
 pub fn get_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
+    let builder = get_symbolic_builder(air);
+    builder.constraints()
+}
+
+pub fn get_log_up_width(air: Arc<dyn AnyRap<BabyBearSC>>) -> usize {
+    let builder = get_symbolic_builder(air);
+    let max_degree = builder.max_constraint_degree();
+    let perm_width = find_interaction_chunks(&builder.constraints().interactions, max_degree)
+        .interaction_partitions()
+        .len()
+        + 1;
+    let challenge_width = STARK_LU_NUM_CHALLENGES;
+    perm_width + challenge_width
+}
+
+pub fn get_symbolic_builder(
+    air: Arc<dyn AnyRap<BabyBearSC>>,
+) -> SymbolicRapBuilder<p3_baby_bear::BabyBear> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);
     let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
-    let builder = air_keygen_builder.get_symbolic_builder(None);
-    builder.constraints()
+    air_keygen_builder.get_symbolic_builder(None)
+}
+
+pub struct AirWidth {
+    pub base_width: usize,
+    pub log_up_width: usize,
+}
+
+impl std::fmt::Display for AirWidth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Total Width: {} (Base: {}, Log Up: {})",
+            self.base_width + self.log_up_width,
+            self.base_width,
+            self.log_up_width
+        )
+    }
 }
 
 #[cfg(test)]

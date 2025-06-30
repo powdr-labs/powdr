@@ -523,9 +523,9 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
         let total_non_apc_columns = chip_inventory_air_widths
             .iter()
-            .map(|(air_name, width)| {
-                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
-                width
+            .map(|(air_name, air_width)| {
+                tracing::debug!("Chip inventory air {} has {}", air_name, air_width);
+                air_width.base_width + air_width.log_up_width
             })
             .sum::<usize>();
         max_total_columns - total_non_apc_columns
