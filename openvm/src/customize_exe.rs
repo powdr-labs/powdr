@@ -2,9 +2,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use std::sync::Arc;
 
-use crate::termination_analysis::analyze_basic_blocks;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::termination_analysis::analyze_basic_blocks;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -113,19 +113,17 @@ pub fn customize(
 
     let labels = add_extra_targets(&exe.program, labels.clone());
 
-    let mut blocks = collect_basic_blocks(
+    let blocks = collect_basic_blocks(
         &exe.program,
         &labels,
-        &debug_info,
+        debug_info,
         &opcodes_allowlist,
-        &branch_opcodes_set,
+        &branch_opcodes_set(),
     );
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
-
-    analyze_basic_blocks(&blocks, std::iter::empty());
 
     analyze_basic_blocks(&blocks, std::iter::empty());
 
@@ -275,7 +273,7 @@ pub fn collect_basic_blocks<F: PrimeField32>(
         let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
         let is_target = labels.contains(&adjusted_pc);
         if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
-            println!("Found label: {}", label);
+            println!("Found label: {label}");
             //   panic!();
         }
         let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());

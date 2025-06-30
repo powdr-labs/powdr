@@ -56,9 +56,8 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
             Ok(successors) => {
                 for s in &successors {
                     assert!(
-                        basic_blocks_by_identifier.contains_key(&s),
-                        "Successor {} not found in basic blocks",
-                        s
+                        basic_blocks_by_identifier.contains_key(s),
+                        "Successor {s} not found in basic blocks"
                     );
                 }
 
