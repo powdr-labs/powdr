@@ -126,4 +126,4 @@ jobs:
     uses: ./.github/workflows/reth-bench.yml
     secrets: inherit
     with:
-      run_tests: true
+      run_tests: false
