@@ -13,9 +13,9 @@ pub fn main() {
     let n: u32 = read();
     let mut output = black_box([0u8; 32]);
      for _ in 0..n {
-        let mut hasher = Sha256::new();
-        hasher.update(&output);
-        hasher.finalize_into(GenericArray::from_mut_slice(&mut output));
+        for _ in 0..n {
+        output = Sha256::digest(&output).into();
+    }
     }
 
     reveal_u32(output[0] as u32, 0);
