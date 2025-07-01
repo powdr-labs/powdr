@@ -1017,6 +1017,15 @@ mod tests {
         tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
     }
 
+    #[test]
+    #[ignore = "Too long"]
+    fn sha256_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+    }
+
     // #[test]
     // #[ignore = "Too much RAM"]
     // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
