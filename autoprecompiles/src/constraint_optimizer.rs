@@ -3,9 +3,8 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 use inliner::DegreeBound;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler, inliner,
-    journaling_constraint_system::JournalingConstraintSystem,
-    grouped_expression::QuadraticSymbolicExpression, solver::Solver,
+    constraint_system::BusInteractionHandler, grouped_expression::QuadraticSymbolicExpression,
+    inliner, journaling_constraint_system::JournalingConstraintSystem, solver::Solver,
 };
 use powdr_number::FieldElement;
 

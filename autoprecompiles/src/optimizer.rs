@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    journaling_constraint_system::JournalingConstraintSystem,
     grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
+    journaling_constraint_system::JournalingConstraintSystem,
 };
 use powdr_number::FieldElement;
 
