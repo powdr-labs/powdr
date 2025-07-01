@@ -6,7 +6,7 @@ use std::hash::Hash;
 use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
-    solver::SolveResult,
+    solver::{SolveResult, VariableAssignment},
 };
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.
@@ -27,15 +27,12 @@ impl<V: Display> Display for Variable<V> {
     }
 }
 
-/// An assignment of a wrapped variable.
-pub type IntermediateAssignment<T, V> = (Variable<V>, QuadraticSymbolicExpression<T, Variable<V>>);
-
 pub struct BusInteractionVariableWrapper<T: FieldElement, V> {
     pub bus_interaction_vars: BTreeMap<Variable<V>, QuadraticSymbolicExpression<T, V>>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> BusInteractionVariableWrapper<T, V> {
-    pub fn new(
+    pub fn replace_bus_interaction_expressions(
         constraint_system: ConstraintSystem<T, V>,
     ) -> (Self, ConstraintSystem<T, Variable<V>>) {
         let mut new_constraints = Vec::new();
@@ -77,7 +74,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> BusInteractionVariab
         )
     }
 
-    pub fn finalize(mut self, assignments: Vec<IntermediateAssignment<T, V>>) -> SolveResult<T, V> {
+    pub fn finalize(
+        mut self,
+        assignments: Vec<VariableAssignment<T, Variable<V>>>,
+    ) -> SolveResult<T, V> {
         for (variable, expr) in &assignments {
             // Apply any assignments to the bus interaction field definitions.
             if let Variable::BusInteractionField(..) = variable {

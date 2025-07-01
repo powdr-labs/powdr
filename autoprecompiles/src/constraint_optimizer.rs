@@ -5,7 +5,7 @@ use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::BusInteractionHandler, inliner,
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::solve_system,
 };
 use powdr_number::FieldElement;
 
@@ -64,14 +64,14 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
-    let result = Solver::new(constraint_system.system().clone())
-        .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()?;
+    let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in result.assignments.iter() {
         log::trace!("  {var} = {value}");
     }
     constraint_system.apply_substitutions(result.assignments);
+    // TODO could we somehow get rid of this special case by keeping
+    // bus interaction field variables in the system for longer?
     constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
     Ok(constraint_system)
 }
