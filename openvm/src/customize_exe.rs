@@ -405,6 +405,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         "Generating autoprecompile for block at index {}",
         block.start_idx
     );
+    let start = std::time::Instant::now();
     let program = block
         .statements
         .iter()
@@ -426,6 +427,8 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     };
 
     let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
+    let labels = [("start_idx", block.start_idx.to_string()), ("opcode", apc_opcode.to_string())];
+    metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     // Check that substitution values are unique over all instructions
     assert!(apc.subs().iter().flatten().all_unique());
@@ -532,7 +535,8 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     });
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    fractional_knapsack(
+    let start = std::time::Instant::now();
+    let apcs = fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             // try to create apc for a candidate block
             let apc = generate_autoprecompile(
@@ -581,8 +585,9 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         );
 
         c.block_with_apc
-    })
-    .collect()
+    }).collect();
+    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
+    apcs
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
