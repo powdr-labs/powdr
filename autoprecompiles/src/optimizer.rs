@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
+    grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
 };
 use powdr_number::FieldElement;
 

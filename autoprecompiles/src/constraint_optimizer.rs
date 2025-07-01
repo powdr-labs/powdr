@@ -5,7 +5,7 @@ use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::BusInteractionHandler, inliner,
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
+    grouped_expression::QuadraticSymbolicExpression, solver::Solver,
 };
 use powdr_number::FieldElement;
 

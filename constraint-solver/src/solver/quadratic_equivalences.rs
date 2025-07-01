@@ -6,7 +6,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,

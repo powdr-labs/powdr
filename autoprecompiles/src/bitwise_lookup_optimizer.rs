@@ -5,7 +5,7 @@ use std::{fmt::Debug, fmt::Display};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use powdr_constraint_solver::grouped_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
