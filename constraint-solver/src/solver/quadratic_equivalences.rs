@@ -3,13 +3,11 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
-use powdr_number::FieldElement;
 
 use crate::{
-    grouped_expression::{GroupedExpression, QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
-    symbolic_expression::SymbolicExpression,
 };
 
 /// Given a list of constraints in the form of grouped expressions, tries to determine
@@ -39,12 +37,12 @@ pub fn find_quadratic_equalities<T: RuntimeConstant, V: Ord + Clone + Hash + Eq 
 /// `expr` or `expr + offset` (see [`QuadraticSymbolicExpression::solve_quadratic`]),
 /// then `X` and `Y` must be equal and are returned.
 fn process_quadratic_equality_candidate_pair<
-    T: FieldElement,
+    T: RuntimeConstant,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     c1: &QuadraticEqualityCandidate<T, V>,
     c2: &QuadraticEqualityCandidate<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<(V, V)> {
     if c1.variables.len() != c2.variables.len() || c1.variables.len() < 2 {
         return None;
@@ -78,8 +76,8 @@ fn process_quadratic_equality_candidate_pair<
 
     // Now the only remaining check is to see if the affine expressions are the same.
     // This could have been the first step, but it is rather expensive, so we do it last.
-    if c1.expr - QuadraticSymbolicExpression::from_unknown_variable(c1_var.clone())
-        != c2.expr - QuadraticSymbolicExpression::from_unknown_variable(c2_var.clone())
+    if c1.expr - GroupedExpression::from_unknown_variable(c1_var.clone())
+        != c2.expr - GroupedExpression::from_unknown_variable(c2_var.clone())
     {
         return None;
     }
@@ -101,7 +99,7 @@ fn process_quadratic_equality_candidate_pair<
 /// All unknown variables appearing in `expr` are stored in `variables`.
 struct QuadraticEqualityCandidate<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> {
     expr: GroupedExpression<T, V>,
-    offset: T::FieldType,
+    offset: T,
     /// All unknown variables in `expr`.
     variables: HashSet<V>,
 }
@@ -130,18 +128,14 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
     /// Returns an equivalent candidate that is normalized
     /// such that `var` has a coefficient of `1`.
     fn normalized_for_var(&self, var: &V) -> Self {
-        let inverse_coefficient = self
-            .expr
-            .coefficient_of_variable(var)
-            .unwrap()
-            .field_inverse();
+        let coefficient = self.expr.coefficient_of_variable(var).unwrap();
 
         // self represents
         // `(coeff * var + X) * (coeff * var + X + offset) = 0`
         // Dividing by `coeff` twice results in
         // `(var + X / coeff) * (var + X / coeff + offset / coeff) = 0`
-        let offset = &self.offset * &inverse_coefficient;
-        let expr = self.expr.clone() * inverse_coefficient;
+        let offset = self.offset.field_div(&coefficient);
+        let expr = self.expr.clone() * coefficient.field_inverse();
         Self {
             expr,
             offset,
