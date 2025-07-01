@@ -844,6 +844,11 @@ mod tests {
     const GUEST_KECCAK_APC_PGO_LARGE: u64 = 100;
     const GUEST_KECCAK_SKIP: u64 = 0;
 
+    const GUEST_SHA256_ITER: u32 = 1_000;
+    const GUEST_SHA256: &str = "guest-sha256";
+    const GUEST_SHA256_APC: u64 = 10;
+    const GUEST_SHA256_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1015,6 +1020,15 @@ mod tests {
         );
         let elapsed = start.elapsed();
         tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
+    }
+
+    #[test]
+    #[ignore = "Too long"]
+    fn sha256_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER);
+        let config = PowdrConfig::new(GUEST_SHA256_APC, GUEST_SHA256_SKIP);
+        prove_simple(GUEST_SHA256, config, stdin, PgoConfig::None, None);
     }
 
     // #[test]
