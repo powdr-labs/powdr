@@ -13,6 +13,7 @@ use powdr_riscv_elf::debug_info::DebugInfo;
 use crate::{
     customize_exe::{BasicBlock, OPENVM_INIT_PC},
     instruction_formatter::openvm_instruction_formatter,
+    PgoConfig,
 };
 
 pub enum PanicBehaviour {
@@ -26,6 +27,7 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
     blocks: &'a [BasicBlock<F>],
     known_to_panic: impl IntoIterator<Item = &'a BasicBlock<F>>,
     label_by_start_idx: &impl Fn(usize) -> Option<&'a str>,
+    pgo_config: &PgoConfig,
 ) /*-> impl Iterator<Item = (&'a BasicBlock<F>, PanicBehaviour)> */
 {
     let mut known_to_panic: HashSet<BasicBlockIdentifier> =
@@ -34,40 +36,44 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         .iter()
         .map(|b| (BasicBlockIdentifier::from(b), b))
         .collect::<HashMap<_, _>>();
-    println!("=============== blocks =================");
-    for (id, block) in basic_blocks_by_identifier
-        .iter()
-        .sorted_by_key(|(id, _)| *id)
-    {
-        println!(
-            "{id} ({} known to panic), {}:\n{}",
-            if known_to_panic.contains(id) {
-                "IS"
-            } else {
-                "not"
-            },
-            label_by_start_idx(block.start_idx).unwrap_or("no label"),
-            block.pretty_print(openvm_instruction_formatter)
-        )
+    if false {
+        println!("=============== blocks =================");
+        for (id, block) in basic_blocks_by_identifier
+            .iter()
+            .sorted_by_key(|(id, _)| *id)
+        {
+            println!(
+                "{id} ({} known to panic), {}:\n{}",
+                if known_to_panic.contains(id) {
+                    "IS"
+                } else {
+                    "not"
+                },
+                label_by_start_idx(block.start_idx).unwrap_or("no label"),
+                block.pretty_print(openvm_instruction_formatter)
+            )
+        }
+        println!("=============== =================");
     }
-    println!("=============== =================");
-    let mut queue = blocks.iter().collect::<VecDeque<_>>();
-    while let Some(block) = queue.pop_front() {
-        println!("{}", block.pretty_print(openvm_instruction_formatter));
-        let successors = successors(block);
-        match successors {
-            Ok(successors) => {
-                for s in &successors {
-                    assert!(
-                        basic_blocks_by_identifier.contains_key(s),
-                        "Successor {s} not found in basic blocks"
-                    );
-                }
+    if false {
+        let mut queue = blocks.iter().collect::<VecDeque<_>>();
+        while let Some(block) = queue.pop_front() {
+            println!("{}", block.pretty_print(openvm_instruction_formatter));
+            let successors = successors(block);
+            match successors {
+                Ok(successors) => {
+                    for s in &successors {
+                        assert!(
+                            basic_blocks_by_identifier.contains_key(s),
+                            "Successor {s} not found in basic blocks"
+                        );
+                    }
 
-                println!(" -> {}", successors.iter().format(", "));
-            }
-            Err(_) => {
-                println!("Unknown jump dest");
+                    println!(" -> {}", successors.iter().format(", "));
+                }
+                Err(_) => {
+                    println!("Unknown jump dest");
+                }
             }
         }
     }
@@ -87,54 +93,76 @@ pub fn analyze_basic_blocks<'a, F: PrimeField32>(
         );
         known_to_panic.extend(new_blocks_to_panic);
     }
-    println!("=============== AT END blocks =================");
-    for (id, block) in basic_blocks_by_identifier
-        .iter()
-        .sorted_by_key(|(id, _)| *id)
-    {
-        println!(
-            "{id} {} ({} known to panic), -> [{}]:\n{}",
-            label_by_start_idx(block.start_idx).unwrap_or("no label"),
-            if known_to_panic.contains(id) {
-                "IS"
-            } else {
-                "not"
-            },
-            successors(block)
-                .map(|s| s.iter().format(", ").to_string())
-                .unwrap_or_else(|_| "unknown".to_string()),
-            block.pretty_print(openvm_instruction_formatter)
-        )
+    if false {
+        println!("=============== AT END blocks =================");
+        for (id, block) in basic_blocks_by_identifier
+            .iter()
+            .sorted_by_key(|(id, _)| *id)
+        {
+            println!(
+                "{id} {} ({} known to panic), -> [{}]:\n{}",
+                label_by_start_idx(block.start_idx).unwrap_or("no label"),
+                if known_to_panic.contains(id) {
+                    "IS"
+                } else {
+                    "not"
+                },
+                successors(block)
+                    .map(|s| s.iter().format(", ").to_string())
+                    .unwrap_or_else(|_| "unknown".to_string()),
+                block.pretty_print(openvm_instruction_formatter)
+            )
+        }
+        println!("=============== =================");
     }
-    println!("=============== =================");
 
     println!(
         "======================= Final analysis =================\n{} out of {} blocks known to panic",
         known_to_panic.len(),
         basic_blocks_by_identifier.len()
     );
-    for (id, block) in basic_blocks_by_identifier
+    let blocks_to_optimize = basic_blocks_by_identifier
         .iter()
-        .sorted_by_key(|(id, _)| *id)
-    {
-        if known_to_panic.contains(id) {
-            continue;
-        }
-        match jump_behaviour(block) {
+        .filter(|(id, _)| !known_to_panic.contains(id))
+        .filter(|(_, block)| match jump_behaviour(block) {
             BlockEndJumpBehaviour::ConditionalJump { jump_to, next } => {
-                if known_to_panic.contains(&jump_to) {
-                    println!(
-                        "{id}: {} (not known to panic), might jump to {jump_to} or continue to {next},\nbut the jump target is known to panic, so we can make it unconditional:\n{}",
-                        label_by_start_idx(block.start_idx).unwrap_or("[no label]"),
-                        block.pretty_print(openvm_instruction_formatter)
-                    );
-                }
+                known_to_panic.contains(&jump_to)
             }
-            _ => {}
-        }
+            _ => false,
+        })
+        .sorted_by_cached_key(|(_, block)| match pgo_config {
+            PgoConfig::Cell(frequencies, _) => frequencies
+                .get(&(block.start_idx as u32))
+                .cloned()
+                .unwrap_or(0),
+            _ => 0,
+        })
+        .rev();
+    for (id, block) in blocks_to_optimize {
+        let frequency = match pgo_config {
+            PgoConfig::Cell(frequencies, _) => frequencies
+                .get(&(block.start_idx as u32))
+                .cloned()
+                .unwrap_or(0),
+            _ => 0,
+        };
+        println!(
+            "{id}: freq: {frequency}, {} (not known to panic), might jump or continue,\nbut the jump target is known to panic, so we can make it unconditional:\n{}",
+            label_by_start_idx(block.start_idx).unwrap_or("[no label]"),
+            block.pretty_print(openvm_instruction_formatter)
+        );
+        println!(
+            "Next block:\n{}",
+            basic_blocks_by_identifier
+                .get(&BasicBlockIdentifier(
+                    block.start_idx + block.statements.len()
+                ))
+                .unwrap()
+                .pretty_print(openvm_instruction_formatter)
+        );
     }
 
-    todo!();
+    //todo!();
 }
 
 fn propagate_panic<'a>(

@@ -137,7 +137,7 @@ pub fn customize(
         })
     });
 
-    analyze_basic_blocks(&blocks, known_to_panic, &label_by_start_idx);
+    analyze_basic_blocks(&blocks, known_to_panic, &label_by_start_idx, &pgo_config);
 
     let blocks = blocks
         .into_iter()
@@ -277,11 +277,6 @@ pub fn collect_basic_blocks<F: PrimeField32>(
     };
     for (i, instr) in program.instructions_and_debug_infos.iter().enumerate() {
         let instr = instr.as_ref().unwrap().0.clone();
-        println!(
-            "Processing instruction at index {}: {}",
-            i,
-            openvm_instruction_formatter(&instr)
-        );
         let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
         let is_target = labels.contains(&adjusted_pc);
         if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
