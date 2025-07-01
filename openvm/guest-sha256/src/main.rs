@@ -13,9 +13,7 @@ pub fn main() {
     let n: u32 = read();
     let mut output = black_box([0u8; 32]);
      for _ in 0..n {
-        for _ in 0..n {
         output = Sha256::digest(&output).into();
-    }
     }
 
     reveal_u32(output[0] as u32, 0);
