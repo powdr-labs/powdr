@@ -6,21 +6,21 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{GroupedExpression, QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
 };
 
-/// Given a list of constraints in the form of quadratic symbolic expressions, tries to determine
+/// Given a list of constraints in the form of grouped expressions, tries to determine
 /// pairs of equivalent variables.
-pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    constraints: &[QuadraticSymbolicExpression<T, V>],
-    range_constraints: impl RangeConstraintProvider<T, V>,
+pub fn find_quadratic_equalities<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
+    constraints: &[GroupedExpression<T, V>],
+    range_constraints: impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Vec<(V, V)> {
     let candidates = constraints
         .iter()
-        .filter_map(QuadraticEqualityCandidate::try_from_qse)
+        .filter_map(QuadraticEqualityCandidate::try_from_grouped_expression)
         .filter(|c| c.variables.len() >= 2)
         .collect::<Vec<_>>();
     candidates
@@ -96,19 +96,18 @@ fn process_quadratic_equality_candidate_pair<
 }
 
 /// This represents an identity `expr * (expr + offset) = 0`,
-/// where `expr` is an affine expression and `offset` is a symbolic expression
-/// without unknown variables.
+/// where `expr` is an affine expression and `offset` is a runtime constant.
 ///
 /// All unknown variables appearing in `expr` are stored in `variables`.
-struct QuadraticEqualityCandidate<T: FieldElement, V: Ord + Clone + Hash + Eq> {
-    expr: QuadraticSymbolicExpression<T, V>,
-    offset: SymbolicExpression<T, V>,
+struct QuadraticEqualityCandidate<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> {
+    expr: GroupedExpression<T, V>,
+    offset: T::FieldType,
     /// All unknown variables in `expr`.
     variables: HashSet<V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
-    fn try_from_qse(constr: &QuadraticSymbolicExpression<T, V>) -> Option<Self> {
+impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
+    fn try_from_grouped_expression(constr: &GroupedExpression<T, V>) -> Option<Self> {
         let (left, right) = constr.try_as_single_product()?;
         if !left.is_affine() || !right.is_affine() {
             return None;
