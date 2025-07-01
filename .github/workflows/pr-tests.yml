@@ -144,7 +144,7 @@ jobs:
           args: "--all-targets"
 
   test_apc_reth_compilation:
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-8x
 
     steps:
       - uses: actions/checkout@v4
