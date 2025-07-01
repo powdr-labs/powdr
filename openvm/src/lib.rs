@@ -1060,6 +1060,15 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too long"]
+    fn sha256_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER);
+        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+    }
+
+    #[test]
     fn guest_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
