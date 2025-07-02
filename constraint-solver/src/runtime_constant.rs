@@ -85,8 +85,13 @@ pub trait Substitutable<V> {
     fn substitute(&mut self, variable: &V, substitution: &Self);
 }
 
+/// Provides a function to transform the type of variables in an expression.
+/// The expectation is that the variable transformation function is injective, i.e.
+/// two different variables cannot become equal through the transformation.
 pub trait VarTransformable<V1, V2> {
     type Transformed;
+
+    /// Transforms `self` by applying the `var_transform` function to all variables.
     fn transform_var_type(&self, var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed;
 }
 
