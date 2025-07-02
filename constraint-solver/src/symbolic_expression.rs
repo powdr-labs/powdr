@@ -13,7 +13,9 @@ use std::{
 
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
+use crate::runtime_constant::{
+    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
+};
 
 use super::range_constraint::RangeConstraint;
 
@@ -162,8 +164,12 @@ impl<T: FieldElement, V> ExpressionConvertible<T, V> for SymbolicExpression<T, V
     }
 }
 
-impl<T: FieldElement, S1: Ord + Clone> SymbolicExpression<T, S1> {
-    pub fn transform_var_type<S2: Ord + Clone>(
+impl<T: FieldElement, S1: Ord + Clone, S2: Ord + Clone> VarTransformable<S1, S2>
+    for SymbolicExpression<T, S1>
+{
+    type Transformed = SymbolicExpression<T, S2>;
+
+    fn transform_var_type(
         &self,
         var_transform: &mut impl FnMut(&S1) -> S2,
     ) -> SymbolicExpression<T, S2> {
