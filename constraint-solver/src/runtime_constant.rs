@@ -35,7 +35,12 @@ pub trait RuntimeConstant:
     fn range_constraint(&self) -> RangeConstraint<Self::FieldType>;
 
     /// Divides this constant by another constant, returning a new constant.
-    fn field_div(&self, other: &Self) -> Self;
+    fn field_div(&self, other: &Self) -> Self {
+        self.clone() * other.field_inverse()
+    }
+
+    /// Returns the multiplicative inverse of this constant.
+    fn field_inverse(&self) -> Self;
 
     /// Converts a u64 to a run-time constant.
     fn from_u64(k: u64) -> Self {
@@ -98,6 +103,10 @@ impl<T: FieldElement> RuntimeConstant for T {
 
     fn field_div(&self, other: &Self) -> Self {
         *self / *other
+    }
+
+    fn field_inverse(&self) -> Self {
+        T::from(1) / *self
     }
 }
 
