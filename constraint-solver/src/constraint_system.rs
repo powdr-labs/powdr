@@ -1,11 +1,11 @@
 use crate::{
-    effect::Effect,
-    grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    effect::EffectImpl,
+    grouped_expression::{GroupedExpression, QuadraticSymbolicExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::RuntimeConstant,
+    runtime_constant::{ReferencedSymbols, RuntimeConstant},
 };
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
 /// Description of a constraint system.
@@ -135,38 +135,42 @@ impl<V> FromIterator<V> for BusInteraction<V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
-    BusInteraction<QuadraticSymbolicExpression<T, V>>
+impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq + Display>
+    BusInteraction<GroupedExpression<T, V>>
 {
     /// Converts a bus interactions with fields represented by expressions
     /// to a bus interaction with fields represented by range constraints.
     fn to_range_constraints(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> BusInteraction<RangeConstraint<T>> {
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> BusInteraction<RangeConstraint<T::FieldType>> {
         BusInteraction::from_iter(
             self.fields()
                 .map(|expr| expr.range_constraint(range_constraints)),
         )
     }
+}
 
+impl<
+        T: RuntimeConstant + ReferencedSymbols<V> + Display + ExpressionConvertible<T::FieldType, V>,
+        V: Clone + Hash + Ord + Eq + Display,
+    > BusInteraction<GroupedExpression<T, V>>
+{
     /// Refines range constraints of the bus interaction's fields
     /// using the provided `BusInteractionHandler`.
     /// Returns a list of updates to be executed by the caller.
     /// Forwards and error by the bus interaction handler.
     pub fn solve(
         &self,
-        bus_interaction_handler: &dyn BusInteractionHandler<T>,
-        range_constraint_provider: &impl RangeConstraintProvider<T, V>,
-    ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
+        bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
+        range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> Result<Vec<EffectImpl<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
         Ok(self
             .fields()
             .zip_eq(range_constraints.fields())
-            // TODO: This does not handle all cases. We might want to introduce variables for
-            // bus interaction parameters.
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
                 expr.referenced_unknown_variables().filter_map(|var| {
@@ -176,9 +180,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
                     let k = expr.coefficient_of_variable(var).unwrap().try_to_number()?;
                     let expr = expr.try_solve_for(var)?;
                     let rc = rc
-                        .multiple(T::from(1) / k)
+                        .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
+                    (!rc.is_unconstrained()).then(|| EffectImpl::RangeConstraint(var.clone(), rc))
                 })
             })
             .collect())
