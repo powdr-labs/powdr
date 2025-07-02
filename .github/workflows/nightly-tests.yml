@@ -9,7 +9,7 @@ env:
   IS_NIGHTLY_TEST: true
   POWDR_GENERATE_PROOFS: "true"
   RUSTFLAGS: "-C target-cpu=native"
-  RUST_BACKTRACE=1
+  RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 10000
 
