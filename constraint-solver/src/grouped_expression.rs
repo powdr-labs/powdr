@@ -315,9 +315,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash> GroupedE
     }
 }
 
-impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
-    GroupedExpression<T, V>
-{
+impl<T: ReferencedSymbols<V>, V> GroupedExpression<T, V> {
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self

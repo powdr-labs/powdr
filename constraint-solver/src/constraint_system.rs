@@ -3,14 +3,17 @@ use crate::{
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
+    symbolic_expression::SymbolicExpression,
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
+pub type ConstraintSystem<T, V> = ConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
+
 /// Description of a constraint system.
 #[derive(Clone)]
-pub struct ConstraintSystem<T: RuntimeConstant, V> {
+pub struct ConstraintSystemGeneric<T: RuntimeConstant, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
@@ -18,16 +21,18 @@ pub struct ConstraintSystem<T: RuntimeConstant, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
 }
 
-impl<T: RuntimeConstant, V> Default for ConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V> Default for ConstraintSystemGeneric<T, V> {
     fn default() -> Self {
-        ConstraintSystem {
+        ConstraintSystemGeneric {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
         }
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for ConstraintSystem<T, V> {
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
+    for ConstraintSystemGeneric<T, V>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -45,7 +50,7 @@ impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for ConstraintSys
     }
 }
 
-impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V> ConstraintSystemGeneric<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(
             self.algebraic_constraints
@@ -79,7 +84,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
 
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
-    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+    pub fn extend(&mut self, system: ConstraintSystemGeneric<T, V>) {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
@@ -194,7 +199,8 @@ impl<
             })
             .collect())
     }
-
+}
+impl<T: ReferencedSymbols<V>, V> BusInteraction<GroupedExpression<T, V>> {
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         Box::new(self.fields().flat_map(|expr| expr.referenced_variables()))
@@ -261,12 +267,12 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
     }
 }
 
-pub enum ConstraintRef<'a, T: RuntimeConstant, V> {
+pub enum ConstraintRef<'a, T, V> {
     AlgebraicConstraint(&'a GroupedExpression<T, V>),
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 
-impl<'a, T: FieldElement, V: Ord + Clone + Hash + Display> ConstraintRef<'a, T, V> {
+impl<'a, T: ReferencedSymbols<V>, V> ConstraintRef<'a, T, V> {
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         match self {
             ConstraintRef::AlgebraicConstraint(expr) => Box::new(expr.referenced_variables()),

@@ -83,7 +83,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// them is safe.
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
-fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T>,
 ) -> JournalingConstraintSystem<T, V> {
