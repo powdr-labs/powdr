@@ -45,7 +45,7 @@ pub enum Error {
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: FieldElement, V, BusInterHandler> {
+pub struct Solver<T: FieldElement, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, Variable<V>>,
