@@ -3,8 +3,8 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 use crate::constraint_system::BusInteractionHandler;
+use crate::grouped_expression::RangeConstraintProvider;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::quadratic_symbolic_expression::RangeConstraintProvider;
 use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};

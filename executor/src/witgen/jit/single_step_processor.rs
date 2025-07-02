@@ -4,7 +4,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
-use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use powdr_constraint_solver::grouped_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};

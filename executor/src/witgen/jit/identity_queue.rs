@@ -11,7 +11,7 @@ use powdr_ast::{
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    grouped_expression::QuadraticSymbolicExpression,
     runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
     variable_update::{UpdateKind, VariableUpdate},

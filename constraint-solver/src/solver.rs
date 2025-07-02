@@ -3,8 +3,8 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::grouped_expression::QuadraticSymbolicExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::solver::bus_interaction_variable_wrapper::{
     BusInteractionVariableWrapper, IntermediateAssignment, Variable,
@@ -12,7 +12,7 @@ use crate::solver::bus_interaction_variable_wrapper::{
 use crate::utils::known_variables;
 
 use super::effect::Effect;
-use super::quadratic_symbolic_expression::{Error as QseError, RangeConstraintProvider};
+use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;

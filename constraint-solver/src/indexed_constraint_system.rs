@@ -10,7 +10,7 @@ use powdr_number::FieldElement;
 use crate::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
     effect::Effect,
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
 

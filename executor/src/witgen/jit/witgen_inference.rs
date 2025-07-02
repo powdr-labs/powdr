@@ -11,7 +11,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_constraint_solver::{
     effect::Condition,
-    quadratic_symbolic_expression::{
+    grouped_expression::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
     range_constraint::RangeConstraint,

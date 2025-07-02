@@ -11,7 +11,7 @@ use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    grouped_expression::QuadraticSymbolicExpression,
     solver::{self, SolveResult},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
