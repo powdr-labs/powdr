@@ -10,9 +10,7 @@ use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::interaction::fri_log_up::{
-    find_interaction_chunks, STARK_LU_NUM_CHALLENGES, STARK_LU_NUM_EXPOSED_VALUES,
-};
+use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };
@@ -34,6 +32,8 @@ use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
+
+pub const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
@@ -336,25 +336,33 @@ pub fn get_constraints(
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
-    let name = air.name();
-    let base = air.width();
     let app_log_blow_up = 2;
     let max_degree = (1 << app_log_blow_up) + 1;
+
+    let name = air.name();
+    let base = air.width();
+
+    let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
+    let preprocess = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
+
     let SymbolicConstraints {
         constraints,
         interactions,
-    } = get_constraints(air);
-    let perm_width = find_interaction_chunks(&interactions, max_degree)
+    } = symbolic_rap_builder.constraints();
+
+    // TODO: replace hardcoded EXT_DEGREE with `<SC::Challenge as FieldExtensionAlgebra<Val<SC>>>::D`` once `BabyBearSC` is generic.
+    let log_up = (find_interaction_chunks(&interactions, max_degree)
         .interaction_partitions()
         .len()
-        + 1;
-    let challenge_width = STARK_LU_NUM_CHALLENGES;
-    let exposed_width = STARK_LU_NUM_EXPOSED_VALUES;
+        + 1)
+        * EXT_DEGREE;
+
     AirMetrics {
         name,
         widths: AirWidths {
+            preprocess,
             base,
-            log_up: perm_width + challenge_width + exposed_width,
+            log_up,
         },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
@@ -373,6 +381,7 @@ pub fn symbolic_builder_with_degree(
 }
 
 pub struct AirWidths {
+    pub preprocess: usize,
     pub base: usize,
     pub log_up: usize,
 }
