@@ -130,6 +130,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
+    let start = std::time::Instant::now();
     let blocks_with_apcs = generate_apcs_with_pgo(
         blocks,
         &airs,
@@ -138,6 +139,7 @@ pub fn customize(
         &original_config,
         pgo_config,
     );
+    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -535,8 +537,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     });
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    let start = std::time::Instant::now();
-    let apcs = fractional_knapsack(
+    fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             // try to create apc for a candidate block
             let apc = generate_autoprecompile(
@@ -585,9 +586,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         );
 
         c.block_with_apc
-    }).collect();
-    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
-    apcs
+    }).collect()
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
