@@ -30,7 +30,7 @@ impl<T: RuntimeConstant, V> Default for ConstraintSystemGeneric<T, V> {
     }
 }
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
     for ConstraintSystemGeneric<T, V>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
