@@ -121,7 +121,7 @@ impl<F: FieldElement, V: Ord + Clone + Eq + Hash> GroupedExpression<SymbolicExpr
     }
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Eq + Hash> GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     pub fn from_runtime_constant(constant: T) -> Self {
         Self {
             quadratic: Default::default(),

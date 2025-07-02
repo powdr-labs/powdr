@@ -147,9 +147,7 @@ impl<V> FromIterator<V> for BusInteraction<V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq + Display>
-    BusInteraction<GroupedExpression<T, V>>
-{
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> BusInteraction<GroupedExpression<T, V>> {
     /// Converts a bus interactions with fields represented by expressions
     /// to a bus interaction with fields represented by range constraints.
     fn to_range_constraints(
