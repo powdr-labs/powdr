@@ -87,7 +87,7 @@ impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T,
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq + Hash> Zero for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Zero for GroupedExpression<T, V> {
     fn zero() -> Self {
         Self {
             quadratic: Default::default(),
@@ -101,7 +101,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq + Hash> Zero for GroupedExpression<
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq + Hash> One for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> One for GroupedExpression<T, V> {
     fn one() -> Self {
         Self {
             quadratic: Default::default(),
@@ -115,13 +115,13 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq + Hash> One for GroupedExpression<T
     }
 }
 
-impl<F: FieldElement, V: Ord + Clone + Eq + Hash> GroupedExpression<SymbolicExpression<F, V>, V> {
+impl<F: FieldElement, V: Ord + Clone + Eq> GroupedExpression<SymbolicExpression<F, V>, V> {
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<F>) -> Self {
         Self::from_runtime_constant(SymbolicExpression::from_symbol(symbol, rc))
     }
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Eq + Hash> GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     pub fn from_runtime_constant(constant: T) -> Self {
         Self {
             quadratic: Default::default(),
@@ -222,7 +222,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq + Hash> GroupedExpression<T, V> {
     }
 }
 
-impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash> GroupedExpression<T, V> {
+impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
@@ -315,9 +315,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash> GroupedE
     }
 }
 
-impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq + Hash>
-    GroupedExpression<T, V>
-{
+impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
@@ -388,7 +386,7 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
 
 impl<
         T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
-        V: Ord + Clone + Hash + Eq + Display,
+        V: Ord + Clone + Eq + Hash + Display,
     > GroupedExpression<T, V>
 {
     /// Solves the equation `self = 0` and returns how to compute the solution.
@@ -708,7 +706,7 @@ impl<
 /// conditional assignment.
 fn combine_to_conditional_assignment<
     T: RuntimeConstant + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
-    V: Ord + Clone + Hash + Eq + Display,
+    V: Ord + Clone + Eq + Display,
 >(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
@@ -768,7 +766,7 @@ fn combine_to_conditional_assignment<
 /// Tries to combine range constraint results from two alternative branches.
 /// In some cases, if both branches produce a complete range constraint for the same variable,
 /// and those range constraints can be combined without loss, the result is complete as well.
-fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
+fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
 ) -> ProcessResult<T, V> {
@@ -816,7 +814,7 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Di
     }
 }
 
-fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq>(
     var: V,
     value: T,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
@@ -829,7 +827,7 @@ fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone 
 }
 
 /// Turns an effect into a range constraint on a variable.
-fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Eq>(
     effect: &EffectImpl<T, V>,
 ) -> Option<(V, RangeConstraint<T::FieldType>)> {
     match effect {
@@ -839,7 +837,7 @@ fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Add for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Add for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn add(mut self, rhs: Self) -> Self {
@@ -848,7 +846,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Add for GroupedExpression<T
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Add for &GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Add for &GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -856,7 +854,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Add for &GroupedExpression<
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> AddAssign<GroupedExpression<T, V>>
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
     for GroupedExpression<T, V>
 {
     fn add_assign(&mut self, rhs: Self) {
@@ -872,7 +870,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> AddAssign<GroupedExpression
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sub for &GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for &GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -880,7 +878,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sub for &GroupedExpression<
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sub for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -918,7 +916,7 @@ impl<T: RuntimeConstant, V: Clone + Ord> Neg for &GroupedExpression<T, V> {
 }
 
 /// Multiply by known symbolic expression.
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul<&T> for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul<&T> for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn mul(mut self, rhs: &T) -> Self {
@@ -927,7 +925,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul<&T> for GroupedExpressi
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul<T> for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul<T> for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn mul(self, rhs: T) -> Self {
@@ -935,7 +933,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul<T> for GroupedExpressio
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> MulAssign<&T> for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> MulAssign<&T> for GroupedExpression<T, V> {
     fn mul_assign(&mut self, rhs: &T) {
         if rhs.is_known_zero() {
             *self = Self::zero();
@@ -951,7 +949,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> MulAssign<&T> for GroupedEx
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Mul for GroupedExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn mul(self, rhs: GroupedExpression<T, V>) -> Self {
