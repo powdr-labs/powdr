@@ -516,13 +516,13 @@ pub fn sum_up_air_metrics(metrics: Vec<AirMetrics>) -> AirMetrics {
     metrics.iter().fold(
         AirMetrics {
             name: "Total".to_string(),
-            width: AirWidth::default(),
+            widths: AirWidths::default(),
             constraints: 0,
             bus_interactions: 0,
         },
         |mut acc, metric| {
-            acc.width.base_width += metric.width.base_width;
-            acc.width.log_up_width += metric.width.log_up_width;
+            acc.widths.base += metric.widths.base;
+            acc.widths.log_up += metric.widths.log_up;
             acc.constraints += metric.constraints;
             acc.bus_interactions += metric.bus_interactions;
             acc
@@ -1140,8 +1140,8 @@ mod tests {
             .for_each(|(idx, m)| {
                 assert_eq!(
                     [
-                        m.width.base_width,
-                        m.width.log_up_width,
+                        m.widths.base,
+                        m.widths.log_up,
                         m.constraints,
                         m.bus_interactions
                     ],
@@ -1155,8 +1155,8 @@ mod tests {
         let total_powdr_metrics = sum_up_air_metrics(powdr_metrics);
         assert_eq!(
             [
-                total_powdr_metrics.width.base_width,
-                total_powdr_metrics.width.log_up_width,
+                total_powdr_metrics.widths.base,
+                total_powdr_metrics.widths.log_up,
                 total_powdr_metrics.constraints,
                 total_powdr_metrics.bus_interactions
             ],
@@ -1170,8 +1170,8 @@ mod tests {
         let total_non_apc_metrics = sum_up_air_metrics(non_powdr_metrics);
         assert_eq!(
             [
-                total_non_apc_metrics.width.base_width,
-                total_non_apc_metrics.width.log_up_width,
+                total_non_apc_metrics.widths.base,
+                total_non_apc_metrics.widths.log_up,
                 total_non_apc_metrics.constraints,
                 total_non_apc_metrics.bus_interactions
             ],
