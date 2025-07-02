@@ -25,7 +25,10 @@ impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for ConstraintSys
             "{}",
             self.algebraic_constraints
                 .iter()
-                .map(|expr| format!("{expr} = 0"))
+                .map(|expr| {
+                    let (_sign, expr) = expr.transform_signed_simplified();
+                    format!("{expr} = 0")
+                })
                 .chain(
                     self.bus_interactions
                         .iter()

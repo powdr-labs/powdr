@@ -6,24 +6,18 @@ use std::{
 };
 
 use itertools::{Either, Itertools};
+use num_traits::One;
 use num_traits::Zero;
 use powdr_expression::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
-use powdr_number::{log2_exact, FieldElement, LargeInt};
+use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
 
 use crate::{
     effect::Condition,
-    symbolic_expression::{BinaryOperator, UnaryOperator},
-    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
-use crate::{
-    effect::Condition,
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
+    symbolic_expression::{BinaryOperator, UnaryOperator},
 };
-use itertools::Itertools;
-use num_traits::One;
-use num_traits::Zero;
-use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
 use super::range_constraint::RangeConstraint;
