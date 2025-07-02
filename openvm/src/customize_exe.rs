@@ -2,12 +2,13 @@ use std::collections::{BTreeSet, HashMap};
 
 use std::sync::Arc;
 
-use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
+use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
-use crate::{AirMetrics, IntoOpenVm};
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction;
@@ -18,6 +19,7 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::VmConfig;
@@ -60,14 +62,13 @@ struct BlockWithApc<P: IntoOpenVm> {
     apc: Apc<P>,
 }
 
-fn generate_apcs_with_pgo<P: IntoOpenVm>(
-    blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &OriginalAirs<P>,
+fn generate_apcs_with_pgo(
+    blocks: Vec<BasicBlock<BabyBear>>,
+    airs: &OriginalAirs<BabyBearField>,
     bus_map: &BusMap,
     config: &PowdrConfig,
-    original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
-) -> Vec<BlockWithApc<P>> {
+) -> Vec<BlockWithApc<BabyBearField>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -79,7 +80,6 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
             max_total_columns,
             airs,
             config,
-            original_config,
             bus_map,
         ),
         PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -130,14 +130,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(
-        blocks,
-        &airs,
-        &bus_map,
-        &config,
-        &original_config,
-        pgo_config,
-    );
+    let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -455,13 +448,12 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
-fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
+fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     max_total_columns: Option<usize>,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
-    original_config: &OriginalVmConfig,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
@@ -478,7 +470,14 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
 
     // store air width by opcode, so that we don't repetitively calculate them later
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode();
+    let air_width_by_opcode = airs
+        .opcode_to_air
+        .iter()
+        .map(|(opcode, air_name)| {
+            let metrics = airs.air_name_to_metrics.get(air_name).unwrap();
+            (*opcode, metrics.total_width())
+        })
+        .collect::<HashMap<VmOpcode, usize>>();
 
     // generate apc for all basic blocks and only cache the ones we eventually use
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -520,13 +519,11 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     }
 
     let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
-        let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
-        let total_non_apc_columns = chip_inventory_air_metrics
-            .iter()
-            .map(|AirMetrics { name, widths, .. }| {
-                tracing::debug!("Chip inventory air {} has {}", name, widths);
-                widths.preprocess + widths.base + widths.log_up
-            })
+        // let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
+        let total_non_apc_columns = airs
+            .air_name_to_metrics
+            .values()
+            .map(|m| m.total_width())
             .sum::<usize>();
         max_total_columns - total_non_apc_columns
     });
@@ -545,7 +542,9 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             .ok()?; // if apc creation fails, filter out this candidate block
 
             // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width();
+            let powdr_air = PowdrAir::new(apc.machine().clone());
+            let apc_cells_per_row = get_air_metrics(Arc::new(powdr_air)).total_width();
+
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()

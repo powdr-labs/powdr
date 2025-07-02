@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::iter::Sum;
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
@@ -25,7 +26,7 @@ use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
+use std::ops::{Add, Deref};
 use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
@@ -35,10 +36,11 @@ use crate::utils::symbolic_to_algebraic;
 
 pub const EXT_DEGREE: usize = 4;
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct OriginalAirs<P> {
-    opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
+    pub opcode_to_air: HashMap<VmOpcode, String>,
+    pub air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
+    pub air_name_to_metrics: BTreeMap<String, AirMetrics>,
 }
 
 impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
@@ -56,16 +58,18 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<SymbolicMachine<P>, UnsupportedOpenVmReferenceError>,
+        machine: impl Fn() -> Result<(SymbolicMachine<P>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
-            let machine_instance = machine()?;
+            let (machine_instance, air_metrics) = machine()?;
             self.air_name_to_machine
                 .insert(air_name.clone(), machine_instance);
+            self.air_name_to_metrics
+                .insert(air_name.clone(), air_metrics);
         }
 
         self.opcode_to_air.insert(opcode, air_name);
@@ -199,6 +203,7 @@ impl OriginalVmConfig {
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
                 airs.insert_opcode(op, get_name(executor.air()), || {
                     let air = executor.air();
+                    let metrics = get_air_metrics(air.clone());
                     let columns = get_columns(air.clone());
                     let constraints = get_constraints(air);
 
@@ -214,10 +219,13 @@ impl OriginalVmConfig {
                         .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
                         .collect::<Result<_, _>>()?;
 
-                    Ok(SymbolicMachine {
-                        constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                        bus_interactions: powdr_bus_interactions,
-                    })
+                    Ok((
+                        SymbolicMachine {
+                            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                            bus_interactions: powdr_bus_interactions,
+                        },
+                        metrics,
+                    ))
                 })?;
 
                 Ok(airs)
@@ -275,18 +283,6 @@ impl OriginalVmConfig {
                        // Create a new chip complex
         self.sdk_config.create_chip_complex()
     }
-
-    pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
-        self.chip_complex()
-            .inventory
-            .executors()
-            .iter()
-            .map(|executor| {
-                let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
-                get_air_metrics(air)
-            })
-            .collect::<Vec<_>>()
-    }
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
@@ -339,7 +335,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let app_log_blow_up = 2;
     let max_degree = (1 << app_log_blow_up) + 1;
 
-    let name = air.name();
     let base = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
@@ -358,7 +353,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         * EXT_DEGREE;
 
     AirMetrics {
-        name,
         widths: AirWidths {
             preprocess,
             base,
@@ -380,11 +374,28 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct AirWidths {
     pub preprocess: usize,
     pub base: usize,
     pub log_up: usize,
+}
+
+impl Add for AirWidths {
+    type Output = AirWidths;
+    fn add(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocess: self.preprocess + rhs.preprocess,
+            base: self.base + rhs.base,
+            log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+impl Sum<AirWidths> for AirWidths {
+    fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
+        iter.fold(AirWidths::default(), Add::add)
+    }
 }
 
 impl std::fmt::Display for AirWidths {
@@ -397,6 +408,12 @@ impl std::fmt::Display for AirWidths {
             self.base,
             self.log_up
         )
+    }
+}
+
+impl AirWidths {
+    pub fn total(&self) -> usize {
+        self.preprocess + self.base + self.log_up
     }
 }
 
