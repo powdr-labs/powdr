@@ -1,9 +1,10 @@
 use crate::{BusMap, BusType};
+use itertools::Itertools;
 use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
     p3_air::{Air, BaseAir},
-    p3_field::PrimeField32,
+    p3_field::{FieldAlgebra, PrimeField32},
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
 };
@@ -27,6 +28,18 @@ pub struct PlonkColumns<T> {
     pub q_pc: T,
     pub q_range_tuple: T,
 
+    pub a_id: T,
+    pub b_id: T,
+    pub c_id: T,
+    pub d_id: T,
+    pub e_id: T,
+
+    pub a_perm: T,
+    pub b_perm: T,
+    pub c_perm: T,
+    pub d_perm: T,
+    pub e_perm: T,
+
     pub a: T,
     pub b: T,
     pub c: T,
@@ -35,6 +48,7 @@ pub struct PlonkColumns<T> {
 }
 
 pub struct PlonkAir<F> {
+    pub copy_constraint_bus_id: u16,
     pub bus_map: BusMap,
     pub _marker: std::marker::PhantomData<F>,
 }
@@ -72,7 +86,17 @@ where
             q_range_check,
             q_execution,
             q_pc,
-            q_range_tuple: _,
+            q_range_tuple,
+            a_id,
+            b_id,
+            c_id,
+            d_id,
+            e_id,
+            a_perm,
+            b_perm,
+            c_perm,
+            d_perm,
+            e_perm,
             a,
             b,
             c,
@@ -81,26 +105,17 @@ where
         } = (*local).borrow();
 
         let PlonkColumns {
-            q_l: _,
-            q_r: _,
-            q_o: _,
-            q_mul: _,
-            q_const: _,
-            q_bitwise: _,
-            q_memory: _,
-            q_range_check: _,
-            q_execution: _,
-            q_pc: _,
-            q_range_tuple: _,
             a: a_next,
             b: b_next,
             c: c_next,
             d: d_next,
             e: e_next,
+            ..
         } = (*local_next).borrow();
 
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
 
+        // OpenVM bus interactions
         builder.push_interaction(
             self.bus_map
                 .get_bus_id(&BusType::ExecutionBridge)
@@ -116,6 +131,15 @@ where
                 .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_range_check,
+            1,
+        );
+
+        builder.push_interaction(
+            self.bus_map
+                .get_bus_id(&BusType::TupleRangeChecker)
+                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
+            vec![*a, *b],
+            *c * *q_range_tuple,
             1,
         );
 
@@ -145,6 +169,31 @@ where
             *q_memory * *c_next,
             1,
         );
+        // copy constraints are active in every row, so the multiplicity is always 1 or -1.
+        let q_copy_constraint: AB::Expr = AB::F::from_canonical_u64(1).into();
+
+        let witness_columns = [*a, *b, *c, *d, *e];
+        let witness_ids = [*a_id, *b_id, *c_id, *d_id, *e_id];
+        let witness_perms = [*a_perm, *b_perm, *c_perm, *d_perm, *e_perm];
+
+        for ((column, id), perm) in witness_columns
+            .iter()
+            .zip_eq(witness_ids.iter())
+            .zip_eq(witness_perms.iter())
+        {
+            builder.push_interaction(
+                self.copy_constraint_bus_id,
+                vec![*column, *id],
+                q_copy_constraint.clone(),
+                1,
+            );
+            builder.push_interaction(
+                self.copy_constraint_bus_id,
+                vec![*column, *perm],
+                -q_copy_constraint.clone(),
+                1,
+            );
+        }
     }
 }
 

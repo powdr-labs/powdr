@@ -1,20 +1,15 @@
-use openvm_instructions::VmOpcode;
 use openvm_sdk::config::SdkVmConfig;
-use powdr_autoprecompiles::{
-    build, DegreeBound, SymbolicInstructionStatement, SymbolicMachine, VmConfig,
-};
+use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::{
-    bus_map::default_openvm_bus_map, get_airs_and_bus_map, symbolic_instruction_builder::*,
-    OPENVM_DEGREE_BOUND, POWDR_OPCODE,
-};
-use std::collections::HashSet;
+use powdr_openvm::extraction_utils::OriginalVmConfig;
+use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use pretty_assertions::assert_eq;
+use std::fs;
+use std::path::Path;
 
 // A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(
-    program: Vec<SymbolicInstructionStatement<BabyBearField>>,
-) -> (SymbolicMachine<BabyBearField>, Vec<Vec<u64>>) {
+fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -22,19 +17,17 @@ fn compile(
         .io(Default::default())
         .build();
 
-    let program_instructions = program
-        .iter()
-        .map(|instr| VmOpcode::from_usize(instr.opcode))
-        .collect::<HashSet<_>>();
+    let original_config = OriginalVmConfig::new(sdk_vm_config);
 
-    let (airs, bus_map) = get_airs_and_bus_map(sdk_vm_config, &program_instructions);
+    let airs = original_config.airs().unwrap();
+    let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machines: &airs,
+        instruction_machine_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
-        bus_map,
+        bus_map: bus_map.clone(),
     };
 
     let degree_bound = DegreeBound {
@@ -42,79 +35,255 @@ fn compile(
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32).unwrap()
+    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
+        .unwrap()
+        .machine()
+        .render(&bus_map)
 }
 
-#[test]
-fn guest_top_block() {
-    // Top block from `guest` with `--pgo cell`, with 4 instructions:
-    // SymbolicInstructionStatement { opcode: 512, args: [BabyBearField(8), BabyBearField(8), BabyBearField(16777200), BabyBearField(1), BabyBearField(0), BabyBearField(0), BabyBearField(0)] }
-    // SymbolicInstructionStatement { opcode: 531, args: [BabyBearField(4), BabyBearField(8), BabyBearField(12), BabyBearField(1), BabyBearField(2), BabyBearField(1), BabyBearField(0)] }
-    // SymbolicInstructionStatement { opcode: 576, args: [BabyBearField(4), BabyBearField(0), BabyBearField(0), BabyBearField(1), BabyBearField(0), BabyBearField(0), BabyBearField(0)] }
-    // SymbolicInstructionStatement { opcode: 565, args: [BabyBearField(4), BabyBearField(4), BabyBearField(1780), BabyBearField(1), BabyBearField(0), BabyBearField(1), BabyBearField(0)] }
+/// Compare `actual` against the contents of the file at `path`.
+/// If they differ, write `actual` to the file and fail the test.
+fn assert_machine_output(
+    program: Vec<SymbolicInstructionStatement<BabyBearField>>,
+    test_name: &str,
+) {
+    let actual = compile(program.to_vec());
+    let base = Path::new("tests/apc_builder_outputs");
+    let file_path = base.join(format!("{test_name}.txt"));
 
-    let program = [
-        add(8, 8, 16777200, 0),
-        storew(4, 8, 12, 2, 1, 0),
-        auipc(4, 0, 0, 1, 0),
-        blt(4, 4, 1780, 1, 0),
-    ];
+    match fs::read_to_string(&file_path) {
+        Ok(expected) => {
+            assert_eq!(
+                expected.trim(),
+                actual.trim(),
+                "The output of `{test_name}` does not match the expected output. \
+                 To re-generate the expected output, delete the file `{test_name}.txt` and re-run the test.",
+            );
+        }
+        _ => {
+            // Write the new expected output to the file
+            fs::create_dir_all(base).unwrap();
+            fs::write(&file_path, actual).unwrap();
 
-    let (machine, _) = compile(program.to_vec());
+            println!("Expected output for `{test_name}` was updated. Re-run the test to confirm.");
+        }
+    }
+}
 
-    let expected = r#"(7864320 * rs1_data__0_1 + 125829121 * is_valid - 7864320 * writes_aux__prev_data__0_0) * (7864320 * rs1_data__0_1 + 125829120 - 7864320 * writes_aux__prev_data__0_0) = 0 
-(30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 491521 * is_valid - (30720 * writes_aux__prev_data__0_0 + 7864320 * writes_aux__prev_data__1_0)) * (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 491520 - (30720 * writes_aux__prev_data__0_0 + 7864320 * writes_aux__prev_data__1_0)) = 0 
-(120 * rs1_data__0_1 + 30720 * rs1_data__1_1 + 7864320 * rs1_data__2_1 + 1921 * is_valid - (120 * writes_aux__prev_data__0_0 + 30720 * writes_aux__prev_data__1_0 + 7864320 * writes_aux__prev_data__2_0)) * (120 * rs1_data__0_1 + 30720 * rs1_data__1_1 + 7864320 * rs1_data__2_1 + 1920 - (120 * writes_aux__prev_data__0_0 + 30720 * writes_aux__prev_data__1_0 + 7864320 * writes_aux__prev_data__2_0)) = 0 
-(943718400 * writes_aux__prev_data__0_0 + 120 * rs1_data__1_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 - (120 * writes_aux__prev_data__1_0 + 30720 * writes_aux__prev_data__2_0 + 7864320 * writes_aux__prev_data__3_0 + 943718400 * rs1_data__0_1 + 1006632952 * is_valid)) * (943718400 * writes_aux__prev_data__0_0 + 120 * rs1_data__1_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 - (120 * writes_aux__prev_data__1_0 + 30720 * writes_aux__prev_data__2_0 + 7864320 * writes_aux__prev_data__3_0 + 943718400 * rs1_data__0_1 + 1006632953)) = 0 
-(30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 368640 * is_valid)) * (30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_1 + 7864320 * rs1_data__1_1 + 368641)) = 0 
-(943718400 * rs1_data__0_1 + 30720 * mem_ptr_limbs__1_1 - (120 * rs1_data__1_1 + 943718400 * mem_ptr_limbs__0_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 + 754974726 * is_valid)) * (943718400 * rs1_data__0_1 + 30720 * mem_ptr_limbs__1_1 - (120 * rs1_data__1_1 + 943718400 * mem_ptr_limbs__0_1 + 30720 * rs1_data__2_1 + 7864320 * rs1_data__3_1 + 754974727)) = 0 
-(7864320 * a__1_3 - 7864320 * pc_limbs__0_2) * (7864320 * a__1_3 - (7864320 * pc_limbs__0_2 + 1)) = 0 
-(7864320 * a__2_3 + 30720 * a__1_3 - (30720 * pc_limbs__0_2 + 7864320 * pc_limbs__1_2)) * (7864320 * a__2_3 + 30720 * a__1_3 - (30720 * pc_limbs__0_2 + 7864320 * pc_limbs__1_2 + 1)) = 0 
-(943718400 * from_state__pc_0 + 7864320 * b__3_3 + 30720 * a__2_3 + 120 * a__1_3 - (943718400 * a__0_3 + 503316484 * is_valid)) * (943718400 * from_state__pc_0 + 7864320 * b__3_3 + 30720 * a__2_3 + 120 * a__1_3 - (943718400 * a__0_3 + 503316485)) = 0 
-cmp_lt_3 * (cmp_lt_3 - 1) = 0 
-(b__3_3 - a_msb_f_3) * (a_msb_f_3 + 256 - b__3_3) = 0 
-(b__3_3 - b_msb_f_3) * (b_msb_f_3 + 256 - b__3_3) = 0 
-diff_marker__3_3 * (diff_marker__3_3 - 1) = 0 
-(1 - diff_marker__3_3) * ((b_msb_f_3 - a_msb_f_3) * (2 * cmp_lt_3 - 1)) = 0 
-diff_marker__3_3 * ((a_msb_f_3 - b_msb_f_3) * (2 * cmp_lt_3 - 1) + diff_val_3) = 0 
-diff_marker__2_3 * (diff_marker__2_3 - 1) = 0 
-diff_marker__2_3 * diff_val_3 = 0 
-diff_marker__1_3 * (diff_marker__1_3 - 1) = 0 
-diff_marker__1_3 * diff_val_3 = 0 
-diff_marker__0_3 * (diff_marker__0_3 - 1) = 0 
-diff_marker__0_3 * diff_val_3 = 0 
-(diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3) * (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3 - 1) = 0 
-(1 - (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3)) * cmp_lt_3 = 0 
-(1 - is_valid) * (diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3) = 0 
-is_valid * (is_valid - 1) = 0 
-(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17])
-(id=3, mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12])
-(id=1, mult=is_valid * 2013265920, args=[1, 8, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 8)])
-(id=0, mult=-is_valid, args=[from_state__pc_0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - 7])
-(id=1, mult=is_valid * 1, args=[1, 8, rs1_data__0_1, rs1_data__1_1, rs1_data__2_1, rs1_data__3_1, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - 4])
-(id=3, mult=is_valid * 1, args=[-(503316480 * mem_ptr_limbs__0_1), 14])
-(id=3, mult=is_valid * 1, args=[mem_ptr_limbs__1_1, 13])
-(id=3, mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17])
-(id=3, mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_1, 12])
-(id=1, mult=is_valid * 2013265920, args=[1, 4, rd_aux_cols__prev_data__0_2, rd_aux_cols__prev_data__1_2, rd_aux_cols__prev_data__2_2, rd_aux_cols__prev_data__3_2, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_1 + 4)])
-(id=3, mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_1, 17])
-(id=3, mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_1, 12])
-(id=1, mult=is_valid * 2013265920, args=[2, mem_ptr_limbs__0_1 + 65536 * mem_ptr_limbs__1_1, prev_data__0_1, prev_data__1_1, prev_data__2_1, prev_data__3_1, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - (write_base_aux__timestamp_lt_aux__lower_decomp__0_1 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_1 + 3)])
-(id=1, mult=is_valid * 1, args=[2, mem_ptr_limbs__0_1 + 65536 * mem_ptr_limbs__1_1, rd_aux_cols__prev_data__0_2, rd_aux_cols__prev_data__1_2, rd_aux_cols__prev_data__2_2, rd_aux_cols__prev_data__3_2, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - 2])
-(id=6, mult=diff_marker__3_3 + diff_marker__2_3 + diff_marker__1_3 + diff_marker__0_3, args=[diff_val_3 - 1, 0, 0, 0])
-(id=3, mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3, 17])
-(id=3, mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3, 12])
-(id=1, mult=is_valid * 1, args=[1, 4, a__0_3, a__1_3, a__2_3, b__3_3, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 + 1])
-(id=2, mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0])
-(id=0, mult=is_valid, args=[from_state__pc_0 + 1776 * cmp_lt_3 + 16, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 + 2])
-(id=6, mult=is_valid * 1, args=[rs1_data__0_1, rs1_data__1_1, 0, 0])
-(id=6, mult=is_valid * 1, args=[rs1_data__2_1, rs1_data__3_1, 0, 0])
-(id=6, mult=is_valid * 1, args=[a__0_3, a__1_3, 0, 0])
-(id=6, mult=is_valid * 1, args=[a__2_3, b__3_3, 0, 0])
-(id=6, mult=is_valid * 1, args=[pc_limbs__0_2, pc_limbs__1_2, 0, 0])
-(id=6, mult=is_valid * 1, args=[122880 * pc_limbs__0_2 + 31457280 * pc_limbs__1_2 + 480 * a__0_3 - (480 * from_state__pc_0 + 3840), a_msb_f_3 + 128, 0, 0])
-(id=6, mult=is_valid * 1, args=[b_msb_f_3 + 128, 0, 0, 0])
-"#;
+mod single_instruction_tests {
+    use crate::assert_machine_output;
+    use powdr_openvm::symbolic_instruction_builder::*;
 
-    assert_eq!(machine.to_string(), expected);
+    // ALU Chip instructions
+    #[test]
+    fn single_add_0() {
+        let program = [
+            // [x8] = [x0] + 5
+            add(8, 0, 5, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_add_0");
+    }
+
+    #[test]
+    fn single_sub() {
+        let program = [
+            // [x8] = [x7] - [x5]
+            sub(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_sub");
+    }
+
+    #[test]
+    fn single_and_0() {
+        let program = [
+            // [x8] = [x0] & 5
+            and(8, 0, 5, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_and_0");
+    }
+
+    #[test]
+    fn single_xor() {
+        let program = [
+            // [x8] = [x7] ^ [x5]
+            xor(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_xor");
+    }
+
+    // Load/Store Chip instructions
+    // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
+    #[test]
+    fn single_loadw() {
+        let program = [
+            // Load [x2 + 20]_2 into x8
+            loadw(8, 2, 20, 2, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadw");
+    }
+
+    #[test]
+    fn single_loadbu() {
+        let program = [
+            // Load [x2 + 21]_2 into x8
+            loadbu(8, 2, 21, 2, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadbu");
+    }
+
+    #[test]
+    fn single_loadhu() {
+        let program = [
+            // Load [x2 + 22]_2 but `needs_write=0`
+            loadhu(0, 2, 22, 2, 0, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadhu");
+    }
+
+    #[test]
+    fn single_storew() {
+        let program = [
+            // Store [x8] into [x2 - 4]_2
+            storew(8, 2, 4, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_storew");
+    }
+
+    #[test]
+    fn single_storeh() {
+        let program = [
+            // Store [x8] into [x2 - 6]_2
+            storeh(8, 2, 6, 2, 1, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_storeh");
+    }
+
+    #[test]
+    fn single_storeb() {
+        let program = [
+            // Store [x8] into [x2 + 3]_2
+            storeb(8, 2, 3, 2, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_storeb");
+    }
+
+    // Load/Store Sign Extend Chip instructions
+    #[test]
+    fn single_loadh() {
+        let program = [
+            // Load [x2 + 6]_2 into x8
+            loadh(8, 2, 6, 2, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadh");
+    }
+
+    #[test]
+    fn single_loadb() {
+        let program = [
+            // Load [x2 + 3]_2 into x8 but `needs_write=0`
+            loadb(0, 2, 3, 2, 0, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_loadb");
+    }
+
+    // Branch Eq Chip instructions
+    #[test]
+    fn single_beq() {
+        let program = [
+            // pc = pc + 2 if x8 == x5
+            beq(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_beq");
+    }
+
+    #[test]
+    fn single_bne() {
+        let program = [
+            // pc = pc + 2 if x8 != x5
+            bne(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bne");
+    }
+
+    // Branch Lt Chip instructions
+    #[test]
+    fn single_blt() {
+        let program = [
+            // pc = pc + 2 if x8 < x5 (signed)
+            blt(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_blt");
+    }
+
+    #[test]
+    fn single_bltu() {
+        let program = [
+            // pc = pc + 2 if x8 < x5
+            bltu(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bltu");
+    }
+
+    #[test]
+    fn single_bge() {
+        let program = [
+            // pc = pc + 2 if x8 >= x5 (signed)
+            bge(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bge");
+    }
+
+    #[test]
+    fn single_bgeu() {
+        let program = [
+            // pc = pc + 2 if x8 >= x5
+            bgeu(8, 5, 2),
+        ];
+        assert_machine_output(program.to_vec(), "single_bgeu");
+    }
+
+    // Shift Chip instructions
+    #[test]
+    fn single_srl() {
+        // Instruction 416 from the largest basic block of the Keccak guest program.
+        let program = [srl(68, 40, 25, 0)];
+        assert_machine_output(program.to_vec(), "single_srl");
+    }
+
+    #[test]
+    fn single_sll() {
+        // r68 = r40 << 3
+        let program = [sll(68, 40, 3, 0)];
+        assert_machine_output(program.to_vec(), "single_sll");
+    }
+
+    #[test]
+    fn single_sra() {
+        // r68 = sign_extend(r40 >> val(R3))
+        let program = [sra(68, 40, 3, 1)];
+        assert_machine_output(program.to_vec(), "single_sra");
+    }
+}
+
+mod complex_tests {
+    use crate::assert_machine_output;
+    use powdr_openvm::symbolic_instruction_builder::*;
+
+    #[test]
+    fn guest_top_block() {
+        // Top block from `guest` with `--pgo cell`, with 4 instructions:
+        // SymbolicInstructionStatement { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
+        // SymbolicInstructionStatement { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
+        // SymbolicInstructionStatement { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
+        // SymbolicInstructionStatement { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
+
+        let program = [
+            add(8, 8, 16777200, 0),
+            storew(4, 8, 12, 2, 1, 0),
+            auipc(4, 0, 0, 1, 0),
+            jalr(4, 4, 1780, 1, 0),
+        ];
+
+        assert_machine_output(program.to_vec(), "guest_top_block");
+    }
 }

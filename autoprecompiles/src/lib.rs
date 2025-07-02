@@ -1,9 +1,10 @@
 use crate::bus_map::{BusMap, BusType};
+use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
+use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
+use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
-use legacy_expression::ast_compatibility::CompatibleWithAstExpression;
-use legacy_expression::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
-use powdr::UniqueColumns;
+use powdr::UniqueReferences;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -11,7 +12,8 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::{collections::BTreeMap, iter::once};
+use std::iter::once;
+use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
@@ -19,20 +21,14 @@ use powdr_number::FieldElement;
 mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
-pub mod legacy_expression;
+pub mod expression;
+pub mod expression_conversion;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
-
-pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    // Wrap powdr_pilopt::simplify_expression, which uses powdr_ast::analyzed::AlgebraicExpression.
-    let ast_expression = e.into_ast_expression();
-    let ast_expression = powdr_pilopt::simplify_expression(ast_expression);
-    AlgebraicExpression::try_from_ast_expression(ast_expression).unwrap()
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -123,13 +119,49 @@ pub struct SymbolicMachine<T> {
 
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for constraint in &self.constraints {
-            writeln!(f, "{constraint} = 0 ")?;
-        }
         for bus_interaction in &self.bus_interactions {
             writeln!(f, "{bus_interaction}")?;
         }
+        for constraint in &self.constraints {
+            writeln!(f, "{constraint} = 0")?;
+        }
         Ok(())
+    }
+}
+
+impl<T: Display> SymbolicMachine<T> {
+    pub fn render(&self, bus_map: &BusMap) -> String {
+        let mut output = String::new();
+        let bus_interactions_by_bus = self
+            .bus_interactions
+            .iter()
+            .map(|bus_interaction| (bus_interaction.id, bus_interaction))
+            .into_group_map()
+            .into_iter()
+            // sorted_by_key is stable, so we'll keep the order within each bus
+            .sorted_by_key(|(bus_id, _)| *bus_id)
+            .collect::<Vec<_>>();
+        for (bus_id, bus_interactions) in &bus_interactions_by_bus {
+            let bus_type = bus_map.bus_type(*bus_id);
+            output.push_str(&format!("\n// Bus {bus_id} ({bus_type}):\n",));
+            for bus_interaction in bus_interactions {
+                output.push_str(&format!(
+                    "mult={}, args=[{}]\n",
+                    bus_interaction.mult,
+                    bus_interaction.args.iter().join(", ")
+                ));
+            }
+        }
+
+        if !self.constraints.is_empty() {
+            output.push_str("\n// Algebraic constraints:\n");
+        }
+
+        for constraint in &self.constraints {
+            output.push_str(&format!("{constraint} = 0\n"));
+        }
+
+        output.trim().to_string()
     }
 }
 
@@ -200,24 +232,56 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, T: FieldElement, B> {
+pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
-    pub instruction_machines: &'a BTreeMap<usize, SymbolicMachine<T>>,
+    pub instruction_machine_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
     pub bus_map: BusMap,
 }
 
-pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + Clone>(
+pub trait InstructionMachineHandler<T> {
+    /// Returns the AIR for the given opcode.
+    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+}
+
+pub struct Apc<T> {
+    machine: SymbolicMachine<T>,
+    subs: Vec<Vec<u64>>,
+}
+
+impl<T: FieldElement> Apc<T> {
+    pub fn width(&self) -> usize {
+        self.machine.unique_references().count()
+    }
+
+    pub fn subs(&self) -> &[Vec<u64>] {
+        &self.subs
+    }
+
+    pub fn machine(&self) -> &SymbolicMachine<T> {
+        &self.machine
+    }
+
+    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
+        (self.machine, self.subs)
+    }
+}
+
+pub fn build<
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    M: InstructionMachineHandler<T>,
+>(
     program: Vec<SymbolicInstructionStatement<T>>,
-    vm_config: VmConfig<T, B>,
+    vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
-) -> Result<(SymbolicMachine<T>, Vec<Vec<u64>>), crate::constraint_optimizer::Error> {
+) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &program,
-        vm_config.instruction_machines,
+        vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );
 
@@ -232,14 +296,14 @@ pub fn build<T: FieldElement, B: BusInteractionHandler<T> + IsBusStateful<T> + C
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
 
-    Ok((machine, subs))
+    Ok(Apc { machine, subs })
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     let mut zeroed_expr = expr.clone();
     powdr::make_refs_zero(&mut zeroed_expr);
-    let zeroed_expr = simplify_expression(zeroed_expr);
-    powdr::is_zero(&zeroed_expr)
+    let zeroed_expr = algebraic_to_quadratic_symbolic_expression(&zeroed_expr);
+    zeroed_expr.try_to_number().unwrap().is_zero()
 }
 
 /// Adds `is_valid` guards to constraints without increasing its degree.
@@ -287,23 +351,11 @@ fn add_guards<T: FieldElement>(
     let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
-    let max_id = machine
-        .unique_columns()
-        .map(|c| {
-            assert_eq!(c.id.ptype, PolynomialType::Committed);
-            c.id.id
-        })
-        .max()
-        .unwrap()
-        + 1;
+    let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
 
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-        name: "is_valid".to_string(),
-        poly_id: PolyID {
-            ptype: PolynomialType::Committed,
-            id: max_id,
-        },
-        next: false,
+        name: Arc::new("is_valid".to_string()),
+        id: max_id,
     });
 
     machine.constraints = machine

@@ -19,11 +19,18 @@ openvm-stark-backend.workspace = true
 powdr-openvm.workspace = true
 
 eyre = "0.6.12"
-tracing = "0.1.40"
 
 clap = { version = "^4.3", features = ["derive"] }
 
 serde_cbor = "0.11.2"
+
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
+tracing-forest = "0.1"
+metrics = "0.23.0"
+metrics-tracing-context = "0.16.0"
+metrics-util = "0.17.0"
+serde_json = "1.0.117"
 
 [lints]
 workspace = true

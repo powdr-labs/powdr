@@ -7,8 +7,10 @@ use powdr_autoprecompiles::bus_map::BusType;
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
 
+pub const NUMBER_OF_WITNESS_COLS: u64 = 5;
+
 /// A variable in a PlonK gate.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, Eq, Hash)]
 pub enum Variable<V> {
     /// A variable from the input constraint system.
     /// At run-time, we can get the concrete values from the APC witness generation.
@@ -127,7 +129,6 @@ where
         Some(BusType::ExecutionBridge) => "execution",
         Some(BusType::PcLookup) => "pc",
         Some(BusType::TupleRangeChecker) => "tuple_range",
-        Some(BusType::Sha) => "sha",
         None => "none",
     }
 }
@@ -238,18 +239,14 @@ impl<T, V> PlonkCircuit<T, V> {
 
 #[cfg(test)]
 pub mod test_utils {
-    use powdr_autoprecompiles::legacy_expression::{
-        AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-    };
+    use std::sync::Arc;
+
+    use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
     use powdr_number::BabyBearField;
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
         AlgebraicExpression::Reference(AlgebraicReference {
-            name: name.into(),
-            poly_id: PolyID {
-                id,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
+            name: Arc::new(name.into()),
+            id,
         })
     }
 

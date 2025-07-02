@@ -1,11 +1,11 @@
-use crate::plonk::Gate;
+use crate::plonk::{Gate, NUMBER_OF_WITNESS_COLS};
 use powdr_autoprecompiles::bus_map::{
     BusMap,
     BusType::{
         BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
     },
 };
-use powdr_autoprecompiles::legacy_expression::AlgebraicReference;
+use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_number::FieldElement;
 
@@ -26,8 +26,8 @@ pub fn add_bus_to_plonk_circuit<T>(
 ) where
     T: FieldElement,
 {
-    // There are 5 witness cell per gate to store the bus arguments, therefore divide the number of arguments by 5 to get the number of gates needed.
-    let number_of_gates = (bus_interaction.args.len() as u32).div_ceil(5) as usize;
+    let number_of_gates =
+        (bus_interaction.args.len() as u32).div_ceil(NUMBER_OF_WITNESS_COLS as u32) as usize;
     let mut gates: Vec<Gate<T, AlgebraicReference>> =
         (0..number_of_gates).map(|_| Gate::default()).collect();
     match bus_map.bus_type(bus_interaction.id) {
@@ -48,10 +48,6 @@ pub fn add_bus_to_plonk_circuit<T>(
         }
         TupleRangeChecker => {
             gates[0].q_range_tuple = T::ONE;
-        }
-
-        _ => {
-            unimplemented!("bus interaction type is not implemented");
         }
     }
 
@@ -83,7 +79,7 @@ mod tests {
     use super::*;
     use crate::bus_map::{default_openvm_bus_map, DEFAULT_MEMORY};
     use crate::plonk::test_utils::{c, var};
-    use powdr_autoprecompiles::legacy_expression::AlgebraicExpression;
+    use powdr_autoprecompiles::expression::AlgebraicExpression;
     use powdr_autoprecompiles::SymbolicBusInteraction;
     use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;

@@ -3,7 +3,9 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, PolynomialIdentity, SelectedExpressions,
 };
-use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::{
+    range_constraint::RangeConstraint, runtime_constant::RuntimeConstant,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::identity::{BusSend, Identity};

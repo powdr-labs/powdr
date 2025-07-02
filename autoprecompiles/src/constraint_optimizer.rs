@@ -1,23 +1,23 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use inliner::DegreeBound;
+use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler, inliner,
-    journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
+    constraint_system::BusInteractionHandler, grouped_expression::QuadraticSymbolicExpression,
+    inliner, journaling_constraint_system::JournalingConstraintSystem, solver::Solver,
 };
 use powdr_number::FieldElement;
 
-use crate::stats_logger::{IsWitnessColumn, StatsLogger};
+use crate::stats_logger::StatsLogger;
 
 #[derive(Debug)]
 pub enum Error {
-    ConstraintSolverError,
+    ConstraintSolverError(powdr_constraint_solver::solver::Error),
 }
 
 impl From<powdr_constraint_solver::solver::Error> for Error {
-    fn from(_err: powdr_constraint_solver::solver::Error) -> Self {
-        Error::ConstraintSolverError
+    fn from(err: powdr_constraint_solver::solver::Error) -> Self {
+        Error::ConstraintSolverError(err)
     }
 }
 
@@ -28,10 +28,7 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 /// - Calls `simplify_expression()` on the resulting expressions.
-pub fn optimize_constraints<
-    P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Display + IsWitnessColumn,
->(
+pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: DegreeBound,
@@ -74,6 +71,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
         log::trace!("  {var} = {value}");
     }
     constraint_system.apply_substitutions(result.assignments);
+    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
     Ok(constraint_system)
 }
 
@@ -137,10 +135,10 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     constraint_system
 }
 
-fn remove_trivial_constraints<P: FieldElement, V: PartialEq>(
+fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
-    let zero = QuadraticSymbolicExpression::from(P::zero());
+    let zero = QuadraticSymbolicExpression::zero();
     constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
     constraint_system
         .retain_bus_interactions(|bus_interaction| bus_interaction.multiplicity != zero);

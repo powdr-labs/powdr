@@ -1,7 +1,7 @@
 use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
+    grouped_expression::QuadraticSymbolicExpression,
     indexed_constraint_system::IndexedConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::{fmt::Display, hash::Hash};
@@ -51,6 +51,17 @@ impl<T: FieldElement, V: Hash> JournalingConstraintSystem<T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalingConstraintSystem<T, V> {
+    pub fn apply_bus_field_assignments(
+        &mut self,
+        assignments: impl IntoIterator<Item = ((usize, usize), T)>,
+    ) {
+        // We do not track substitutions yet, but we could.
+        for ((interaction_index, field_index), value) in assignments {
+            self.system
+                .apply_bus_field_assignment(interaction_index, field_index, value);
+        }
+    }
+
     /// Applies multiple substitutions to the constraint system in an efficient manner.
     pub fn apply_substitutions(
         &mut self,
@@ -92,7 +103,9 @@ impl<T: FieldElement, V> JournalingConstraintSystem<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for JournalingConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display
+    for JournalingConstraintSystem<T, V>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.system)
     }

@@ -1,7 +1,7 @@
 use crate::constraint_system::ConstraintRef;
+use crate::grouped_expression::QuadraticSymbolicExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::journaling_constraint_system::JournalingConstraintSystem;
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
 use itertools::Itertools;
 use powdr_number::FieldElement;

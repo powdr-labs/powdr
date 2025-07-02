@@ -1,19 +1,18 @@
 use std::collections::BTreeMap;
 
-use super::simplify_expression;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 
 use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
-    legacy_expression::{
-        ast_compatibility::CompatibleWithAstExpression, AlgebraicExpression, AlgebraicReference,
+    expression::{AlgebraicExpression, AlgebraicReference},
+    expression_conversion::{
+        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
     },
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
@@ -249,7 +248,7 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
     BusInteraction {
-        bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
+        bus_id: QuadraticSymbolicExpression::from_number(P::from(bus_interaction.id)),
         payload: bus_interaction
             .args
             .iter()
@@ -284,31 +283,6 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
     }
 }
 
-/// Turns an algebraic expression into a quadratic symbolic expression,
-/// assuming all [`AlgebraicReference`]s are unknown variables.
-pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> QuadraticSymbolicExpression<T, AlgebraicReference> {
-    powdr_expression::conversion::convert(expr, &mut |reference| {
-        QuadraticSymbolicExpression::from_unknown_variable(reference.clone())
-    })
-}
-
-/// Turns a quadratic symbolic expression back into an algebraic expression.
-/// Tries to simplify the expression wrt negation and constant factors
-/// to aid human readability.
-pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
-    expr: &QuadraticSymbolicExpression<T, AlgebraicReference>,
-) -> AlgebraicExpression<T> {
-    // Wrap `powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic`, which
-    // works on a `powdr_ast::analyzed::AlgebraicExpression`.
-    let expr = expr.transform_var_type(&mut |algebraic_reference| {
-        powdr_pilopt::qse_opt::Variable::Reference(algebraic_reference.clone().into())
-    });
-    // This is where the core conversion is implemented, including the simplification.
-    let ast_algebraic_expression =
-        powdr_pilopt::qse_opt::quadratic_symbolic_expression_to_algebraic(&expr);
-    // Unwrap should be fine, because by construction we don't have challenges or public references,
-    // and quadratic_symbolic_expression_to_algebraic should not introduce any exponentiations.
-    AlgebraicExpression::try_from_ast_expression(ast_algebraic_expression).unwrap()
+pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
 }
