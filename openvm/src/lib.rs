@@ -45,7 +45,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_air_metrics, AirWidth, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
@@ -502,7 +502,7 @@ pub struct OriginalCompiledProgram {
 
 pub struct AirMetrics {
     pub name: String,
-    pub width: AirWidth,
+    pub widths: AirWidths,
     pub constraints: usize,
     pub bus_interactions: usize,
 }
@@ -1060,7 +1060,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
-            [m.width.base_width, m.constraints, m.bus_interactions],
+            [m.widths.base, m.constraints, m.bus_interactions],
             [49, 22, 31]
         );
     }
@@ -1073,7 +1073,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
-            [m.width.base_width, m.constraints, m.bus_interactions],
+            [m.widths.base, m.constraints, m.bus_interactions],
             [2011, 166, 1783]
         );
     }
@@ -1096,7 +1096,7 @@ mod tests {
             .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width.base_width, 26);
+        assert_eq!(m.widths.base, 26);
         assert_eq!(m.constraints, 1);
         assert_eq!(m.bus_interactions, 16);
     }
