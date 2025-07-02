@@ -9,7 +9,7 @@ use powdr_constraint_solver::grouped_expression::{
     QuadraticSymbolicExpression, RangeConstraintProvider,
 };
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::runtime_constant::RuntimeConstant;
+use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 

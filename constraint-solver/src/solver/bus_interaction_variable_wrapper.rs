@@ -6,6 +6,7 @@ use std::hash::Hash;
 use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::QuadraticSymbolicExpression,
+    runtime_constant::VarTransformable,
     solver::SolveResult,
 };
 
