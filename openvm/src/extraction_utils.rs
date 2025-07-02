@@ -350,7 +350,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    // TODO: replace hardcoded EXT_DEGREE with `<SC::Challenge as FieldExtensionAlgebra<Val<SC>>>::D` once `BabyBearSC` is generic.
     let log_up = (find_interaction_chunks(&interactions, max_degree)
         .interaction_partitions()
         .len()
