@@ -4,8 +4,8 @@ use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    grouped_expression::QuadraticSymbolicExpression,
     indexed_constraint_system::apply_substitutions,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::{Error, Solver},
     test_utils::{constant, var, Qse},

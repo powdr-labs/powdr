@@ -1,7 +1,7 @@
 use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
+    grouped_expression::QuadraticSymbolicExpression,
     indexed_constraint_system::IndexedConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::{fmt::Display, hash::Hash};

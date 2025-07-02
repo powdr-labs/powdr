@@ -5,10 +5,10 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
-use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::quadratic_symbolic_expression::{
+use powdr_constraint_solver::grouped_expression::{
     QuadraticSymbolicExpression, RangeConstraintProvider,
 };
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
@@ -309,7 +309,7 @@ mod tests {
     use super::*;
 
     use powdr_constraint_solver::{
-        quadratic_symbolic_expression::NoRangeConstraints,
+        grouped_expression::NoRangeConstraints,
         range_constraint::RangeConstraint,
         test_utils::{constant, var},
     };
