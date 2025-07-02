@@ -7,7 +7,7 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_constraint_solver::variable_update::UpdateKind;
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
+    grouped_expression::{self, QuadraticSymbolicExpression},
     variable_update::VariableUpdate,
 };
 use powdr_number::FieldElement;
@@ -286,7 +286,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
         identity_queue: &mut IdentityQueue<'a, T>,
-    ) -> Result<(), quadratic_symbolic_expression::Error> {
+    ) -> Result<(), grouped_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
                 QueueItem::Equation { expr, .. } => witgen.process_equation(expr),

@@ -4,7 +4,7 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
-use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use powdr_constraint_solver::grouped_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 use crate::witgen::{

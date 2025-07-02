@@ -1,5 +1,5 @@
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, runtime_constant::RuntimeConstant,
+    grouped_expression::QuadraticSymbolicExpression, runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
 };
 use powdr_expression::{AlgebraicUnaryOperation, AlgebraicUnaryOperator};
