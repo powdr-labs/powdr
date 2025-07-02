@@ -139,7 +139,8 @@ fn run_command(command: Commands) {
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let compile_and_exec = || {
                 let program =
-                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
+                        .unwrap();
                 powdr_openvm::execute(program, stdin_from(input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
@@ -167,7 +168,8 @@ fn run_command(command: Commands) {
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let compile_and_prove = || {
                 let program =
-                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
+                        .unwrap();
                 powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap()
             };
             if let Some(metrics_path) = metrics {
