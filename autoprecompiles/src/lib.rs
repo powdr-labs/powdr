@@ -285,7 +285,7 @@ pub fn build<
         &vm_config.bus_map,
     );
 
-    let labels = [("opcode", opcode.to_string())];
+    let labels = [("apc_opcode", opcode.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)

@@ -429,7 +429,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     };
 
     let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
-    let labels = [("start_idx", block.start_idx.to_string()), ("opcode", apc_opcode.to_string())];
+    let labels = [("start_idx", block.start_idx.to_string()), ("apc_opcode", apc_opcode.to_string())];
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     // Check that substitution values are unique over all instructions
