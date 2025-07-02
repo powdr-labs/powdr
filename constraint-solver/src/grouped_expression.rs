@@ -5,14 +5,19 @@ use std::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
+use itertools::{Either, Itertools};
+use num_traits::One;
+use num_traits::Zero;
+use powdr_expression::{
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
+};
+use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
+
 use crate::{
     effect::Condition,
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
+    symbolic_expression::{BinaryOperator, UnaryOperator},
 };
-use itertools::Itertools;
-use num_traits::One;
-use num_traits::Zero;
-use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
 use super::range_constraint::RangeConstraint;
@@ -969,64 +974,121 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul for GroupedExpression<T, V> {
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for GroupedExpression<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (sign, s) = self.to_signed_string();
-        if sign {
-            write!(f, "-({s})")
-        } else {
-            write!(f, "{s}")
-        }
+        let var_converter = |v: &V| AlgebraicExpression::Reference(v.to_string());
+
+        // We can ignore the sign for formatting.
+        // TODO maybe we should not remove the negation here
+        let (_, expr) = self.transform_signed_simplified(&var_converter, &|e| {
+            symbolic_expression_to_signed_algebraic(e, &var_converter)
+        });
+        write!(f, "{expr}")
     }
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> GroupedExpression<T, V> {
-    fn to_signed_string(&self) -> (bool, String) {
-        self.quadratic
+    pub fn transform_signed_simplified<S>(
+        &self,
+        var_converter: &impl Fn(&V) -> S,
+        symbolic_expression_converter: &impl Fn(&SymbolicExpression<T, V>) -> (bool, S),
+    ) -> (bool, S)
+    where
+        S: Add<Output = S> + Sub<Output = S> + Mul<Output = S> + From<T>,
+    {
+        let items = self
+            .quadratic
             .iter()
             .map(|(a, b)| {
-                let (a_sign, a) = a.to_signed_string();
-                let (b_sign, b) = b.to_signed_string();
-                (a_sign ^ b_sign, format!("({a}) * ({b})"))
+                let (a_sign, a): (bool, S) =
+                    a.transform_signed_simplified(var_converter, symbolic_expression_converter);
+                let (b_sign, b) =
+                    b.transform_signed_simplified(var_converter, symbolic_expression_converter);
+                (a_sign ^ b_sign, a * b)
             })
             .chain(
                 self.linear
                     .iter()
                     .map(|(var, coeff)| match coeff.try_to_number() {
-                        Some(k) if k == T::FieldType::one() => (false, format!("{var}")),
-                        Some(k) if k == -T::FieldType::one() => (true, format!("{var}")),
+                        Some(k) if k == 1.into() => (false, var_converter(var)),
+                        Some(k) if k == (-1).into() => (true, var_converter(var)),
                         _ => {
-                            let (sign, coeff) = Self::symbolic_expression_to_signed_string(coeff);
-                            (sign, format!("{coeff} * {var}"))
+                            let (sign, coeff) = symbolic_expression_converter(coeff);
+                            (sign, coeff * var_converter(var))
                         }
                     }),
             )
             .chain(match self.constant.try_to_number() {
-                Some(k) if k == T::FieldType::zero() => None,
-                _ => Some(Self::symbolic_expression_to_signed_string(&self.constant)),
-            })
-            .reduce(|(n1, p1), (n2, p2)| {
-                (
-                    n1,
-                    if n1 == n2 {
-                        format!("{p1} + {p2}")
-                    } else {
-                        format!("{p1} - {p2}")
-                    },
-                )
-            })
-            .unwrap_or((false, "0".to_string()))
-    }
+                Some(k) if k == T::zero() => None,
+                _ => Some(symbolic_expression_converter(&self.constant)),
+            });
 
-    fn symbolic_expression_to_signed_string(value: &T) -> (bool, String) {
-        match value.try_to_number() {
-            Some(k) => {
-                if k.is_in_lower_half() {
-                    (false, format!("{k}"))
-                } else {
-                    (true, format!("{}", -k))
-                }
+        // Now order the items by negated and non-negated.
+        let (negated, positive): (Vec<S>, Vec<S>) = items.partition_map(|(sign, item)| {
+            if sign {
+                Either::Left(item)
+            } else {
+                Either::Right(item)
             }
-            _ => (false, value.to_string()),
+        });
+        let positive = positive.into_iter().reduce(|acc, item| acc + item);
+        let negated = negated.into_iter().reduce(|acc, item| acc + item);
+        match (positive, negated) {
+            (Some(positive), Some(negated)) => (false, positive - negated),
+            (Some(positive), None) => (false, positive),
+            (None, Some(negated)) => (true, negated),
+            (None, None) => (false, S::from(T::from(0))),
         }
+    }
+}
+
+// TODO find a good place for these
+
+fn symbolic_expression_to_signed_algebraic<T: FieldElement, V, S>(
+    e: &SymbolicExpression<T, V>,
+    var_converter: &impl Fn(&V) -> AlgebraicExpression<T, S>,
+) -> (bool, AlgebraicExpression<T, S>) {
+    match symbolic_expression_to_algebraic(e, var_converter) {
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+            op: AlgebraicUnaryOperator::Minus,
+            expr,
+        }) => (true, *expr),
+        e => (false, e),
+    }
+}
+
+fn symbolic_expression_to_algebraic<T: FieldElement, V, S>(
+    e: &SymbolicExpression<T, V>,
+    var_converter: &impl Fn(&V) -> AlgebraicExpression<T, S>,
+) -> AlgebraicExpression<T, S> {
+    match e {
+        SymbolicExpression::Concrete(v) => {
+            if v.is_in_lower_half() {
+                AlgebraicExpression::from(*v)
+            } else {
+                -AlgebraicExpression::from(-*v)
+            }
+        }
+        SymbolicExpression::Symbol(var, _) => var_converter(var),
+        SymbolicExpression::BinaryOperation(left, op, right, _) => {
+            let left = symbolic_expression_to_algebraic(left, var_converter);
+            let right = symbolic_expression_to_algebraic(right, var_converter);
+            let op = symbolic_op_to_algebraic(*op);
+            AlgebraicExpression::new_binary(left, op, right)
+        }
+        SymbolicExpression::UnaryOperation(op, inner, _) => match op {
+            UnaryOperator::Neg => AlgebraicExpression::new_unary(
+                AlgebraicUnaryOperator::Minus,
+                symbolic_expression_to_algebraic(inner, var_converter),
+            ),
+        },
+    }
+}
+
+fn symbolic_op_to_algebraic(op: BinaryOperator) -> AlgebraicBinaryOperator {
+    match op {
+        BinaryOperator::Add => AlgebraicBinaryOperator::Add,
+        BinaryOperator::Sub => AlgebraicBinaryOperator::Sub,
+        BinaryOperator::Mul => AlgebraicBinaryOperator::Mul,
+        BinaryOperator::Div => unreachable!(),
     }
 }
 
@@ -1073,7 +1135,7 @@ mod tests {
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
+        assert_eq!(t.to_string(), "B * X * Y + (A * B)");
     }
 
     #[test]
@@ -1094,13 +1156,13 @@ mod tests {
         let a = Qse::from_known_symbol("A", RangeConstraint::default());
         let b = Qse::from_known_symbol("B", RangeConstraint::default());
         let mut t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
+        assert_eq!(t.to_string(), "B * X * Y + A * B");
         t.substitute_by_known(
             &"B",
             &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
         );
         assert!(t.is_quadratic());
-        assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
+        assert_eq!(t.to_string(), "7 * X * Y + A * 7");
         t.substitute_by_known(
             &"X",
             &SymbolicExpression::from_symbol("X", RangeConstraint::from_range(1.into(), 2.into())),
@@ -1149,7 +1211,10 @@ mod tests {
             &(SymbolicExpression::from_symbol("B", Default::default())
                 + SymbolicExpression::from(GoldilocksField::from(1))),
         );
-        assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
+        assert_eq!(
+            t.to_string(),
+            "((A * (B + 1))) * X + ((B + 1)) * Y + (B + 1)"
+        );
         t.substitute_by_known(
             &"B",
             &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
@@ -1514,7 +1579,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn test_complex_expression_multiple_substitution() {
         let mut expr = (var("x") * var("w")) + var("x") + constant(3) * var("y") + constant(5);
-        assert_eq!(expr.to_string(), "(x) * (w) + x + 3 * y + 5");
+        assert_eq!(expr.to_string(), "x * w + x + 3 * y + 5");
 
         let subst = var("a") * var("b") + constant(1);
 
@@ -1525,7 +1590,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
 
         assert_eq!(
             expr.to_string(),
-            "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
+            "((a) * (b) + 1) * (w) + a * b + 3 * y + 6"
         );
         // Structural validation
         assert_eq!(quadratic.len(), 2);
@@ -1557,7 +1622,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let (quadratic, linear_iter, constant) = expr.components();
         let linear: Vec<_> = linear_iter.collect();
 
-        assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
+        assert_eq!(expr.to_string(), "2 * x * y + 7");
 
         assert_eq!(quadratic.len(), 1);
         assert_eq!(quadratic[0].0.to_string(), "2 * x");

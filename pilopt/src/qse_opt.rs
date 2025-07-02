@@ -141,58 +141,22 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     expr: &QuadraticSymbolicExpression<T, Variable>,
 ) -> AlgebraicExpression<T> {
-    // Turn the expression into a list of to-be-summed items and try to
-    // simplify on the way.
-    let (quadratic, linear, constant) = expr.components();
-    let items = quadratic
-        .iter()
-        .map(|(l, r)| {
-            let l = quadratic_symbolic_expression_to_algebraic(l);
-            let (l, l_negated) = extract_negation_if_possible(l);
-            let r = quadratic_symbolic_expression_to_algebraic(r);
-            let (r, r_negated) = extract_negation_if_possible(r);
-            if l_negated == r_negated {
-                l * r
-            } else {
-                -(l * r)
-            }
-        })
-        .chain(linear.map(|(v, c)| {
-            if let Some(c) = c.try_to_number() {
-                if c.is_one() {
-                    return variable_to_algebraic_expression(v.clone());
-                } else if (-c).is_one() {
-                    return -variable_to_algebraic_expression(v.clone());
-                }
-            }
-            let (c, negated) = extract_negation_if_possible(symbolic_expression_to_algebraic(c));
-            if negated {
-                -(c * variable_to_algebraic_expression(v.clone()))
-            } else {
-                c * variable_to_algebraic_expression(v.clone())
-            }
-        }))
-        .chain((!constant.is_known_zero()).then(|| symbolic_expression_to_algebraic(constant)));
+    let (sign, expr) = expr
+        .transform_signed_simplified(&|v| variable_to_algebraic_expression(v.clone()), &|s| {
+            symbolic_expression_to_signed_simplified(s)
+        });
+    if sign {
+        expr
+    } else {
+        -expr
+    }
+}
 
-    // Now order the items by negated and non-negated.
-    let mut positive = vec![];
-    let mut negated = vec![];
-    for item in items {
-        let (item, item_negated) = extract_negation_if_possible(item);
-        if item_negated {
-            negated.push(item);
-        } else {
-            positive.push(item);
-        }
-    }
-    let positive = positive.into_iter().reduce(|acc, item| acc + item);
-    let negated = negated.into_iter().reduce(|acc, item| acc + item);
-    match (positive, negated) {
-        (Some(positive), Some(negated)) => positive - negated,
-        (Some(positive), None) => positive,
-        (None, Some(negated)) => -negated,
-        (None, None) => AlgebraicExpression::from(T::zero()),
-    }
+fn symbolic_expression_to_signed_simplified<T: FieldElement>(
+    expr: &SymbolicExpression<T, Variable>,
+) -> (bool, AlgebraicExpression<T>) {
+    let (expr, sign) = extract_negation_if_possible(symbolic_expression_to_algebraic(expr));
+    (sign, expr)
 }
 
 fn symbolic_expression_to_algebraic<T: FieldElement>(
