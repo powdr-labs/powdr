@@ -1,6 +1,6 @@
 use crate::{
     effect::EffectImpl,
-    grouped_expression::{GroupedExpression, QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
 };
@@ -9,13 +9,22 @@ use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
 /// Description of a constraint system.
-#[derive(Clone, Default)]
-pub struct ConstraintSystem<T: FieldElement, V> {
+#[derive(Clone)]
+pub struct ConstraintSystem<T: RuntimeConstant, V> {
     /// The algebraic expressions which have to evaluate to zero.
-    pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
-    pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
+}
+
+impl<T: RuntimeConstant, V> Default for ConstraintSystem<T, V> {
+    fn default() -> Self {
+        ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: Vec::new(),
+        }
+    }
 }
 
 impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for ConstraintSystem<T, V> {
@@ -36,7 +45,7 @@ impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for ConstraintSys
     }
 }
 
-impl<T: FieldElement, V> ConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(
             self.algebraic_constraints
@@ -50,7 +59,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
         )
     }
 
-    pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+    pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()
@@ -58,9 +67,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
         )
     }
 
-    pub fn expressions_mut(
-        &mut self,
-    ) -> impl Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> {
+    pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut GroupedExpression<T, V>> {
         Box::new(
             self.algebraic_constraints.iter_mut().chain(
                 self.bus_interactions
@@ -254,9 +261,9 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
     }
 }
 
-pub enum ConstraintRef<'a, T: FieldElement, V> {
-    AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
-    BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
+pub enum ConstraintRef<'a, T: RuntimeConstant, V> {
+    AlgebraicConstraint(&'a GroupedExpression<T, V>),
+    BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 
 impl<'a, T: FieldElement, V: Ord + Clone + Hash + Display> ConstraintRef<'a, T, V> {

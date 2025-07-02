@@ -16,7 +16,7 @@ use crate::{
 
 /// Applies multiple substitutions to a ConstraintSystem in an efficient manner.
 pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
-    constraint_system: ConstraintSystem<T, V>,
+    constraint_system: ConstraintSystem<SymbolicExpression<T, V>, V>,
     substitutions: impl IntoIterator<Item = (V, QuadraticSymbolicExpression<T, V>)>,
 ) -> ConstraintSystem<T, V> {
     let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
@@ -29,9 +29,9 @@ pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone, Default)]
-pub struct IndexedConstraintSystem<T: FieldElement, V> {
+pub struct IndexedConstraintSystem<T: FieldElement, V: Clone + Eq> {
     /// The constraint system.
-    constraint_system: ConstraintSystem<T, V>,
+    constraint_system: ConstraintSystem<SymbolicExpression<T, V>, V>,
     /// Stores where each unknown variable appears.
     variable_occurrences: HashMap<V, Vec<ConstraintSystemItem>>,
 }
