@@ -13,7 +13,9 @@ use std::{
 
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
+use crate::runtime_constant::{
+    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
+};
 
 use super::range_constraint::RangeConstraint;
 
@@ -162,8 +164,12 @@ impl<T: FieldElement, V> ExpressionConvertible<T, V> for SymbolicExpression<T, V
     }
 }
 
-impl<T: FieldElement, S1: Ord + Clone> SymbolicExpression<T, S1> {
-    pub fn transform_var_type<S2: Ord + Clone>(
+impl<T: FieldElement, S1: Ord + Clone, S2: Ord + Clone> VarTransformable<S1, S2>
+    for SymbolicExpression<T, S1>
+{
+    type Transformed = SymbolicExpression<T, S2>;
+
+    fn transform_var_type(
         &self,
         var_transform: &mut impl FnMut(&S1) -> S2,
     ) -> SymbolicExpression<T, S2> {
@@ -420,30 +426,6 @@ impl<T: FieldElement, V: Clone + Eq> MulAssign for SymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Eq> SymbolicExpression<T, V> {
-    /// Returns the multiplicative inverse in the field.
-    pub fn field_inverse(&self) -> Self {
-        if let SymbolicExpression::Concrete(x) = self {
-            assert!(x != &T::from(0));
-            SymbolicExpression::Concrete(T::from(1) / *x)
-        } else if let SymbolicExpression::BinaryOperation(x, BinaryOperator::Div, y, _) = self {
-            SymbolicExpression::BinaryOperation(
-                y.clone(),
-                BinaryOperator::Div,
-                x.clone(),
-                Default::default(),
-            )
-        } else {
-            SymbolicExpression::BinaryOperation(
-                Arc::new(Self::from(T::from(1))),
-                BinaryOperator::Div,
-                Arc::new(self.clone()),
-                Default::default(),
-            )
-        }
-    }
-}
-
 impl<T: FieldElement, V: Clone + Eq> Zero for SymbolicExpression<T, V> {
     fn zero() -> Self {
         SymbolicExpression::Concrete(T::from(0))
@@ -503,6 +485,28 @@ impl<T: FieldElement, V: Clone + Eq> RuntimeConstant for SymbolicExpression<T, V
                 Arc::new(self.clone()),
                 BinaryOperator::Div,
                 Arc::new(rhs.clone()),
+                Default::default(),
+            )
+        }
+    }
+
+    /// Returns the multiplicative inverse in the field.
+    fn field_inverse(&self) -> Self {
+        if let SymbolicExpression::Concrete(x) = self {
+            assert!(x != &T::from(0));
+            SymbolicExpression::Concrete(T::from(1) / *x)
+        } else if let SymbolicExpression::BinaryOperation(x, BinaryOperator::Div, y, _) = self {
+            SymbolicExpression::BinaryOperation(
+                y.clone(),
+                BinaryOperator::Div,
+                x.clone(),
+                Default::default(),
+            )
+        } else {
+            SymbolicExpression::BinaryOperation(
+                Arc::new(Self::from(T::from(1))),
+                BinaryOperator::Div,
+                Arc::new(self.clone()),
                 Default::default(),
             )
         }

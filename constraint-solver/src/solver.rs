@@ -3,14 +3,14 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::grouped_expression::QuadraticSymbolicExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper;
 use crate::utils::known_variables;
 
 use super::effect::Effect;
-use super::quadratic_symbolic_expression::{Error as QseError, RangeConstraintProvider};
+use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -64,7 +64,7 @@ pub enum Error {
 pub type VariableAssignment<T, V> = (V, QuadraticSymbolicExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-struct Solver<T: FieldElement, V, BusInterHandler> {
+struct Solver<T: FieldElement, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,

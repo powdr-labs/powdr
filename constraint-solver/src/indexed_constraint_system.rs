@@ -10,7 +10,7 @@ use powdr_number::FieldElement;
 use crate::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
     effect::Effect,
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
 
@@ -29,7 +29,7 @@ pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone, Default)]
-pub struct IndexedConstraintSystem<T: FieldElement, V> {
+pub struct IndexedConstraintSystem<T: FieldElement, V: Clone + Eq> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
@@ -54,13 +54,15 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>>
     }
 }
 
-impl<T: FieldElement, V> From<IndexedConstraintSystem<T, V>> for ConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Eq> From<IndexedConstraintSystem<T, V>>
+    for ConstraintSystem<T, V>
+{
     fn from(indexed_constraint_system: IndexedConstraintSystem<T, V>) -> Self {
         indexed_constraint_system.constraint_system
     }
 }
 
-impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     pub fn system(&self) -> &ConstraintSystem<T, V> {
         &self.constraint_system
     }
@@ -206,7 +208,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     pub fn constraints_referencing_variables<'a>(
         &'a self,
         variables: impl Iterator<Item = V> + 'a,
-    ) -> impl Iterator<Item = ConstraintRef<'a, T, V>> + 'a {
+    ) -> impl Iterator<Item = ConstraintRef<'a, SymbolicExpression<T, V>, V>> + 'a {
         variables
             .filter_map(|v| self.variable_occurrences.get(&v))
             .flatten()

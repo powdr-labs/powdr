@@ -1,8 +1,9 @@
 use std::{fmt::Display, hash::Hash};
 
 use crate::{
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
+    runtime_constant::{RuntimeConstant, VarTransformable},
 };
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -17,10 +18,10 @@ use powdr_number::FieldElement;
 /// @param constraint The quadratic constraint to transform.
 /// @param var_dispenser A function that returns a new variable that is assumed to be boolean-constrained.
 /// It will only be called if the transformation is performed.
-pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    constraint: &QuadraticSymbolicExpression<T, V>,
+pub fn extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+    constraint: &GroupedExpression<T, V>,
     mut var_dispenser: impl FnMut() -> V,
-) -> Option<QuadraticSymbolicExpression<T, V>> {
+) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
     // `constr = 0` is equivalent to `left * right = 0`
     let offset = left - right;
@@ -33,7 +34,7 @@ pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     let z = var_dispenser();
 
     // We return `right + z * offset == 0`, which is equivalent to the original constraint.
-    Some(right + &(QuadraticSymbolicExpression::from_unknown_variable(z) * offset))
+    Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
 }
 
 /// Tries to simplify a sequence of constraints by transforming them into affine
@@ -45,9 +46,16 @@ pub fn extract_boolean<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 ///
 /// The constraints in the output use a new variable type that can be converted from
 /// the original variable type.
-pub fn to_boolean_extracted_system<'a, T: FieldElement, V: Ord + Clone + Hash + Eq + 'a>(
-    constraints: impl IntoIterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
-) -> Vec<QuadraticSymbolicExpression<T, Variable<V>>> {
+pub fn to_boolean_extracted_system<
+    'a,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + 'a,
+    V: Ord + Clone + Hash + Eq + 'a,
+>(
+    constraints: impl IntoIterator<Item = &'a GroupedExpression<T, V>>,
+) -> Vec<GroupedExpression<T::Transformed, Variable<V>>>
+where
+    T::Transformed: RuntimeConstant,
+{
     let mut counter = 0..;
     let mut var_dispenser = || Variable::Boolean(counter.next().unwrap());
 

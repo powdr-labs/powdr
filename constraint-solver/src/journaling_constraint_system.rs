@@ -1,17 +1,17 @@
 use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
+    grouped_expression::QuadraticSymbolicExpression,
     indexed_constraint_system::IndexedConstraintSystem,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
 };
 use powdr_number::FieldElement;
 use std::{fmt::Display, hash::Hash};
 
 /// A wrapper around `ConstraintSystem` that keeps track of changes.
-pub struct JournalingConstraintSystem<T: FieldElement, V> {
+pub struct JournalingConstraintSystem<T: FieldElement, V: Clone + Eq> {
     system: IndexedConstraintSystem<T, V>,
 }
 
-impl<T: FieldElement, V, C: Into<IndexedConstraintSystem<T, V>>> From<C>
+impl<T: FieldElement, V: Clone + Eq, C: Into<IndexedConstraintSystem<T, V>>> From<C>
     for JournalingConstraintSystem<T, V>
 {
     fn from(system: C) -> Self {
@@ -21,7 +21,7 @@ impl<T: FieldElement, V, C: Into<IndexedConstraintSystem<T, V>>> From<C>
     }
 }
 
-impl<T: FieldElement, V: Hash> JournalingConstraintSystem<T, V> {
+impl<T: FieldElement, V: Hash + Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Returns the underlying `ConstraintSystem`.
     pub fn system(&self) -> &ConstraintSystem<T, V> {
         self.system.system()
@@ -83,7 +83,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Hash + Display> JournalingConstraint
     }
 }
 
-impl<T: FieldElement, V> JournalingConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Removes all algebraic constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
