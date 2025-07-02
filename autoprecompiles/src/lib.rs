@@ -285,6 +285,14 @@ pub fn build<
         &vm_config.bus_map,
     );
 
+    let labels = [("opcode", opcode.to_string())];
+    metrics::counter!("before_opt_cols", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_constraints", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_interactions", &labels)
+        .absolute(machine.unique_references().count() as u64);
+
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
@@ -292,6 +300,13 @@ pub fn build<
         degree_bound,
         &vm_config.bus_map,
     )?;
+
+    metrics::counter!("after_opt_cols", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_constraints", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_interactions", &labels)
+        .absolute(machine.unique_references().count() as u64);
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
