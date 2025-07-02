@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     effect::Condition,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
+    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable},
 };
 use itertools::Itertools;
 use num_traits::One;
@@ -345,11 +345,12 @@ impl<T, V> GroupedExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V1: Ord + Clone> GroupedExpression<SymbolicExpression<T, V1>, V1> {
-    pub fn transform_var_type<V2: Ord + Clone>(
-        &self,
-        var_transform: &mut impl FnMut(&V1) -> V2,
-    ) -> GroupedExpression<SymbolicExpression<T, V2>, V2> {
+impl<T: RuntimeConstant + VarTransformable<V1, V2>, V1: Ord + Clone, V2: Ord + Clone>
+    VarTransformable<V1, V2> for GroupedExpression<T, V1>
+{
+    type Transformed = GroupedExpression<T::Transformed, V2>;
+
+    fn transform_var_type(&self, var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed {
         GroupedExpression {
             quadratic: self
                 .quadratic

@@ -80,6 +80,11 @@ pub trait Substitutable<V> {
     fn substitute(&mut self, variable: &V, substitution: &Self);
 }
 
+pub trait VarTransformable<V1, V2> {
+    type Transformed;
+    fn transform_var_type(&self, var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed;
+}
+
 impl<T: FieldElement> RuntimeConstant for T {
     type FieldType = T;
 
@@ -109,5 +114,14 @@ impl<T: FieldElement, V> ReferencedSymbols<V> for T {
 impl<T: FieldElement, V> Substitutable<V> for T {
     fn substitute(&mut self, _variable: &V, _substitution: &Self) {
         // No-op for numbers.
+    }
+}
+
+impl<T: FieldElement, V1, V2> VarTransformable<V1, V2> for T {
+    type Transformed = T;
+
+    fn transform_var_type(&self, _var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed {
+        // No variables to transform.
+        *self
     }
 }
