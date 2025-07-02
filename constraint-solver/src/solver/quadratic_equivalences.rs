@@ -134,7 +134,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
         // `(coeff * var + X) * (coeff * var + X + offset) = 0`
         // Dividing by `coeff` twice results in
         // `(var + X / coeff) * (var + X / coeff + offset / coeff) = 0`
-        let offset = self.offset.field_div(&coefficient);
+        let offset = self.offset.field_div(coefficient);
         let expr = self.expr.clone() * coefficient.field_inverse();
         Self {
             expr,
