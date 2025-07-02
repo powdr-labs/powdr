@@ -1201,16 +1201,16 @@ mod tests {
 
         // Check non-APC metrics
         let original_air_metrics = compiled_program.original_air_metrics();
-        assert_eq!(original_air_metrics.len(), 16); // Number of non-APC chips
+        assert_eq!(original_air_metrics.len(), 13); // Number of non-APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
                 preprocess: 0,
-                base: 3657,
-                log_up: 896,
+                base: 456,
+                log_up: 332,
             },
-            constraints: 4569,
-            bus_interactions: 569,
+            constraints: 307,
+            bus_interactions: 227,
         };
         assert_eq!(
             original_air_metrics.into_iter().sum::<AirMetrics>(),
