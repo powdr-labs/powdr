@@ -5,21 +5,20 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_number::{ExpressionConvertible, FieldElement};
+use powdr_number::ExpressionConvertible;
 
 use crate::{
     constraint_system::{
-        BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem,
-        ConstraintSystemGeneric,
+        BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystemGeneric,
     },
-    effect::Effect,
-    grouped_expression::{GroupedExpression, QuadraticSymbolicExpression, RangeConstraintProvider},
-    runtime_constant::{RuntimeConstant, Substitutable},
+    effect::EffectImpl,
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
+    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
     symbolic_expression::SymbolicExpression,
 };
 
 /// Applies multiple substitutions to a ConstraintSystem in an efficient manner.
-pub fn apply_substitutions<T: RuntimeConstant, V: Hash + Eq + Clone + Ord>(
+pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq + Clone + Ord>(
     constraint_system: ConstraintSystemGeneric<T, V>,
     substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
 ) -> ConstraintSystemGeneric<T, V> {
@@ -291,7 +290,11 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
 pub struct ContradictingConstraintError;
 
 impl<
-        T: RuntimeConstant + Substitutable<V> + ExpressionConvertible<T::FieldType, V> + Display,
+        T: RuntimeConstant
+            + ReferencedSymbols<V>
+            + Substitutable<V>
+            + ExpressionConvertible<T::FieldType, V>
+            + Display,
         V: Clone + Hash + Ord + Eq + Display,
     > IndexedConstraintSystemGeneric<T, V>
 {
@@ -305,7 +308,7 @@ impl<
         assignments: BTreeMap<V, T::FieldType>,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
         bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
-    ) -> Result<BTreeMap<V, T>, ContradictingConstraintError> {
+    ) -> Result<BTreeMap<V, T::FieldType>, ContradictingConstraintError> {
         let effects = self
             .constraints_referencing_variables(assignments.keys().cloned())
             .map(|constraint| match constraint {
@@ -338,8 +341,8 @@ impl<
             .into_iter()
             .flatten()
             .filter_map(|effect| {
-                if let Effect::Assignment(variable, SymbolicExpression::Concrete(value)) = effect {
-                    Some((variable, value))
+                if let EffectImpl::Assignment(variable, value) = effect {
+                    Some((variable, value.try_to_number()?))
                 } else {
                     None
                 }
@@ -462,11 +465,11 @@ mod tests {
 
     #[test]
     fn substitute_by_unknown() {
-        type Qse = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
-        let x = Qse::from_unknown_variable("x");
-        let y = Qse::from_unknown_variable("y");
-        let z = Qse::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystemGeneric<_, _> = ConstraintSystem {
+        type Ge = GroupedExpression<GoldilocksField, &'static str>;
+        let x = Ge::from_unknown_variable("x");
+        let y = Ge::from_unknown_variable("y");
+        let z = Ge::from_unknown_variable("z");
+        let mut s: IndexedConstraintSystemGeneric<_, _> = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
@@ -480,13 +483,13 @@ mod tests {
         }
         .into();
 
-        s.substitute_by_unknown(&"x", &Qse::from_unknown_variable("z"));
+        s.substitute_by_unknown(&"x", &Ge::from_unknown_variable("z"));
 
         assert_eq!(format_system(&s), "y + z  |  0  |  y - z  |  z: y * [y, z]");
 
         s.substitute_by_unknown(
             &"z",
-            &(Qse::from_unknown_variable("x") + Qse::from_number(GoldilocksField::from(7))),
+            &(Ge::from_unknown_variable("x") + Ge::from_number(GoldilocksField::from(7))),
         );
 
         assert_eq!(
@@ -497,11 +500,11 @@ mod tests {
 
     #[test]
     fn retain_update_index() {
-        type Qse = QuadraticSymbolicExpression<GoldilocksField, &'static str>;
-        let x = Qse::from_unknown_variable("x");
-        let y = Qse::from_unknown_variable("y");
-        let z = Qse::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystemGeneric<_, _> = ConstraintSystem {
+        type Ge = GroupedExpression<GoldilocksField, &'static str>;
+        let x = Ge::from_unknown_variable("x");
+        let y = Ge::from_unknown_variable("y");
+        let z = Ge::from_unknown_variable("z");
+        let mut s: IndexedConstraintSystemGeneric<_, _> = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
