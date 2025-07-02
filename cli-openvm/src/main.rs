@@ -197,10 +197,10 @@ fn pgo_config(
                 guest_opts.clone(),
                 stdin_from(input),
             );
-            let max_columns = match cli_max_columns {
-                None => max_columns,
-                _ => panic!("cli --pgo can't parse Cell(Option<usize>), input must be wrong"),
-            };
+            assert!(
+                cli_max_columns.is_none(),
+                "cli --pgo can't parse Cell(Option<usize>), input must be wrong"
+            );
             PgoConfig::Cell(pc_idx_count, max_columns)
         }
         PgoType::Instruction => {
