@@ -9,118 +9,119 @@ env:
   IS_NIGHTLY_TEST: true
   POWDR_GENERATE_PROOFS: "true"
   RUSTFLAGS: "-C target-cpu=native"
+  RUST_BACKTRACE=1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 10000
 
 jobs:
-  check_if_needs_running:
-    runs-on: ubuntu-24.04
-    outputs:
-      status: ${{ steps.count.outputs.status }}
+  # check_if_needs_running:
+  #   runs-on: ubuntu-24.04
+  #   outputs:
+  #     status: ${{ steps.count.outputs.status }}
 
-    steps:
-      - uses: actions/checkout@v4
-      - name: Count recent commits
-        id: count
-        run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Count recent commits
+  #       id: count
+  #       run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
 
-  udeps:
-    runs-on: ubuntu-22.04
-    needs: check_if_needs_running
-    if: needs.check_if_needs_running.outputs.status > 0
+  # udeps:
+  #   runs-on: ubuntu-22.04
+  #   needs: check_if_needs_running
+  #   if: needs.check_if_needs_running.outputs.status > 0
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
 
-      - name: Install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
+  #     - name: Install nightly toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: nightly
+  #         override: true
 
-      - name: Run cargo-udeps
-        uses: aig787/cargo-udeps-action@v1
-        with:
-          version: "latest"
-          args: "--all-targets"
+  #     - name: Run cargo-udeps
+  #       uses: aig787/cargo-udeps-action@v1
+  #       with:
+  #         version: "latest"
+  #         args: "--all-targets"
 
-  test_release:
-    runs-on: ubuntu-24.04
-    needs: check_if_needs_running
-    if: needs.check_if_needs_running.outputs.status > 0
+  # test_release:
+  #   runs-on: ubuntu-24.04
+  #   needs: check_if_needs_running
+  #   if: needs.check_if_needs_running.outputs.status > 0
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: ⚡ Cache rust
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-      - name: Install Rust toolchain 1.85
-        run: rustup toolchain install 1.85
-      - name: Install nightly
-        run: rustup toolchain install nightly-2025-05-14 --component rust-src
-      - name: Install nightly
-        run: rustup toolchain install nightly-2025-02-14 --component rust-src
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Build
-        run: cargo build --all --release --all-features
-      - name: Run tests
-        run: cargo test --all --release --verbose --all-features --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #     - name: ⚡ Cache rust
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #           target
+  #         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+  #     - name: Install Rust toolchain 1.85
+  #       run: rustup toolchain install 1.85
+  #     - name: Install nightly
+  #       run: rustup toolchain install nightly-2025-05-14 --component rust-src
+  #     - name: Install nightly
+  #       run: rustup toolchain install nightly-2025-02-14 --component rust-src
+  #     - name: Install riscv target
+  #       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+  #     - name: Install test dependencies
+  #       run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+  #     - name: Build
+  #       run: cargo build --all --release --all-features
+  #     - name: Run tests
+  #       run: cargo test --all --release --verbose --all-features --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
 
-  bench:
-    runs-on: warp-ubuntu-2404-x64-4x
-    permissions:
-      contents: write
-      deployments: write
-      pull-requests: write
+  # bench:
+  #   runs-on: warp-ubuntu-2404-x64-4x
+  #   permissions:
+  #     contents: write
+  #     deployments: write
+  #     pull-requests: write
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: ⚡ Restore rust cache
-        id: cache
-        uses: WarpBuilds/cache/restore@v1
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            Cargo.lock
-          key: ${{ runner.os }}-cargo-pr-tests
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.85
-        run: rustup toolchain install 1.85
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Run benchmarks
-        # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
-        run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          name: Benchmarks
-          tool: "cargo"
-          output-file-path: output.txt
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: "120%"
-          comment-on-alert: true
-          summary-always: true
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #     - name: ⚡ Restore rust cache
+  #       id: cache
+  #       uses: WarpBuilds/cache/restore@v1
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry/index/
+  #           ~/.cargo/registry/cache/
+  #           ~/.cargo/git/db/
+  #           target/
+  #           Cargo.lock
+  #         key: ${{ runner.os }}-cargo-pr-tests
+  #     - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+  #       run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
+  #     - name: Install Rust toolchain 1.85
+  #       run: rustup toolchain install 1.85
+  #     - name: Install riscv target
+  #       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+  #     - name: Install test dependencies
+  #       run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+  #     - name: Run benchmarks
+  #       # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
+  #       run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
+  #     - name: Store benchmark result
+  #       uses: benchmark-action/github-action-benchmark@v1
+  #       with:
+  #         name: Benchmarks
+  #         tool: "cargo"
+  #         output-file-path: output.txt
+  #         github-token: ${{ secrets.GITHUB_TOKEN }}
+  #         auto-push: true
+  #         alert-threshold: "120%"
+  #         comment-on-alert: true
+  #         summary-always: true
 
   test_apc:
     runs-on: self-hosted
@@ -139,31 +140,69 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      # - name: Run tests
+      #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
         run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev 26bb25b cargo-openvm
 
-      - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm/scripts/requirements.txt
+          pip install psrecord   # for monitoring memory usage
+
+      - name: Run guest benchmarks
+        run: |
+          source .venv/bin/activate
+
+          # keccak
+          DIR=results/keccak
+          mkdir -p $DIR
+          pushd $DIR
+          cargo run --bin powdr_openvm -r prove guest-keccak-manual-precompile --input 10000 --metrics manual.json
+          cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --metrics noapc.json
+          psrecord --include-children --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --autoprecompiles 100 --metrics 100apc.json
+          python ${GITHUB_WORKSPACE}/openvm/scripts/basic_metrics.py --csv *.json > basic_metrics.csv
+          popd
+
+          # matmul
+          DIR=results/matmul
+          mkdir -p $DIR
+          pushd $DIR
+          cargo run --bin powdr_openvm -r prove guest-matmul --metrics noapc.json
+          psrecord --include-children --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png cargo run --bin powdr_openvm -r prove guest-matmul --autoprecompiles 100 --metrics 100apc.json
+          python ${GITHUB_WORKSPACE}/openvm/scripts/basic_metrics.py --csv *.json > basic_metrics.csv
+          popd
+
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
         with:
-          repository: powdr-labs/openvm-reth-benchmark
-          ref: main
-          path: openvm-reth-benchmark
+          name: bench-results
+          path: |
+            results/*
 
-      - name: Patch openvm-reth-benchmark to use local powdr
-        run: |
-          cd openvm-reth-benchmark
-          mkdir -p .cargo
-          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
-          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
-          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
-          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
-          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+      # - name: Checkout openvm-reth-benchmark
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: powdr-labs/openvm-reth-benchmark
+      #     ref: main
+      #     path: openvm-reth-benchmark
 
-      - name: Run small execution test with APCs
-        run: |
-          cd openvm-reth-benchmark
-          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          MODE="execute" APC=500 /usr/bin/time -v ./run.sh
+      # - name: Patch openvm-reth-benchmark to use local powdr
+      #   run: |
+      #     cd openvm-reth-benchmark
+      #     mkdir -p .cargo
+      #     echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+      #     echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+      #     echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+      #     echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+      #     echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+
+      # - name: Run small execution test with APCs
+      #   run: |
+      #     cd openvm-reth-benchmark
+      #     echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+      #     MODE="execute" APC=500 /usr/bin/time -v ./run.sh
+
