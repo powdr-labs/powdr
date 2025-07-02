@@ -10,7 +10,9 @@ use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
+use openvm_stark_backend::config::{PackedChallenge, Val};
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
+use openvm_stark_backend::p3_field::FieldExtensionAlgebra;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };
@@ -32,8 +34,6 @@ use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
-
-pub const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
@@ -340,10 +340,10 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let max_degree = (1 << app_log_blow_up) + 1;
 
     let name = air.name();
-    let base = air.width();
+    let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
-    let preprocess = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
+    let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
 
     let SymbolicConstraints {
         constraints,
@@ -355,13 +355,13 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         .interaction_partitions()
         .len()
         + 1)
-        * EXT_DEGREE;
+        * <PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D;
 
     AirMetrics {
         name,
         widths: AirWidths {
-            preprocess,
-            base,
+            preprocessed,
+            main,
             log_up,
         },
         constraints: constraints.len(),
@@ -381,8 +381,8 @@ pub fn symbolic_builder_with_degree(
 }
 
 pub struct AirWidths {
-    pub preprocess: usize,
-    pub base: usize,
+    pub preprocessed: usize,
+    pub main: usize,
     pub log_up: usize,
 }
 
@@ -390,10 +390,10 @@ impl std::fmt::Display for AirWidths {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Total Width: {} (Preprocess: {} Base: {}, Log Up: {})",
-            self.preprocess + self.base + self.log_up,
-            self.preprocess,
-            self.base,
+            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
+            self.preprocessed + self.main + self.log_up,
+            self.preprocessed,
+            self.main,
             self.log_up
         )
     }
