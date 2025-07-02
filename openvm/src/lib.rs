@@ -538,7 +538,7 @@ impl CompiledProgram {
     // Need to build powdr air metrics from scratch, because some PGO modes don't calculate them
     fn powdr_air_metrics(&self) -> Vec<AirMetrics> {
         use crate::extraction_utils::get_air_metrics;
-        
+
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
 
         chip_complex
