@@ -2,7 +2,7 @@ use std::hash::Hash;
 use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ConstraintSystem;
+use powdr_constraint_solver::constraint_system::{ConstraintSystem, ConstraintSystemGeneric};
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_number::FieldElement;
 
@@ -75,6 +75,21 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&JournalingConstraintSyst
     for Stats
 {
     fn from(constraint_system: &JournalingConstraintSystem<P, V>) -> Self {
-        Stats::from(constraint_system.system())
+        stats_from_generic_constraint_system(constraint_system.system())
     }
 }
+
+pub fn stats_from_generic_constraint_system<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    constraint_system: &ConstraintSystemGeneric<T, V>
+) -> Stats {
+    Stats {
+        num_constraints: constraint_system.algebraic_constraints.len(),
+        num_bus_interactions: constraint_system.bus_interactions.len(),
+        num_witness_columns: constraint_system
+            .expressions()
+            .flat_map(|e| e.referenced_variables())
+            .unique()
+            .count(),
+    }
+}
+
