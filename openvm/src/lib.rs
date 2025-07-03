@@ -845,8 +845,11 @@ mod tests {
     const GUEST_KECCAK_SKIP: u64 = 0;
 
     const GUEST_SHA256_ITER: u32 = 1_000;
+    const GUEST_SHA256_ITER_SMALL: u32 = 10;
+    const GUEST_SHA256_ITER_LARGE: u32 = 25_000;
     const GUEST_SHA256: &str = "guest-sha256";
-    const GUEST_SHA256_APC: u64 = 10;
+    const GUEST_SHA256_APC_PGO: u64 = 10;
+    const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
     #[test]
@@ -894,7 +897,7 @@ mod tests {
     }
 
     #[test]
-    fn kecak_small_prove_simple_multi_segment() {
+    fn keccak_small_prove_simple_multi_segment() {
         // Set the default segmentation height to a small value to test multi-segment proving
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
@@ -1007,7 +1010,7 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving with PgoConfig::Instruction took {:?}", elapsed);
+        tracing::debug!("Proving keccak with PgoConfig::Cell took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -1019,15 +1022,18 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!(
+            "Proving keccak with PgoConfig::Instruction took {:?}",
+            elapsed
+        );
     }
 
     #[test]
-    #[ignore = "Too long"]
+    //#[ignore = "Too long"]
     fn sha256_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let config = PowdrConfig::new(GUEST_SHA256_APC, GUEST_SHA256_SKIP);
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
@@ -1038,6 +1044,142 @@ mod tests {
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
+        );
+    }
+
+    #[test]
+    //#[ignore = "Too long"]
+    fn sha256_prove_mock() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER);
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        prove_mock(
+            GUEST_SHA256,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    //#[ignore = "Too much RAM"]
+    fn sha256_prove_many_apcs() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER);
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP);
+        prove_recursion(
+            GUEST_SHA256,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data.clone()),
+            None,
+        );
+
+        prove_recursion(
+            GUEST_SHA256,
+            config.clone(),
+            stdin,
+            PgoConfig::Cell(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    //#[ignore = "Too much RAM"]
+    fn sha256_prove_large() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER_LARGE);
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        prove_recursion(
+            GUEST_SHA256,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn sha256_small_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_SHA256,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn sha256_small_prove_mock() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        prove_mock(
+            GUEST_SHA256,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn sha256_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER_SMALL);
+        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_SHA256,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone()),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving sha256 with PgoConfig::Cell took {:?}", elapsed);
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_SHA256,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving sha256 with PgoConfig::Instruction took {:?}",
+            elapsed
         );
     }
 
@@ -1052,26 +1194,24 @@ mod tests {
     // }
 
     // The following are compilation tests only
-    fn test_guest_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
-            .unwrap()
-            .powdr_airs_metrics();
-        assert_eq!(machines.len(), 1);
-        let m = &machines[0];
-        assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
-    }
-
-    fn test_keccak_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
+    fn test_machine(
+        pgo_config: PgoConfig,
+        guest: &str,
+        guest_apc: u64,
+        guest_skip: u64,
+        width: usize,
+        constraints: usize,
+        bus_interactions: usize,
+    ) {
+        let config = PowdrConfig::new(guest_apc, guest_skip);
+        let machines = compile_guest(guest, GuestOptions::default(), config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
             [m.width, m.constraints, m.bus_interactions],
-            [2011, 166, 1783]
+            [width, constraints, bus_interactions]
         );
     }
 
@@ -1080,8 +1220,49 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
-        test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_guest_machine(PgoConfig::Cell(pgo_data));
+        test_machine(
+            PgoConfig::Instruction(pgo_data.clone()),
+            GUEST,
+            GUEST_APC,
+            GUEST_SKIP_PGO,
+            49,
+            22,
+            31,
+        );
+        test_machine(
+            PgoConfig::Cell(pgo_data),
+            GUEST,
+            GUEST_APC,
+            GUEST_SKIP_PGO,
+            49,
+            22,
+            31,
+        );
+    }
+
+    #[test]
+    fn sha256_machine_pgo() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_SHA256_ITER_SMALL);
+        let pgo_data = execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin);
+        test_machine(
+            PgoConfig::Instruction(pgo_data.clone()),
+            GUEST_SHA256,
+            GUEST_SHA256_APC_PGO,
+            GUEST_SHA256_SKIP,
+            49,
+            22,
+            31,
+        );
+        test_machine(
+            PgoConfig::Cell(pgo_data),
+            GUEST_SHA256,
+            GUEST_SHA256_APC_PGO,
+            GUEST_SHA256_SKIP,
+            49,
+            22,
+            31,
+        );
     }
 
     #[test]
@@ -1100,7 +1281,15 @@ mod tests {
 
     #[test]
     fn keccak_machine() {
-        test_keccak_machine(PgoConfig::None);
+        test_machine(
+            PgoConfig::None,
+            GUEST_KECCAK,
+            GUEST_KECCAK_APC,
+            GUEST_KECCAK_SKIP,
+            2011,
+            166,
+            1783,
+        );
     }
 
     #[test]
@@ -1108,7 +1297,23 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-        test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data));
+        test_machine(
+            PgoConfig::Instruction(pgo_data.clone()),
+            GUEST_KECCAK,
+            GUEST_KECCAK_APC,
+            GUEST_KECCAK_SKIP,
+            2011,
+            166,
+            1783,
+        );
+        test_machine(
+            PgoConfig::Cell(pgo_data),
+            GUEST_KECCAK,
+            GUEST_KECCAK_APC,
+            GUEST_KECCAK_SKIP,
+            2011,
+            166,
+            1783,
+        );
     }
 }
