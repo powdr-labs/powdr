@@ -737,7 +737,7 @@ struct PgoCollector {
 
 impl PgoCollector {
     fn new<F>(program: &Program<F>) -> Self {
-        let max_pc = program.instructions_and_debug_infos.len() * program.step as usize;
+        let max_pc = program.instructions_and_debug_infos.len();
         // create a map with max_pc entries initialized to 0
         let map = Arc::new((0..max_pc).map(|_| AtomicU32::new(0)).collect());
         Self {
@@ -750,18 +750,10 @@ impl PgoCollector {
     fn into_hashmap(self) -> HashMap<u32, u32> {
         // Turn the map into a HashMap of (pc_index, count)
         self.map
-            .chunks(self.step)
+            .iter()
             .enumerate()
-            .filter_map(|(pc_index, chunk)| {
-                // Sanity check that all counts are zero except the first one
-                assert!(
-                    chunk[1..]
-                        .iter()
-                        .all(|count| count.load(Ordering::Relaxed) == 0),
-                    "Non-zero counts found in chunk after the first one"
-                );
-
-                let count = chunk[0].load(Ordering::Relaxed);
+            .filter_map(|(pc_index, count)| {
+                let count = count.load(Ordering::Relaxed);
 
                 // if the count is zero, we skip it
                 if count == 0 {
@@ -774,7 +766,7 @@ impl PgoCollector {
     }
 
     fn increment(&self, pc: usize) {
-        self.map[pc - self.pc_base].fetch_add(1, Ordering::Relaxed);
+        self.map[(pc - self.pc_base) / self.step].fetch_add(1, Ordering::Relaxed);
     }
 }
 
