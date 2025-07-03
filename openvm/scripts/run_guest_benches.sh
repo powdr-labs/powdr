@@ -49,5 +49,7 @@ run_bench() {
     popd
 }
 
+# keccak for 10000 iterations, 100 apcs
 run_bench guest-keccak guest-keccak-manual-precompile 100 10000
+
 # run_bench guest-matmul "" 100 0
