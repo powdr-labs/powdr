@@ -9,6 +9,7 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
+use openvm_instructions::program::Program;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
@@ -669,15 +670,10 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
-    let collected = Arc::new(Mutex::new(HashMap::new()));
-    let collector_layer = PgoCollector {
-        base: exe.program.pc_base,
-        step: exe.program.step,
-        map: collected.clone(),
-    };
+    let collector = PgoCollector::new(&exe.program);
 
     // build subscriber
-    let subscriber = Registry::default().with(collector_layer);
+    let subscriber = Registry::default().with(collector.clone());
 
     // prepare for execute
     let sdk = Sdk::default();
@@ -689,10 +685,10 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
             .unwrap();
     });
 
-    // Extract the collected data from the mutex
-    let pc_index_count = std::mem::take(&mut *collected.lock().unwrap());
+    // Extract the collected data
+    let pc_index_count = collector.take();
 
-    // the smallest pc is the same as the base_pc if there's no stdin
+    // the smallest pc is the same as the pc_base if there's no stdin
     let pc_min = pc_index_count.keys().min().unwrap();
     tracing::debug!("pc_min: {}; pc_base: {}", pc_min, exe.program.pc_base);
 
@@ -733,9 +729,52 @@ impl tracing::field::Visit for PgoData {
 // A Layer that collects data we are interested in using for the pgo from the trace fields.
 #[derive(Clone)]
 struct PgoCollector {
-    base: u32,
-    step: u32,
-    map: Arc<Mutex<HashMap<u32, u32>>>,
+    step: usize,
+    pc_base: usize,
+    map: Arc<Mutex<Vec<u32>>>,
+}
+
+impl PgoCollector {
+    fn new<F>(program: &Program<F>) -> Self {
+        let max_pc = program.instructions_and_debug_infos.len() * program.step as usize;
+        // create a map with max_pc entries initialized to 0
+        let map = Arc::new(Mutex::new(vec![0; max_pc]));
+        Self {
+            map,
+            step: program.step as usize,
+            pc_base: program.pc_base as usize,
+        }
+    }
+
+    fn take(self) -> HashMap<u32, u32> {
+        // take the map from the mutex
+        let map = std::mem::take(&mut *self.map.lock().unwrap());
+
+        // Turn the map into a HashMap of (pc_index, count)
+        map.chunks(self.step)
+            .enumerate()
+            .filter_map(|(pc_index, chunk)| {
+                // Sanity check that all counts are zero except the first one
+                assert!(
+                    chunk[1..].iter().all(|&count| count == 0),
+                    "Non-zero counts found in chunk after the first one"
+                );
+
+                let count = chunk[0];
+
+                // if the count is zero, we skip it
+                if count == 0 {
+                    return None;
+                }
+
+                Some((pc_index as u32, count))
+            })
+            .collect()
+    }
+
+    fn increment(&self, pc: usize) {
+        self.map.lock().unwrap()[pc - self.pc_base] += 1;
+    }
 }
 
 impl<S> Layer<S> for PgoCollector
@@ -750,8 +789,7 @@ where
         // because our subscriber is at the trace level, for trace print outs that don't match PgoData,
         // the visitor can't parse them, and these cases are filtered out automatically
         if let Some(pc) = visitor.pc {
-            let pc_index = (pc as u32 - self.base) / self.step;
-            *self.map.lock().unwrap().entry(pc_index).or_default() += 1;
+            self.increment(pc);
         }
     }
 }
