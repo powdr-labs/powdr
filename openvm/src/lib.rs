@@ -1154,16 +1154,16 @@ mod tests {
             });
 
         // Check all APC
-        assert_eq!(powdr_metrics.len(), 25); // Number of APC chips
+        assert_eq!(powdr_metrics.len(), 23); // Number of APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 5443,
-                log_up: 4456,
+                main: 5111,
+                log_up: 4208,
             },
-            constraints: 1170,
-            bus_interactions: 4250,
+            constraints: 1080,
+            bus_interactions: 4019,
             ..Default::default()
         };
         assert_air_metrics_sum(powdr_metrics, expected);
