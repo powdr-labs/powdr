@@ -1,11 +1,9 @@
 use std::collections::BTreeMap;
 
 use powdr_constraint_solver::{
-    constraint_system::{
-        BusInteraction, BusInteractionHandler, ConstraintSystem, ConstraintSystemGeneric,
-    },
-    grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
-    journaling_constraint_system::JournalingConstraintSystem,
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystemGeneric},
+    grouped_expression::{GroupedExpression, NoRangeConstraints},
+    journaling_constraint_system::JournalingConstraintSystemGeneric,
 };
 use powdr_number::FieldElement;
 
@@ -59,13 +57,13 @@ pub fn optimize<T: FieldElement>(
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, AlgebraicReference>,
+    constraint_system: ConstraintSystemGeneric<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
-) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystem::from(constraint_system);
+) -> Result<ConstraintSystemGeneric<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
+    let constraint_system = JournalingConstraintSystemGeneric::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
@@ -244,9 +242,9 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
-) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
+) -> BusInteraction<GroupedExpression<P, AlgebraicReference>> {
     BusInteraction {
-        bus_id: QuadraticSymbolicExpression::from_number(P::from(bus_interaction.id)),
+        bus_id: GroupedExpression::from_number(P::from(bus_interaction.id)),
         payload: bus_interaction
             .args
             .iter()
@@ -257,7 +255,7 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
 }
 
 fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
-    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>>,
+    bus_interaction: BusInteraction<GroupedExpression<P, AlgebraicReference>>,
 ) -> SymbolicBusInteraction<P> {
     // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
     // so this should always succeed.
