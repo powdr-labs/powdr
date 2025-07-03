@@ -277,15 +277,23 @@ impl OriginalVmConfig {
     }
 
     pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
-        self.chip_complex()
-            .inventory
+        let inventory = &self.chip_complex().inventory;
+
+        inventory
             .executors()
             .iter()
-            .map(|executor| {
-                let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
+            .map(|executor| executor.air())
+            .chain(
+                inventory
+                    .periphery()
+                    .iter()
+                    .map(|periphery| periphery.air()),
+            )
+            .map(|air| {
+                // both executors and periphery implement the same `air()` API
                 get_air_metrics(air)
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
 
