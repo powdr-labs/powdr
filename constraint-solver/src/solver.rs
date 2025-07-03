@@ -6,12 +6,11 @@ use crate::constraint_system::{
 use crate::grouped_expression::QuadraticSymbolicExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
-use crate::solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper;
 use crate::utils::known_variables;
 
 use super::effect::Effect;
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -28,13 +27,13 @@ where
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let (bus_interaction_variable_wrapper, constraint_system) =
-        BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
+    // let (bus_interaction_variable_wrapper, constraint_system) =
+    //     BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
 
     let result = Solver::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result.assignments))
+    Ok(result)
 }
 
 /// The result of the solving process.
@@ -43,8 +42,6 @@ pub struct SolveResult<T: FieldElement, V> {
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
     pub assignments: Vec<VariableAssignment<T, V>>,
-    /// Maps a (bus interaction index, field index) to a concrete value.
-    pub bus_field_assignments: BTreeMap<(usize, usize), T>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -117,7 +114,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
         self.loop_until_no_progress()?;
         Ok(SolveResult {
             assignments: self.assignments,
-            bus_field_assignments: Default::default(),
         })
     }
 
