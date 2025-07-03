@@ -301,15 +301,15 @@ pub fn build<
         &vm_config.bus_map,
     )?;
 
+    // add guards to constraints that are not satisfied by zeroes
+    let machine = add_guards(machine, vm_config.bus_map);
+
     metrics::counter!("after_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("after_opt_constraints", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
-
-    // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine, vm_config.bus_map);
 
     Ok(Apc { machine, subs })
 }
