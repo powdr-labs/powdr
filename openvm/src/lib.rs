@@ -1203,25 +1203,32 @@ mod tests {
     // }
 
     // The following are compilation tests only
-    fn test_machine(
+
+    struct MachineTestParams<'a> {
         pgo_config: PgoConfig,
-        guest: &str,
+        guest: &'a str,
         guest_apc: u64,
         guest_skip: u64,
         width: usize,
         constraints: usize,
         bus_interactions: usize,
         machine_length: usize,
-    ) {
-        let config = PowdrConfig::new(guest_apc, guest_skip);
-        let machines = compile_guest(guest, GuestOptions::default(), config, pgo_config)
-            .unwrap()
-            .powdr_airs_metrics();
-        assert_eq!(machines.len(), machine_length);
+    }
+    fn test_machine(params: MachineTestParams) {
+        let config = PowdrConfig::new(params.guest_apc, params.guest_skip);
+        let machines = compile_guest(
+            params.guest,
+            GuestOptions::default(),
+            config,
+            params.pgo_config,
+        )
+        .unwrap()
+        .powdr_airs_metrics();
+        assert_eq!(machines.len(), params.machine_length);
         let m = &machines[0];
         assert_eq!(
             [m.width, m.constraints, m.bus_interactions],
-            [width, constraints, bus_interactions]
+            [params.width, params.constraints, params.bus_interactions]
         );
     }
 
@@ -1230,26 +1237,27 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
-        test_machine(
-            PgoConfig::Instruction(pgo_data.clone()),
-            GUEST,
-            GUEST_APC,
-            GUEST_SKIP_PGO,
-            49,
-            22,
-            31,
-            1,
-        );
-        test_machine(
-            PgoConfig::Cell(pgo_data, None),
-            GUEST,
-            GUEST_APC,
-            GUEST_SKIP_PGO,
-            49,
-            22,
-            31,
-            1,
-        );
+
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+            guest: GUEST,
+            guest_apc: GUEST_APC,
+            guest_skip: GUEST_SKIP_PGO,
+            width: 49,
+            constraints: 22,
+            bus_interactions: 31,
+            machine_length: 1,
+        });
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Cell(pgo_data, None),
+            guest: GUEST,
+            guest_apc: GUEST_APC,
+            guest_skip: GUEST_SKIP_PGO,
+            width: 49,
+            constraints: 22,
+            bus_interactions: 31,
+            machine_length: 1,
+        });
     }
 
     #[test]
@@ -1257,26 +1265,28 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin);
-        test_machine(
-            PgoConfig::Instruction(pgo_data.clone()),
-            GUEST_SHA256,
-            GUEST_SHA256_APC_PGO,
-            GUEST_SHA256_SKIP,
-            49,
-            22,
-            31,
-            1,
-        );
-        test_machine(
-            PgoConfig::Cell(pgo_data, None),
-            GUEST_SHA256,
-            GUEST_SHA256_APC_PGO,
-            GUEST_SHA256_SKIP,
-            49,
-            22,
-            31,
-            1,
-        );
+
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+            guest: GUEST_SHA256,
+            guest_apc: GUEST_SHA256_APC_PGO,
+            guest_skip: GUEST_SHA256_SKIP,
+            width: 49,
+            constraints: 22,
+            bus_interactions: 31,
+            machine_length: 1,
+        });
+
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Cell(pgo_data, None),
+            guest: GUEST_SHA256,
+            guest_apc: GUEST_SHA256_APC_PGO,
+            guest_skip: GUEST_SHA256_SKIP,
+            width: 49,
+            constraints: 22,
+            bus_interactions: 31,
+            machine_length: 1,
+        });
     }
 
     #[test]
@@ -1295,16 +1305,16 @@ mod tests {
 
     #[test]
     fn keccak_machine() {
-        test_machine(
-            PgoConfig::None,
-            GUEST_KECCAK,
-            GUEST_KECCAK_APC,
-            GUEST_KECCAK_SKIP,
-            2011,
-            166,
-            1783,
-            1,
-        );
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::None,
+            guest: GUEST_KECCAK,
+            guest_apc: GUEST_KECCAK_APC,
+            guest_skip: GUEST_KECCAK_SKIP,
+            width: 2011,
+            constraints: 166,
+            bus_interactions: 1783,
+            machine_length: 1,
+        });
     }
 
     #[test]
@@ -1312,25 +1322,27 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-        test_machine(
-            PgoConfig::Instruction(pgo_data.clone()),
-            GUEST_KECCAK,
-            GUEST_KECCAK_APC,
-            GUEST_KECCAK_SKIP,
-            2011,
-            166,
-            1783,
-            1,
-        );
-        test_machine(
-            PgoConfig::Cell(pgo_data, None),
-            GUEST_KECCAK,
-            GUEST_KECCAK_APC,
-            GUEST_KECCAK_SKIP,
-            2011,
-            166,
-            1783,
-            1,
-        );
+
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+            guest: GUEST_KECCAK,
+            guest_apc: GUEST_KECCAK_APC,
+            guest_skip: GUEST_KECCAK_SKIP,
+            width: 2011,
+            constraints: 166,
+            bus_interactions: 1783,
+            machine_length: 1,
+        });
+
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Cell(pgo_data, None),
+            guest: GUEST_KECCAK,
+            guest_apc: GUEST_KECCAK_APC,
+            guest_skip: GUEST_KECCAK_SKIP,
+            width: 2011,
+            constraints: 166,
+            bus_interactions: 1783,
+            machine_length: 1,
+        });
     }
 }
