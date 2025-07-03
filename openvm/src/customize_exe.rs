@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -33,6 +34,9 @@ use crate::{
     powdr_extension::{OriginalInstruction, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
+
+mod air_stacking;
+use air_stacking::air_stacking;
 
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
@@ -68,6 +72,7 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
 ) -> Vec<BlockWithApc<P>> {
+    let strict_is_valid_guards = config.chip_stacking_log.is_some();
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -81,11 +86,19 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
             config,
             original_config,
             bus_map,
+            strict_is_valid_guards,
         ),
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
+        PgoConfig::Instruction(pgo_program_idx_count) => create_apcs_with_instruction_pgo(
+            blocks,
+            pgo_program_idx_count,
+            airs,
+            config,
+            bus_map,
+            strict_is_valid_guards,
+        ),
+        PgoConfig::None => {
+            create_apcs_with_no_pgo(blocks, airs, config, bus_map, strict_is_valid_guards)
         }
-        PgoConfig::None => create_apcs_with_no_pgo(blocks, airs, config, bus_map),
     };
 
     assert!(res.len() <= config.autoprecompiles as usize);
@@ -219,6 +232,17 @@ pub fn customize(
         )
         .collect();
 
+    let extensions = if let Some(chip_stacking_log) = config.chip_stacking_log {
+        tracing::debug!("Chip stacking enabled, grouping log: {chip_stacking_log}");
+        air_stacking(extensions, chip_stacking_log)
+    } else {
+        tracing::debug!("Chip stacking disabled");
+        extensions
+            .into_iter()
+            .map(PowdrStackedPrecompile::from)
+            .collect()
+    };
+
     CompiledProgram {
         exe,
         vm_config: SpecializedConfig::new(original_config, extensions, config.implementation),
@@ -345,6 +369,7 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
     powdr_config: &PowdrConfig,
     airs: &OriginalAirs<P>,
     bus_map: &BusMap,
+    strict_is_valid_guards: bool,
 ) -> Vec<BlockWithApc<P>> {
     let n_acc = powdr_config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
@@ -374,6 +399,7 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
                 apc_opcode,
                 bus_map,
                 powdr_config.degree_bound,
+                strict_is_valid_guards,
             )
             .unwrap();
 
@@ -400,6 +426,8 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: &BusMap,
     degree_bound: DegreeBound,
+    // chip stacking needs constraints/multiplicities fully guarded by the is_valid column
+    strict_is_valid_guards: bool,
 ) -> Result<Apc<P>, Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -425,7 +453,13 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_map: bus_map.clone(),
     };
 
-    let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
+    let apc = powdr_autoprecompiles::build(
+        program,
+        vm_config,
+        degree_bound,
+        apc_opcode as u32,
+        strict_is_valid_guards,
+    )?;
 
     // Check that substitution values are unique over all instructions
     assert!(apc.subs().iter().flatten().all_unique());
@@ -463,6 +497,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     bus_map: &BusMap,
+    strict_is_valid_guards: bool,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -541,6 +576,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                 POWDR_OPCODE + i,
                 bus_map,
                 config.degree_bound,
+                strict_is_valid_guards,
             )
             .ok()?; // if apc creation fails, filter out this candidate block
 
@@ -591,6 +627,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
+    strict_is_valid_guards: bool,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -623,7 +660,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
         );
     }
 
-    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
+    create_apcs_for_all_blocks(blocks, config, airs, bus_map, strict_is_valid_guards)
 }
 
 fn create_apcs_with_no_pgo<P: IntoOpenVm>(
@@ -631,6 +668,7 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
+    strict_is_valid_guards: bool,
 ) -> Vec<BlockWithApc<P>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
@@ -645,5 +683,5 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
         );
     }
 
-    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
+    create_apcs_for_all_blocks(blocks, config, airs, bus_map, strict_is_valid_guards)
 }
