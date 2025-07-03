@@ -1211,12 +1211,13 @@ mod tests {
         width: usize,
         constraints: usize,
         bus_interactions: usize,
+        machine_length: usize,
     ) {
         let config = PowdrConfig::new(guest_apc, guest_skip);
         let machines = compile_guest(guest, GuestOptions::default(), config, pgo_config)
             .unwrap()
             .powdr_airs_metrics();
-        assert_eq!(machines.len(), 1);
+        assert_eq!(machines.len(), machine_length);
         let m = &machines[0];
         assert_eq!(
             [m.width, m.constraints, m.bus_interactions],
@@ -1237,6 +1238,7 @@ mod tests {
             49,
             22,
             31,
+            1,
         );
         test_machine(
             PgoConfig::Cell(pgo_data, None),
@@ -1246,6 +1248,7 @@ mod tests {
             49,
             22,
             31,
+            1,
         );
     }
 
@@ -1262,6 +1265,7 @@ mod tests {
             49,
             22,
             31,
+            1,
         );
         test_machine(
             PgoConfig::Cell(pgo_data, None),
@@ -1271,6 +1275,7 @@ mod tests {
             49,
             22,
             31,
+            1,
         );
     }
 
@@ -1298,6 +1303,7 @@ mod tests {
             2011,
             166,
             1783,
+            1,
         );
     }
 
@@ -1314,6 +1320,7 @@ mod tests {
             2011,
             166,
             1783,
+            1,
         );
         test_machine(
             PgoConfig::Cell(pgo_data, None),
@@ -1323,6 +1330,7 @@ mod tests {
             2011,
             166,
             1783,
+            1,
         );
     }
 }
