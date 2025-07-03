@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::termination_analysis::analyze_basic_blocks;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -26,6 +27,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_autoprecompiles::{Apc, DegreeBound};
 use powdr_number::{BabyBearField, FieldElement};
+use powdr_riscv_elf::debug_info::DebugInfo;
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -37,7 +39,7 @@ use crate::{
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
 // TODO: read this from program
-const OPENVM_INIT_PC: u32 = 0x0020_0800;
+pub const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 
@@ -99,6 +101,7 @@ pub fn customize(
         sdk_vm_config,
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo, // TODO in the future, only provide the terminating pc indices
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
@@ -113,6 +116,7 @@ pub fn customize(
     let blocks = collect_basic_blocks(
         &exe.program,
         &labels,
+        debug_info,
         &opcodes_allowlist,
         &branch_opcodes_set(),
     );
@@ -120,6 +124,20 @@ pub fn customize(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+
+    let label_by_start_idx = |start_idx: usize| {
+        let adjusted_pc = OPENVM_INIT_PC + (start_idx as u32) * 4;
+        debug_info.symbols.try_get_one(adjusted_pc)
+    };
+
+    let known_to_panic = blocks.iter().filter(|b| {
+        label_by_start_idx(b.start_idx).is_some_and(|label| {
+            // TODO adjust this
+            label.contains("panic_fmt")
+        })
+    });
+
+    analyze_basic_blocks(&blocks, known_to_panic, &label_by_start_idx, &pgo_config);
 
     let blocks = blocks
         .into_iter()
@@ -232,7 +250,7 @@ pub struct BasicBlock<F> {
 }
 
 impl<F: PrimeField32> BasicBlock<F> {
-    fn pretty_print(&self, instr_formatter: impl Fn(&Instruction<F>) -> String) -> String {
+    pub fn pretty_print(&self, instr_formatter: impl Fn(&Instruction<F>) -> String) -> String {
         format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
             + &self
                 .statements
@@ -248,6 +266,7 @@ impl<F: PrimeField32> BasicBlock<F> {
 pub fn collect_basic_blocks<F: PrimeField32>(
     program: &Program<F>,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo,
     opcode_allowlist: &BTreeSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<F>> {
@@ -260,6 +279,10 @@ pub fn collect_basic_blocks<F: PrimeField32>(
         let instr = instr.as_ref().unwrap().0.clone();
         let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
         let is_target = labels.contains(&adjusted_pc);
+        if let Some(label) = debug_info.symbols.try_get_one(adjusted_pc) {
+            println!("Found label: {label}");
+            //   panic!();
+        }
         let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
