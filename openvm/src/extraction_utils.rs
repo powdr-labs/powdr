@@ -36,13 +36,10 @@ use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
 
-pub const EXT_DEGREE: usize = 4;
-
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
     pub opcode_to_air: HashMap<VmOpcode, String>,
-    pub air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
-    pub air_name_to_metrics: BTreeMap<String, AirMetrics>,
+    air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
 }
 
 impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
@@ -60,18 +57,16 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<(SymbolicMachine<P>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        machine: impl Fn() -> Result<SymbolicMachine<P>, UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
-            let (machine_instance, air_metrics) = machine()?;
+            let machine_instance = machine()?;
             self.air_name_to_machine
                 .insert(air_name.clone(), machine_instance);
-            self.air_name_to_metrics
-                .insert(air_name.clone(), air_metrics);
         }
 
         self.opcode_to_air.insert(opcode, air_name);
@@ -205,7 +200,6 @@ impl OriginalVmConfig {
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
                 airs.insert_opcode(op, get_name(executor.air()), || {
                     let air = executor.air();
-                    let metrics = get_air_metrics(air.clone());
                     let columns = get_columns(air.clone());
                     let constraints = get_constraints(air);
 
@@ -221,13 +215,10 @@ impl OriginalVmConfig {
                         .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
                         .collect::<Result<_, _>>()?;
 
-                    Ok((
-                        SymbolicMachine {
-                            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                            bus_interactions: powdr_bus_interactions,
-                        },
-                        metrics,
-                    ))
+                    Ok(SymbolicMachine {
+                        constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                        bus_interactions: powdr_bus_interactions,
+                    })
                 })?;
 
                 Ok(airs)
@@ -286,7 +277,7 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
+    pub fn chip_inventory_air_metrics(&self) -> HashMap<String, AirMetrics> {
         let inventory = &self.chip_complex().inventory;
 
         inventory
@@ -301,7 +292,7 @@ impl OriginalVmConfig {
             )
             .map(|air| {
                 // both executors and periphery implement the same `air()` API
-                get_air_metrics(air)
+                (air.name(), get_air_metrics(air))
             })
             .collect()
     }
@@ -357,7 +348,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let app_log_blow_up = 2;
     let max_degree = (1 << app_log_blow_up) + 1;
 
-    let name = air.name();
     let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));

@@ -67,6 +67,7 @@ fn generate_apcs_with_pgo(
     airs: &OriginalAirs<BabyBearField>,
     bus_map: &BusMap,
     config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
 ) -> Vec<BlockWithApc<BabyBearField>> {
     // sort basic blocks by:
@@ -80,6 +81,7 @@ fn generate_apcs_with_pgo(
             max_total_columns,
             airs,
             config,
+            original_config,
             bus_map,
         ),
         PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -130,7 +132,14 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(blocks, &airs, &bus_map, &config, pgo_config);
+    let blocks_with_apcs = generate_apcs_with_pgo(
+        blocks,
+        &airs,
+        &bus_map,
+        &config,
+        &original_config,
+        pgo_config,
+    );
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -454,6 +463,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
     max_total_columns: Option<usize>,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
     bus_map: &BusMap,
 ) -> Vec<BlockWithApc<P>> {
     // drop any block whose start index cannot be found in pc_idx_count,
@@ -468,13 +478,15 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
         blocks.len()
     );
 
+    let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
+
     // store air width by opcode, so that we don't repetitively calculate them later
     // filter out opcodes that contain next references in their air, because they are not supported yet in apc
     let air_width_by_opcode = airs
         .opcode_to_air
         .iter()
         .map(|(opcode, air_name)| {
-            let metrics = airs.air_name_to_metrics.get(air_name).unwrap();
+            let metrics = chip_inventory_air_metrics.get(air_name).unwrap();
             (*opcode, metrics.total_width())
         })
         .collect::<HashMap<VmOpcode, usize>>();
@@ -520,8 +532,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
 
     let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
         // let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
-        let total_non_apc_columns = airs
-            .air_name_to_metrics
+        let total_non_apc_columns = chip_inventory_air_metrics
             .values()
             .map(|m| m.total_width())
             .sum::<usize>();

@@ -533,40 +533,39 @@ impl AirMetrics {
     }
 }
 
+pub enum AirMetricsType {
+    Powdr,
+    NonPowdr,
+}
+
 #[cfg(test)]
 impl CompiledProgram {
-    // Need to build powdr air metrics from scratch, because some PGO modes don't calculate them
-    fn powdr_air_metrics(&self) -> Vec<AirMetrics> {
+    pub fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
         use crate::extraction_utils::get_air_metrics;
 
-        let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
+        let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
 
-        chip_complex
-            .inventory
+        inventory
             .executors()
             .iter()
-            .filter_map(|executor| {
-                let air = executor.air();
+            .map(|executor| executor.air())
+            .chain(
+                inventory
+                    .periphery()
+                    .iter()
+                    .map(|periphery| periphery.air()),
+            )
+            .filter_map(|air| {
                 let name = air.name();
-
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
-                (name.starts_with("PowdrAir") || name.starts_with("PlonkAir"))
-                    .then(|| get_air_metrics(air))
+                let is_powdr_air = name.starts_with("PowdrAir") || name.starts_with("PlonkAir");
+                match metrics_type {
+                    AirMetricsType::Powdr => is_powdr_air.then(|| get_air_metrics(air)),
+                    AirMetricsType::NonPowdr => (!is_powdr_air).then(|| get_air_metrics(air)),
+                }
             })
-            .collect()
-    }
-
-    // No need to build non-powdr air metrics from scratch, because they are already calculated when assembling original airs
-    fn original_air_metrics(&self) -> Vec<AirMetrics> {
-        // Already filtered by opcode allow list
-        self.vm_config
-            .powdr
-            .airs
-            .air_name_to_metrics
-            .values()
-            .cloned()
             .collect()
     }
 }
@@ -1072,7 +1071,7 @@ mod tests {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
         let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
             .unwrap()
-            .powdr_air_metrics();
+            .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
@@ -1085,7 +1084,7 @@ mod tests {
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
             .unwrap()
-            .powdr_air_metrics();
+            .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
@@ -1109,7 +1108,7 @@ mod tests {
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
         let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
             .unwrap()
-            .powdr_air_metrics();
+            .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.widths.main, 26);
@@ -1145,14 +1144,14 @@ mod tests {
         )
         .unwrap();
 
-        let powdr_metrics = compiled_program.powdr_air_metrics();
+        let powdr_metrics = compiled_program.air_metrics(AirMetricsType::Powdr);
 
         // Check the top 3 APC
         let expected_top_3 = [
             AirMetrics {
                 widths: AirWidths {
-                    preprocess: 0,
-                    base: 2011,
+                    preprocessed: 0,
+                    main: 2011,
                     log_up: 1788,
                 },
                 constraints: 166,
@@ -1160,8 +1159,8 @@ mod tests {
             },
             AirMetrics {
                 widths: AirWidths {
-                    preprocess: 0,
-                    base: 137,
+                    preprocessed: 0,
+                    main: 137,
                     log_up: 100,
                 },
                 constraints: 47,
@@ -1169,8 +1168,8 @@ mod tests {
             },
             AirMetrics {
                 widths: AirWidths {
-                    preprocess: 0,
-                    base: 82,
+                    preprocessed: 0,
+                    main: 82,
                     log_up: 68,
                 },
                 constraints: 50,
@@ -1186,31 +1185,31 @@ mod tests {
             });
 
         // Check all APC
-        assert_eq!(powdr_metrics.len(), 21); // Number of APC chips
+        assert_eq!(powdr_metrics.len(), 14); // Number of APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
-                preprocess: 0,
-                base: 5057,
-                log_up: 4152,
+                preprocessed: 0,
+                main: 2720,
+                log_up: 2380,
             },
-            constraints: 1049,
-            bus_interactions: 3981,
+            constraints: 459,
+            bus_interactions: 2279,
         };
         assert_eq!(powdr_metrics.into_iter().sum::<AirMetrics>(), expected);
 
         // Check non-APC metrics
-        let original_air_metrics = compiled_program.original_air_metrics();
-        assert_eq!(original_air_metrics.len(), 13); // Number of non-APC chips
+        let original_air_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
+        assert_eq!(original_air_metrics.len(), 19); // Number of non-APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
-                preprocess: 0,
-                base: 456,
-                log_up: 332,
+                preprocessed: 5,
+                main: 3960,
+                log_up: 920,
             },
-            constraints: 307,
-            bus_interactions: 227,
+            constraints: 4851,
+            bus_interactions: 573,
         };
         assert_eq!(
             original_air_metrics.into_iter().sum::<AirMetrics>(),
