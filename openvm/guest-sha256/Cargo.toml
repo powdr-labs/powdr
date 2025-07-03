@@ -1,0 +1,14 @@
+[workspace]
+[package]
+name = "guest-sha256-stdin"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git"}
+sha2 = { version = "0.10", default-features = false }
+digest = { version = "0.10", default-features = false }
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
