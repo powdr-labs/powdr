@@ -1,12 +1,11 @@
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_number::FieldElement;
 use std::hash::Hash;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystem, ConstraintSystemGeneric},
-    grouped_expression::{GroupedExpression, QuadraticSymbolicExpression},
+    constraint_system::{BusInteraction, ConstraintSystemGeneric},
+    grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable, VarTransformable},
     solver::{SolveResult, VariableAssignment},
 };

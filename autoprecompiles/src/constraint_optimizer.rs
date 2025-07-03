@@ -71,7 +71,9 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system.apply_substitutions(result.assignments);
     // TODO could we somehow get rid of this special case by keeping
     // bus interaction field variables in the system for longer?
-    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
+
+    // TODO
+    //constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
     Ok(constraint_system)
 }
 

@@ -1,17 +1,18 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintSystem, ConstraintSystemGeneric, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintSystemGeneric, DefaultBusInteractionHandler,
 };
 use crate::effect::EffectImpl;
-use crate::grouped_expression::{GroupedExpression, QuadraticSymbolicExpression};
-use crate::indexed_constraint_system::{IndexedConstraintSystem, IndexedConstraintSystemGeneric};
+use crate::grouped_expression::GroupedExpression;
+use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
-use crate::solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper;
+use crate::runtime_constant::{
+    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
+};
+use crate::solver::bus_interaction_variable_wrapper::{BusInteractionVariableWrapper, Variable};
 use crate::utils::known_variables;
 
-use super::effect::Effect;
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
@@ -23,11 +24,17 @@ mod quadratic_equivalences;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
-    constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T>,
+    constraint_system: ConstraintSystemGeneric<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
 ) -> Result<SolveResult<T, V>, Error>
 where
-    T: FieldElement,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T::Transformed: RuntimeConstant
+        + VarTransformable<Variable<V>, V, Transformed = T>
+        + ReferencedSymbols<Variable<V>>
+        + Substitutable<Variable<V>>
+        + ExpressionConvertible<<T::Transformed as RuntimeConstant>::FieldType, Variable<V>>
+        + Display,
     V: Ord + Clone + Hash + Eq + Display,
 {
     let (bus_interaction_variable_wrapper, constraint_system) =
