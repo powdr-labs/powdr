@@ -35,7 +35,7 @@ pub type IndexedConstraintSystem<T, V> =
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone, Default)]
-pub struct IndexedConstraintSystemGeneric<T: RuntimeConstant, V> {
+pub struct IndexedConstraintSystemGeneric<T, V> {
     /// The constraint system.
     constraint_system: ConstraintSystemGeneric<T, V>,
     /// Stores where each unknown variable appears.
