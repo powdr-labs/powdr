@@ -2,8 +2,9 @@ use std::hash::Hash;
 use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ConstraintSystem;
-use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
+use powdr_constraint_solver::constraint_system::ConstraintSystemGeneric;
+use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystemGeneric;
+use powdr_constraint_solver::runtime_constant::{ReferencedSymbols, RuntimeConstant};
 use powdr_number::FieldElement;
 
 use crate::{powdr::UniqueReferences, SymbolicMachine};
@@ -57,8 +58,10 @@ impl<P: FieldElement> From<&SymbolicMachine<P>> for Stats {
     }
 }
 
-impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&ConstraintSystem<P, V>> for Stats {
-    fn from(constraint_system: &ConstraintSystem<P, V>) -> Self {
+impl<P: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq>
+    From<&ConstraintSystemGeneric<P, V>> for Stats
+{
+    fn from(constraint_system: &ConstraintSystemGeneric<P, V>) -> Self {
         Stats {
             num_constraints: constraint_system.algebraic_constraints.len(),
             num_bus_interactions: constraint_system.bus_interactions.len(),
@@ -71,10 +74,10 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&ConstraintSystem<P, V>> 
     }
 }
 
-impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&JournalingConstraintSystem<P, V>>
-    for Stats
+impl<P: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq>
+    From<&JournalingConstraintSystemGeneric<P, V>> for Stats
 {
-    fn from(constraint_system: &JournalingConstraintSystem<P, V>) -> Self {
+    fn from(constraint_system: &JournalingConstraintSystemGeneric<P, V>) -> Self {
         Stats::from(constraint_system.system())
     }
 }
