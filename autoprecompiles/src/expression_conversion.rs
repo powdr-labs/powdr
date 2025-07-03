@@ -1,5 +1,6 @@
 use powdr_constraint_solver::{
-    grouped_expression::QuadraticSymbolicExpression, runtime_constant::RuntimeConstant,
+    grouped_expression::QuadraticSymbolicExpression,
+    runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
 };
 use powdr_expression::{AlgebraicUnaryOperation, AlgebraicUnaryOperator};
@@ -42,9 +43,9 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
         })
         .chain(linear.map(|(v, c)| {
             if let Some(c) = c.try_to_number() {
-                if c.is_one() {
+                if c.is_known_one() {
                     return AlgebraicExpression::Reference(v.clone());
-                } else if (-c).is_one() {
+                } else if c.is_known_minus_one() {
                     return -AlgebraicExpression::Reference(v.clone());
                 }
             }
