@@ -61,6 +61,8 @@ log = "0.4.17"
 serde_cbor = "0.11.2"
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
 
+toml = "0.8.14"
+
 [dev-dependencies]
 test-log = { version = "0.2.17", features = ["trace"] }
 pretty_assertions = "1.4.0"
