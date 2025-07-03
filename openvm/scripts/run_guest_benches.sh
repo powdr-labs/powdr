@@ -25,6 +25,7 @@ plot_cells() {
     python3 $SCRIPTS_DIR/plot_trace_cells.py -o trace_cells.png $1 > trace_cells.txt
 }
 
+# usage: run_bench guest guest_manual_pcp apc_num input
 run_bench() {
     guest="$1"
     guest_manual="$2"
@@ -48,5 +49,5 @@ run_bench() {
     popd
 }
 
-run_bench guest-keccak guest-keccak-manual-precompile 100 100
+run_bench guest-keccak guest-keccak-manual-precompile 100 10000
 run_bench guest-matmul "" 100 0

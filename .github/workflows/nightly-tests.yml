@@ -155,27 +155,7 @@ jobs:
       - name: Run guest benchmarks
         run: |
           source .venv/bin/activate
-
-          # keccak
-          DIR=results/keccak
-          mkdir -p $DIR
-          pushd $DIR
-          cargo run --bin powdr_openvm -r prove guest-keccak-manual-precompile --input 10000 --metrics manual.json
-          cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --metrics noapc.json
-          psrecord --include-children --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png "cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --autoprecompiles 100 --metrics 100apc.json"
-          python ${GITHUB_WORKSPACE}/openvm/scripts/basic_metrics.py --csv *.json > basic_metrics.csv
-          python ${GITHUB_WORKSPACE}/openvm/scripts/plot_trace_cells.py -o trace_cells.png 100apc.json > trace_cells.txt
-          popd
-
-          # matmul
-          DIR=results/matmul
-          mkdir -p $DIR
-          pushd $DIR
-          cargo run --bin powdr_openvm -r prove guest-matmul --metrics noapc.json
-          psrecord --include-children --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png "cargo run --bin powdr_openvm -r prove guest-matmul --autoprecompiles 100 --metrics 100apc.json"
-          python ${GITHUB_WORKSPACE}/openvm/scripts/basic_metrics.py --csv *.json > basic_metrics.csv
-          python ${GITHUB_WORKSPACE}/openvm/scripts/plot_trace_cells.py -o trace_cells.png 100apc.json > trace_cells.txt
-          popd
+          bash ./openvm/scripts/run_guest_benches.sh
 
       - name: upload result artifacts
         uses: actions/upload-artifact@v4
