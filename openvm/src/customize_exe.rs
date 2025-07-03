@@ -525,7 +525,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             .iter()
             .map(|AirMetrics { name, widths, .. }| {
                 tracing::debug!("Chip inventory air {} has {}", name, widths);
-                widths.preprocess + widths.base + widths.log_up
+                widths.preprocessed + widths.main + widths.log_up
             })
             .sum::<usize>();
         max_total_columns - total_non_apc_columns
