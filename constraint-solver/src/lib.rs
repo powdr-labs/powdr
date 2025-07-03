@@ -1,6 +1,7 @@
 //! Tooling used for analysis and solving of constraints.
 
 pub mod boolean_extractor;
+pub mod bus_interaction_variable_wrapper;
 pub mod constraint_system;
 pub mod effect;
 pub mod grouped_expression;
