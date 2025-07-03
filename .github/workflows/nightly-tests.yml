@@ -151,7 +151,6 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           pip install -r openvm/scripts/requirements.txt
-          pip install psrecord   # for monitoring memory usage
 
       - name: Run guest benchmarks
         run: |
