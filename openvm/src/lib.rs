@@ -893,7 +893,9 @@ mod tests {
     fn matmul_compile() {
         let guest = "guest-matmul";
         let config = PowdrConfig::new(1, 0);
-        assert!(compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok());
+        assert!(
+            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
+        );
     }
 
     #[test]
