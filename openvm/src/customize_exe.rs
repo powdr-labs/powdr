@@ -531,7 +531,6 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
     }
 
     let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
-        // let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
         let total_non_apc_columns = chip_inventory_air_metrics
             .values()
             .map(|m| m.total_width())
