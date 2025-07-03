@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystemGeneric},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
-    journaling_constraint_system::JournalingConstraintSystem,
+    journaling_constraint_system::JournalingConstraintSystemGeneric,
 };
 use powdr_number::FieldElement;
 
@@ -23,14 +23,12 @@ use crate::{
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    opcode: Option<u32>,
+    opcode: u32,
     degree_bound: DegreeBound,
     bus_map: &BusMap,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
-    let mut machine = if let (Some(opcode), Some(pc_lookup_bus_id)) =
-        (opcode, bus_map.get_bus_id(&BusType::PcLookup))
-    {
+    let mut machine = if let Some(pc_lookup_bus_id) = bus_map.get_bus_id(&BusType::PcLookup) {
         let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
         stats_logger.log("PC lookup optimization", &machine);
         machine
@@ -67,7 +65,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
 ) -> Result<ConstraintSystemGeneric<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystem::from(constraint_system);
+    let constraint_system = JournalingConstraintSystemGeneric::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),

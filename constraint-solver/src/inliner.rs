@@ -1,7 +1,7 @@
 use crate::constraint_system::ConstraintRef;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
-use crate::journaling_constraint_system::JournalingConstraintSystem;
+use crate::journaling_constraint_system::JournalingConstraintSystemGeneric;
 use crate::runtime_constant::{RuntimeConstant, Substitutable};
 use powdr_number::ExpressionConvertible;
 
@@ -19,14 +19,15 @@ pub struct DegreeBound {
 
 /// Reduce variables in the constraint system by inlining them,
 /// as long as the resulting degree stays within `max_degree`.
+/// The degree is just the degree in the unknown variables, i.e.
+/// potential variables inside runtime constants do not count towards the degree.
 pub fn replace_constrained_witness_columns<
     T: RuntimeConstant + Display + Substitutable<V> + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    mut constraint_system: JournalingConstraintSystem<T, V>,
+    mut constraint_system: JournalingConstraintSystemGeneric<T, V>,
     degree_bound: DegreeBound,
-) -> JournalingConstraintSystem<T, V>
-{
+) -> JournalingConstraintSystemGeneric<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
     let constraint_count = constraint_system
@@ -75,20 +76,19 @@ pub fn replace_constrained_witness_columns<
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
 fn find_inlinable_variables<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq + Display>(
     constraint: &GroupedExpression<T, V>,
-) -> Vec<(V, GroupedExpression<T, V>)>
-{
+) -> Vec<(V, GroupedExpression<T, V>)> {
     let mut substitutions = vec![];
 
     let (_, linear, _) = constraint.components();
 
     for (target_var, _) in linear {
-        let Some(rhs_qse) = constraint.try_solve_for(target_var) else {
+        let Some(rhs_expr) = constraint.try_solve_for(target_var) else {
             continue;
         };
 
-        assert!(!rhs_qse.referenced_unknown_variables().contains(target_var));
+        assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
 
-        substitutions.push((target_var.clone(), rhs_qse));
+        substitutions.push((target_var.clone(), rhs_expr));
     }
 
     substitutions
@@ -100,71 +100,58 @@ fn is_valid_substitution<T: RuntimeConstant + Display + ExpressionConvertible<<T
     expr: &GroupedExpression<T, V>,
     constraint_system: &IndexedConstraintSystemGeneric<T, V>,
     degree_bound: DegreeBound,
-) -> bool
-{
-    let replacement_deg = qse_degree(expr);
+) -> bool {
+    let replacement_deg = expression_degree(expr);
 
     constraint_system
         .constraints_referencing_variables(std::iter::once(var.clone()))
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
+                let degree =
+                    expression_degree_with_virtual_substitution(identity, var, replacement_deg);
                 degree <= degree_bound.identities
             }
             ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
-                let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
+                let degree =
+                    expression_degree_with_virtual_substitution(expr, var, replacement_deg);
                 degree <= degree_bound.bus_interactions
             }),
         })
 }
 
-/// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
+/// Calculate the degree of a GroupedExpression assuming a variable is
 /// replaced by an expression of known degree.
-fn qse_degree_with_virtual_substitution<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
-    qse: &GroupedExpression<T, V>,
+fn expression_degree_with_virtual_substitution<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
+    expr: &GroupedExpression<T, V>,
     var: &V,
     replacement_deg: usize,
-) -> usize
-{
-    let (quadratic, linear, _) = qse.components();
+) -> usize {
+    let (quadratic, linear, _) = expr.components();
 
-    let quad_deg = quadratic
+    quadratic
         .iter()
         .map(|(l, r)| {
-            qse_degree_with_virtual_substitution(l, var, replacement_deg)
-                + qse_degree_with_virtual_substitution(r, var, replacement_deg)
+            expression_degree_with_virtual_substitution(l, var, replacement_deg)
+                + expression_degree_with_virtual_substitution(r, var, replacement_deg)
         })
+        .chain(linear.map(|(v, _)| if v == var { replacement_deg } else { 1 }))
         .max()
-        .unwrap_or(0);
-
-    let linear_deg = linear
-        .map(|(v, _)| if v == var { replacement_deg } else { 1 })
-        .max()
-        .unwrap_or(0);
-
-    quad_deg.max(linear_deg)
+        .unwrap_or(0)
 }
 
-/// Computes the degree of a QuadraticSymbolicExpression.
-fn qse_degree<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
-    qse: &GroupedExpression<T, V>,
-) -> usize
-{
-    let (quadratic, linear, _) = qse.components();
+/// Computes the degree of a GroupedExpression in the unknown variables.
+/// Variables inside runtime constants are ignored.
+fn expression_degree<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
+    expr: &GroupedExpression<T, V>,
+) -> usize {
+    let (quadratic, linear, _) = expr.components();
 
-    let quad_deg = quadratic
+    quadratic
         .iter()
-        .map(|(l, r)| qse_degree(l) + qse_degree(r))
+        .map(|(l, r)| expression_degree(l) + expression_degree(r))
+        .chain(linear.map(|_| 1))
         .max()
-        .unwrap_or(0);
-
-    let linear_deg = if linear.peekable().peek().is_some() {
-        1
-    } else {
-        0
-    };
-
-    quad_deg.max(linear_deg)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

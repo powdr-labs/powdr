@@ -310,9 +310,16 @@ mod tests {
     use powdr_constraint_solver::{
         grouped_expression::NoRangeConstraints,
         range_constraint::RangeConstraint,
-        test_utils::{constant, var},
     };
     use powdr_number::GoldilocksField;
+
+    fn constant(n: i32) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_number(GoldilocksField::from(n))
+    }
+
+    fn var(name: &'static str) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_unknown_variable(name)
+    }
 
     #[test]
     fn is_known_to_by_nonzero() {
