@@ -103,7 +103,8 @@ mod plonk;
 #[derive(Default)]
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
-    Cell(HashMap<u32, u32>),
+    /// max total columns
+    Cell(HashMap<u32, u32>, Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
     /// disable PGO
@@ -115,11 +116,18 @@ pub enum PgoConfig {
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed
-    Cell,
+    /// max total columns
+    Cell(Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction,
     /// disable PGO
     None,
+}
+
+impl Default for PgoType {
+    fn default() -> Self {
+        PgoType::Cell(None)
+    }
 }
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
@@ -398,7 +406,8 @@ pub fn compile_guest(
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
     let pgo_program_idx_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count) | PgoConfig::Instruction(pgo_program_idx_count) => {
+        PgoConfig::Cell(pgo_program_idx_count, _)
+        | PgoConfig::Instruction(pgo_program_idx_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
             pgo_program_idx_count
@@ -936,7 +945,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin,
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1006,7 +1015,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone()),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1230,7 +1239,7 @@ mod tests {
             31,
         );
         test_machine(
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             GUEST,
             GUEST_APC,
             GUEST_SKIP_PGO,
@@ -1307,7 +1316,7 @@ mod tests {
             1783,
         );
         test_machine(
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data,None),
             GUEST_KECCAK,
             GUEST_KECCAK_APC,
             GUEST_KECCAK_SKIP,

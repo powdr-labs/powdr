@@ -37,7 +37,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
 
     build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
         .unwrap()
-        .machine
+        .machine()
         .render(&bus_map)
 }
 
@@ -117,7 +117,6 @@ mod single_instruction_tests {
     fn single_loadw() {
         let program = [
             // Load [x2 + 20]_2 into x8
-            // Load [x2 + 20]_2 into x8
             loadw(8, 2, 20, 2, 1, 0),
         ];
         assert_machine_output(program.to_vec(), "single_loadw");
@@ -126,7 +125,6 @@ mod single_instruction_tests {
     #[test]
     fn single_loadbu() {
         let program = [
-            // Load [x2 + 21]_2 into x8
             // Load [x2 + 21]_2 into x8
             loadbu(8, 2, 21, 2, 1, 0),
         ];
@@ -250,6 +248,20 @@ mod single_instruction_tests {
         // Instruction 416 from the largest basic block of the Keccak guest program.
         let program = [srl(68, 40, 25, 0)];
         assert_machine_output(program.to_vec(), "single_srl");
+    }
+
+    #[test]
+    fn single_sll() {
+        // r68 = r40 << 3
+        let program = [sll(68, 40, 3, 0)];
+        assert_machine_output(program.to_vec(), "single_sll");
+    }
+
+    #[test]
+    fn single_sra() {
+        // r68 = sign_extend(r40 >> val(R3))
+        let program = [sra(68, 40, 3, 1)];
+        assert_machine_output(program.to_vec(), "single_sra");
     }
 }
 

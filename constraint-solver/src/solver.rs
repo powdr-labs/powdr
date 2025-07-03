@@ -3,8 +3,8 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
+use crate::grouped_expression::QuadraticSymbolicExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::solver::bus_interaction_variable_wrapper::{
     BusInteractionVariableWrapper, IntermediateAssignment, Variable,
@@ -12,7 +12,7 @@ use crate::solver::bus_interaction_variable_wrapper::{
 use crate::utils::known_variables;
 
 use super::effect::Effect;
-use super::quadratic_symbolic_expression::{Error as QseError, RangeConstraintProvider};
+use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -45,7 +45,7 @@ pub enum Error {
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: FieldElement, V, BusInterHandler> {
+pub struct Solver<T: FieldElement, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, Variable<V>>,
@@ -203,7 +203,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
 
     fn apply_effect(&mut self, effect: Effect<T, Variable<V>>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => self.apply_assignment(&v, &expr.into()),
+            Effect::Assignment(v, expr) => self.apply_assignment(
+                &v,
+                &QuadraticSymbolicExpression::from_runtime_constant(expr),
+            ),
             Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
@@ -223,7 +226,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display, BusInter: BusInterac
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.apply_assignment(variable, &value.into());
+                self.apply_assignment(variable, &QuadraticSymbolicExpression::from_number(value));
             } else {
                 // The range constraint was updated.
                 log::trace!("({variable}: {range_constraint})");

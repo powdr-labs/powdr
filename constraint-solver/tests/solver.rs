@@ -4,8 +4,8 @@ use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    grouped_expression::QuadraticSymbolicExpression,
     indexed_constraint_system::apply_substitutions,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
     range_constraint::RangeConstraint,
     solver::{Error, Solver},
     test_utils::{constant, var, Qse},
@@ -371,8 +371,8 @@ fn binary_flags() {
 fn ternary_flags() {
     // Implementing this logic in the OpenVM load/store chip:
     // https://github.com/openvm-org/openvm/blob/v1.2.0/extensions/rv32im/circuit/src/loadstore/core.rs#L110-L139
-    let two_inv = Qse::from(GoldilocksField::one() / GoldilocksField::from(2));
-    let neg_one = Qse::from(-GoldilocksField::one());
+    let two_inv = Qse::from_number(GoldilocksField::one() / GoldilocksField::from(2));
+    let neg_one = Qse::from_number(-GoldilocksField::one());
     let sum = var("flag0") + var("flag1") + var("flag2") + var("flag3");
     // The flags must be 0, 1, or 2, and their sum must be 1 or 2.
     // Given these constraints, there are 14 possible assignments. The following

@@ -10,7 +10,7 @@ use powdr_number::FieldElement;
 use crate::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
     effect::Effect,
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
 };
 
@@ -29,7 +29,7 @@ pub fn apply_substitutions<T: FieldElement, V: Hash + Eq + Clone + Ord>(
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone, Default)]
-pub struct IndexedConstraintSystem<T: FieldElement, V> {
+pub struct IndexedConstraintSystem<T: FieldElement, V: Clone + Eq> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
@@ -54,13 +54,15 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>>
     }
 }
 
-impl<T: FieldElement, V> From<IndexedConstraintSystem<T, V>> for ConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Eq> From<IndexedConstraintSystem<T, V>>
+    for ConstraintSystem<T, V>
+{
     fn from(indexed_constraint_system: IndexedConstraintSystem<T, V>) -> Self {
         indexed_constraint_system.constraint_system
     }
 }
 
-impl<T: FieldElement, V> IndexedConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     pub fn system(&self) -> &ConstraintSystem<T, V> {
         &self.constraint_system
     }
@@ -206,7 +208,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     pub fn constraints_referencing_variables<'a>(
         &'a self,
         variables: impl Iterator<Item = V> + 'a,
-    ) -> impl Iterator<Item = ConstraintRef<'a, T, V>> + 'a {
+    ) -> impl Iterator<Item = ConstraintRef<'a, SymbolicExpression<T, V>, V>> + 'a {
         variables
             .filter_map(|v| self.variable_occurrences.get(&v))
             .flatten()
@@ -241,7 +243,7 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> 
     ) {
         let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
         let field = bus_interaction.fields_mut().nth(field_index).unwrap();
-        *field = value.into();
+        *field = QuadraticSymbolicExpression::from_number(value);
     }
 
     /// Substitute an unknown variable by a QuadraticSymbolicExpression in the whole system.
@@ -417,7 +419,7 @@ fn substitute_by_unknown_in_item<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for IndexedConstraintSystem<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display + Hash> Display for IndexedConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.constraint_system)
     }
@@ -475,8 +477,7 @@ mod tests {
 
         s.substitute_by_unknown(
             &"z",
-            &(Qse::from_unknown_variable("x")
-                + Qse::from(SymbolicExpression::from(GoldilocksField::from(7)))),
+            &(Qse::from_unknown_variable("x") + Qse::from_number(GoldilocksField::from(7))),
         );
 
         assert_eq!(

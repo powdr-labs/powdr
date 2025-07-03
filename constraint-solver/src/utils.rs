@@ -5,7 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
-use crate::quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider};
+use crate::grouped_expression::{QuadraticSymbolicExpression, RangeConstraintProvider};
 use crate::symbolic_expression::SymbolicExpression;
 
 /// Returns the set of all known variables in a list of algebraic expressions.
