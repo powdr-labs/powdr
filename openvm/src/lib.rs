@@ -33,7 +33,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use strum::{Display, EnumString};
 
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -98,35 +97,29 @@ mod traits;
 
 mod plonk;
 
-/// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
-/// The inner HashMap contains number of time a pc is executed.
-#[derive(Default)]
-pub enum PgoConfig {
-    /// cost = cells saved per apc * times executed
-    /// max total columns
-    Cell(HashMap<u32, u32>, Option<usize>),
-    /// cost = instruction per apc * times executed
-    Instruction(HashMap<u32, u32>),
-    /// disable PGO
-    #[default]
-    None,
+pub struct ExecutionProfile {
+    /// Optionally, a map from pc_index to the number of times it was executed.
+    data: Option<HashMap<u32, u32>>,
 }
 
-#[derive(Copy, Clone, Debug, EnumString, Display)]
-#[strum(serialize_all = "lowercase")]
-pub enum PgoType {
-    /// cost = cells saved per apc * times executed
-    /// max total columns
-    Cell(Option<usize>),
-    /// cost = instruction per apc * times executed
-    Instruction,
-    /// disable PGO
-    None,
-}
+impl ExecutionProfile {
+    pub fn create(program: OriginalCompiledProgram, inputs: StdIn) -> ExecutionProfile {
+        // TODO: inline this function call and remove the function
+        execution_profile(program, inputs)
+    }
 
-impl Default for PgoType {
-    fn default() -> Self {
-        PgoType::Cell(None)
+    pub fn no_data() -> Self {
+        Self { data: None }
+    }
+
+    /// Get the execution count for a given pc_index.
+    /// In the absence of data, we arbitrarily return 1 for all indices, which is best effort.
+    pub fn get(&self, pc_index: &u32) -> u32 {
+        if let Some(data) = &self.data {
+            *data.get(pc_index).unwrap_or(&1)
+        } else {
+            1 // Default to 1 if no data is available
+        }
     }
 }
 
@@ -344,7 +337,7 @@ pub enum PrecompileImplementation {
 
 #[derive(Clone)]
 pub struct PowdrConfig {
-    /// Number of autoprecompiles to generate.
+    /// Maximum number of autoprecompiles to generate.
     pub autoprecompiles: u64,
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
@@ -353,6 +346,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
+    /// Maximum number of apc columns to create in total.
+    pub max_column_count: Option<usize>,
 }
 
 impl PowdrConfig {
@@ -365,6 +360,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
+            max_column_count: None,
         }
     }
 
@@ -391,41 +387,42 @@ impl PowdrConfig {
             ..self
         }
     }
+
+    pub fn with_max_column_count(self, max_column_count: Option<usize>) -> Self {
+        Self {
+            max_column_count,
+            ..self
+        }
+    }
 }
 
 pub fn compile_guest(
     guest: &str,
     guest_opts: GuestOptions,
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    execution_profile: ExecutionProfile,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
 
     // Optional tally of opcode freqency (only enabled for debug level logs)
     if tracing::enabled!(Level::DEBUG) {
-        tally_opcode_frequency(&pgo_config, &original_program.exe);
+        tally_opcode_frequency(&execution_profile, &original_program.exe);
     }
 
-    compile_exe(guest, guest_opts, original_program, config, pgo_config)
+    compile_exe(
+        guest,
+        guest_opts,
+        original_program,
+        config,
+        execution_profile,
+    )
 }
 
-fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
-    let pgo_program_idx_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _)
-        | PgoConfig::Instruction(pgo_program_idx_count) => {
-            // If execution count of each pc is available, we tally the opcode execution frequency
-            tracing::debug!("Opcode execution frequency:");
-            pgo_program_idx_count
-        }
-        PgoConfig::None => {
-            // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
-            tracing::debug!("Opcode frequency in program:");
-            // Create a dummy HashMap that returns 1 for each pc
-            &(0..exe.program.instructions_and_debug_infos.len())
-                .map(|i| (i as u32, 1))
-                .collect::<HashMap<_, _>>()
-        }
-    };
+fn tally_opcode_frequency(
+    execution_profile: &ExecutionProfile,
+    exe: &VmExe<OpenVmField<BabyBearField>>,
+) {
+    tracing::debug!("Opcode execution frequency:");
 
     exe.program
         .instructions_and_debug_infos
@@ -433,9 +430,8 @@ fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBe
         .enumerate()
         .fold(HashMap::new(), |mut acc, (i, instr)| {
             let opcode = instr.as_ref().unwrap().0.opcode;
-            if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
-                *acc.entry(opcode).or_insert(0) += count;
-            }
+            let count = execution_profile.get(&(i as u32));
+            *acc.entry(opcode).or_insert(0) += count;
             acc
         })
         .into_iter()
@@ -451,7 +447,7 @@ pub fn compile_exe(
     guest_opts: GuestOptions,
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    execution_profile: ExecutionProfile,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -469,7 +465,7 @@ pub fn compile_exe(
         original_program,
         &std::fs::read(elf_binary_path)?,
         config,
-        pgo_config,
+        execution_profile,
     )
 }
 
@@ -477,13 +473,13 @@ pub fn compile_exe_with_elf(
     original_program: OriginalCompiledProgram,
     elf: &[u8],
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    execution_profile: ExecutionProfile,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let compiled = customize(
         original_program,
         &powdr_riscv_elf::load_elf_from_buffer(elf).text_labels,
         config,
-        pgo_config,
+        execution_profile,
     );
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
@@ -664,14 +660,12 @@ pub fn execution_profile_from_guest(
     guest: &str,
     guest_opts: GuestOptions,
     inputs: StdIn,
-) -> HashMap<u32, u32> {
+) -> ExecutionProfile {
     let program = compile_openvm(guest, guest_opts).unwrap();
-    execution_profile(program, inputs)
+    ExecutionProfile::create(program, inputs)
 }
 
-// Produces execution count by pc_index
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
+fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> ExecutionProfile {
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
@@ -723,7 +717,9 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
         });
     }
 
-    pc_index_count
+    ExecutionProfile {
+        data: Some(pc_index_count),
+    }
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber
@@ -779,46 +775,35 @@ mod tests {
         mock: bool,
         recursion: bool,
         stdin: StdIn,
-        pgo_config: PgoConfig,
+        execution_profile: ExecutionProfile,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
+        let program =
+            compile_guest(guest, GuestOptions::default(), config, execution_profile).unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
-    fn prove_simple(
-        guest: &str,
-        config: PowdrConfig,
-        stdin: StdIn,
-        pgo_config: PgoConfig,
-        segment_height: Option<usize>,
-    ) {
+    fn prove_simple(guest: &str, config: PowdrConfig, stdin: StdIn, segment_height: Option<usize>) {
         let result = compile_and_prove(
             guest,
             config,
             false,
             false,
             stdin,
-            pgo_config,
+            ExecutionProfile::no_data(),
             segment_height,
         );
         assert!(result.is_ok());
     }
 
-    fn prove_mock(
-        guest: &str,
-        config: PowdrConfig,
-        stdin: StdIn,
-        pgo_config: PgoConfig,
-        segment_height: Option<usize>,
-    ) {
+    fn prove_mock(guest: &str, config: PowdrConfig, stdin: StdIn, segment_height: Option<usize>) {
         let result = compile_and_prove(
             guest,
             config,
             true,
             false,
             stdin,
-            pgo_config,
+            ExecutionProfile::no_data(),
             segment_height,
         );
         assert!(result.is_ok());
@@ -828,7 +813,7 @@ mod tests {
         guest: &str,
         config: PowdrConfig,
         stdin: StdIn,
-        pgo_config: PgoConfig,
+        execution_profile: ExecutionProfile,
         segment_height: Option<usize>,
     ) {
         let result = compile_and_prove(
@@ -837,7 +822,7 @@ mod tests {
             false,
             true,
             stdin,
-            pgo_config,
+            execution_profile,
             segment_height,
         );
         assert!(result.is_ok());
@@ -863,7 +848,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_simple(GUEST, config, stdin, PgoConfig::None, None);
+        prove_simple(GUEST, config, stdin, None);
     }
 
     #[test]
@@ -871,7 +856,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_mock(GUEST, config, stdin, PgoConfig::None, None);
+        prove_mock(GUEST, config, stdin, None);
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
@@ -881,7 +866,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST, config, stdin, PgoConfig::None, None);
+        prove_mock(GUEST, config, stdin, None);
     }
 
     #[test]
@@ -891,7 +876,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
-        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
+        prove_recursion(GUEST, config, stdin, pgo_data, None);
     }
 
     #[test]
@@ -899,7 +884,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_KECCAK, config, stdin, None);
     }
 
     #[test]
@@ -909,7 +894,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         // should create two segments
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
+        prove_simple(GUEST_KECCAK, config, stdin, Some(4_000));
     }
 
     #[test]
@@ -918,7 +903,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_KECCAK, config, stdin, None);
     }
 
     #[test]
@@ -930,21 +915,7 @@ mod tests {
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
-        prove_recursion(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data.clone()),
-            None,
-        );
-
-        prove_recursion(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin,
-            PgoConfig::Cell(pgo_data, None),
-            None,
-        );
+        prove_recursion(GUEST_KECCAK, config.clone(), stdin, pgo_data, None);
     }
 
     #[test]
@@ -956,13 +927,7 @@ mod tests {
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
-        prove_recursion(
-            GUEST_KECCAK,
-            config,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
+        prove_recursion(GUEST_KECCAK, config, stdin, pgo_data, None);
     }
 
     #[test]
@@ -971,7 +936,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        prove_mock(GUEST_KECCAK, config, stdin, None);
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
@@ -981,7 +946,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        prove_mock(GUEST_KECCAK, config, stdin, None);
     }
 
     #[test]
@@ -990,45 +955,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
-    }
-
-    // Create multiple APC for 10 Keccak iterations to test different PGO modes
-    #[test]
-    fn keccak_prove_multiple_pgo_modes() {
-        use std::time::Instant;
-        // Config
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
-
-        // Pgo data
-        let pgo_data =
-            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
-
-        // Pgo Cell mode
-        let start = Instant::now();
-        prove_simple(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!("Proving with PgoConfig::Instruction took {:?}", elapsed);
-
-        // Pgo Instruction mode
-        let start = Instant::now();
-        prove_simple(
-            GUEST_KECCAK,
-            config.clone(),
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!("Proving with PgoConfig::Cell took {:?}", elapsed);
+        prove_mock(GUEST_KECCAK, config, stdin, None);
     }
 
     // #[test]
@@ -1042,9 +969,9 @@ mod tests {
     // }
 
     // The following are compilation tests only
-    fn test_guest_machine(pgo_config: PgoConfig) {
+    fn test_guest_machine(execution_profile: ExecutionProfile) {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
+        let machines = compile_guest(GUEST, GuestOptions::default(), config, execution_profile)
             .unwrap()
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
@@ -1052,11 +979,16 @@ mod tests {
         assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
     }
 
-    fn test_keccak_machine(pgo_config: PgoConfig) {
+    fn test_keccak_machine(execution_profile: ExecutionProfile) {
         let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        let machines = compile_guest(GUEST_KECCAK, GuestOptions::default(), config, pgo_config)
-            .unwrap()
-            .powdr_airs_metrics();
+        let machines = compile_guest(
+            GUEST_KECCAK,
+            GuestOptions::default(),
+            config,
+            execution_profile,
+        )
+        .unwrap()
+        .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
@@ -1070,17 +1002,21 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
-        test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_guest_machine(PgoConfig::Cell(pgo_data, None));
+        test_guest_machine(pgo_data);
     }
 
     #[test]
     fn guest_machine_plonk() {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
-            .unwrap()
-            .powdr_airs_metrics();
+        let machines = compile_guest(
+            GUEST,
+            GuestOptions::default(),
+            config,
+            ExecutionProfile::no_data(),
+        )
+        .unwrap()
+        .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.width, 26);
@@ -1090,7 +1026,7 @@ mod tests {
 
     #[test]
     fn keccak_machine() {
-        test_keccak_machine(PgoConfig::None);
+        test_keccak_machine(ExecutionProfile::no_data());
     }
 
     #[test]
@@ -1098,7 +1034,6 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-        test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data, None));
+        test_keccak_machine(pgo_data);
     }
 }
