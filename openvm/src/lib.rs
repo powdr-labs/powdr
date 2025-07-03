@@ -104,7 +104,7 @@ mod plonk;
 pub enum PgoConfig {
     /// cost = cells saved per apc * times executed
     /// max total columns
-    Cell(HashMap<u32, u32>, Option<usize>),
+    Cell(HashMap<u32, u32>),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
     /// disable PGO
@@ -344,7 +344,7 @@ pub enum PrecompileImplementation {
 
 #[derive(Clone)]
 pub struct PowdrConfig {
-    /// Number of autoprecompiles to generate.
+    /// Maximum number of autoprecompiles to generate.
     pub autoprecompiles: u64,
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
@@ -353,6 +353,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
+    /// Maximum total number of columns wanted. Only Cell PGO will enforce this.
+    pub max_total_columns: Option<usize>,
 }
 
 impl PowdrConfig {
@@ -365,6 +367,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
+            max_total_columns: None,
         }
     }
 
@@ -391,6 +394,13 @@ impl PowdrConfig {
             ..self
         }
     }
+
+    pub fn with_max_total_columns(self, max_total_columns: Option<usize>) -> Self {
+        Self {
+            max_total_columns,
+            ..self
+        }
+    }
 }
 
 pub fn compile_guest(
@@ -411,8 +421,7 @@ pub fn compile_guest(
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
     let pgo_program_idx_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _)
-        | PgoConfig::Instruction(pgo_program_idx_count) => {
+        PgoConfig::Cell(pgo_program_idx_count) | PgoConfig::Instruction(pgo_program_idx_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
             pgo_program_idx_count
@@ -942,7 +951,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoConfig::Cell(pgo_data),
             None,
         );
     }
@@ -1012,7 +1021,7 @@ mod tests {
             GUEST_KECCAK,
             config.clone(),
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoConfig::Cell(pgo_data.clone()),
             None,
         );
         let elapsed = start.elapsed();
@@ -1071,7 +1080,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
         test_guest_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_guest_machine(PgoConfig::Cell(pgo_data, None));
+        test_guest_machine(PgoConfig::Cell(pgo_data));
     }
 
     #[test]
@@ -1099,6 +1108,6 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_keccak_machine(PgoConfig::Instruction(pgo_data.clone()));
-        test_keccak_machine(PgoConfig::Cell(pgo_data, None));
+        test_keccak_machine(PgoConfig::Cell(pgo_data));
     }
 }

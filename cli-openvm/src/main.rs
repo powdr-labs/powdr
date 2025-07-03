@@ -116,8 +116,9 @@ fn run_command(command: Commands) {
             max_columns,
             input,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
+            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64)
+                .with_max_total_columns(max_columns);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
@@ -131,8 +132,9 @@ fn run_command(command: Commands) {
             max_columns,
             input,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
+            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64)
+                .with_max_total_columns(max_columns);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
@@ -149,8 +151,9 @@ fn run_command(command: Commands) {
             input,
             metrics,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
+            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64)
+                .with_max_total_columns(max_columns);
+            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             let prove =
@@ -187,7 +190,6 @@ fn pgo_config(
     guest: String,
     guest_opts: GuestOptions,
     pgo: PgoType,
-    max_columns: Option<usize>,
     input: Option<u32>,
 ) -> PgoConfig {
     match pgo {
@@ -201,7 +203,7 @@ fn pgo_config(
                 cli_max_columns.is_none(),
                 "cli --pgo can't parse Cell(Option<usize>), input must be wrong"
             );
-            PgoConfig::Cell(pc_idx_count, max_columns)
+            PgoConfig::Cell(pc_idx_count)
         }
         PgoType::Instruction => {
             let pc_idx_count = powdr_openvm::execution_profile_from_guest(
