@@ -40,7 +40,7 @@ where
 }
 
 /// The result of the solving process.
-pub struct SolveResult<T: FieldElement, V> {
+pub struct SolveResult<T, V> {
     /// The concrete variable assignments that were derived.
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
@@ -76,7 +76,7 @@ struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     range_constraints: RangeConstraints<T::FieldType, V>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
-    assignments: Vec<VariableAssignment<T::FieldType, V>>,
+    assignments: Vec<VariableAssignment<T, V>>,
 }
 
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
@@ -121,7 +121,7 @@ where
 
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
-    pub fn solve(mut self) -> Result<SolveResult<T::FieldType, V>, Error> {
+    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
         Ok(SolveResult {
             assignments: self.assignments,
@@ -221,10 +221,9 @@ where
 
     fn apply_effect(&mut self, effect: EffectImpl<T, V>) -> bool {
         match effect {
-            EffectImpl::Assignment(v, expr) => self.apply_assignment(
-                &v,
-                &QuadraticSymbolicExpression::from_runtime_constant(expr),
-            ),
+            EffectImpl::Assignment(v, expr) => {
+                self.apply_assignment(&v, &GroupedExpression::from_runtime_constant(expr))
+            }
             EffectImpl::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
@@ -244,7 +243,7 @@ where
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
-                self.apply_assignment(variable, &QuadraticSymbolicExpression::from_number(value));
+                self.apply_assignment(variable, &GroupedExpression::from_number(value));
             } else {
                 // The range constraint was updated.
                 log::trace!("({variable}: {range_constraint})");
