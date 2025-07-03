@@ -13,7 +13,7 @@ pub type ConstraintSystem<T, V> = ConstraintSystemGeneric<SymbolicExpression<T, 
 
 /// Description of a constraint system.
 #[derive(Clone)]
-pub struct ConstraintSystemGeneric<T: RuntimeConstant, V> {
+pub struct ConstraintSystemGeneric<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
@@ -21,7 +21,7 @@ pub struct ConstraintSystemGeneric<T: RuntimeConstant, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
 }
 
-impl<T: RuntimeConstant, V> Default for ConstraintSystemGeneric<T, V> {
+impl<T, V> Default for ConstraintSystemGeneric<T, V> {
     fn default() -> Self {
         ConstraintSystemGeneric {
             algebraic_constraints: Vec::new(),
