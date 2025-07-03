@@ -130,6 +130,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
+    let start = std::time::Instant::now();
     let blocks_with_apcs = generate_apcs_with_pgo(
         blocks,
         &airs,
@@ -138,6 +139,7 @@ pub fn customize(
         &original_config,
         pgo_config,
     );
+    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
@@ -405,6 +407,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         "Generating autoprecompile for block at index {}",
         block.start_idx
     );
+    let start = std::time::Instant::now();
     let program = block
         .statements
         .iter()
@@ -426,6 +429,11 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     };
 
     let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
+    let labels = [
+        ("start_idx", block.start_idx.to_string()),
+        ("apc_opcode", apc_opcode.to_string()),
+    ];
+    metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     // Check that substitution values are unique over all instructions
     assert!(apc.subs().iter().flatten().all_unique());
@@ -581,8 +589,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         );
 
         c.block_with_apc
-    })
-    .collect()
+    }).collect()
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(

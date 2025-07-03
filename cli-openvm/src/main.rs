@@ -58,6 +58,9 @@ enum Commands {
 
         #[arg(long)]
         input: Option<u32>,
+
+        #[arg(long)]
+        metrics: Option<PathBuf>,
     },
 
     Prove {
@@ -130,12 +133,24 @@ fn run_command(command: Commands) {
             pgo,
             max_columns,
             input,
+            metrics,
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
-            powdr_openvm::execute(program, stdin_from(input)).unwrap();
+            let compile_and_exec = || {
+                let program =
+                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
+                        .unwrap();
+                powdr_openvm::execute(program, stdin_from(input)).unwrap();
+            };
+            if let Some(metrics_path) = metrics {
+                run_with_metric_collection_to_file(
+                    std::fs::File::create(metrics_path).expect("Failed to create metrics file"),
+                    compile_and_exec,
+                );
+            } else {
+                compile_and_exec()
+            }
         }
 
         Commands::Prove {
@@ -151,17 +166,19 @@ fn run_command(command: Commands) {
         } => {
             let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
-            let prove =
-                || powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
+            let compile_and_prove = || {
+                let program =
+                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
+                        .unwrap();
+                powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap()
+            };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(
                     std::fs::File::create(metrics_path).expect("Failed to create metrics file"),
-                    prove,
+                    compile_and_prove,
                 );
             } else {
-                prove()
+                compile_and_prove()
             }
         }
     }
