@@ -1096,7 +1096,7 @@ mod tests {
             GUEST_SHA256,
             config.clone(),
             stdin,
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1171,7 +1171,7 @@ mod tests {
             GUEST_SHA256,
             config.clone(),
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone()),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1264,7 +1264,7 @@ mod tests {
             31,
         );
         test_machine(
-            PgoConfig::Cell(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             GUEST_SHA256,
             GUEST_SHA256_APC_PGO,
             GUEST_SHA256_SKIP,
@@ -1316,7 +1316,7 @@ mod tests {
             1783,
         );
         test_machine(
-            PgoConfig::Cell(pgo_data,None),
+            PgoConfig::Cell(pgo_data, None),
             GUEST_KECCAK,
             GUEST_KECCAK_APC,
             GUEST_KECCAK_SKIP,
