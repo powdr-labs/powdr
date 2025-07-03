@@ -889,6 +889,14 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too long"]
+    fn matmul_compile() {
+        let guest = "guest-matmul";
+        let config = PowdrConfig::new(1, 0);
+        assert!(compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok());
+    }
+
+    #[test]
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
