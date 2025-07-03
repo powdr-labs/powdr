@@ -121,7 +121,7 @@ where
             .into_iter()
             .filter_map(|(v, expr)| match (v, expr.try_to_number()) {
                 (Variable::BusInteractionField(bus_index, field_index), Some(value)) => {
-                    Some(((bus_index, field_index), T::from(value)))
+                    Some(((bus_index, field_index), value))
                 }
                 _ => None,
             })

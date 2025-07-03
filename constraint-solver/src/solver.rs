@@ -47,13 +47,13 @@ where
 }
 
 /// The result of the solving process.
-pub struct SolveResult<T, V> {
+pub struct SolveResult<T: RuntimeConstant, V> {
     /// The concrete variable assignments that were derived.
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
     pub assignments: Vec<VariableAssignment<T, V>>,
     /// Maps a (bus interaction index, field index) to a concrete value.
-    pub bus_field_assignments: BTreeMap<(usize, usize), T>,
+    pub bus_field_assignments: BTreeMap<(usize, usize), T::FieldType>,
 }
 
 /// An error occurred while solving the constraint system.
