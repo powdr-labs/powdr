@@ -1,10 +1,14 @@
 use itertools::Itertools;
+use powdr_number::ExpressionConvertible;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 use crate::constraint_system::BusInteractionHandler;
 use crate::grouped_expression::RangeConstraintProvider;
-use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
+use crate::runtime_constant::ReferencedSymbols;
+use crate::runtime_constant::RuntimeConstant;
+use crate::runtime_constant::Substitutable;
 use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,11 +27,18 @@ const MAX_VAR_RANGE_WIDTH: u64 = 5;
 /// assignments, it tries them all and returns any unique assignments.
 /// Returns an error if there are any contradictions between those assignments, or if no
 /// assignment satisfies the constraint system for any group of variables.
-pub fn get_unique_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    rc: impl RangeConstraintProvider<T, V> + Clone,
-    bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Result<BTreeMap<V, T>, Error> {
+pub fn get_unique_assignments<T, V: Clone + Hash + Ord + Eq + Display>(
+    constraint_system: &IndexedConstraintSystemGeneric<T, V>,
+    rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
+    bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
+) -> Result<BTreeMap<V, T::FieldType>, Error>
+where
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Substitutable<V>
+        + ExpressionConvertible<T::FieldType, V>
+        + Display,
+{
     log::debug!("Starting exhaustive search with maximum width {MAX_SEARCH_WIDTH}");
     let variable_sets = get_brute_force_candidates(constraint_system, rc.clone()).collect_vec();
 
@@ -82,12 +93,19 @@ pub fn get_unique_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Disp
 /// lead to a contradiction), it returns that assignment.
 /// If multiple assignments satisfy the constraint system, it returns `None`.
 /// Returns an error if all assignments are contradictory.
-fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
+fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
+    constraint_system: &IndexedConstraintSystemGeneric<T, V>,
     variables: &BTreeSet<V>,
-    rc: impl RangeConstraintProvider<T, V> + Clone,
-    bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Result<Option<BTreeMap<V, T>>, Error> {
+    rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
+    bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
+) -> Result<Option<BTreeMap<V, T::FieldType>>, Error>
+where
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Substitutable<V>
+        + ExpressionConvertible<T::FieldType, V>
+        + Display,
+{
     let mut assignments =
         get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
             constraint_system
@@ -116,9 +134,13 @@ fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + 
 /// Returns all unique sets of variables that appear together in an identity
 /// (either in an algebraic constraint or in the same field of a bus interaction),
 /// IF the number of possible assignments is less than `MAX_SEARCH_WIDTH`.
-fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
-    constraint_system: &'a IndexedConstraintSystem<T, V>,
-    rc: impl RangeConstraintProvider<T, V> + Clone + 'a,
+fn get_brute_force_candidates<
+    'a,
+    T: RuntimeConstant + ReferencedSymbols<V>,
+    V: Clone + Hash + Ord,
+>(
+    constraint_system: &'a IndexedConstraintSystemGeneric<T, V>,
+    rc: impl RangeConstraintProvider<T::FieldType, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
     constraint_system
         .expressions()
