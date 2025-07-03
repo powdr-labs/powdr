@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    constraint_system::{
+        BusInteraction, BusInteractionHandler, ConstraintSystem, ConstraintSystemGeneric,
+    },
     grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     journaling_constraint_system::JournalingConstraintSystem,
 };
@@ -11,9 +13,7 @@ use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     expression::{AlgebraicExpression, AlgebraicReference},
-    expression_conversion::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-    },
+    expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
@@ -208,12 +208,12 @@ pub fn optimize_exec_bus<T: FieldElement>(
 
 fn symbolic_machine_to_constraint_system<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-) -> ConstraintSystem<P, AlgebraicReference> {
-    ConstraintSystem {
+) -> ConstraintSystemGeneric<P, AlgebraicReference> {
+    ConstraintSystemGeneric {
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
-            .map(|constraint| algebraic_to_quadratic_symbolic_expression(&constraint.expr))
+            .map(|constraint| algebraic_to_grouped_expression(&constraint.expr))
             .collect(),
         bus_interactions: symbolic_machine
             .bus_interactions
@@ -224,14 +224,14 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
 }
 
 fn constraint_system_to_symbolic_machine<P: FieldElement>(
-    constraint_system: ConstraintSystem<P, AlgebraicReference>,
+    constraint_system: ConstraintSystemGeneric<P, AlgebraicReference>,
 ) -> SymbolicMachine<P> {
     SymbolicMachine {
         constraints: constraint_system
             .algebraic_constraints
             .iter()
             .map(|constraint| SymbolicConstraint {
-                expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(constraint)),
+                expr: simplify_expression(grouped_expression_to_algebraic(constraint)),
             })
             .collect(),
         bus_interactions: constraint_system
@@ -250,9 +250,9 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
         payload: bus_interaction
             .args
             .iter()
-            .map(|arg| algebraic_to_quadratic_symbolic_expression(arg))
+            .map(|arg| algebraic_to_grouped_expression(arg))
             .collect(),
-        multiplicity: algebraic_to_quadratic_symbolic_expression(&bus_interaction.mult),
+        multiplicity: algebraic_to_grouped_expression(&bus_interaction.mult),
     }
 }
 
@@ -273,14 +273,14 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         args: bus_interaction
             .payload
             .into_iter()
-            .map(|arg| simplify_expression(quadratic_symbolic_expression_to_algebraic(&arg)))
+            .map(|arg| simplify_expression(grouped_expression_to_algebraic(&arg)))
             .collect(),
-        mult: simplify_expression(quadratic_symbolic_expression_to_algebraic(
+        mult: simplify_expression(grouped_expression_to_algebraic(
             &bus_interaction.multiplicity,
         )),
     }
 }
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
+    grouped_expression_to_algebraic(&algebraic_to_grouped_expression(&e))
 }
