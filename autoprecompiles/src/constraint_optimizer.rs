@@ -63,9 +63,9 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: JournalingConstraintSystemGeneric<T, V>,
     _bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<JournalingConstraintSystemGeneric<T, V>, Error> {
-    // TODO: The constraint solver currently requires SymbolicExpression.
-    // Skip solver-based optimization until the solver is refactored to work with generic types.
-    log::info!("Skipping solver-based optimization (constraint solver needs refactoring to avoid SymbolicExpression)");
+    // TODO: Implement proper conversion to work with the solver
+    // For now, skip solver-based optimization to avoid SymbolicExpression dependency
+    log::info!("Skipping solver-based optimization (needs conversion implementation)");
     Ok(constraint_system)
 }
 
