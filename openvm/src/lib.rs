@@ -290,15 +290,6 @@ pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
-    // wrap the sdk config (with the standard extensions) in our custom config (with our custom extension)
-    let sdk_vm_config = SdkVmConfig::builder()
-        .system(Default::default())
-        .rv32i(Default::default())
-        .rv32m(Default::default())
-        .io(Default::default())
-        .keccak(Default::default())
-        .build();
-
     let sdk = Sdk::default();
 
     // Build the ELF with guest options and a target filter.
@@ -310,6 +301,21 @@ pub fn compile_openvm(
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).to_path_buf();
     path.push(guest);
     let target_path = path.to_str().unwrap();
+
+    // try to load the sdk config from the openvm.toml file, otherwise use the default
+    let openvm_toml_path = path.join("openvm.toml");
+    let sdk_vm_config = if openvm_toml_path.exists() {
+        let toml = std::fs::read_to_string(&openvm_toml_path)?;
+        let app_config: AppConfig<_> = toml::from_str(&toml)?;
+        app_config.app_vm_config
+    } else {
+        SdkVmConfig::builder()
+            .system(Default::default())
+            .rv32i(Default::default())
+            .rv32m(Default::default())
+            .io(Default::default())
+            .build()
+    };
 
     let elf = sdk.build(
         guest_opts,
@@ -688,7 +694,7 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     });
 
     // collect the pc's during execution
-    let pc = collected.lock().unwrap().clone();
+    let pc = collected.lock().unwrap();
 
     // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
     let pc_base = exe.program.pc_base;
