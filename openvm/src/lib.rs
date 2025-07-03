@@ -104,60 +104,8 @@ pub struct ExecutionProfile {
 
 impl ExecutionProfile {
     pub fn create(program: OriginalCompiledProgram, inputs: StdIn) -> ExecutionProfile {
-        let OriginalCompiledProgram { exe, sdk_vm_config } = program;
-
-        // in memory collector storage
-        let collected = Arc::new(Mutex::new(Vec::new()));
-        let collector_layer = PgoCollector {
-            pc: collected.clone(),
-        };
-
-        // build subscriber
-        let subscriber = Registry::default().with(collector_layer);
-
-        // prepare for execute
-        let sdk = Sdk::default();
-
-        // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
-        let dispatch = Dispatch::new(subscriber);
-        tracing::dispatcher::with_default(&dispatch, || {
-            sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
-                .unwrap();
-        });
-
-        // collect the pc's during execution
-        let pc = collected.lock().unwrap();
-
-        // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
-        let pc_base = exe.program.pc_base;
-        let step = exe.program.step;
-        let pc_index_count = pc
-            .iter()
-            .fold(std::collections::HashMap::new(), |mut acc, pc| {
-                let pc_index = (*pc as u32 - pc_base) / step;
-                *acc.entry(pc_index).or_insert(0u32) += 1;
-                acc
-            });
-
-        // the smallest pc is the same as the base_pc if there's no stdin
-        let pc_min = pc.iter().min().unwrap();
-        tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
-
-        // print the total and by pc counts
-        tracing::debug!("Pgo captured {} pc's", pc.len());
-
-        if tracing::enabled!(Level::DEBUG) {
-            // print pc_index map in descending order of pc_index count
-            let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-            pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-            pc_index_count_sorted.iter().for_each(|(pc, count)| {
-                tracing::debug!("pc_index {}: {}", pc, count);
-            });
-        }
-
-        Self {
-            data: Some(pc_index_count),
-        }
+        // TODO: inline this function call and remove the function
+        execution_profile(program, inputs)
     }
 
     pub fn no_data() -> Self {
@@ -709,6 +657,63 @@ pub fn execution_profile_from_guest(
 ) -> ExecutionProfile {
     let program = compile_openvm(guest, guest_opts).unwrap();
     ExecutionProfile::create(program, inputs)
+}
+
+fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> ExecutionProfile {
+    let OriginalCompiledProgram { exe, sdk_vm_config } = program;
+
+    // in memory collector storage
+    let collected = Arc::new(Mutex::new(Vec::new()));
+    let collector_layer = PgoCollector {
+        pc: collected.clone(),
+    };
+
+    // build subscriber
+    let subscriber = Registry::default().with(collector_layer);
+
+    // prepare for execute
+    let sdk = Sdk::default();
+
+    // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
+    let dispatch = Dispatch::new(subscriber);
+    tracing::dispatcher::with_default(&dispatch, || {
+        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
+            .unwrap();
+    });
+
+    // collect the pc's during execution
+    let pc = collected.lock().unwrap();
+
+    // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
+    let pc_base = exe.program.pc_base;
+    let step = exe.program.step;
+    let pc_index_count = pc
+        .iter()
+        .fold(std::collections::HashMap::new(), |mut acc, pc| {
+            let pc_index = (*pc as u32 - pc_base) / step;
+            *acc.entry(pc_index).or_insert(0u32) += 1;
+            acc
+        });
+
+    // the smallest pc is the same as the base_pc if there's no stdin
+    let pc_min = pc.iter().min().unwrap();
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+
+    // print the total and by pc counts
+    tracing::debug!("Pgo captured {} pc's", pc.len());
+
+    if tracing::enabled!(Level::DEBUG) {
+        // print pc_index map in descending order of pc_index count
+        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
+        pc_index_count_sorted.iter().for_each(|(pc, count)| {
+            tracing::debug!("pc_index {}: {}", pc, count);
+        });
+    }
+
+    ExecutionProfile {
+        data: Some(pc_index_count),
+    }
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber

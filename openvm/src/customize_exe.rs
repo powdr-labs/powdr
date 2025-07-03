@@ -67,6 +67,7 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     original_config: &OriginalVmConfig,
     execution_profile: ExecutionProfile,
 ) -> Vec<BlockWithApc<P>> {
+    // TODO: inline this function call
     let res = create_apcs_with_cell_pgo(
         blocks,
         execution_profile,

@@ -109,7 +109,8 @@ fn run_command(command: Commands) {
                 .with_max_column_count(max_columns);
             let execution_profile = execution_profile(guest.clone(), guest_opts.clone(), input);
             let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, execution_profile).unwrap();
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, execution_profile)
+                    .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -124,7 +125,8 @@ fn run_command(command: Commands) {
                 .with_max_column_count(max_columns);
             let execution_profile = execution_profile(guest.clone(), guest_opts.clone(), input);
             let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, execution_profile).unwrap();
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, execution_profile)
+                    .unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
         }
 
@@ -142,7 +144,8 @@ fn run_command(command: Commands) {
                 .with_max_column_count(max_columns);
             let execution_profile = execution_profile(guest.clone(), guest_opts.clone(), input);
             let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, execution_profile).unwrap();
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, execution_profile)
+                    .unwrap();
             let prove =
                 || powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
             if let Some(metrics_path) = metrics {
@@ -173,7 +176,11 @@ fn stdin_from(input: Option<u32>) -> StdIn {
     s
 }
 
-fn execution_profile(guest: String, guest_opts: GuestOptions, input: Option<u32>) -> ExecutionProfile {
+fn execution_profile(
+    guest: String,
+    guest_opts: GuestOptions,
+    input: Option<u32>,
+) -> ExecutionProfile {
     powdr_openvm::execution_profile_from_guest(&guest, guest_opts.clone(), stdin_from(input))
 }
 
