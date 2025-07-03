@@ -5,7 +5,7 @@ use crate::constraint_system::{
 };
 use crate::effect::EffectImpl;
 use crate::grouped_expression::GroupedExpression;
-use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
@@ -76,7 +76,7 @@ pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: IndexedConstraintSystemGeneric<T, V>,
+    constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: BusInterHandler,
     /// The currently known range constraints of the variables.
@@ -96,7 +96,7 @@ impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Dis
         );
 
         Solver {
-            constraint_system: IndexedConstraintSystemGeneric::from(constraint_system),
+            constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Default::default(),
             assignments: Default::default(),

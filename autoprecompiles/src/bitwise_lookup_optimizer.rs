@@ -4,20 +4,20 @@ use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::grouped_expression::QuadraticSymbolicExpression;
+use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystemGeneric};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
-    mut system: ConstraintSystem<T, V>,
+    mut system: ConstraintSystemGeneric<T, V>,
     bitwise_lookup_bus_id: u64,
-) -> ConstraintSystem<T, V> {
+) -> ConstraintSystemGeneric<T, V> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
-    let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = vec![];
+    let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
     system.bus_interactions.retain(|bus_int| {
         if !is_simple_multiplicity_bitwise_bus_interaction(bus_int, bitwise_lookup_bus_id) {
             return true;
@@ -87,7 +87,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     }
     for (x, y) in to_byte_constrain.into_iter().tuples() {
         system.bus_interactions.push(BusInteraction {
-            bus_id: QuadraticSymbolicExpression::from_number(T::from(bitwise_lookup_bus_id)),
+            bus_id: GroupedExpression::from_number(T::from(bitwise_lookup_bus_id)),
             payload: vec![x.clone(), y.clone(), Zero::zero(), Zero::zero()],
             multiplicity: One::one(),
         });
@@ -97,19 +97,19 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
 }
 
 fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Hash + Eq + Ord>(
-    bus_int: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
+    bus_int: &BusInteraction<GroupedExpression<T, V>>,
     bitwise_lookup_bus_id: u64,
 ) -> bool {
-    bus_int.bus_id == QuadraticSymbolicExpression::from_number(T::from(bitwise_lookup_bus_id))
+    bus_int.bus_id == GroupedExpression::from_number(T::from(bitwise_lookup_bus_id))
         && bus_int.multiplicity.is_one()
 }
 
 /// Returns all expressions that are byte-constrained in the machine.
 /// The list does not have to be exhaustive.
 fn all_byte_constrained_expressions<T: FieldElement, V: Clone + Ord + Hash>(
-    machine: &ConstraintSystem<T, V>,
+    machine: &ConstraintSystemGeneric<T, V>,
     bitwise_lookup_bus_id: u64,
-) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+) -> impl Iterator<Item = &GroupedExpression<T, V>> {
     machine
         .bus_interactions
         .iter()
