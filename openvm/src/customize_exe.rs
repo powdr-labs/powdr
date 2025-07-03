@@ -2,9 +2,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use std::sync::Arc;
 
-use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::powdr_extension::PowdrStackedPrecompile;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
 use crate::OpenVmField;
@@ -88,10 +88,17 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
             bus_map,
             strict_is_valid_guards,
         ),
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map, strict_is_valid_guards)
+        PgoConfig::Instruction(pgo_program_idx_count) => create_apcs_with_instruction_pgo(
+            blocks,
+            pgo_program_idx_count,
+            airs,
+            config,
+            bus_map,
+            strict_is_valid_guards,
+        ),
+        PgoConfig::None => {
+            create_apcs_with_no_pgo(blocks, airs, config, bus_map, strict_is_valid_guards)
         }
-        PgoConfig::None => create_apcs_with_no_pgo(blocks, airs, config, bus_map, strict_is_valid_guards),
     };
 
     assert!(res.len() <= config.autoprecompiles as usize);
@@ -446,7 +453,13 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_map: bus_map.clone(),
     };
 
-    let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32, strict_is_valid_guards)?;
+    let apc = powdr_autoprecompiles::build(
+        program,
+        vm_config,
+        degree_bound,
+        apc_opcode as u32,
+        strict_is_valid_guards,
+    )?;
 
     // Check that substitution values are unique over all instructions
     assert!(apc.subs().iter().flatten().all_unique());
