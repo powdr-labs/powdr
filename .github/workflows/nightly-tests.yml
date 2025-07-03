@@ -155,48 +155,49 @@ jobs:
       - name: Remove old results if present
         run: |
           rm -rf results
+          mkdir -p results
 
-      - name: Run guest benchmarks
-        run: |
-          source .venv/bin/activate
-          bash ./openvm/scripts/run_guest_benches.sh
+      # - name: Run guest benchmarks
+      #   run: |
+      #     source .venv/bin/activate
+      #     bash ./openvm/scripts/run_guest_benches.sh
 
-      - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
-        with:
-          repository: powdr-labs/openvm-reth-benchmark
-          ref: main
-          path: openvm-reth-benchmark
+      # - name: Checkout openvm-reth-benchmark
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: powdr-labs/openvm-reth-benchmark
+      #     ref: main
+      #     path: openvm-reth-benchmark
 
-      - name: Patch openvm-reth-benchmark to use local powdr
-        run: |
-          cd openvm-reth-benchmark
-          mkdir -p .cargo
-          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
-          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
-          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
-          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
-          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+      # - name: Patch openvm-reth-benchmark to use local powdr
+      #   run: |
+      #     cd openvm-reth-benchmark
+      #     mkdir -p .cargo
+      #     echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+      #     echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+      #     echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+      #     echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+      #     echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
 
-      - name: Run small execution test with APCs
-        run: |
-          source .venv/bin/activate
-          cd openvm-reth-benchmark
-          RES_DIR=reth
-          mkdir -p $RES_DIR
-          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+      # - name: Run reth benchmark
+      #   run: |
+      #     source .venv/bin/activate
+      #     cd openvm-reth-benchmark
+      #     RES_DIR=reth
+      #     mkdir -p $RES_DIR
+      #     echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # prove with no APCs
-          MODE="prove-stark" APC=0 ./run.sh
-          mv metrics.json $RES_DIR/noapc.json
-          # prove with 100 APCs, recording mem usage
-          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
-          mv metrics.json $RES_DIR/100apc.json
+      #     # prove with no APCs
+      #     MODE="prove-stark" APC=0 ./run.sh
+      #     mv metrics.json $RES_DIR/noapc.json
+      #     # prove with 100 APCs, recording mem usage
+      #     MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+      #     mv metrics.json $RES_DIR/100apc.json
 
-          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic.csv
-          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
+      #     python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic.csv
+      #     python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
 
-          mv $RES_DIR ../results/
+      #     mv $RES_DIR ../results/
 
       - name: Save revisions and run info
         run: |
@@ -210,3 +211,17 @@ jobs:
           name: bench-results
           path: |
             results/*
+
+      - name: get the date/time
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: commit to bench results
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          external_repository: powdr-labs/bench-results
+          publish_dir: ./results
+          destination_dir: results/${{ steps.date.outputs.value }}/
+          keep_files: true
+          enable_jekyll: true
