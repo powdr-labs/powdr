@@ -73,10 +73,9 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, max_total_columns) => create_apcs_with_cell_pgo(
+        PgoConfig::Cell(pgo_program_idx_count) => create_apcs_with_cell_pgo(
             blocks,
             pgo_program_idx_count,
-            max_total_columns,
             airs,
             config,
             original_config,
@@ -458,7 +457,6 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
-    max_total_columns: Option<usize>,
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
@@ -519,7 +517,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         }
     }
 
-    let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
+    let max_total_apc_columns = config.max_total_columns.map(|max_total_columns| {
         let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
         let total_non_apc_columns = chip_inventory_air_widths
             .iter()
