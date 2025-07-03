@@ -36,12 +36,12 @@ run_bench() {
     pushd "$dir"
     # prove with manual precompile if given
     if [ -n "$guest_manual" ]; then
-        cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json
+        cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
     fi
     # prove with no APCs
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json
+    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion
     # proving with APCs and record memory usage
-    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json"
+    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion"
     # process results
     basic_metrics
     plot_cells ${apcs}apc.json
