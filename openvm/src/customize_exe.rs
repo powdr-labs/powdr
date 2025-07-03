@@ -67,123 +67,14 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     original_config: &OriginalVmConfig,
     execution_profile: ExecutionProfile,
 ) -> Vec<BlockWithApc<P>> {
-    // store air width by opcode, so that we don't repetitively calculate them later
-    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode();
-
-    // we are only interested in the top `config.autoprecompiles + config.skip_autoprecompiles` blocks
-    let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-
-    tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
+    let res = create_apcs_with_cell_pgo(
+        blocks,
+        execution_profile,
+        airs,
+        config,
+        original_config,
+        bus_map,
     );
-
-    // Store all the necessary information to compare APC candidates.
-    struct ApcCandidate<P: IntoOpenVm> {
-        block_with_apc: BlockWithApc<P>,
-        execution_frequency: usize,
-        cells_saved_per_row: usize,
-        width: usize,
-    }
-
-    // Define the cost and value of an APC candidate.
-    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
-        fn cost(&self) -> usize {
-            self.width
-        }
-
-        fn value(&self) -> usize {
-            // For an APC which is called once and saves 1 cell, this would be 1.
-            let value = self
-                .execution_frequency
-                .checked_mul(self.cells_saved_per_row)
-                .unwrap();
-            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-            // Therefore, we scale it up by a constant factor.
-            value.checked_mul(1000).unwrap()
-        }
-
-        fn tie_breaker(&self) -> usize {
-            self.block_with_apc.opcode
-        }
-    }
-
-    // The maximum number of apc columns we can introduce
-    let max_total_apc_columns = config.max_column_count.map(|max_total_columns| {
-        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
-        let total_non_apc_columns = chip_inventory_air_widths
-            .iter()
-            .map(|(air_name, width)| {
-                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
-                width
-            })
-            .sum::<usize>();
-        max_total_columns - total_non_apc_columns
-    });
-
-    // Find the best candidates
-    let res = fractional_knapsack(
-        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            // skip empty blocks
-            if block.statements.is_empty() {
-                return None;
-            }
-
-            // skip blocks that are never called
-            if execution_profile.get(&(block.start_idx as u32)) == 0 {
-                return None;
-            }
-
-            // try to create apc for a candidate block
-            let apc = generate_autoprecompile(
-                &block,
-                airs,
-                POWDR_OPCODE + i,
-                bus_map,
-                config.degree_bound,
-            )
-            .ok()?; // if apc creation fails, filter out this candidate block
-
-            // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width();
-            let orig_cells_per_row: usize = block
-                .statements
-                .iter()
-                .map(|instr| air_width_by_opcode[&instr.opcode])
-                .sum();
-            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
-            let execution_frequency = execution_profile
-                .get(&(block.start_idx as u32)) as usize;
-
-            Some(ApcCandidate {
-                block_with_apc: BlockWithApc {
-                    opcode: POWDR_OPCODE + i,
-                    block,
-                    apc,
-                },
-                execution_frequency,
-                cells_saved_per_row,
-                width: apc_cells_per_row,
-            })
-        }),
-        max_cache,
-        max_total_apc_columns,
-    )
-    .skip(config.skip_autoprecompiles as usize)
-    .map(|c| {
-        tracing::debug!(
-            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
-            c.block_with_apc.block.start_idx,
-            c.value() / c.cost(),
-            c.execution_frequency,
-            c.cells_saved_per_row,
-        );
-
-        c.block_with_apc
-    })
-    .collect_vec();
 
     assert!(res.len() <= config.autoprecompiles as usize);
 
@@ -487,4 +378,132 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect::<Result<_, _>>()?;
 
     Ok(SymbolicBusInteraction { id, mult, args })
+}
+
+// Note: This function can lead to OOM since it generates the apc for many blocks.
+fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
+    blocks: Vec<BasicBlock<OpenVmField<P>>>,
+    execution_profile: ExecutionProfile,
+    airs: &OriginalAirs<P>,
+    config: &PowdrConfig,
+    original_config: &OriginalVmConfig,
+    bus_map: &BusMap,
+) -> Vec<BlockWithApc<P>> {
+    // store air width by opcode, so that we don't repetitively calculate them later
+    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
+    let air_width_by_opcode = airs.air_width_per_opcode();
+
+    // we are only interested in the top `config.autoprecompiles + config.skip_autoprecompiles` blocks
+    let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
+    tracing::info!(
+        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
+        blocks.len(),
+        max_cache,
+    );
+
+    // Store all the necessary information to compare APC candidates.
+    struct ApcCandidate<P: IntoOpenVm> {
+        block_with_apc: BlockWithApc<P>,
+        execution_frequency: usize,
+        cells_saved_per_row: usize,
+        width: usize,
+    }
+
+    // Define the cost and value of an APC candidate.
+    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
+        fn cost(&self) -> usize {
+            self.width
+        }
+
+        fn value(&self) -> usize {
+            // For an APC which is called once and saves 1 cell, this would be 1.
+            let value = self
+                .execution_frequency
+                .checked_mul(self.cells_saved_per_row)
+                .unwrap();
+            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+            // Therefore, we scale it up by a constant factor.
+            value.checked_mul(1000).unwrap()
+        }
+
+        fn tie_breaker(&self) -> usize {
+            self.block_with_apc.opcode
+        }
+    }
+
+    // The maximum number of apc columns we can introduce
+    let max_total_apc_columns = config.max_column_count.map(|max_total_columns| {
+        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
+        let total_non_apc_columns = chip_inventory_air_widths
+            .iter()
+            .map(|(air_name, width)| {
+                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
+                width
+            })
+            .sum::<usize>();
+        max_total_columns - total_non_apc_columns
+    });
+
+    // Find the best candidates
+    fractional_knapsack(
+        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
+            // skip empty blocks
+            if block.statements.is_empty() {
+                return None;
+            }
+
+            let execution_frequency = execution_profile
+                .get(&(block.start_idx as u32)) as usize;
+
+            // skip blocks that are never called
+            if execution_frequency == 0 {
+                return None;
+            }
+
+            // try to create apc for a candidate block
+            let apc = generate_autoprecompile(
+                &block,
+                airs,
+                POWDR_OPCODE + i,
+                bus_map,
+                config.degree_bound,
+            )
+            .ok()?; // if apc creation fails, filter out this candidate block
+
+            // compute cost and cells_saved_per_row
+            let apc_cells_per_row = apc.width();
+            let orig_cells_per_row: usize = block
+                .statements
+                .iter()
+                .map(|instr| air_width_by_opcode[&instr.opcode])
+                .sum();
+            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
+
+            Some(ApcCandidate {
+                block_with_apc: BlockWithApc {
+                    opcode: POWDR_OPCODE + i,
+                    block,
+                    apc,
+                },
+                execution_frequency,
+                cells_saved_per_row,
+                width: apc_cells_per_row,
+            })
+        }),
+        max_cache,
+        max_total_apc_columns,
+    )
+    .skip(config.skip_autoprecompiles as usize)
+    .map(|c| {
+        tracing::debug!(
+            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
+            c.block_with_apc.block.start_idx,
+            c.value() / c.cost(),
+            c.execution_frequency,
+            c.cells_saved_per_row,
+        );
+
+        c.block_with_apc
+    })
+    .collect()
 }
