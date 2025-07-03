@@ -50,4 +50,4 @@ run_bench() {
 }
 
 run_bench guest-keccak guest-keccak-manual-precompile 100 10000
-run_bench guest-matmul "" 100 0
+# run_bench guest-matmul "" 100 0
