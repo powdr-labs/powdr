@@ -1271,9 +1271,9 @@ mod tests {
             guest: GUEST_SHA256,
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
-            width: 49,
-            constraints: 22,
-            bus_interactions: 31,
+            width: 12494,
+            constraints: 3635,
+            bus_interactions: 10075,
             machine_length: 10,
         });
 
@@ -1282,9 +1282,9 @@ mod tests {
             guest: GUEST_SHA256,
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
-            width: 49,
-            constraints: 22,
-            bus_interactions: 31,
+            width: 12494,
+            constraints: 3635,
+            bus_interactions: 10075,
             machine_length: 10,
         });
     }
