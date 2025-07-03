@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use std::sync::Arc;
 
@@ -28,7 +28,6 @@ use powdr_autoprecompiles::{Apc, DegreeBound};
 use powdr_number::{BabyBearField, FieldElement};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
-use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
     powdr_extension::{OriginalInstruction, PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
@@ -41,7 +40,7 @@ const OPENVM_INIT_PC: u32 = 0x0020_0800;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 
-use crate::{PgoConfig, PowdrConfig};
+use crate::{ExecutionProfile, PowdrConfig};
 
 #[derive(Debug)]
 pub enum Error {
@@ -66,27 +65,125 @@ fn generate_apcs_with_pgo<P: IntoOpenVm>(
     bus_map: &BusMap,
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
-    pgo_config: PgoConfig,
+    execution_profile: ExecutionProfile,
 ) -> Vec<BlockWithApc<P>> {
-    // sort basic blocks by:
-    // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
-    // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
-    // 3. if PgoConfig::None, cost = number_of_instructions
-    let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, max_total_columns) => create_apcs_with_cell_pgo(
-            blocks,
-            pgo_program_idx_count,
-            max_total_columns,
-            airs,
-            config,
-            original_config,
-            bus_map,
-        ),
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
+    // store air width by opcode, so that we don't repetitively calculate them later
+    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
+    let air_width_by_opcode = airs.air_width_per_opcode();
+
+    // we are only interested in the top `config.autoprecompiles + config.skip_autoprecompiles` blocks
+    let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
+
+    tracing::info!(
+        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
+        blocks.len(),
+        max_cache,
+    );
+
+    // Store all the necessary information to compare APC candidates.
+    struct ApcCandidate<P: IntoOpenVm> {
+        block_with_apc: BlockWithApc<P>,
+        execution_frequency: usize,
+        cells_saved_per_row: usize,
+        width: usize,
+    }
+
+    // Define the cost and value of an APC candidate.
+    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
+        fn cost(&self) -> usize {
+            self.width
         }
-        PgoConfig::None => create_apcs_with_no_pgo(blocks, airs, config, bus_map),
-    };
+
+        fn value(&self) -> usize {
+            // For an APC which is called once and saves 1 cell, this would be 1.
+            let value = self
+                .execution_frequency
+                .checked_mul(self.cells_saved_per_row)
+                .unwrap();
+            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+            // Therefore, we scale it up by a constant factor.
+            value.checked_mul(1000).unwrap()
+        }
+
+        fn tie_breaker(&self) -> usize {
+            self.block_with_apc.opcode
+        }
+    }
+
+    // The maximum number of apc columns we can introduce
+    let max_total_apc_columns = config.max_column_count.map(|max_total_columns| {
+        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
+        let total_non_apc_columns = chip_inventory_air_widths
+            .iter()
+            .map(|(air_name, width)| {
+                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
+                width
+            })
+            .sum::<usize>();
+        max_total_columns - total_non_apc_columns
+    });
+
+    // Find the best candidates
+    let res = fractional_knapsack(
+        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
+            // skip empty blocks
+            if block.statements.is_empty() {
+                return None;
+            }
+
+            // skip blocks that are never called
+            if execution_profile.get(&(block.start_idx as u32)) == 0 {
+                return None;
+            }
+
+            // try to create apc for a candidate block
+            let apc = generate_autoprecompile(
+                &block,
+                airs,
+                POWDR_OPCODE + i,
+                bus_map,
+                config.degree_bound,
+            )
+            .ok()?; // if apc creation fails, filter out this candidate block
+
+            // compute cost and cells_saved_per_row
+            let apc_cells_per_row = apc.width();
+            let orig_cells_per_row: usize = block
+                .statements
+                .iter()
+                .map(|instr| air_width_by_opcode[&instr.opcode])
+                .sum();
+            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
+            let execution_frequency = execution_profile
+                .get(&(block.start_idx as u32)) as usize;
+
+            Some(ApcCandidate {
+                block_with_apc: BlockWithApc {
+                    opcode: POWDR_OPCODE + i,
+                    block,
+                    apc,
+                },
+                execution_frequency,
+                cells_saved_per_row,
+                width: apc_cells_per_row,
+            })
+        }),
+        max_cache,
+        max_total_apc_columns,
+    )
+    .skip(config.skip_autoprecompiles as usize)
+    .map(|c| {
+        tracing::debug!(
+            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
+            c.block_with_apc.block.start_idx,
+            c.value() / c.cost(),
+            c.execution_frequency,
+            c.cells_saved_per_row,
+        );
+
+        c.block_with_apc
+    })
+    .collect_vec();
 
     assert!(res.len() <= config.autoprecompiles as usize);
 
@@ -100,7 +197,7 @@ pub fn customize(
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    execution_profile: ExecutionProfile,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -136,7 +233,7 @@ pub fn customize(
         &bus_map,
         &config,
         &original_config,
-        pgo_config,
+        execution_profile,
     );
 
     let program = &mut exe.program.instructions_and_debug_infos;
@@ -229,20 +326,6 @@ pub fn customize(
 pub struct BasicBlock<F> {
     pub start_idx: usize,
     pub statements: Vec<Instruction<F>>,
-}
-
-impl<F: PrimeField32> BasicBlock<F> {
-    fn pretty_print(&self, instr_formatter: impl Fn(&Instruction<F>) -> String) -> String {
-        format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
-            + &self
-                .statements
-                .iter()
-                .enumerate()
-                .map(|(i, instr)| format!("   instr {i:>3}:   {}", instr_formatter(instr)))
-                .collect::<Vec<_>>()
-                .join("\n")
-            + "\n])"
-    }
 }
 
 pub fn collect_basic_blocks<F: PrimeField32>(
@@ -338,54 +421,6 @@ fn add_extra_targets<F: PrimeField32>(
     labels
 }
 
-// Only used for PgoConfig::Instruction and PgoConfig::None,
-// because PgoConfig::Cell caches all APCs in sorting stage.
-fn create_apcs_for_all_blocks<P: IntoOpenVm>(
-    blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    powdr_config: &PowdrConfig,
-    airs: &OriginalAirs<P>,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    let n_acc = powdr_config.autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
-
-    blocks
-        .into_par_iter()
-        .skip(powdr_config.skip_autoprecompiles as usize)
-        .take(n_acc)
-        .enumerate()
-        .map(|(index, acc_block)| {
-            tracing::debug!(
-                "Accelerating block of length {} and start idx {}",
-                acc_block.statements.len(),
-                acc_block.start_idx
-            );
-
-            tracing::debug!(
-                "Acc block: {}",
-                acc_block.pretty_print(openvm_instruction_formatter)
-            );
-
-            let apc_opcode = POWDR_OPCODE + index;
-
-            let apc = generate_autoprecompile(
-                &acc_block,
-                airs,
-                apc_opcode,
-                bus_map,
-                powdr_config.degree_bound,
-            )
-            .unwrap();
-
-            BlockWithApc {
-                opcode: apc_opcode,
-                block: acc_block,
-                apc,
-            }
-        })
-        .collect()
-}
-
 // OpenVM relevant bus ids:
 // 0: execution bridge -> [pc, timestamp]
 // 1: memory -> [address space, pointer, data, timestamp, 1]
@@ -452,198 +487,4 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
         .collect::<Result<_, _>>()?;
 
     Ok(SymbolicBusInteraction { id, mult, args })
-}
-
-// Note: This function can lead to OOM since it generates the apc for many blocks.
-fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    pgo_program_idx_count: HashMap<u32, u32>,
-    max_total_columns: Option<usize>,
-    airs: &OriginalAirs<P>,
-    config: &PowdrConfig,
-    original_config: &OriginalVmConfig,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    // drop any block whose start index cannot be found in pc_idx_count,
-    // because a basic block might not be executed at all.
-    // Also only keep basic blocks with more than one original instruction.
-    blocks.retain(|b| {
-        pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
-    });
-
-    tracing::debug!(
-        "Retained {} basic blocks after filtering by pc_idx_count",
-        blocks.len()
-    );
-
-    // store air width by opcode, so that we don't repetitively calculate them later
-    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode();
-
-    // generate apc for all basic blocks and only cache the ones we eventually use
-    // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-    let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-    tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
-
-    // each generated apc becomes a candidate for caching
-    // it is only ordered by cost, but carries all needed data for modifying the blocks, extending the cache, and debug print
-    struct ApcCandidate<P: IntoOpenVm> {
-        block_with_apc: BlockWithApc<P>,
-        execution_frequency: usize,
-        cells_saved_per_row: usize,
-        width: usize, // only tag this field in Pgo::Cell, the only place it's needed
-    }
-
-    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
-        fn cost(&self) -> usize {
-            self.width
-        }
-
-        fn value(&self) -> usize {
-            // For an APC which is called once and saves 1 cell, this would be 1.
-            let value = self
-                .execution_frequency
-                .checked_mul(self.cells_saved_per_row)
-                .unwrap();
-            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-            // Therefore, we scale it up by a constant factor.
-            value.checked_mul(1000).unwrap()
-        }
-
-        fn tie_breaker(&self) -> usize {
-            self.block_with_apc.opcode
-        }
-    }
-
-    let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
-        let chip_inventory_air_widths = original_config.chip_inventory_air_widths();
-        let total_non_apc_columns = chip_inventory_air_widths
-            .iter()
-            .map(|(air_name, width)| {
-                tracing::debug!("Chip inventory air {} has width {}", air_name, width);
-                width
-            })
-            .sum::<usize>();
-        max_total_columns - total_non_apc_columns
-    });
-
-    // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    fractional_knapsack(
-        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            // try to create apc for a candidate block
-            let apc = generate_autoprecompile(
-                &block,
-                airs,
-                POWDR_OPCODE + i,
-                bus_map,
-                config.degree_bound,
-            )
-            .ok()?; // if apc creation fails, filter out this candidate block
-
-            // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width();
-            let orig_cells_per_row: usize = block
-                .statements
-                .iter()
-                .map(|instr| air_width_by_opcode[&instr.opcode])
-                .sum();
-            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
-            let execution_frequency = *pgo_program_idx_count
-                .get(&(block.start_idx as u32))
-                .unwrap_or(&0) as usize;
-
-            Some(ApcCandidate {
-                block_with_apc: BlockWithApc {
-                    opcode: POWDR_OPCODE + i,
-                    block,
-                    apc,
-                },
-                execution_frequency,
-                cells_saved_per_row,
-                width: apc_cells_per_row,
-            })
-        }),
-        max_cache,
-        max_total_apc_columns,
-    )
-    .skip(config.skip_autoprecompiles as usize)
-    .map(|c| {
-        tracing::debug!(
-            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
-            c.block_with_apc.block.start_idx,
-            c.value() / c.cost(),
-            c.execution_frequency,
-            c.cells_saved_per_row,
-        );
-
-        c.block_with_apc
-    })
-    .collect()
-}
-
-fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &OriginalAirs<P>,
-    config: &PowdrConfig,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    // drop any block whose start index cannot be found in pc_idx_count,
-    // because a basic block might not be executed at all.
-    // Also only keep basic blocks with more than one original instruction.
-    blocks.retain(|b| {
-        pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
-    });
-
-    tracing::debug!(
-        "Retained {} basic blocks after filtering by pc_idx_count",
-        blocks.len()
-    );
-
-    // cost = cells_saved_per_row
-    blocks.sort_by(|a, b| {
-        let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
-        let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
-        (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
-    });
-
-    // Debug print blocks by descending cost
-    for block in &blocks {
-        let start_idx = block.start_idx;
-        let frequency = pgo_program_idx_count[&(start_idx as u32)];
-        let number_of_instructions = block.statements.len();
-        let value = frequency * number_of_instructions as u32;
-
-        tracing::debug!(
-            "Basic block start_idx: {start_idx}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
-        );
-    }
-
-    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
-}
-
-fn create_apcs_with_no_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &OriginalAirs<P>,
-    config: &PowdrConfig,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    // cost = number_of_original_instructions
-    blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
-
-    // Debug print blocks by descending cost
-    for block in &blocks {
-        let start_idx = block.start_idx;
-        tracing::debug!(
-            "Basic block start_idx: {}, number_of_instructions: {}",
-            start_idx,
-            block.statements.len(),
-        );
-    }
-
-    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
 }
