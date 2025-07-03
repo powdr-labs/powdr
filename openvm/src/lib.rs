@@ -688,7 +688,7 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     });
 
     // collect the pc's during execution
-    let pc = collected.lock().unwrap().clone();
+    let pc = collected.lock().unwrap();
 
     // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
     let pc_base = exe.program.pc_base;
