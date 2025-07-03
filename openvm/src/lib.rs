@@ -1038,7 +1038,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too long"]
+    #[ignore = "Too long"]
     fn sha256_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
@@ -1057,7 +1057,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too long"]
+    #[ignore = "Too long"]
     fn sha256_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
@@ -1076,7 +1076,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too much RAM"]
+    #[ignore = "Too much RAM"]
     fn sha256_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
@@ -1102,7 +1102,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too much RAM"]
+    #[ignore = "Too much RAM"]
     fn sha256_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_LARGE);
