@@ -46,7 +46,7 @@ pub fn grouped_expression_to_algebraic<T: FieldElement>(
             } else if c.is_in_lower_half() {
                 AlgebraicExpression::from(*c) * AlgebraicExpression::Reference(v.clone())
             } else {
-                -AlgebraicExpression::from(-*c) * AlgebraicExpression::Reference(v.clone())
+                -(AlgebraicExpression::from(-*c) * AlgebraicExpression::Reference(v.clone()))
             }
         }))
         .chain(
