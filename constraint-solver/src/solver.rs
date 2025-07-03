@@ -60,7 +60,7 @@ pub struct SolveResult<T: RuntimeConstant, V> {
 /// This means that the constraint system is unsatisfiable.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    /// An error occurred while calling `QuadraticSymbolicExpression::solve`
+    /// An error occurred while calling `GroupedExpression::solve`
     QseSolvingError(QseError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
