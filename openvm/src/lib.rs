@@ -517,8 +517,8 @@ pub fn assert_air_metrics_sum(to_sum: Vec<AirMetrics>, expected: AirMetrics) {
     let sum = to_sum
         .iter()
         .fold(AirMetrics::default(), |mut acc, metric| {
-            acc.widths.preprocess += metric.widths.preprocess;
-            acc.widths.base += metric.widths.base;
+            acc.widths.preprocessed += metric.widths.preprocessed;
+            acc.widths.main += metric.widths.main;
             acc.widths.log_up += metric.widths.log_up;
             acc.constraints += metric.constraints;
             acc.bus_interactions += metric.bus_interactions;
@@ -1143,8 +1143,8 @@ mod tests {
             .for_each(|(idx, m)| {
                 assert_eq!(
                     [
-                        m.widths.preprocess,
-                        m.widths.base,
+                        m.widths.preprocessed,
+                        m.widths.main,
                         m.widths.log_up,
                         m.constraints,
                         m.bus_interactions
@@ -1158,8 +1158,8 @@ mod tests {
 
         let expected = AirMetrics {
             widths: AirWidths {
-                preprocess: 0,
-                base: 5443,
+                preprocessed: 0,
+                main: 5443,
                 log_up: 4456,
             },
             constraints: 1170,
@@ -1174,8 +1174,8 @@ mod tests {
 
         let expected = AirMetrics {
             widths: AirWidths {
-                preprocess: 0,
-                base: 3657,
+                preprocessed: 0,
+                main: 3657,
                 log_up: 896,
             },
             constraints: 4569,
