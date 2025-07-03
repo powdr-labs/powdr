@@ -1076,7 +1076,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
-            [m.widths.base, m.constraints, m.bus_interactions],
+            [m.widths.main, m.constraints, m.bus_interactions],
             [49, 22, 31]
         );
     }
@@ -1089,7 +1089,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
-            [m.widths.base, m.constraints, m.bus_interactions],
+            [m.widths.main, m.constraints, m.bus_interactions],
             [2011, 166, 1783]
         );
     }
@@ -1112,7 +1112,7 @@ mod tests {
             .powdr_air_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.widths.base, 26);
+        assert_eq!(m.widths.main, 26);
         assert_eq!(m.constraints, 1);
         assert_eq!(m.bus_interactions, 16);
     }
