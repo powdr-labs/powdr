@@ -80,7 +80,7 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&JournalingConstraintSyst
 }
 
 pub fn stats_from_generic_constraint_system<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    constraint_system: &ConstraintSystemGeneric<T, V>
+    constraint_system: &ConstraintSystemGeneric<T, V>,
 ) -> Stats {
     Stats {
         num_constraints: constraint_system.algebraic_constraints.len(),
@@ -92,4 +92,3 @@ pub fn stats_from_generic_constraint_system<T: FieldElement, V: Ord + Clone + Ha
             .count(),
     }
 }
-

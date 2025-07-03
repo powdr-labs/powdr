@@ -22,7 +22,10 @@ pub struct DegreeBound {
 /// The degree is just the degree in the unknown variables, i.e.
 /// potential variables inside runtime constants do not count towards the degree.
 pub fn replace_constrained_witness_columns<
-    T: RuntimeConstant + Display + Substitutable<V> + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    T: RuntimeConstant
+        + Display
+        + Substitutable<V>
+        + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: JournalingConstraintSystemGeneric<T, V>,
@@ -74,7 +77,10 @@ pub fn replace_constrained_witness_columns<
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq + Display>(
+fn find_inlinable_variables<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq + Display,
+>(
     constraint: &GroupedExpression<T, V>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
     let mut substitutions = vec![];
@@ -95,7 +101,10 @@ fn find_inlinable_variables<T: RuntimeConstant + Display + ExpressionConvertible
 }
 
 /// Checks whether a substitution is valid under `max_degree` constraint.
-fn is_valid_substitution<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
+fn is_valid_substitution<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq,
+>(
     var: &V,
     expr: &GroupedExpression<T, V>,
     constraint_system: &IndexedConstraintSystemGeneric<T, V>,
@@ -121,7 +130,10 @@ fn is_valid_substitution<T: RuntimeConstant + Display + ExpressionConvertible<<T
 
 /// Calculate the degree of a GroupedExpression assuming a variable is
 /// replaced by an expression of known degree.
-fn expression_degree_with_virtual_substitution<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
+fn expression_degree_with_virtual_substitution<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq,
+>(
     expr: &GroupedExpression<T, V>,
     var: &V,
     replacement_deg: usize,
@@ -141,7 +153,10 @@ fn expression_degree_with_virtual_substitution<T: RuntimeConstant + Display + Ex
 
 /// Computes the degree of a GroupedExpression in the unknown variables.
 /// Variables inside runtime constants are ignored.
-fn expression_degree<T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>, V: Ord + Clone + Hash + Eq>(
+fn expression_degree<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq,
+>(
     expr: &GroupedExpression<T, V>,
 ) -> usize {
     let (quadratic, linear, _) = expr.components();

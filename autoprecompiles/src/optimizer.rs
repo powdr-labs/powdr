@@ -80,7 +80,10 @@ fn optimization_loop_iteration<T: FieldElement>(
             &constraint_system,
             memory_bus_id
         ));
-        stats_logger.log("memory optimization", stats_logger::stats_from_generic_constraint_system(&constraint_system));
+        stats_logger.log(
+            "memory optimization",
+            stats_logger::stats_from_generic_constraint_system(&constraint_system),
+        );
         constraint_system
     } else {
         constraint_system
@@ -88,7 +91,10 @@ fn optimization_loop_iteration<T: FieldElement>(
 
     let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
         let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
-        stats_logger.log("optimizing bitwise lookup", stats_logger::stats_from_generic_constraint_system(&system));
+        stats_logger.log(
+            "optimizing bitwise lookup",
+            stats_logger::stats_from_generic_constraint_system(&system),
+        );
         system
     } else {
         constraint_system

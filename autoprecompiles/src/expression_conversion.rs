@@ -1,6 +1,4 @@
-use powdr_constraint_solver::{
-    grouped_expression::GroupedExpression,
-};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_expression::{AlgebraicUnaryOperation, AlgebraicUnaryOperator};
 use powdr_number::{ExpressionConvertible, FieldElement};
 
@@ -11,10 +9,9 @@ use crate::expression::{AlgebraicExpression, AlgebraicReference};
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> GroupedExpression<T, AlgebraicReference> {
-    expr.to_expression(
-        &|n| GroupedExpression::from_number(*n),
-        &|reference| GroupedExpression::from_unknown_variable(reference.clone()),
-    )
+    expr.to_expression(&|n| GroupedExpression::from_number(*n), &|reference| {
+        GroupedExpression::from_unknown_variable(reference.clone())
+    })
 }
 
 /// Turns a grouped expression back into an algebraic expression.
@@ -75,9 +72,7 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     }
 }
 
-fn field_element_to_algebraic<T: FieldElement>(
-    e: &T,
-) -> AlgebraicExpression<T> {
+fn field_element_to_algebraic<T: FieldElement>(e: &T) -> AlgebraicExpression<T> {
     if e.is_in_lower_half() {
         AlgebraicExpression::from(*e)
     } else {

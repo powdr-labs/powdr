@@ -3,9 +3,8 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 use inliner::DegreeBound;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler,
-    grouped_expression::GroupedExpression,
-    inliner, journaling_constraint_system::JournalingConstraintSystemGeneric,
+    constraint_system::BusInteractionHandler, grouped_expression::GroupedExpression, inliner,
+    journaling_constraint_system::JournalingConstraintSystemGeneric,
 };
 use powdr_number::FieldElement;
 
@@ -34,8 +33,7 @@ pub fn optimize_constraints<T: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
-) -> Result<JournalingConstraintSystemGeneric<T, V>, Error> 
-{
+) -> Result<JournalingConstraintSystemGeneric<T, V>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("solver-based optimization", &constraint_system);

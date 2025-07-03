@@ -4,10 +4,10 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystemGeneric};
-use powdr_constraint_solver::grouped_expression::{
-    GroupedExpression, RangeConstraintProvider,
+use powdr_constraint_solver::constraint_system::{
+    BusInteraction, ConstraintRef, ConstraintSystemGeneric,
 };
+use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystemGeneric;
 use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
 use powdr_constraint_solver::utils::possible_concrete_values;
@@ -145,7 +145,8 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<GlobalAddress<T, V>, MemoryContents<T, V>> = Default::default();
+    let mut memory_contents: HashMap<GlobalAddress<T, V>, MemoryContents<T, V>> =
+        Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -202,8 +203,7 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     (to_remove, new_constraints)
 }
 
-type BooleanExtractedExpression<T, V> =
-    GroupedExpression<T, boolean_extractor::Variable<V>>;
+type BooleanExtractedExpression<T, V> = GroupedExpression<T, boolean_extractor::Variable<V>>;
 struct MemoryAddressComparator<T: FieldElement, V> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
@@ -308,8 +308,7 @@ mod tests {
     use super::*;
 
     use powdr_constraint_solver::{
-        grouped_expression::NoRangeConstraints,
-        range_constraint::RangeConstraint,
+        grouped_expression::NoRangeConstraints, range_constraint::RangeConstraint,
     };
     use powdr_number::GoldilocksField;
 
