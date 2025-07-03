@@ -669,9 +669,11 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
-    let collected = Arc::new(Mutex::new(Vec::new()));
+    let collected = Arc::new(Mutex::new(HashMap::new()));
     let collector_layer = PgoCollector {
-        pc: collected.clone(),
+        base: exe.program.pc_base,
+        step: exe.program.step,
+        map: collected.clone(),
     };
 
     // build subscriber
@@ -688,25 +690,17 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     });
 
     // collect the pc's during execution
-    let pc = collected.lock().unwrap().clone();
+    let pc_index_count = collected.lock().unwrap().clone();
 
-    // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
+    // // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
     let pc_base = exe.program.pc_base;
-    let step = exe.program.step;
-    let pc_index_count = pc
-        .iter()
-        .fold(std::collections::HashMap::new(), |mut acc, pc| {
-            let pc_index = (*pc as u32 - pc_base) / step;
-            *acc.entry(pc_index).or_insert(0u32) += 1;
-            acc
-        });
 
     // the smallest pc is the same as the base_pc if there's no stdin
-    let pc_min = pc.iter().min().unwrap();
+    let pc_min = pc_index_count.keys().min().unwrap();
     tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
 
     // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc.len());
+    tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
 
     if tracing::enabled!(Level::DEBUG) {
         // print pc_index map in descending order of pc_index count
@@ -742,7 +736,9 @@ impl tracing::field::Visit for PgoData {
 // A Layer that collects data we are interested in using for the pgo from the trace fields.
 #[derive(Clone)]
 struct PgoCollector {
-    pc: Arc<Mutex<Vec<usize>>>,
+    base: u32,
+    step: u32,
+    map: Arc<Mutex<HashMap<u32, u32>>>,
 }
 
 impl<S> Layer<S> for PgoCollector
@@ -757,7 +753,8 @@ where
         // because our subscriber is at the trace level, for trace print outs that don't match PgoData,
         // the visitor can't parse them, and these cases are filtered out automatically
         if let Some(pc) = visitor.pc {
-            self.pc.lock().unwrap().push(pc);
+            let pc_index = (pc as u32 - self.base) / self.step;
+            *self.map.lock().unwrap().entry(pc_index).or_default() += 1;
         }
     }
 }
