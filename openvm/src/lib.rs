@@ -29,10 +29,11 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use strum::{Display, EnumString};
 
@@ -686,7 +687,7 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     });
 
     // Extract the collected data
-    let pc_index_count = collector.take();
+    let pc_index_count = collector.into_hashmap();
 
     // the smallest pc is the same as the pc_base if there's no stdin
     let pc_min = pc_index_count.keys().min().unwrap();
@@ -731,14 +732,14 @@ impl tracing::field::Visit for PgoData {
 struct PgoCollector {
     step: usize,
     pc_base: usize,
-    map: Arc<Mutex<Vec<u32>>>,
+    map: Arc<Vec<AtomicU32>>,
 }
 
 impl PgoCollector {
     fn new<F>(program: &Program<F>) -> Self {
         let max_pc = program.instructions_and_debug_infos.len() * program.step as usize;
         // create a map with max_pc entries initialized to 0
-        let map = Arc::new(Mutex::new(vec![0; max_pc]));
+        let map = Arc::new((0..max_pc).map(|_| AtomicU32::new(0)).collect());
         Self {
             map,
             step: program.step as usize,
@@ -746,21 +747,21 @@ impl PgoCollector {
         }
     }
 
-    fn take(self) -> HashMap<u32, u32> {
-        // take the map from the mutex
-        let map = std::mem::take(&mut *self.map.lock().unwrap());
-
+    fn into_hashmap(self) -> HashMap<u32, u32> {
         // Turn the map into a HashMap of (pc_index, count)
-        map.chunks(self.step)
+        self.map
+            .chunks(self.step)
             .enumerate()
             .filter_map(|(pc_index, chunk)| {
                 // Sanity check that all counts are zero except the first one
                 assert!(
-                    chunk[1..].iter().all(|&count| count == 0),
+                    chunk[1..]
+                        .iter()
+                        .all(|count| count.load(Ordering::Relaxed) == 0),
                     "Non-zero counts found in chunk after the first one"
                 );
 
-                let count = chunk[0];
+                let count = chunk[0].load(Ordering::Relaxed);
 
                 // if the count is zero, we skip it
                 if count == 0 {
@@ -773,7 +774,7 @@ impl PgoCollector {
     }
 
     fn increment(&self, pc: usize) {
-        self.map.lock().unwrap()[pc - self.pc_base] += 1;
+        self.map[pc - self.pc_base].fetch_add(1, Ordering::Relaxed);
     }
 }
 
