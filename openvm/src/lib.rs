@@ -1274,7 +1274,7 @@ mod tests {
             width: 49,
             constraints: 22,
             bus_interactions: 31,
-            machine_length: 1,
+            machine_length: 10,
         });
 
         test_machine(MachineTestParams {
@@ -1285,7 +1285,7 @@ mod tests {
             width: 49,
             constraints: 22,
             bus_interactions: 31,
-            machine_length: 1,
+            machine_length: 10,
         });
     }
 
