@@ -689,8 +689,8 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
             .unwrap();
     });
 
-    // collect the pc's during execution
-    let pc_index_count = collected.lock().unwrap().clone();
+    // Extract the collected data from the mutex
+    let pc_index_count = std::mem::take(&mut *collected.lock().unwrap());
 
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc_index_count.keys().min().unwrap();
