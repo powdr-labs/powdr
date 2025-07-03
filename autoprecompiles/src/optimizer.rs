@@ -28,6 +28,8 @@ pub fn optimize<T: FieldElement>(
     bus_map: &BusMap,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
+    // TODO: Under what circumstances would we not have a PC lookup or execution bus?
+    //       Can this be turned into an assertion?
     let mut machine = if let Some(pc_lookup_bus_id) = bus_map.get_bus_id(&BusType::PcLookup) {
         let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
         stats_logger.log("PC lookup optimization", &machine);
@@ -86,6 +88,7 @@ fn optimization_loop_iteration<T: FieldElement>(
         constraint_system
     };
 
+    // TODO: This is highly OpenVM specific, move it out of the autoprecompiles crate?
     let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
         let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
         stats_logger.log("optimizing bitwise lookup", &system);
@@ -97,6 +100,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     Ok(system)
 }
 
+/// Removes all PC lookups, replacing them with a single PC lookup to the new opcode.
 pub fn optimize_pc_lookup<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     opcode: u32,
@@ -281,6 +285,7 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
     }
 }
 
+// TODO: This function is likely unnecessary!
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
     quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
 }
