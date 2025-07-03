@@ -162,12 +162,12 @@ jobs:
       #     source .venv/bin/activate
       #     bash ./openvm/scripts/run_guest_benches.sh
 
-      # - name: Checkout openvm-reth-benchmark
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: powdr-labs/openvm-reth-benchmark
-      #     ref: main
-      #     path: openvm-reth-benchmark
+      - name: Checkout openvm-reth-benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: powdr-labs/openvm-reth-benchmark
+          ref: main
+          path: openvm-reth-benchmark
 
       # - name: Patch openvm-reth-benchmark to use local powdr
       #   run: |
