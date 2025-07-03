@@ -55,17 +55,6 @@ impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display>
     JournalingConstraintSystemGeneric<T, V>
 {
-    pub fn apply_bus_field_assignments(
-        &mut self,
-        assignments: impl IntoIterator<Item = ((usize, usize), T::FieldType)>,
-    ) {
-        // We do not track substitutions yet, but we could.
-        for ((interaction_index, field_index), value) in assignments {
-            self.system
-                .apply_bus_field_assignment(interaction_index, field_index, value);
-        }
-    }
-
     /// Applies multiple substitutions to the constraint system in an efficient manner.
     pub fn apply_substitutions(
         &mut self,
@@ -76,10 +65,31 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display
             self.substitute_by_unknown(&variable, &substitution);
         }
     }
-
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         // We do not track substitutions yet, but we could.
         self.system.substitute_by_unknown(variable, substitution);
+    }
+}
+
+impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Ord + Clone + Eq + Hash + Display>
+    JournalingConstraintSystemGeneric<T, V>
+{
+    pub fn apply_expression_substitutions(
+        &mut self,
+        substitutions: impl IntoIterator<Item = (GroupedExpression<T, V>, GroupedExpression<T, V>)>,
+    ) {
+        // We do not track substitutions yet, but we could.
+        self.system.apply_expression_substitutions(substitutions);
+    }
+
+    pub fn substitute_expression_in_bus_interactions(
+        &mut self,
+        expression: &GroupedExpression<T, V>,
+        substitution: &GroupedExpression<T, V>,
+    ) {
+        // We do not track substitutions yet, but we could.
+        self.system
+            .substitute_expression_in_bus_interactions(expression, substitution);
     }
 }
 

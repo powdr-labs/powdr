@@ -1,7 +1,7 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Display,
-    hash::Hash,
+    hash::{Hash, Hasher},
 };
 
 use itertools::Itertools;
@@ -25,6 +25,18 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     for (variable, substitution) in substitutions {
         indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
     }
+    indexed_constraint_system.into()
+}
+
+pub fn apply_expression_substitutions<
+    T: RuntimeConstant + Substitutable<V> + Hash,
+    V: Hash + Eq + Clone + Ord,
+>(
+    constraint_system: ConstraintSystemGeneric<T, V>,
+    substitutions: impl IntoIterator<Item = (GroupedExpression<T, V>, GroupedExpression<T, V>)>,
+) -> ConstraintSystemGeneric<T, V> {
+    let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
+    indexed_constraint_system.apply_expression_substitutions(substitutions);
     indexed_constraint_system.into()
 }
 
@@ -280,6 +292,68 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
                 .extend(items.iter().cloned());
         }
     }
+}
+
+impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Hash + Ord + Eq>
+    IndexedConstraintSystem<T, V>
+{
+    pub fn apply_expression_substitutions(
+        &mut self,
+        substitutions: impl IntoIterator<Item = (GroupedExpression<T, V>, GroupedExpression<T, V>)>,
+    ) {
+        for (expression, substitution) in substitutions {
+            if let Some(var) = expression.try_to_simple_unknown() {
+                self.substitute_by_unknown(&var, &substitution);
+            } else {
+                self.substitute_expression_in_bus_interactions(&expression, &substitution);
+            }
+        }
+    }
+}
+
+impl<T: RuntimeConstant + Hash, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
+    pub fn substitute_expression_in_bus_interactions(
+        &mut self,
+        lhs: &GroupedExpression<T, V>,
+        substitution: &GroupedExpression<T, V>,
+    ) {
+        let substitution_vars = substitution
+            .referenced_unknown_variables()
+            .unique()
+            .collect_vec();
+        let items = lhs
+            .referenced_unknown_variables()
+            .map(|v| BTreeSet::from_iter(&self.variable_occurrences[v]))
+            .reduce(|a, b| a.intersection(&b).cloned().collect())
+            .unwrap_or_default()
+            .into_iter()
+            .cloned()
+            .collect_vec();
+        let lhs_hash = hash(lhs);
+        for item in &items {
+            if let ConstraintSystemItem::BusInteraction(i) = item {
+                // We only substitute in bus interactions, as the lhs is a bus interaction.
+                let bus_interaction = &mut self.constraint_system.bus_interactions[*i];
+                for expr in bus_interaction.fields_mut() {
+                    if hash(expr) == lhs_hash && expr == lhs {
+                        *expr = substitution.clone();
+                        for var in &substitution_vars {
+                            self.variable_occurrences
+                                .entry((*var).clone())
+                                .or_default()
+                                .push(*item);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn hash<X: Hash>(x: &X) -> u64 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    x.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// The provided assignments lead to a contradiction in the constraint system.
