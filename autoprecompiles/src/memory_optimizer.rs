@@ -150,7 +150,7 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     > = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
-    // TODO we assume that memory interactions are sorted by timestamp.
+    // TODO: Sort by timestamp
     for (index, bus_int) in system.bus_interactions.iter().enumerate() {
         let mem_int = match MemoryBusInteraction::try_from_bus_interaction(bus_int, memory_bus_id) {
             Ok(Some(mem_int)) => mem_int,

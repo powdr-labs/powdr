@@ -363,6 +363,7 @@ fn add_guards<T: FieldElement>(
         .map(|c| add_guards_constraint(c.expr, &is_valid).into())
         .collect();
 
+    // TODO: This should should not rely on the order of bus interactions!
     let [execution_bus_receive, execution_bus_send] = machine
         .bus_interactions
         .iter_mut()
