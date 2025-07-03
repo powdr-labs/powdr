@@ -1028,7 +1028,17 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
         let config = PowdrConfig::new(GUEST_SHA256_APC, GUEST_SHA256_SKIP);
-        prove_simple(GUEST_SHA256, config, stdin, PgoConfig::None, None);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_SHA256,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
     }
 
     // #[test]
