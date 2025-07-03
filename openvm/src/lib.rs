@@ -692,12 +692,9 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     // collect the pc's during execution
     let pc_index_count = collected.lock().unwrap().clone();
 
-    // // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
-    let pc_base = exe.program.pc_base;
-
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc_index_count.keys().min().unwrap();
-    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, exe.program.pc_base);
 
     // print the total and by pc counts
     tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
