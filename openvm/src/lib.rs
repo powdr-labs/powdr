@@ -1160,32 +1160,32 @@ mod tests {
             });
 
         // Check all APC
-        assert_eq!(powdr_metrics.len(), 23); // Number of APC chips
+        assert_eq!(powdr_metrics.len(), 63); // Number of APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 5111,
-                log_up: 4208,
+                main: 7536,
+                log_up: 6168,
             },
-            constraints: 1080,
-            bus_interactions: 4019,
+            constraints: 1944,
+            bus_interactions: 5691,
             ..Default::default()
         };
         assert_air_metrics_sum(powdr_metrics, expected);
 
         // Check non-APC metrics
         let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
-        assert_eq!(non_powdr_metrics.len(), 16); // Number of non-APC chips
+        assert_eq!(non_powdr_metrics.len(), 15); // Number of non-APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 3657,
-                log_up: 896,
+                main: 494,
+                log_up: 364,
             },
-            constraints: 4569,
-            bus_interactions: 569,
+            constraints: 322,
+            bus_interactions: 248,
             ..Default::default()
         };
         assert_air_metrics_sum(non_powdr_metrics, expected);
