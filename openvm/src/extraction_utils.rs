@@ -377,7 +377,7 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         .interaction_partitions()
         .len()
         + 1)
-        * <PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D;
+        * 4;
 
     AirMetrics {
         widths: AirWidths {
