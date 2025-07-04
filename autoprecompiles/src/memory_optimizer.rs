@@ -5,10 +5,11 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
-use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::quadratic_symbolic_expression::{
+use powdr_constraint_solver::grouped_expression::{
     QuadraticSymbolicExpression, RangeConstraintProvider,
 };
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
+use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
@@ -39,7 +40,7 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display>(
+pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display + Hash>(
     system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
 ) -> bool {
@@ -89,7 +90,7 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     timestamp: QuadraticSymbolicExpression<T, V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Display> MemoryBusInteraction<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V> {
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
     /// Returns `Ok(None)` if we know that the bus interaction is not a memory bus interaction.
@@ -301,7 +302,7 @@ fn is_known_to_be_nonzero<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     possible_concrete_values(expr, range_constraints, 20)
-        .is_some_and(|mut values| values.all(|value| !value.is_zero()))
+        .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
 }
 
 #[cfg(test)]
@@ -309,7 +310,7 @@ mod tests {
     use super::*;
 
     use powdr_constraint_solver::{
-        quadratic_symbolic_expression::NoRangeConstraints,
+        grouped_expression::NoRangeConstraints,
         range_constraint::RangeConstraint,
         test_utils::{constant, var},
     };
