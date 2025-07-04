@@ -10,9 +10,7 @@ use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::config::{PackedChallenge, Val};
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use openvm_stark_backend::p3_field::FieldExtensionAlgebra;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };
@@ -34,6 +32,9 @@ use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
+
+// TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
+const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
@@ -362,7 +363,7 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         .interaction_partitions()
         .len()
         + 1)
-        * <PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D;
+        * EXT_DEGREE;
 
     AirMetrics {
         name,
