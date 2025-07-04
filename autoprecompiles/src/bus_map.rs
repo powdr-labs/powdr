@@ -6,6 +6,8 @@ pub enum BusType {
     ExecutionBridge,
     Memory,
     PcLookup,
+    // TODO: These types are very specific to OpenVM and should not be in the autoprecompiles crate.
+    // The only one of those used in the autoprecompiles crate is `BitwiseLookup`.
     VariableRangeChecker,
     BitwiseLookup,
     TupleRangeChecker,
