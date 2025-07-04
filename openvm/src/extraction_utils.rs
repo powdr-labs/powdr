@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::iter::Sum;
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
@@ -25,7 +26,7 @@ use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
+use std::ops::{Add, Deref};
 use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
@@ -38,7 +39,7 @@ const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
-    opcode_to_air: HashMap<VmOpcode, String>,
+    pub opcode_to_air: HashMap<VmOpcode, String>,
     air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
 }
 
@@ -277,7 +278,7 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
+    pub fn chip_inventory_air_metrics(&self) -> HashMap<String, AirMetrics> {
         let inventory = &self.chip_complex().inventory;
 
         inventory
@@ -292,7 +293,7 @@ impl OriginalVmConfig {
             )
             .map(|air| {
                 // both executors and periphery implement the same `air()` API
-                get_air_metrics(air)
+                (air.name(), get_air_metrics(air))
             })
             .collect()
     }
@@ -348,7 +349,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let app_log_blow_up = 2;
     let max_degree = (1 << app_log_blow_up) + 1;
 
-    let name = air.name();
     let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
@@ -366,7 +366,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         * EXT_DEGREE;
 
     AirMetrics {
-        name,
         widths: AirWidths {
             preprocessed,
             main,
@@ -388,11 +387,28 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
     pub log_up: usize,
+}
+
+impl Add for AirWidths {
+    type Output = AirWidths;
+    fn add(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocessed: self.preprocessed + rhs.preprocessed,
+            main: self.main + rhs.main,
+            log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+impl Sum<AirWidths> for AirWidths {
+    fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
+        iter.fold(AirWidths::default(), Add::add)
+    }
 }
 
 impl std::fmt::Display for AirWidths {
@@ -405,6 +421,12 @@ impl std::fmt::Display for AirWidths {
             self.main,
             self.log_up
         )
+    }
+}
+
+impl AirWidths {
+    pub fn total(&self) -> usize {
+        self.preprocessed + self.main + self.log_up
     }
 }
 
