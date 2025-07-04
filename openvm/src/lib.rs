@@ -732,16 +732,16 @@ impl tracing::field::Visit for PgoData {
 struct PgoCollector {
     step: usize,
     pc_base: usize,
-    map: Arc<Vec<AtomicU32>>,
+    pc_index_map: Arc<Vec<AtomicU32>>,
 }
 
 impl PgoCollector {
     fn new<F>(program: &Program<F>) -> Self {
-        let max_pc = program.instructions_and_debug_infos.len();
+        let max_pc_index = program.instructions_and_debug_infos.len();
         // create a map with max_pc entries initialized to 0
-        let map = Arc::new((0..max_pc).map(|_| AtomicU32::new(0)).collect());
+        let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
         Self {
-            map,
+            pc_index_map,
             step: program.step as usize,
             pc_base: program.pc_base as usize,
         }
@@ -749,7 +749,7 @@ impl PgoCollector {
 
     fn into_hashmap(self) -> HashMap<u32, u32> {
         // Turn the map into a HashMap of (pc_index, count)
-        self.map
+        self.pc_index_map
             .iter()
             .enumerate()
             .filter_map(|(pc_index, count)| {
@@ -766,7 +766,7 @@ impl PgoCollector {
     }
 
     fn increment(&self, pc: usize) {
-        self.map[(pc - self.pc_base) / self.step].fetch_add(1, Ordering::Relaxed);
+        self.pc_index_map[(pc - self.pc_base) / self.step].fetch_add(1, Ordering::Relaxed);
     }
 }
 
