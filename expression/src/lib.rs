@@ -1,9 +1,12 @@
-use std::{iter, ops};
+use std::{
+    iter,
+    ops::{self, Add, Mul, Neg, Sub},
+};
 
+use powdr_number::ExpressionConvertible;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub mod conversion;
 pub mod display;
 pub mod visitors;
 
@@ -162,5 +165,35 @@ impl<T, R> ops::Mul for AlgebraicExpression<T, R> {
 impl<T, R> From<T> for AlgebraicExpression<T, R> {
     fn from(value: T) -> Self {
         AlgebraicExpression::Number(value)
+    }
+}
+
+impl<T, R> ExpressionConvertible<T, R> for AlgebraicExpression<T, R> {
+    fn to_expression<
+        E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
+    >(
+        &self,
+        number_converter: &impl Fn(&T) -> E,
+        var_converter: &impl Fn(&R) -> E,
+    ) -> E {
+        match self {
+            AlgebraicExpression::Reference(r) => var_converter(r),
+            AlgebraicExpression::Number(n) => number_converter(n),
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let left = left.to_expression(number_converter, var_converter);
+                let right = right.to_expression(number_converter, var_converter);
+
+                match op {
+                    AlgebraicBinaryOperator::Add => left + right,
+                    AlgebraicBinaryOperator::Sub => left - right,
+                    AlgebraicBinaryOperator::Mul => left * right,
+                }
+            }
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
+                AlgebraicUnaryOperator::Minus => {
+                    -expr.to_expression(number_converter, var_converter)
+                }
+            },
+        }
     }
 }

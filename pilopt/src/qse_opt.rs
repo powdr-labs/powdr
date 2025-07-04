@@ -7,10 +7,11 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
     Analyzed, Challenge, Identity, PolynomialIdentity,
 };
-use powdr_constraint_solver::constraint_system::ConstraintSystem;
+use powdr_constraint_solver::constraint_system::{ConstraintSystem, DefaultBusInteractionHandler};
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
+use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    grouped_expression::QuadraticSymbolicExpression,
     solver::{self, SolveResult},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
@@ -49,7 +50,10 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
     //replace_constrained_witness_columns(&mut constraint_system, 3);
 
-    match solver::Solver::new(constraint_system.clone()).solve() {
+    match solver::solve_system(
+        constraint_system.clone(),
+        DefaultBusInteractionHandler::default(),
+    ) {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
         }
@@ -114,7 +118,7 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 
     struct TerminalConverter;
 
-    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<Qse<T>>
+    impl<T: FieldElement> algebraic_expression_conversion::TerminalConverter<T, Qse<T>>
         for TerminalConverter
     {
         fn convert_reference(&mut self, reference: &AlgebraicReference) -> Qse<T> {
@@ -125,6 +129,9 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
         }
         fn convert_challenge(&mut self, challenge: &Challenge) -> Qse<T> {
             Qse::from_unknown_variable(Variable::Challenge(*challenge))
+        }
+        fn convert_number(&mut self, number: &T) -> Qse<T> {
+            Qse::from_number(*number)
         }
     }
 
