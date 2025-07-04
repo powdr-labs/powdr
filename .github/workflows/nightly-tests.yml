@@ -144,7 +144,7 @@ jobs:
         run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev 26bb25b cargo-openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev d730a36 cargo-openvm
 
       - name: Setup python venv
         run: |
