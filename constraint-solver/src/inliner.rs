@@ -3,9 +3,9 @@ use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
 use crate::journaling_constraint_system::JournalingConstraintSystemGeneric;
 use crate::runtime_constant::{RuntimeConstant, Substitutable};
+use powdr_number::ExpressionConvertible;
 
 use itertools::Itertools;
-use powdr_number::ExpressionConvertible;
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -22,7 +22,10 @@ pub struct DegreeBound {
 /// The degree is just the degree in the unknown variables, i.e.
 /// potential variables inside runtime constants do not count towards the degree.
 pub fn replace_constrained_witness_columns<
-    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
+    T: RuntimeConstant
+        + Display
+        + Substitutable<V>
+        + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: JournalingConstraintSystemGeneric<T, V>,
@@ -75,7 +78,7 @@ pub fn replace_constrained_witness_columns<
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
 fn find_inlinable_variables<
-    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     constraint: &GroupedExpression<T, V>,
@@ -98,7 +101,10 @@ fn find_inlinable_variables<
 }
 
 /// Checks whether a substitution is valid under `max_degree` constraint.
-fn is_valid_substitution<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+fn is_valid_substitution<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq,
+>(
     var: &V,
     expr: &GroupedExpression<T, V>,
     constraint_system: &IndexedConstraintSystemGeneric<T, V>,
@@ -124,7 +130,10 @@ fn is_valid_substitution<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
 
 /// Calculate the degree of a GroupedExpression assuming a variable is
 /// replaced by an expression of known degree.
-fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn expression_degree_with_virtual_substitution<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq,
+>(
     expr: &GroupedExpression<T, V>,
     var: &V,
     replacement_deg: usize,
@@ -144,7 +153,12 @@ fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clon
 
 /// Computes the degree of a GroupedExpression in the unknown variables.
 /// Variables inside runtime constants are ignored.
-fn expression_degree<T: RuntimeConstant, V: Ord + Clone>(expr: &GroupedExpression<T, V>) -> usize {
+fn expression_degree<
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Hash + Eq,
+>(
+    expr: &GroupedExpression<T, V>,
+) -> usize {
     let (quadratic, linear, _) = expr.components();
 
     quadratic
@@ -158,7 +172,7 @@ fn expression_degree<T: RuntimeConstant, V: Ord + Clone>(expr: &GroupedExpressio
 #[cfg(test)]
 mod test {
     use crate::{
-        constraint_system::{BusInteraction, ConstraintSystem},
+        constraint_system::{BusInteraction, ConstraintSystemGeneric},
         test_utils::{constant, var},
     };
 
@@ -175,7 +189,7 @@ mod test {
 
     #[test]
     fn test_no_substitution() {
-        let constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 var("a") * var("b") + var("c") * var("d"),
                 var("e") * var("e") - constant(2),
@@ -198,7 +212,7 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 var("a") + var("b") + var("c"),
                 var("b") + var("d") - constant(1),
@@ -255,7 +269,7 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystemGeneric {
             algebraic_constraints: identities,
             bus_interactions,
         }
@@ -300,7 +314,7 @@ mod test {
         identities.push(expr_constraint);
 
         // no columns to keep
-        let constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystemGeneric {
             algebraic_constraints: identities,
             bus_interactions: vec![],
         }
@@ -334,7 +348,7 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 var("y") - (var("x") + constant(3)),
                 var("z") - (var("y") + constant(2)),
@@ -362,7 +376,7 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        let constraint_system = ConstraintSystem {
+        let constraint_system = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 var("a") - (var("b") + constant(1)),
                 var("c") - (var("a") * var("a")),
@@ -454,13 +468,13 @@ mod test {
         suboptimal_order_identities.push(constraint2.clone()); // b = c + d
         suboptimal_order_identities.push(constraint4.clone()); // c = d * d
 
-        let optimal_system = ConstraintSystem {
+        let optimal_system = ConstraintSystemGeneric {
             algebraic_constraints: optimal_order_identities,
             bus_interactions: vec![],
         }
         .into();
 
-        let suboptimal_system = ConstraintSystem {
+        let suboptimal_system = ConstraintSystemGeneric {
             algebraic_constraints: suboptimal_order_identities,
             bus_interactions: vec![],
         }
