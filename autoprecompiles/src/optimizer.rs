@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
     journaling_constraint_system::JournalingConstraintSystem,
-    quadratic_symbolic_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
-    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 
@@ -24,14 +23,12 @@ use crate::{
 pub fn optimize<T: FieldElement>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    opcode: Option<u32>,
+    opcode: u32,
     degree_bound: DegreeBound,
     bus_map: &BusMap,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
-    let mut machine = if let (Some(opcode), Some(pc_lookup_bus_id)) =
-        (opcode, bus_map.get_bus_id(&BusType::PcLookup))
-    {
+    let mut machine = if let Some(pc_lookup_bus_id) = bus_map.get_bus_id(&BusType::PcLookup) {
         let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
         stats_logger.log("PC lookup optimization", &machine);
         machine
@@ -249,7 +246,7 @@ fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
     BusInteraction {
-        bus_id: SymbolicExpression::Concrete(P::from(bus_interaction.id)).into(),
+        bus_id: QuadraticSymbolicExpression::from_number(P::from(bus_interaction.id)),
         payload: bus_interaction
             .args
             .iter()

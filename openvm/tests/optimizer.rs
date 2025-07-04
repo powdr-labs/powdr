@@ -36,7 +36,7 @@ fn test_optimize() {
     let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
-        Some(0x10ff),
+        0x10ff,
         DegreeBound {
             identities: 5,
             bus_interactions: 5,
