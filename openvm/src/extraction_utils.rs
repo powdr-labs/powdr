@@ -2,13 +2,17 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::IntoOpenVm;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
+use crate::{AirMetrics, IntoOpenVm};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
+use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
+use openvm_stark_backend::config::{PackedChallenge, Val};
+use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
+use openvm_stark_backend::p3_field::FieldExtensionAlgebra;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };
@@ -272,18 +276,24 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_widths(&self) -> HashMap<String, usize> {
-        self.chip_complex()
-            .inventory
+    pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
+        let inventory = &self.chip_complex().inventory;
+
+        inventory
             .executors()
             .iter()
-            .map(|executor| {
-                let air: Arc<dyn AnyRap<BabyBearSC>> = executor.air();
-                let name = air.name();
-                let width = air.width();
-                (name, width)
+            .map(|executor| executor.air())
+            .chain(
+                inventory
+                    .periphery()
+                    .iter()
+                    .map(|periphery| periphery.air()),
+            )
+            .map(|air| {
+                // both executors and periphery implement the same `air()` API
+                get_air_metrics(air)
             })
-            .collect::<HashMap<_, _>>()
+            .collect()
     }
 }
 
@@ -329,12 +339,71 @@ pub fn get_name(air: Arc<dyn AnyRap<BabyBearSC>>) -> String {
 pub fn get_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
+    let builder = symbolic_builder_with_degree(air, None);
+    builder.constraints()
+}
+
+pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
+    let app_log_blow_up = 2;
+    let max_degree = (1 << app_log_blow_up) + 1;
+
+    let name = air.name();
+    let main = air.width();
+
+    let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
+    let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
+
+    let SymbolicConstraints {
+        constraints,
+        interactions,
+    } = symbolic_rap_builder.constraints();
+
+    let log_up = (find_interaction_chunks(&interactions, max_degree)
+        .interaction_partitions()
+        .len()
+        + 1)
+        * <PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D;
+
+    AirMetrics {
+        name,
+        widths: AirWidths {
+            preprocessed,
+            main,
+            log_up,
+        },
+        constraints: constraints.len(),
+        bus_interactions: interactions.len(),
+    }
+}
+
+pub fn symbolic_builder_with_degree(
+    air: Arc<dyn AnyRap<BabyBearSC>>,
+    max_constraint_degree: Option<usize>,
+) -> SymbolicRapBuilder<p3_baby_bear::BabyBear> {
     let perm = default_perm();
     let security_params = SecurityParameters::standard_fast();
     let config = config_from_perm(&perm, security_params);
     let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
-    let builder = air_keygen_builder.get_symbolic_builder(None);
-    builder.constraints()
+    air_keygen_builder.get_symbolic_builder(max_constraint_degree)
+}
+
+pub struct AirWidths {
+    pub preprocessed: usize,
+    pub main: usize,
+    pub log_up: usize,
+}
+
+impl std::fmt::Display for AirWidths {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
+            self.preprocessed + self.main + self.log_up,
+            self.preprocessed,
+            self.main,
+            self.log_up
+        )
+    }
 }
 
 #[cfg(test)]
