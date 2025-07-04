@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, IntoOpenVm};
+use crate::{AirMetrics, IntoOpenVm, SpecializedExecutor};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -33,7 +33,7 @@ use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::customize_exe::{openvm_bus_interaction_to_powdr, ApcCandidate};
 use crate::utils::symbolic_to_algebraic;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -305,7 +305,12 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
     for executor in chip_complex.inventory.executors().iter() {
         let air = executor.air();
-        let name = air.name();
+        let name = match executor {
+            SpecializedExecutor::PowdrExecutor(powdr_executor) => {
+                powdr_executor.air_name() // name with opcode
+            }
+            _ => air.name(),
+        };
 
         if blacklist.contains(&name.as_str()) {
             log::warn!("Skipping blacklisted AIR: {name}");
@@ -318,6 +323,16 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
         let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
         writeln!(writer, "{pil}\n").unwrap();
+    }
+}
+
+pub fn export_cell_pgo_data<P: IntoOpenVm>(
+    writer: &mut impl std::io::Write,
+    apcs_with_pgo_stats: &[ApcCandidate<P>],
+) {
+    for apc in apcs_with_pgo_stats {
+        let apc_str = apc.pretty_print();
+        writeln!(writer, "{apc_str}").unwrap();
     }
 }
 
