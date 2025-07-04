@@ -46,7 +46,6 @@ use tracing_subscriber::{
 };
 
 use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
-use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
