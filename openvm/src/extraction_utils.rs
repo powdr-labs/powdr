@@ -409,6 +409,8 @@ impl std::fmt::Display for AirWidths {
 
 #[cfg(test)]
 mod tests {
+    use crate::APP_LOG_BLOWUP;
+
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
     use openvm_bigint_circuit::Int256;
@@ -421,13 +423,11 @@ mod tests {
     #[test]
     fn test_get_bus_map() {
         // Adapted from openvm-reth-benchmark for a config which has a lot of extensions
-
-        let app_log_blowup = 2;
         let use_kzg_intrinsics = true;
 
         let system_config = SystemConfig::default()
             .with_continuations()
-            .with_max_constraint_degree((1 << app_log_blowup) + 1)
+            .with_max_constraint_degree((1 << APP_LOG_BLOWUP) + 1)
             .with_public_values(32);
         let int256 = Int256::default();
         let bn_config = PairingCurve::Bn254.curve_config();

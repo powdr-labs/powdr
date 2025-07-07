@@ -515,6 +515,8 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
+const APP_LOG_BLOWUP: u32 = 1;
+
 impl CompiledProgram {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
         let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
@@ -577,8 +579,7 @@ pub fn prove(
     let sdk = Sdk::default();
 
     // Set app configuration
-    let app_log_blowup = 2;
-    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup);
+    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Commit the exe
@@ -590,7 +591,7 @@ pub fn prove(
     if mock {
         tracing::info!("Checking constraints and witness in Mock prover...");
         let engine = BabyBearPoseidon2Engine::new(
-            FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup),
+            FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP),
         );
         let vm = VirtualMachine::new(engine, vm_config.clone());
         let pk = vm.keygen();
