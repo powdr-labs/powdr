@@ -13,8 +13,6 @@ ark-bn254 = "0.5"
 ark-ec = "0.5"
 ark-ff = "0.5"
 hex = "0.4"
-num-bigint = "0.4.6"
-itertools = "0.14.0"
 hex-literal = "1.0.0"
-num-traits = "0.2.19"
+ruint = { version = "1.9", default-features = false, features = ["alloc"] }
 
