@@ -1,33 +1,13 @@
 #!/usr/bin/env python3
 
-import sys
-import json
 import argparse
 from collections import OrderedDict
 import pandas as pd
+from metrics_utils import load_metrics_dataframes
 
 def extract_metrics(filename):
-    with open(filename) as f:
-        metrics_json = json.load(f)
+    app, leaf, internal = load_metrics_dataframes(filename)
     metrics = OrderedDict()
-
-    entries = [
-        dict(c["labels"]) | { "metric": c["metric"], "value": c["value"] }
-        for c in metrics_json["counter"] + metrics_json["gauge"]
-    ]
-
-    df = pd.DataFrame(entries)
-
-    # "group" has different values if coming from reth benchmark or the powdr cli
-    app = df[df["group"].fillna('').str.startswith("app_proof")]
-    if len(app) == 0:
-        app = df[df["group"].fillna('').str.startswith("reth")]
-    if len(app) == 0:
-        print("Invalid metrics.json", file=sys.stderr)
-        exit(1)
-
-    leaf = df[df["group"].fillna('').str.startswith("leaf")]
-    internal = df[df["group"].fillna('').str.startswith("internal")]
 
     powdr_air = app[app["air_name"].fillna('').str.startswith("PowdrAir")]
     non_powdr_air = app[~app["air_name"].fillna('').str.startswith("PowdrAir")]
