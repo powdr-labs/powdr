@@ -1,4 +1,4 @@
-#[allow(non_snake_case)]
+#![allow(non_snake_case)]
 use crate::pairing_check_with_hint::{
     BN254_PSEUDO_BINARY_ENCODING, PairingCheckError, frobenius_coeff_fq6_c1, xi_to_q_minus_1_over_2,
 };
