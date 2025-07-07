@@ -9,6 +9,7 @@ use powdr_constraint_solver::grouped_expression::{
     QuadraticSymbolicExpression, RangeConstraintProvider,
 };
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
+use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
@@ -301,7 +302,7 @@ fn is_known_to_be_nonzero<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     possible_concrete_values(expr, range_constraints, 20)
-        .is_some_and(|mut values| values.all(|value| !value.is_zero()))
+        .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
 }
 
 #[cfg(test)]

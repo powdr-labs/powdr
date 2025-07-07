@@ -291,7 +291,7 @@ pub fn build<
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
-        Some(opcode),
+        opcode,
         degree_bound,
         &vm_config.bus_map,
     )?;
