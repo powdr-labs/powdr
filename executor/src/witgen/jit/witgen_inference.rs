@@ -11,10 +11,11 @@ use powdr_ast::analyzed::{
 };
 use powdr_constraint_solver::{
     effect::Condition,
-    quadratic_symbolic_expression::{
+    grouped_expression::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
     range_constraint::RangeConstraint,
+    runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
@@ -75,7 +76,7 @@ pub struct BranchResult<'a, T: FieldElement, FixedEval> {
     /// The code common to both branches.
     pub common_code: Vec<Effect<T, Variable>>,
     /// The condition of the branch.
-    pub condition: Condition<T, Variable>,
+    pub condition: Condition<SymbolicExpression<T, Variable>>,
     /// The two branches.
     pub branches: [WitgenInference<'a, T, FixedEval>; 2],
 }
@@ -232,7 +233,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Set a variable to a fixed value.
     pub fn set_variable(&mut self, variable: Variable, value: T) -> Result<Vec<Variable>, Error> {
         self.process_equation(
-            &(QuadraticSymbolicExpression::from_unknown_variable(variable) - value.into()),
+            &(QuadraticSymbolicExpression::from_unknown_variable(variable)
+                - QuadraticSymbolicExpression::from_number(value)),
         )
     }
 
@@ -466,7 +468,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 self,
             ),
             Expression::PublicReference(_) | Expression::Challenge(_) => todo!(),
-            Expression::Number(n) => (*n).into(),
+            Expression::Number(n) => QuadraticSymbolicExpression::from_number(*n),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.evaluate(left, row_offset, require_concretely_known);
                 let right = self.evaluate(right, row_offset, require_concretely_known);

@@ -5,13 +5,17 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
-use crate::quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider};
-use crate::symbolic_expression::SymbolicExpression;
+use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
+use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 
 /// Returns the set of all known variables in a list of algebraic expressions.
 /// Panics if a variable appears as both known and unknown.
-pub fn known_variables<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Display + 'a>(
-    expressions: impl Iterator<Item = &'a QuadraticSymbolicExpression<T, V>>,
+pub fn known_variables<
+    'a,
+    T: RuntimeConstant + ReferencedSymbols<V> + 'a,
+    V: Clone + Hash + Ord + Eq + Display + 'a,
+>(
+    expressions: impl Iterator<Item = &'a GroupedExpression<T, V>>,
 ) -> BTreeSet<V> {
     let mut all_known_variables = BTreeSet::new();
     let mut all_unknown_variables = BTreeSet::new();
@@ -83,9 +87,13 @@ pub fn get_all_possible_assignments<T: FieldElement, V: Clone + Ord>(
 
 /// Returns all possible concrete values for `expr` using exhaustive search.
 /// Returns None if the number of possible assignments exceeds `max_elements`.
-pub fn possible_concrete_values<'a, T: FieldElement, V: Clone + Ord + Hash>(
-    expr: &'a QuadraticSymbolicExpression<T, V>,
-    rc: &'a impl RangeConstraintProvider<T, V>,
+pub fn possible_concrete_values<
+    'a,
+    T: RuntimeConstant + Substitutable<V> + Clone,
+    V: Clone + Ord + Hash,
+>(
+    expr: &'a GroupedExpression<T, V>,
+    rc: &'a impl RangeConstraintProvider<T::FieldType, V>,
     max_elements: u64,
 ) -> Option<impl Iterator<Item = T> + 'a> {
     let variables = expr.referenced_unknown_variables().cloned().collect_vec();
@@ -94,10 +102,10 @@ pub fn possible_concrete_values<'a, T: FieldElement, V: Clone + Ord + Hash>(
             get_all_possible_assignments(variables, rc).map(|assignment| {
                 let mut expr = expr.clone();
                 for (variable, value) in assignment.iter() {
-                    expr.substitute_by_known(variable, &SymbolicExpression::Concrete(*value));
+                    expr.substitute_by_known(variable, &T::from(*value));
                 }
-                // We substitute all variables, so this has to be a number.
-                expr.try_to_number().unwrap()
+                // We substitute all variables, so this has to be a runtime constant.
+                expr.try_to_known().unwrap().clone()
             }),
         )
     } else {

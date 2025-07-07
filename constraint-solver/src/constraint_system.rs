@@ -1,23 +1,38 @@
 use crate::{
-    effect::Effect,
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
+    effect::EffectImpl,
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
+    runtime_constant::{ReferencedSymbols, RuntimeConstant},
+    symbolic_expression::SymbolicExpression,
 };
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
+pub type ConstraintSystem<T, V> = ConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
+
 /// Description of a constraint system.
-#[derive(Clone, Default)]
-pub struct ConstraintSystem<T: FieldElement, V> {
+#[derive(Clone)]
+pub struct ConstraintSystemGeneric<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
-    pub algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
-    pub bus_interactions: Vec<BusInteraction<QuadraticSymbolicExpression<T, V>>>,
+    pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
 }
 
-impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
+impl<T, V> Default for ConstraintSystemGeneric<T, V> {
+    fn default() -> Self {
+        ConstraintSystemGeneric {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: Vec::new(),
+        }
+    }
+}
+
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
+    for ConstraintSystemGeneric<T, V>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -35,7 +50,7 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for ConstraintSystem<T, 
     }
 }
 
-impl<T: FieldElement, V> ConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V> ConstraintSystemGeneric<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(
             self.algebraic_constraints
@@ -49,7 +64,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
         )
     }
 
-    pub fn expressions(&self) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
+    pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()
@@ -57,9 +72,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
         )
     }
 
-    pub fn expressions_mut(
-        &mut self,
-    ) -> impl Iterator<Item = &mut QuadraticSymbolicExpression<T, V>> {
+    pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut GroupedExpression<T, V>> {
         Box::new(
             self.algebraic_constraints.iter_mut().chain(
                 self.bus_interactions
@@ -71,7 +84,7 @@ impl<T: FieldElement, V> ConstraintSystem<T, V> {
 
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
-    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+    pub fn extend(&mut self, system: ConstraintSystemGeneric<T, V>) {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
@@ -134,38 +147,40 @@ impl<V> FromIterator<V> for BusInteraction<V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
-    BusInteraction<QuadraticSymbolicExpression<T, V>>
-{
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> BusInteraction<GroupedExpression<T, V>> {
     /// Converts a bus interactions with fields represented by expressions
     /// to a bus interaction with fields represented by range constraints.
     fn to_range_constraints(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> BusInteraction<RangeConstraint<T>> {
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> BusInteraction<RangeConstraint<T::FieldType>> {
         BusInteraction::from_iter(
             self.fields()
                 .map(|expr| expr.range_constraint(range_constraints)),
         )
     }
+}
 
+impl<
+        T: RuntimeConstant + ReferencedSymbols<V> + Display + ExpressionConvertible<T::FieldType, V>,
+        V: Clone + Hash + Ord + Eq + Display,
+    > BusInteraction<GroupedExpression<T, V>>
+{
     /// Refines range constraints of the bus interaction's fields
     /// using the provided `BusInteractionHandler`.
     /// Returns a list of updates to be executed by the caller.
     /// Forwards and error by the bus interaction handler.
     pub fn solve(
         &self,
-        bus_interaction_handler: &dyn BusInteractionHandler<T>,
-        range_constraint_provider: &impl RangeConstraintProvider<T, V>,
-    ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
+        bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
+        range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> Result<Vec<EffectImpl<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
         Ok(self
             .fields()
             .zip_eq(range_constraints.fields())
-            // TODO: This does not handle all cases. We might want to introduce variables for
-            // bus interaction parameters.
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
                 expr.referenced_unknown_variables().filter_map(|var| {
@@ -175,14 +190,15 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
                     let k = expr.coefficient_of_variable(var).unwrap().try_to_number()?;
                     let expr = expr.try_solve_for(var)?;
                     let rc = rc
-                        .multiple(T::from(1) / k)
+                        .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
+                    (!rc.is_unconstrained()).then(|| EffectImpl::RangeConstraint(var.clone(), rc))
                 })
             })
             .collect())
     }
-
+}
+impl<T: ReferencedSymbols<V>, V> BusInteraction<GroupedExpression<T, V>> {
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         Box::new(self.fields().flat_map(|expr| expr.referenced_variables()))
@@ -249,12 +265,12 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
     }
 }
 
-pub enum ConstraintRef<'a, T: FieldElement, V> {
-    AlgebraicConstraint(&'a QuadraticSymbolicExpression<T, V>),
-    BusInteraction(&'a BusInteraction<QuadraticSymbolicExpression<T, V>>),
+pub enum ConstraintRef<'a, T, V> {
+    AlgebraicConstraint(&'a GroupedExpression<T, V>),
+    BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 
-impl<'a, T: FieldElement, V: Ord + Clone + Hash + Display> ConstraintRef<'a, T, V> {
+impl<'a, T: ReferencedSymbols<V>, V> ConstraintRef<'a, T, V> {
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         match self {
             ConstraintRef::AlgebraicConstraint(expr) => Box::new(expr.referenced_variables()),

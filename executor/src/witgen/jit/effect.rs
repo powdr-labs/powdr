@@ -8,6 +8,7 @@ use powdr_ast::indent;
 use powdr_constraint_solver::effect::{
     Assertion, BitDecomposition, BitDecompositionComponent, Condition,
 };
+use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_number::FieldElement;
 
@@ -18,24 +19,33 @@ use super::variable::Variable;
 
 /// The effect of solving a symbolic equation.
 #[derive(Clone, PartialEq, Eq)]
-pub enum Effect<T: FieldElement, V> {
+pub enum Effect<T: FieldElement, V>
+where
+    SymbolicExpression<T, V>: RuntimeConstant,
+{
     /// Variable can be assigned a value.
     Assignment(V, SymbolicExpression<T, V>),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
-    BitDecomposition(BitDecomposition<T, V>),
+    BitDecomposition(BitDecomposition<SymbolicExpression<T, V>, V>),
     /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
-    Assertion(Assertion<T, V>),
+    Assertion(Assertion<SymbolicExpression<T, V>>),
     /// A call to a different machine, with bus ID, known inputs and argument variables.
     MachineCall(T, BitVec, Vec<V>),
     /// Compute one variable by executing a prover function (given by index) on the value of other variables.
     ProverFunctionCall(ProverFunctionCall<V>),
     /// A branch on a variable.
-    Branch(Condition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
+    Branch(
+        Condition<SymbolicExpression<T, V>>,
+        Vec<Effect<T, V>>,
+        Vec<Effect<T, V>>,
+    ),
 }
 
-impl<T: FieldElement, V: Clone> From<ConstraintSolverEffect<T, V>> for Effect<T, V> {
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord> From<ConstraintSolverEffect<T, V>>
+    for Effect<T, V>
+{
     fn from(effect: ConstraintSolverEffect<T, V>) -> Self {
         match effect {
             ConstraintSolverEffect::Assignment(v, expr) => Effect::Assignment(v, expr),
@@ -87,7 +97,10 @@ impl<T: FieldElement> Effect<T, Variable> {
     }
 }
 
-impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
+impl<T: FieldElement, V: Hash + Eq> Effect<T, V>
+where
+    SymbolicExpression<T, V>: RuntimeConstant,
+{
     /// Returns an iterator over all referenced variables, both read and written.
     pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
         let iter: Box<dyn Iterator<Item = &V>> = match self {
@@ -143,6 +156,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
                 lhs,
                 rhs,
                 expected_equal,
+                ..
             }) => {
                 format!(
                     "assert {lhs} {} {rhs};",
@@ -206,7 +220,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 }
 
 fn format_condition<T: FieldElement>(
-    Condition { value, condition }: &Condition<T, Variable>,
+    Condition { value, condition }: &Condition<SymbolicExpression<T, Variable>>,
 ) -> String {
     let (min, max) = condition.range();
     match min.cmp(&max) {

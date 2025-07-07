@@ -13,6 +13,7 @@ powdr-constraint-solver.workspace = true
 
 itertools = "0.13"
 log = "0.4.18"
+num-traits = "0.2.15"
 serde = "1.0.218"
 
 [package.metadata.cargo-udeps.ignore]

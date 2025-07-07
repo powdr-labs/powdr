@@ -1,12 +1,13 @@
 use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_constraint_solver::variable_update::UpdateKind;
 use powdr_constraint_solver::{
-    quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
+    grouped_expression::{self, QuadraticSymbolicExpression},
     variable_update::VariableUpdate,
 };
 use powdr_number::FieldElement;
@@ -48,7 +49,7 @@ pub struct Processor<'a, T: FieldElement> {
 pub struct ProcessorResult<T: FieldElement> {
     /// Generated code.
     pub code: Vec<Effect<T, Variable>>,
-    /// Range constrainst of the variables they were requested on.
+    /// Range constraints of the variables they were requested on.
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -111,7 +112,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 }
                 Identity::Polynomial(identity) => algebraic_expression_to_queue_items(
                     &identity.expression,
-                    T::zero(),
+                    QuadraticSymbolicExpression::zero(),
                     *row_offset,
                     &witgen,
                 )
@@ -285,7 +286,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
         identity_queue: &mut IdentityQueue<'a, T>,
-    ) -> Result<(), quadratic_symbolic_expression::Error> {
+    ) -> Result<(), grouped_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
                 QueueItem::Equation { expr, .. } => witgen.process_equation(expr),

@@ -32,7 +32,6 @@ openvm-bigint-circuit.workspace = true
 openvm-bigint-transpiler.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
-openvm-pairing-guest.workspace = true
 openvm-native-circuit.workspace = true
 openvm-native-recursion.workspace = true
 
@@ -61,6 +60,8 @@ clap = { version = "^4.3", features = ["derive"] }
 log = "0.4.17"
 serde_cbor = "0.11.2"
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
+
+toml = "0.8.14"
 
 [dev-dependencies]
 test-log = { version = "0.2.17", features = ["trace"] }

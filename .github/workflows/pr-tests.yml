@@ -142,3 +142,47 @@ jobs:
         with:
           version: "latest"
           args: "--all-targets"
+
+  test_apc_reth_compilation:
+    runs-on: warp-ubuntu-2404-x64-8x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+
+      - name: Install cargo openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev d730a36 cargo-openvm
+
+      - name: Checkout openvm-reth-benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: powdr-labs/openvm-reth-benchmark
+          ref: main
+          path: openvm-reth-benchmark
+
+      - name: Patch openvm-reth-benchmark to use local powdr
+        run: |
+          cd openvm-reth-benchmark
+          mkdir -p .cargo
+          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+
+      - name: Run small execution test with APCs
+        run: |
+          cd openvm-reth-benchmark
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+          MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
