@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 use crate::pairing_utils::{exp_check_fallback, multi_miller_loop_embedded_exp};
 use ark_bn254::{Bn254, Fq, Fq2, Fq6, Fq12, G1Affine, G2Affine};
 use ark_ec::pairing::Pairing;
@@ -42,7 +43,6 @@ fn try_honest_pairing_check(
     let fc = multi_miller_loop_embedded_exp(P, Q, Some(c_inv));
 
     if fc * c_mul * u == Fq12::ONE {
-        print!("Pairing check passed with hint");
         Some(Ok(()))
     } else {
         None
