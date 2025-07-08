@@ -1,13 +1,10 @@
-use std::collections::BTreeMap;
-
-use super::simplify_expression;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    expression::{AlgebraicExpression, AlgebraicReference},
-    powdr, BusMap, BusType, InstructionMachineHandler, PcLookupBusInteraction,
-    SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine,
+    expression::AlgebraicExpression, powdr, BusMap, BusType, InstructionMachineHandler,
+    PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicInstructionStatement, SymbolicMachine,
 };
 
 pub fn statements_to_symbolic_machine<T: FieldElement>(
@@ -42,7 +39,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .exactly_one()
             .expect("Expected single pc lookup");
 
-        let mut sub_map: BTreeMap<AlgebraicReference, AlgebraicExpression<T>> = Default::default();
         let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
         let is_valid: AlgebraicExpression<T> = exec_receive(
@@ -65,45 +61,21 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .zip_eq(&pc_lookup.args)
             .for_each(|(instr_arg, pc_arg)| {
                 let arg = AlgebraicExpression::Number(*instr_arg);
-                match pc_arg {
-                    AlgebraicExpression::Reference(arg_ref) => {
-                        sub_map.insert(arg_ref.clone(), arg);
-                    }
-                    AlgebraicExpression::BinaryOperation(_expr) => {
-                        local_constraints.push((arg - pc_arg.clone()).into());
-                    }
-                    AlgebraicExpression::UnaryOperation(_expr) => {
-                        local_constraints.push((arg - pc_arg.clone()).into());
-                    }
-                    _ => {}
-                }
+                local_constraints.push((arg - pc_arg.clone()).into());
             });
 
         let local_identities = machine
             .constraints
             .iter()
             .chain(&local_constraints)
-            .map(|expr| {
-                let mut expr = expr.expr.clone();
-                powdr::substitute_algebraic(&mut expr, &sub_map);
-                expr = simplify_expression(expr);
-                SymbolicConstraint { expr }
+            .map(|expr| SymbolicConstraint {
+                expr: expr.expr.clone(),
             })
             .collect::<Vec<_>>();
 
         constraints.extend(local_identities);
 
-        for bus_int in &machine.bus_interactions {
-            let mut link = bus_int.clone();
-            link.args
-                .iter_mut()
-                .chain(std::iter::once(&mut link.mult))
-                .for_each(|e| {
-                    powdr::substitute_algebraic(e, &sub_map);
-                    *e = simplify_expression(e.clone());
-                });
-            bus_interactions.push(link);
-        }
+        bus_interactions.extend(machine.bus_interactions.iter().cloned());
 
         col_subs.push(subs);
     }
