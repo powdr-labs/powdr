@@ -10,33 +10,26 @@ pub fn handle_memory<T: FieldElement>(
 ) -> Vec<RangeConstraint<T>> {
     // See: https://github.com/openvm-org/openvm/blob/main/crates/vm/src/system/memory/offline_checker/bus.rs
     // Expects (address_space, pointer, data, timestamp).
-    if payload.len() < 4 {
-        panic!("Expected at least 4 arguments");
-    }
-
     let [address_space, pointer, data @ .., timestamp] = payload else {
-        panic!("Expected at least 4 arguments");
+        panic!();
     };
+    assert!(!data.is_empty(), "Data must contain at least one element");
 
-    let is_send = if multiplicity == T::one() {
-        true
-    } else if multiplicity == -T::one() {
-        false
-    } else {
-        // This can happen during exhaustive search, just do nothing.
+    if multiplicity != -T::one() {
+        // The interaction is not a receive, we can't make assumptions about the ranges.
         return payload.to_vec();
-    };
+    }
 
     let address_space_value = address_space
         .try_to_single_value()
         .map(|v| v.to_integer().try_into_u32().unwrap());
 
-    match (is_send, address_space_value) {
-        (true, Some(RV32_REGISTER_AS | RV32_MEMORY_AS)) => {
+    match address_space_value {
+        Some(RV32_REGISTER_AS | RV32_MEMORY_AS) => {
             let data = if address_space_value == Some(RV32_REGISTER_AS)
                 && pointer.try_to_single_value() == Some(T::zero())
             {
-                // By the assumption that the only value written to x0 is 0, we know the result.
+                // By the assumption that x0 is never written to, we know the result.
                 data.iter()
                     .map(|_| RangeConstraint::from_value(T::zero()))
                     .collect::<Vec<_>>()
@@ -91,26 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read() {
-        let address_space = value(RV32_MEMORY_AS as u64);
-        let pointer = value(0x1234);
-        let data = vec![default(); 4];
-        let timestamp = value(0x5678);
-
-        let result = run(address_space, pointer, data, timestamp, 1.into());
-
-        assert_eq!(result.len(), 7);
-        assert_eq!(result[0], value(RV32_MEMORY_AS as u64));
-        assert_eq!(result[1], value(0x1234));
-        assert_eq!(result[2], byte_constraint());
-        assert_eq!(result[3], byte_constraint());
-        assert_eq!(result[4], byte_constraint());
-        assert_eq!(result[5], byte_constraint());
-        assert_eq!(result[6], value(0x5678));
-    }
-
-    #[test]
-    fn test_write() {
+    fn test_receive() {
         let address_space = value(RV32_MEMORY_AS as u64);
         let pointer = value(0x1234);
         let data = vec![default(); 4];
@@ -127,6 +101,26 @@ mod tests {
         assert_eq!(result.len(), 7);
         assert_eq!(result[0], value(RV32_MEMORY_AS as u64));
         assert_eq!(result[1], value(0x1234));
+        assert_eq!(result[2], byte_constraint());
+        assert_eq!(result[3], byte_constraint());
+        assert_eq!(result[4], byte_constraint());
+        assert_eq!(result[5], byte_constraint());
+        assert_eq!(result[6], value(0x5678));
+    }
+
+    #[test]
+    fn test_send() {
+        let address_space = value(RV32_MEMORY_AS as u64);
+        let pointer = value(0x1234);
+        let data = vec![default(); 4];
+        let timestamp = value(0x5678);
+
+        let result = run(address_space, pointer, data, timestamp, 1.into());
+
+        assert_eq!(result.len(), 7);
+        assert_eq!(result[0], value(RV32_MEMORY_AS as u64));
+        assert_eq!(result[1], value(0x1234));
+        // For receives, the range constraints should not be modified.
         assert_eq!(result[2], Default::default());
         assert_eq!(result[3], Default::default());
         assert_eq!(result[4], Default::default());
