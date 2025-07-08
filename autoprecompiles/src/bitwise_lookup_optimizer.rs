@@ -1,11 +1,18 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::grouped_expression::QuadraticSymbolicExpression;
+use powdr_constraint_solver::constraint_system::{
+    BusInteraction, BusInteractionHandler, ConstraintSystem,
+};
+use powdr_constraint_solver::effect::EffectImpl;
+use powdr_constraint_solver::grouped_expression::{
+    NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider,
+};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
@@ -13,6 +20,7 @@ use powdr_number::FieldElement;
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
     mut system: ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
+    bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> ConstraintSystem<T, V> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
@@ -66,9 +74,9 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
-    let already_byte_constrained = all_byte_constrained_expressions(&system, bitwise_lookup_bus_id)
-        .cloned()
-        .collect::<HashSet<_>>();
+    let byte_range_constraint = RangeConstraint::from_mask(0xffu64);
+    let range_constraints = RangeConstraints::new(&system, bus_interaction_handler);
+
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
         .filter(|expr| {
@@ -77,7 +85,8 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 // No need to byte-constrain numbers.
                 false
             } else {
-                !already_byte_constrained.contains(expr)
+                let rc = expr.range_constraint(&range_constraints);
+                rc != rc.conjunction(&byte_range_constraint)
             }
         })
         .unique()
@@ -104,32 +113,46 @@ fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Ha
         && bus_int.multiplicity.is_one()
 }
 
-/// Returns all expressions that are byte-constrained in the machine.
-/// The list does not have to be exhaustive.
-fn all_byte_constrained_expressions<T: FieldElement, V: Clone + Ord + Hash>(
-    machine: &ConstraintSystem<T, V>,
-    bitwise_lookup_bus_id: u64,
-) -> impl Iterator<Item = &QuadraticSymbolicExpression<T, V>> {
-    machine
-        .bus_interactions
-        .iter()
-        .filter(move |bus_int| {
-            is_simple_multiplicity_bitwise_bus_interaction(bus_int, bitwise_lookup_bus_id)
-        })
-        .flat_map(|bus_int| {
-            let [x, y, z, op] = &bus_int.payload[..] else {
-                panic!();
-            };
-            if let Some(op) = op.try_to_number() {
-                if op == T::from(0) {
-                    vec![x, y]
-                } else if op == T::from(1) {
-                    vec![x, y, z]
-                } else {
-                    vec![]
+struct RangeConstraints<T: FieldElement, V> {
+    range_constraints: HashMap<V, RangeConstraint<T>>,
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
+    for RangeConstraints<T, V>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        self.range_constraints.get(var).cloned().unwrap_or_default()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Hash + Ord + Display> RangeConstraints<T, V> {
+    /// Computes range constraints for variables in the machine.
+    /// This is a very basic way to do it, it does not do it iteratively
+    /// and only considers bus interactions.
+    /// We could get better results using the solver.
+    fn new(
+        machine: &ConstraintSystem<T, V>,
+        bus_interaction_handler: &impl BusInteractionHandler<T>,
+    ) -> Self {
+        let range_constraints = machine
+            .bus_interactions
+            .iter()
+            .flat_map(move |bus_interaction| {
+                bus_interaction
+                    .solve(bus_interaction_handler, &NoRangeConstraints)
+                    .unwrap()
+            })
+            .flat_map(|effect| match effect {
+                EffectImpl::Assignment(v, value) => Some((v, value.range_constraint())),
+                EffectImpl::RangeConstraint(v, range_constraint) => Some((v, range_constraint)),
+                EffectImpl::BitDecomposition(..)
+                | EffectImpl::Assertion(..)
+                | EffectImpl::ConditionalAssignment { .. } => {
+                    None /* ignore */
                 }
-            } else {
-                vec![]
-            }
-        })
+            })
+            .into_grouping_map()
+            .reduce(|acc, _key, new_rc| acc.conjunction(&new_rc));
+        Self { range_constraints }
+    }
 }
