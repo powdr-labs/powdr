@@ -41,14 +41,17 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
 
         let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-        let is_valid: AlgebraicExpression<T> = exec_receive(
+        // To simplify constraint solving, we constrain `is_valid` to be 1, which effectively
+        // removes the column. The optimized precompile will then have to be guarded by a new
+        // `is_valid` column.
+        let minus_is_valid: AlgebraicExpression<T> = exec_receive(
             &machine,
             bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap(),
         )
         .mult
         .clone();
         let one = AlgebraicExpression::Number(1u64.into());
-        local_constraints.push((is_valid.clone() + one).into());
+        local_constraints.push((minus_is_valid.clone() + one).into());
 
         // Constrain the opcode expression to equal the actual opcode.
         let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
@@ -64,19 +67,16 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
                 local_constraints.push((arg - pc_arg.clone()).into());
             });
 
-        let local_identities = machine
-            .constraints
-            .iter()
-            .chain(&local_constraints)
-            .map(|expr| SymbolicConstraint {
-                expr: expr.expr.clone(),
-            })
-            .collect::<Vec<_>>();
-
-        constraints.extend(local_identities);
-
+        constraints.extend(
+            machine
+                .constraints
+                .iter()
+                .chain(&local_constraints)
+                .map(|expr| SymbolicConstraint {
+                    expr: expr.expr.clone(),
+                }),
+        );
         bus_interactions.extend(machine.bus_interactions.iter().cloned());
-
         col_subs.push(subs);
     }
 
