@@ -124,20 +124,18 @@ pub fn customize(
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .map(|block| {
-                (
-                    pgo_config.pc_offset_execution_count(block.start_idx as u32),
+            .filter_map(|block| {
+                Some((
+                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
                     block,
-                )
+                ))
             })
             .sorted_by_key(|(count, _)| *count)
+            .rev()
             .take(10)
         {
-            let count = count
-                .map(|c| format!(" (executed {c} times)"))
-                .unwrap_or_default();
             tracing::debug!(
-                "Basic block{count}:\n{}",
+                "Basic block (executed {count} times):\n{}",
                 block.pretty_print(openvm_instruction_formatter)
             );
         }
