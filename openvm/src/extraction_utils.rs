@@ -43,8 +43,13 @@ pub struct OriginalAirs<P> {
 
 impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
-        self.get_instruction_air_and_metrics(opcode)
-            .map(|(machine, _)| machine)
+        self.opcode_to_air
+            .get(&VmOpcode::from_usize(opcode))
+            .and_then(|air_name| {
+                self.air_name_to_machine
+                    .get(air_name)
+                    .map(|(machine, _)| machine)
+            })
     }
 }
 
@@ -71,13 +76,14 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         Ok(())
     }
 
-    pub fn get_instruction_air_and_metrics(
-        &self,
-        opcode: usize,
-    ) -> Option<&(SymbolicMachine<P>, AirMetrics)> {
+    pub fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics> {
         self.opcode_to_air
             .get(&VmOpcode::from_usize(opcode))
-            .and_then(|air_name| self.air_name_to_machine.get(air_name))
+            .and_then(|air_name| {
+                self.air_name_to_machine
+                    .get(air_name)
+                    .map(|(_, metrics)| metrics)
+            })
     }
 
     pub fn allow_list(&self) -> BTreeSet<usize> {

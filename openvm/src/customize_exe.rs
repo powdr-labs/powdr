@@ -547,7 +547,7 @@ fn create_apcs_with_cell_pgo(
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
-                .map(|instr| airs.get_instruction_air_and_metrics(instr.opcode.as_usize()).unwrap().1.widths.total())
+                .map(|instr| airs.get_instruction_metrics(instr.opcode.as_usize()).unwrap().widths.total())
                 .sum();
             let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
             let execution_frequency = *pgo_program_idx_count
