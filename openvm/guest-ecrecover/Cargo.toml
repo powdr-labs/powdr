@@ -1,0 +1,12 @@
+[package]
+name = "ecrecover"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", features = ["std"] }
+hex = "0.4"
+revm-precompile = { git = "https://github.com/bluealloy/revm.git", tag = "v75", default-features = false }

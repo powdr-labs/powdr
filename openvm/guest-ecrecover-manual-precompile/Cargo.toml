@@ -1,0 +1,21 @@
+[package]
+name = "ecrecover"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", features = ["std"] }
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false }
+openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", default-features = false }
+
+hex = "0.4"
+revm-precompile = { git = "https://github.com/bluealloy/revm.git", tag = "v75", default-features = false }
+k256 = { version = "0.13.3", default-features = false }
+
+
+[patch.crates-io]
+k256 = { git = "https://github.com/powdr-labs/openvm.git", package = "k256" }
