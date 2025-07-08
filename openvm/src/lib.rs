@@ -515,7 +515,7 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
-const APP_LOG_BLOWUP: u32 = 1;
+const APP_LOG_BLOWUP: usize = 1;
 
 impl CompiledProgram {
     pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
