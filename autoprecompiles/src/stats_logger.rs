@@ -58,9 +58,7 @@ impl<P: FieldElement> From<&SymbolicMachine<P>> for Stats {
     }
 }
 
-impl<P: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq>
-    From<&ConstraintSystemGeneric<P, V>> for Stats
-{
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&ConstraintSystemGeneric<P, V>> for Stats {
     fn from(constraint_system: &ConstraintSystemGeneric<P, V>) -> Self {
         Stats {
             num_constraints: constraint_system.algebraic_constraints.len(),
@@ -74,8 +72,8 @@ impl<P: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq>
     }
 }
 
-impl<P: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq>
-    From<&JournalingConstraintSystemGeneric<P, V>> for Stats
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&JournalingConstraintSystemGeneric<P, V>>
+    for Stats
 {
     fn from(constraint_system: &JournalingConstraintSystemGeneric<P, V>) -> Self {
         Stats::from(constraint_system.system())
