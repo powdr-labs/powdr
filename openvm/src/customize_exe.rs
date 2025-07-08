@@ -120,6 +120,28 @@ pub fn customize(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        for (count, block) in blocks
+            .iter()
+            .map(|block| {
+                (
+                    pgo_config.pc_offset_execution_count(block.start_idx as u32),
+                    block,
+                )
+            })
+            .sorted_by_key(|(count, _)| *count)
+            .take(10)
+        {
+            let count = count
+                .map(|c| format!(" (executed {c} times)"))
+                .unwrap_or_default();
+            tracing::debug!(
+                "Basic block{count}:\n{}",
+                block.pretty_print(openvm_instruction_formatter)
+            );
+        }
+    }
 
     let blocks = blocks
         .into_iter()
@@ -572,7 +594,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
     )
     .skip(config.skip_autoprecompiles as usize)
     .map(|c| {
-        tracing::debug!(
+        println!(
             "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
             c.block_with_apc.block.start_idx,
             c.value() / c.cost(),
