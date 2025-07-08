@@ -4,7 +4,6 @@ use std::{fmt::Display, time::Instant};
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ConstraintSystemGeneric;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystemGeneric;
-use powdr_constraint_solver::runtime_constant::{ReferencedSymbols, RuntimeConstant};
 use powdr_number::FieldElement;
 
 use crate::{powdr::UniqueReferences, SymbolicMachine};
