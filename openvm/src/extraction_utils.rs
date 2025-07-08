@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, IntoOpenVm};
+use crate::{AirMetrics, IntoOpenVm, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -345,8 +345,7 @@ pub fn get_constraints(
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
-    let app_log_blow_up = 2;
-    let max_degree = (1 << app_log_blow_up) + 1;
+    let max_degree = (1 << APP_LOG_BLOWUP) + 1;
 
     let name = air.name();
     let main = air.width();
