@@ -252,6 +252,7 @@ pub trait InstructionMachineHandler<T> {
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T> {
     machine: SymbolicMachine<T>,
     subs: Vec<Vec<u64>>,
