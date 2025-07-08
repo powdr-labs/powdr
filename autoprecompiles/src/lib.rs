@@ -258,10 +258,6 @@ pub struct Apc<T> {
 }
 
 impl<T: FieldElement> Apc<T> {
-    pub fn main_width(&self) -> usize {
-        self.machine.unique_references().count()
-    }
-
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
