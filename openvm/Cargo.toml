@@ -61,6 +61,7 @@ log = "0.4.17"
 serde_cbor = "0.11.2"
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
 
+bimap = "0.6.3"
 toml = "0.8.14"
 
 [dev-dependencies]

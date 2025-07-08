@@ -23,7 +23,7 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
-use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery, PowdrStackedPrecompile};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -49,7 +49,6 @@ use tracing_subscriber::{
 
 use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
-use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
 
 mod air_builder;
@@ -247,7 +246,7 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
 impl SpecializedConfig {
     fn new(
         base_config: OriginalVmConfig,
-        precompiles: Vec<PowdrPrecompile<BabyBearField>>,
+        precompiles: Vec<PowdrStackedPrecompile<BabyBearField>>,
         implementation: PrecompileImplementation,
     ) -> Self {
         let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -355,6 +354,9 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
+    /// If present, use chip stacking.
+    /// Autoprecompile chips will be grouped by the provided log of their number of witness columns.
+    pub chip_stacking_log: Option<f32>,
 }
 
 impl PowdrConfig {
@@ -367,6 +369,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
+            chip_stacking_log: None,
         }
     }
 
@@ -390,6 +393,13 @@ impl PowdrConfig {
     ) -> Self {
         Self {
             implementation: precompile_implementation,
+            ..self
+        }
+    }
+
+    pub fn with_chip_stacking(self, chip_stacking_log: f32) -> Self {
+        Self {
+            chip_stacking_log: Some(chip_stacking_log),
             ..self
         }
     }
