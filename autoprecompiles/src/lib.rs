@@ -1,6 +1,5 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
-use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
