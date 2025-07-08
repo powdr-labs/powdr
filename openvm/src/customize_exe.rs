@@ -2,8 +2,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use std::sync::Arc;
 
-use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
@@ -19,7 +20,6 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{
     bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement,
@@ -60,14 +60,14 @@ struct BlockWithApc<P: IntoOpenVm> {
     apc: Apc<P>,
 }
 
-fn generate_apcs_with_pgo<P: IntoOpenVm>(
-    blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &OriginalAirs<P>,
+fn generate_apcs_with_pgo(
+    blocks: Vec<BasicBlock<OpenVmField<BabyBearField>>>,
+    airs: &OriginalAirs<BabyBearField>,
     bus_map: &BusMap,
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
-) -> Vec<BlockWithApc<P>> {
+) -> Vec<BlockWithApc<BabyBearField>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -120,6 +120,26 @@ pub fn customize(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        for (count, block) in blocks
+            .iter()
+            .filter_map(|block| {
+                Some((
+                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
+                    block,
+                ))
+            })
+            .sorted_by_key(|(count, _)| *count)
+            .rev()
+            .take(10)
+        {
+            tracing::debug!(
+                "Basic block (executed {count} times):\n{}",
+                block.pretty_print(openvm_instruction_formatter)
+            );
+        }
+    }
 
     let blocks = blocks
         .into_iter()
@@ -197,7 +217,7 @@ pub fn customize(
 
                 let is_valid_column = autoprecompile
                     .machine()
-                    .unique_references()
+                    .main_columns()
                     .find(|c| &*c.name == "is_valid")
                     .unwrap();
 
@@ -455,15 +475,15 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
-fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
+fn create_apcs_with_cell_pgo(
+    mut blocks: Vec<BasicBlock<OpenVmField<BabyBearField>>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     max_total_columns: Option<usize>,
-    airs: &OriginalAirs<P>,
+    airs: &OriginalAirs<BabyBearField>,
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
+) -> Vec<BlockWithApc<BabyBearField>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -475,10 +495,6 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
         "Retained {} basic blocks after filtering by pc_idx_count",
         blocks.len()
     );
-
-    // store air width by opcode, so that we don't repetitively calculate them later
-    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode();
 
     // generate apc for all basic blocks and only cache the ones we eventually use
     // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -544,12 +560,14 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
             )
             .ok()?; // if apc creation fails, filter out this candidate block
 
+            let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
+
             // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width();
+            let apc_cells_per_row = apc_metrics.widths.total();
             let orig_cells_per_row: usize = block
                 .statements
                 .iter()
-                .map(|instr| air_width_by_opcode[&instr.opcode])
+                .map(|instr| airs.get_instruction_metrics(instr.opcode.as_usize()).unwrap().widths.total())
                 .sum();
             let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
             let execution_frequency = *pgo_program_idx_count

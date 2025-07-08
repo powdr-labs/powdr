@@ -32,7 +32,6 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
-use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
@@ -147,7 +146,7 @@ where
         // which is unnecessary.
         let column_index_by_poly_id = self
             .machine
-            .unique_references()
+            .main_columns()
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();

@@ -1,6 +1,5 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
-use crate::optimizer::simplify_expression;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -115,6 +114,12 @@ pub enum BusInteractionKind {
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+}
+
+impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+    pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
+        self.unique_references()
+    }
 }
 
 impl<T: Display> Display for SymbolicMachine<T> {
@@ -252,10 +257,6 @@ pub struct Apc<T> {
 }
 
 impl<T: FieldElement> Apc<T> {
-    pub fn width(&self) -> usize {
-        self.machine.unique_references().count()
-    }
-
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }

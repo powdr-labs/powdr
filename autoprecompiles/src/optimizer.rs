@@ -229,7 +229,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .algebraic_constraints
             .iter()
             .map(|constraint| SymbolicConstraint {
-                expr: simplify_expression(grouped_expression_to_algebraic(constraint)),
+                expr: grouped_expression_to_algebraic(constraint),
             })
             .collect(),
         bus_interactions: constraint_system
@@ -271,11 +271,9 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         args: bus_interaction
             .payload
             .into_iter()
-            .map(|arg| simplify_expression(grouped_expression_to_algebraic(&arg)))
+            .map(|arg| grouped_expression_to_algebraic(&arg))
             .collect(),
-        mult: simplify_expression(grouped_expression_to_algebraic(
-            &bus_interaction.multiplicity,
-        )),
+        mult: grouped_expression_to_algebraic(&bus_interaction.multiplicity),
     }
 }
 

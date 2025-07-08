@@ -38,10 +38,7 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::{
-    expression::{AlgebraicExpression, AlgebraicReference},
-    powdr::UniqueReferences,
-};
+use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<P: IntoOpenVm> {
@@ -217,7 +214,7 @@ impl<P: IntoOpenVm> From<powdr_autoprecompiles::SymbolicMachine<P>>
     for SymbolicMachine<OpenVmField<P>>
 {
     fn from(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
-        let columns = machine.unique_references().collect();
+        let columns = machine.main_columns().collect();
 
         let powdr_autoprecompiles::SymbolicMachine {
             constraints,
@@ -310,7 +307,7 @@ impl<P: IntoOpenVm> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<P>>
 impl<P: IntoOpenVm> PowdrAir<P> {
     pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<P>) -> Self {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
-            .unique_references()
+            .main_columns()
             .enumerate()
             .map(|(index, c)| ((c.id, index), c.clone()))
             .unzip();
