@@ -21,7 +21,6 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
@@ -39,14 +38,18 @@ const EXT_DEGREE: usize = 4;
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<P> {
     opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, SymbolicMachine<P>>,
+    air_name_to_machine: BTreeMap<String, (SymbolicMachine<P>, AirMetrics)>,
 }
 
 impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
         self.opcode_to_air
             .get(&VmOpcode::from_usize(opcode))
-            .and_then(|air_name| self.air_name_to_machine.get(air_name))
+            .and_then(|air_name| {
+                self.air_name_to_machine
+                    .get(air_name)
+                    .map(|(machine, _)| machine)
+            })
     }
 }
 
@@ -57,7 +60,7 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<SymbolicMachine<P>, UnsupportedOpenVmReferenceError>,
+        machine: impl Fn() -> Result<(SymbolicMachine<P>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
@@ -73,27 +76,14 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         Ok(())
     }
 
-    /// Returns a map from opcode to the width of the AIR for that opcode.
-    /// We allow the caller to specify a set of opcodes that they are interested in.
-    pub fn air_width_per_opcode(&self) -> HashMap<VmOpcode, usize> {
+    pub fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics> {
         self.opcode_to_air
-            .iter()
-            .scan(
-                HashMap::default(),
-                |width_by_air: &mut HashMap<&String, usize>,
-                 (opcode, air_name): (&VmOpcode, &String)| {
-                    let width = if let Some(width) = width_by_air.get(air_name) {
-                        *width
-                    } else {
-                        let machine = &self.air_name_to_machine[air_name];
-                        let width = machine.unique_references().count();
-                        width_by_air.insert(air_name, width);
-                        width
-                    };
-                    Some((*opcode, width))
-                },
-            )
-            .collect()
+            .get(&VmOpcode::from_usize(opcode))
+            .and_then(|air_name| {
+                self.air_name_to_machine
+                    .get(air_name)
+                    .map(|(_, metrics)| metrics)
+            })
     }
 
     pub fn allow_list(&self) -> BTreeSet<usize> {
@@ -201,7 +191,8 @@ impl OriginalVmConfig {
                 airs.insert_opcode(op, get_name(executor.air()), || {
                     let air = executor.air();
                     let columns = get_columns(air.clone());
-                    let constraints = get_constraints(air);
+                    let constraints = get_constraints(air.clone());
+                    let metrics = get_air_metrics(air);
 
                     let powdr_exprs = constraints
                         .constraints
@@ -215,10 +206,13 @@ impl OriginalVmConfig {
                         .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
                         .collect::<Result<_, _>>()?;
 
-                    Ok(SymbolicMachine {
-                        constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                        bus_interactions: powdr_bus_interactions,
-                    })
+                    Ok((
+                        SymbolicMachine {
+                            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                            bus_interactions: powdr_bus_interactions,
+                        },
+                        metrics,
+                    ))
                 })?;
 
                 Ok(airs)
@@ -388,10 +382,17 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
     pub log_up: usize,
+}
+
+impl AirWidths {
+    pub fn total(&self) -> usize {
+        self.preprocessed + self.main + self.log_up
+    }
 }
 
 impl std::fmt::Display for AirWidths {
