@@ -22,8 +22,7 @@ mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Bus 6 (BITWISE_LOOKUP):
-mult=is_valid * 1, args=[8 * b__0_0 + 2048 * b__1_0 + 524288 * b__2_0 + 134217728 * b__3_0 - (256 * a__1_0 + 65536 * a__2_0 + 268435454 * bit_shift_carry__3_0 + 16777216 * a__3_0), a__1_0, 0, 0]
-mult=is_valid * 1, args=[a__2_0, a__3_0, 0, 0]
+mult=is_valid * 1, args=[8 * b__0_0 + 2048 * b__1_0 + 524288 * b__2_0 + 134217728 * b__3_0 - (256 * a__1_0 + 65536 * a__2_0 + 268435454 * bit_shift_carry__3_0 + 16777216 * a__3_0), 0, 0, 0]
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
