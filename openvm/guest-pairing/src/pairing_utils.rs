@@ -3,8 +3,8 @@ use crate::pairing_check_with_hint::{
     BN254_PSEUDO_BINARY_ENCODING, PairingCheckError, frobenius_coeff_fq6_c1, xi_to_q_minus_1_over_2,
 };
 use ark_bn254::{Fq, Fq2, Fq6, Fq6Config, Fq12, G1Affine, G2Affine};
-use ark_ff::{AdditiveGroup, Field};
 use ark_ff::Fp6Config;
+use ark_ff::{AdditiveGroup, Field};
 use core::iter::zip;
 use core::ops::Neg;
 
@@ -89,11 +89,11 @@ pub fn miller_double_step(s: &G2Affine) -> (G2Affine, UnevaluatedLine<Fq2>) {
     let x = &s.x;
     let y = &s.y;
     // λ = (3x^2) / (2y)
-    let lambda = &((three * x.square()) * (&(two * y).inverse().unwrap()));
+    let lambda = &((three * x.square()) * ((two * y).inverse().unwrap()));
     // x_2s = λ^2 - 2x
     let x_2s = lambda * lambda - two * x;
     // y_2s = λ(x - x_2s) - y
-    let y_2s = lambda * &(x - &x_2s) - y;
+    let y_2s = lambda * (x - x_2s) - y;
     let two_s = G2Affine::new(x_2s, y_2s);
 
     // l_{\Psi(S),\Psi(S)}(P)
@@ -121,7 +121,7 @@ pub fn evaluate_lines_vec(f: Fq12, lines: Vec<EvaluatedLine<Fq2>>) -> Fq12 {
 
 /// Multiplies a line in 013-form with a Fp12 element to get an Fp12 element
 fn mul_by_013(f: &Fq12, l: &EvaluatedLine<Fq2>) -> Fq12 {
-    from_evaluated_line_d_type(l.clone()) * f
+    from_evaluated_line_d_type(*l) * f
 }
 fn mul_013_by_013(l0: &EvaluatedLine<Fq2>, l1: &EvaluatedLine<Fq2>) -> [Fq2; 5] {
     let b0 = &l0.b;
@@ -132,7 +132,7 @@ fn mul_013_by_013(l0: &EvaluatedLine<Fq2>, l1: &EvaluatedLine<Fq2>) -> [Fq2; 5] 
     // where w⁶ = xi
     // l0 * l1 = 1 + (b0 + b1)w + (b0b1)w² + (c0 + c1)w³ + (b0c1 + b1c0)w⁴ + (c0c1)w⁶
     //         = (1 + c0c1 * xi) + (b0 + b1)w + (b0b1)w² + (c0 + c1)w³ + (b0c1 + b1c0)w⁴
-    let x0 = Fq2::ONE + c0 * c1 * &Fq6Config::NONRESIDUE;
+    let x0 = Fq2::ONE + c0 * c1 * Fq6Config::NONRESIDUE;
     let x1 = b0 + b1;
     let x2 = b0 * b1;
     let x3 = c0 + c1;
@@ -169,14 +169,13 @@ pub fn miller_double_and_add_step(
     let y_q = &q.y;
 
     // λ1 = (y_s - y_q) / (x_s - x_q)
-    let lambda1 = &((y_s - y_q) * (&(x_s - x_q).inverse().unwrap()));
+    let lambda1 = &((y_s - y_q) * ((x_s - x_q).inverse().unwrap()));
     let x_s_plus_q = lambda1 * lambda1 - x_s - x_q;
 
     // λ2 = -λ1 - 2y_s / (x_{s+q} - x_s)
-    let lambda2 =
-        &(Fq2::ZERO - lambda1.clone() - (two * y_s) * (&(&x_s_plus_q - x_s).inverse().unwrap()));
-    let x_s_plus_q_plus_s = lambda2 * lambda2 - x_s - &x_s_plus_q;
-    let y_s_plus_q_plus_s = lambda2 * &(x_s - &x_s_plus_q_plus_s) - y_s;
+    let lambda2 = &(Fq2::ZERO - *lambda1 - (two * y_s) * ((x_s_plus_q - x_s).inverse().unwrap()));
+    let x_s_plus_q_plus_s = lambda2 * lambda2 - x_s - x_s_plus_q;
+    let y_s_plus_q_plus_s = lambda2 * (x_s - x_s_plus_q_plus_s) - y_s;
 
     let s_plus_q_plus_s = G2Affine::new(x_s_plus_q_plus_s, y_s_plus_q_plus_s);
 
@@ -206,12 +205,12 @@ pub fn multi_miller_loop_embedded_exp(P: &[G1Affine], Q: &[G2Affine], c: Option<
     // Filter out the pair with infinity points
     let (P, Q): (Vec<_>, Vec<_>) = zip(P, Q)
         .filter(|(p, q)| !p.infinity && !q.infinity)
-        .map(|(p, q)| (p.clone(), q.clone()))
+        .map(|(p, q)| (*p, *q))
         .unzip();
 
     let xy_fracs = P
         .iter()
-        .map(|P| ((&P.x) * (&P.y.inverse().unwrap()), P.y.inverse().unwrap()))
+        .map(|P| ((P.x) * (P.y.inverse().unwrap()), P.y.inverse().unwrap()))
         .collect::<Vec<(Fq, Fq)>>();
     let c_inv = if let Some(c) = c.as_ref() {
         c.inverse().unwrap()
@@ -221,7 +220,7 @@ pub fn multi_miller_loop_embedded_exp(P: &[G1Affine], Q: &[G2Affine], c: Option<
 
     let mut Q_acc = Q.to_vec();
 
-    let (f_out, Q_acc_out) = pre_loop(Q_acc, &Q, c.clone(), &xy_fracs);
+    let (f_out, Q_acc_out) = pre_loop(Q_acc, &Q, c, &xy_fracs);
 
     let mut f = f_out;
     Q_acc = Q_acc_out;
@@ -249,8 +248,8 @@ pub fn multi_miller_loop_embedded_exp(P: &[G1Affine], Q: &[G2Affine], c: Option<
             // use embedded exponent technique if c is provided
             f = if let Some(c) = c.as_ref() {
                 match BN254_PSEUDO_BINARY_ENCODING[i] {
-                    1 => &f * c,
-                    -1 => &f * &c_inv,
+                    1 => f * c,
+                    -1 => f * c_inv,
                     _ => panic!("Invalid sigma_i"),
                 }
             } else {
@@ -317,7 +316,7 @@ fn exp_bytes<F: Field>(f: &F, is_positive: bool, bytes_be: &[u8]) -> F
 where
     for<'a> &'a F: core::ops::Mul<&'a F, Output = F>,
 {
-    let mut x = f.clone();
+    let mut x = *f;
 
     if !is_positive {
         x = x.inverse().unwrap();
@@ -325,13 +324,13 @@ where
 
     let mut res = F::ONE;
 
-    let x_sq = &x * &x;
-    let ops = [x.clone(), x_sq.clone(), &x_sq * &x];
+    let x_sq = x * x;
+    let ops = [x, x_sq, x_sq * x];
 
     for &b in bytes_be.iter() {
         let mut mask = 0xc0;
         for j in 0..4 {
-            res = &res * &res * &res * &res;
+            res = res * res * res * res;
             let c = (b & mask) >> (6 - 2 * j);
             if c != 0 {
                 res *= &ops[(c - 1) as usize];
@@ -364,7 +363,7 @@ fn post_loop(
             let x = Q.x.frobenius_map(1);
             let x = x * x_to_q_minus_1_over_3;
             let y = Q.y.frobenius_map(1);
-            let y = y * &xi_to_q_minus_1_over_2();
+            let y = y * xi_to_q_minus_1_over_2();
             G2Affine::new(x, y)
         })
         .collect::<Vec<_>>();
@@ -388,8 +387,8 @@ fn post_loop(
         .map(|Q| {
             // There is a frobenius mapping π²(Q) that we skip here since it is equivalent to
             // the identity mapping
-            let x = &Q.x * x_to_q_sq_minus_1_over_3;
-            G2Affine::new(x, Q.y.clone())
+            let x = Q.x * x_to_q_sq_minus_1_over_3;
+            G2Affine::new(x, Q.y)
         })
         .collect::<Vec<_>>();
 
@@ -408,7 +407,7 @@ fn post_loop(
         lines.push(line);
     }
 
-    let mut f = f.clone();
+    let mut f = *f;
     f = evaluate_lines_vec(f, lines);
 
     (f, Q_acc)
@@ -424,9 +423,9 @@ fn miller_add_step(s: &G2Affine, q: &G2Affine) -> (G2Affine, UnevaluatedLine<Fq2
 
     // λ1 = (y_s - y_q) / (x_s - x_q)
     let x_delta = x_s - x_q;
-    let lambda = &((y_s - y_q) * (&x_delta.inverse().unwrap()));
+    let lambda = (y_s - y_q) * (x_delta.inverse().unwrap());
     let x_s_plus_q = lambda * lambda - x_s - x_q;
-    let y_s_plus_q = lambda * &(x_q - &x_s_plus_q) - y_q;
+    let y_s_plus_q = lambda * (x_q - x_s_plus_q) - y_q;
 
     let s_plus_q = G2Affine::new(x_s_plus_q, y_s_plus_q);
 
