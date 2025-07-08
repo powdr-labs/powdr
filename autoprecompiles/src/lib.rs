@@ -117,6 +117,12 @@ pub struct SymbolicMachine<T> {
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
 }
 
+impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+    pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
+        self.unique_references()
+    }
+}
+
 impl<T: Display> Display for SymbolicMachine<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for bus_interaction in &self.bus_interactions {
@@ -252,7 +258,7 @@ pub struct Apc<T> {
 }
 
 impl<T: FieldElement> Apc<T> {
-    pub fn width(&self) -> usize {
+    pub fn main_width(&self) -> usize {
         self.machine.unique_references().count()
     }
 

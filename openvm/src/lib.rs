@@ -508,6 +508,7 @@ pub struct OriginalCompiledProgram {
     pub sdk_vm_config: SdkVmConfig,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AirMetrics {
     pub name: String,
     pub widths: AirWidths,
