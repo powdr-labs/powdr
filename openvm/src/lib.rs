@@ -1079,7 +1079,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(
             [m.widths.main, m.constraints, m.bus_interactions],
-            [49, 22, 31]
+            [49, 22, 23]
         );
     }
 
@@ -1092,7 +1092,7 @@ mod tests {
         let m = &machines[0];
         assert_eq!(
             [m.widths.main, m.constraints, m.bus_interactions],
-            [2011, 166, 1783]
+            [2011, 166, 1780]
         );
     }
 
