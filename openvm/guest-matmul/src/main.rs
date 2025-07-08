@@ -3,7 +3,7 @@
 
 openvm::entry!(main);
 
-use openvm::io::reveal;
+use openvm::io::reveal_u32;
 
 pub fn main() {
     loop_test_matrix();
@@ -263,8 +263,8 @@ fn test_matrix() {
     matrix_multiply_unrolled(&a, &b, &mut c);
 
     assert_eq!(c[0][0], 1197);
-    reveal(c[0][0] as u32, 0);
-    reveal(c[5][5] as u32, 1);
+    reveal_u32(c[0][0] as u32, 0);
+    reveal_u32(c[5][5] as u32, 1);
 }
 
 #[inline(never)]

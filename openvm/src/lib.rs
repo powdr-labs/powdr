@@ -9,6 +9,7 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_primitives_derive::ChipUsageGetter;
+use openvm_instructions::program::Program;
 use openvm_sdk::{
     config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
     keygen::AggStarkProvingKey,
@@ -28,10 +29,11 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use strum::{Display, EnumString};
 
@@ -45,7 +47,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_constraints, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
@@ -508,7 +510,7 @@ pub struct OriginalCompiledProgram {
 
 pub struct AirMetrics {
     pub name: String,
-    pub width: usize,
+    pub widths: AirWidths,
     pub constraints: usize,
     pub bus_interactions: usize,
 }
@@ -523,20 +525,13 @@ impl CompiledProgram {
             .iter()
             .filter_map(|executor| {
                 let air = executor.air();
-                let width = air.width();
                 let name = air.name();
 
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                    let constraints = get_constraints(air);
-                    Some(AirMetrics {
-                        name: name.to_string(),
-                        width,
-                        constraints: constraints.constraints.len(),
-                        bus_interactions: constraints.interactions.len(),
-                    })
+                    Some(get_air_metrics(air))
                 } else {
                     None
                 }
@@ -675,13 +670,10 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
-    let collected = Arc::new(Mutex::new(Vec::new()));
-    let collector_layer = PgoCollector {
-        pc: collected.clone(),
-    };
+    let collector = PgoCollector::new(&exe.program);
 
     // build subscriber
-    let subscriber = Registry::default().with(collector_layer);
+    let subscriber = Registry::default().with(collector.clone());
 
     // prepare for execute
     let sdk = Sdk::default();
@@ -693,26 +685,15 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
             .unwrap();
     });
 
-    // collect the pc's during execution
-    let pc = collected.lock().unwrap();
+    // Extract the collected data
+    let pc_index_count = collector.into_hashmap();
 
-    // create pc_index map to times executed, where pc_index = (pc - pc_base) / step
-    let pc_base = exe.program.pc_base;
-    let step = exe.program.step;
-    let pc_index_count = pc
-        .iter()
-        .fold(std::collections::HashMap::new(), |mut acc, pc| {
-            let pc_index = (*pc as u32 - pc_base) / step;
-            *acc.entry(pc_index).or_insert(0u32) += 1;
-            acc
-        });
-
-    // the smallest pc is the same as the base_pc if there's no stdin
-    let pc_min = pc.iter().min().unwrap();
-    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, pc_base);
+    // the smallest pc is the same as the pc_base if there's no stdin
+    let pc_min = pc_index_count.keys().min().unwrap();
+    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, exe.program.pc_base);
 
     // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc.len());
+    tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
 
     if tracing::enabled!(Level::DEBUG) {
         // print pc_index map in descending order of pc_index count
@@ -748,7 +729,44 @@ impl tracing::field::Visit for PgoData {
 // A Layer that collects data we are interested in using for the pgo from the trace fields.
 #[derive(Clone)]
 struct PgoCollector {
-    pc: Arc<Mutex<Vec<usize>>>,
+    step: usize,
+    pc_base: usize,
+    pc_index_map: Arc<Vec<AtomicU32>>,
+}
+
+impl PgoCollector {
+    fn new<F>(program: &Program<F>) -> Self {
+        let max_pc_index = program.instructions_and_debug_infos.len();
+        // create a map with max_pc entries initialized to 0
+        let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
+        Self {
+            pc_index_map,
+            step: program.step as usize,
+            pc_base: program.pc_base as usize,
+        }
+    }
+
+    fn into_hashmap(self) -> HashMap<u32, u32> {
+        // Turn the map into a HashMap of (pc_index, count)
+        self.pc_index_map
+            .iter()
+            .enumerate()
+            .filter_map(|(pc_index, count)| {
+                let count = count.load(Ordering::Relaxed);
+
+                // if the count is zero, we skip it
+                if count == 0 {
+                    return None;
+                }
+
+                Some((pc_index as u32, count))
+            })
+            .collect()
+    }
+
+    fn increment(&self, pc: usize) {
+        self.pc_index_map[(pc - self.pc_base) / self.step].fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl<S> Layer<S> for PgoCollector
@@ -763,7 +781,7 @@ where
         // because our subscriber is at the trace level, for trace print outs that don't match PgoData,
         // the visitor can't parse them, and these cases are filtered out automatically
         if let Some(pc) = visitor.pc {
-            self.pc.lock().unwrap().push(pc);
+            self.increment(pc);
         }
     }
 }
@@ -892,6 +910,16 @@ mod tests {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
+    }
+
+    #[test]
+    #[ignore = "Too long"]
+    fn matmul_compile() {
+        let guest = "guest-matmul";
+        let config = PowdrConfig::new(1, 0);
+        assert!(
+            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
+        );
     }
 
     #[test]
@@ -1049,7 +1077,10 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!([m.width, m.constraints, m.bus_interactions], [49, 22, 31]);
+        assert_eq!(
+            [m.widths.main, m.constraints, m.bus_interactions],
+            [49, 22, 31]
+        );
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {
@@ -1060,7 +1091,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(
-            [m.width, m.constraints, m.bus_interactions],
+            [m.widths.main, m.constraints, m.bus_interactions],
             [2011, 166, 1783]
         );
     }
@@ -1083,7 +1114,7 @@ mod tests {
             .powdr_airs_metrics();
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
-        assert_eq!(m.width, 26);
+        assert_eq!(m.widths.main, 26);
         assert_eq!(m.constraints, 1);
         assert_eq!(m.bus_interactions, 16);
     }
