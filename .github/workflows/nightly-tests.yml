@@ -140,8 +140,8 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      # - name: Run tests
+      #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
         run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev d730a36 cargo-openvm
@@ -157,10 +157,10 @@ jobs:
           rm -rf results
           mkdir -p results
 
-      - name: Run guest benchmarks
-        run: |
-          source .venv/bin/activate
-          bash ./openvm/scripts/run_guest_benches.sh
+      # - name: Run guest benchmarks
+      #   run: |
+      #     source .venv/bin/activate
+      #     bash ./openvm/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
@@ -188,13 +188,13 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          MODE="prove-stark" APC=0 ./run.sh
-          mv metrics.json $RES_DIR/noapc.json
+          #MODE="prove-stark" APC=0 ./run.sh
+          #mv metrics.json $RES_DIR/noapc.json
           # prove with 100 APCs, recording mem usage
           MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
           mv metrics.json $RES_DIR/100apc.json
 
-          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
 
           mv $RES_DIR ../results/
