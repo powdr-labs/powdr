@@ -95,6 +95,9 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
     }
 }
 
+// TODO: This function could be simplified a lot: It could just add an offset to the IDs.
+// TODO: Also, explore reflecting this transformation in the type: e.g. this could be
+//       converting SymbolicMachine<T, u64> to SymbolicMachine<T, (u64, u64)>.
 pub fn reassign_ids<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     mut curr_id: u64,

@@ -93,6 +93,7 @@ fn exec_receive<T: FieldElement>(
     machine: &SymbolicMachine<T>,
     exec_bus_id: u64,
 ) -> SymbolicBusInteraction<T> {
+    // TODO: Don't rely on the order of bus interactions.
     let [r, _s] = machine
         .bus_interactions
         .iter()
@@ -100,6 +101,5 @@ fn exec_receive<T: FieldElement>(
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
-    // TODO assert that r.mult matches -expr
     r.clone()
 }
