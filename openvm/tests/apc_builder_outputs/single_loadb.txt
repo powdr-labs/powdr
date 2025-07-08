@@ -21,7 +21,7 @@ mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_
 mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Algebraic constraints:
-(opcode_loadb_flag1_0 - 1) * opcode_loadb_flag1_0 = 0
+-((1 - opcode_loadb_flag1_0) * opcode_loadb_flag1_0) = 0
 opcode_loadb_flag1_0 * (opcode_loadb_flag1_0 - 1) = 0
 data_most_sig_bit_0 * (data_most_sig_bit_0 - 1) = 0
 shift_most_sig_bit_0 * (shift_most_sig_bit_0 - 1) = 0
