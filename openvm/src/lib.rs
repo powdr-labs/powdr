@@ -1098,23 +1098,21 @@ mod tests {
         let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
             .unwrap()
             .filter_map(Result::ok)
-            .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "json"))
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
             .count();
         let cbor_files_count = std::fs::read_dir(apc_candidates_dir_path)
             .unwrap()
             .filter_map(Result::ok)
-            .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "cbor"))
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
             .count();
         if should_have_exported_apc_candidates {
             assert!(
                 json_files_count == 1,
-                "Expected exactly one JSON file, found {}",
-                json_files_count
+                "Expected exactly one JSON file, found {json_files_count}",
             );
             assert!(
                 cbor_files_count > 0,
-                "Expected at least one CBOR file, found {}",
-                cbor_files_count
+                "Expected at least one CBOR file, found {cbor_files_count}",
             );
         }
     }
