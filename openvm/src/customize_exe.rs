@@ -553,10 +553,10 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
                 .sum();
             let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
             let effectiveness = orig_cells_per_row as f64 / apc_cells_per_row as f64;
-            println!("EFFECTIVENESS: {effectiveness:.2} ({} instruction)", block.statements.len());
             let execution_frequency = *pgo_program_idx_count
                 .get(&(block.start_idx as u32))
                 .unwrap_or(&0) as usize;
+            println!("EFFECTIVENESS: {effectiveness:.2} (instructions: {}, frequency: {})", block.statements.len(), execution_frequency);
 
             Some(ApcCandidate {
                 block_with_apc: BlockWithApc {
