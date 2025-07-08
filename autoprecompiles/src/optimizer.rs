@@ -154,11 +154,9 @@ pub fn optimize_exec_bus<T: FieldElement>(
             // Save the latest send and remove the bus interaction
             let mut pc_expr = bus_int.args[0].clone();
             powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
-            pc_expr = simplify_expression(pc_expr);
 
             let mut ts_expr = bus_int.args[1].clone();
             powdr::substitute_algebraic_algebraic(&mut ts_expr, &subs_ts);
-            ts_expr = simplify_expression(ts_expr);
 
             let mut send = bus_int.clone();
             send.args[0] = pc_expr;
@@ -190,16 +188,13 @@ pub fn optimize_exec_bus<T: FieldElement>(
     for c in &mut machine.constraints {
         powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_pc);
         powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_ts);
-        c.expr = simplify_expression(c.expr.clone());
     }
     for b in &mut machine.bus_interactions {
         powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_pc);
         powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_ts);
-        b.mult = simplify_expression(b.mult.clone());
         for a in &mut b.args {
             powdr::substitute_algebraic_algebraic(a, &subs_pc);
             powdr::substitute_algebraic_algebraic(a, &subs_ts);
-            *a = simplify_expression(a.clone());
         }
     }
 
@@ -231,7 +226,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .algebraic_constraints
             .iter()
             .map(|constraint| SymbolicConstraint {
-                expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(constraint)),
+                expr: quadratic_symbolic_expression_to_algebraic(constraint),
             })
             .collect(),
         bus_interactions: constraint_system
@@ -273,14 +268,8 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         args: bus_interaction
             .payload
             .into_iter()
-            .map(|arg| simplify_expression(quadratic_symbolic_expression_to_algebraic(&arg)))
+            .map(|arg| quadratic_symbolic_expression_to_algebraic(&arg))
             .collect(),
-        mult: simplify_expression(quadratic_symbolic_expression_to_algebraic(
-            &bus_interaction.multiplicity,
-        )),
+        mult: quadratic_symbolic_expression_to_algebraic(&bus_interaction.multiplicity),
     }
-}
-
-pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
 }

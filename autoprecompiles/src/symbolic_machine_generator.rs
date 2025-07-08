@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use super::simplify_expression;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -86,7 +85,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .map(|expr| {
                 let mut expr = expr.expr.clone();
                 powdr::substitute_algebraic(&mut expr, &sub_map);
-                expr = simplify_expression(expr);
                 SymbolicConstraint { expr }
             })
             .collect::<Vec<_>>();
@@ -100,7 +98,6 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
                 .chain(std::iter::once(&mut link.mult))
                 .for_each(|e| {
                     powdr::substitute_algebraic(e, &sub_map);
-                    *e = simplify_expression(e.clone());
                 });
             bus_interactions.push(link);
         }
