@@ -927,7 +927,7 @@ mod tests {
         let guest = "guest-matmul";
         let config = PowdrConfig::new(1, 0);
         assert!(
-            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default(),).is_ok()
+            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
         );
     }
 
@@ -1094,7 +1094,7 @@ mod tests {
             [m.widths.main, m.constraints, m.bus_interactions],
             [49, 22, 31]
         );
-        // In Cell PGO, check that the apc candidates were persisted to disk at `./apc_candidates`
+        // In Cell PGO, check that the apc candidates were persisted to disk
         let files_count = std::fs::read_dir(apc_candidates_dir_path)
             .expect("Failed to read APC candidates directory")
             .count();
