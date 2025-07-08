@@ -484,9 +484,8 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
             .statements
             .iter()
             .map(|instr| {
-                airs.get_instruction_air_and_metrics(instr.opcode.as_usize())
+                airs.get_instruction_metrics(instr.opcode.as_usize())
                     .unwrap()
-                    .1
                     .widths
                     .total()
             })
