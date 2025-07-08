@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
@@ -472,6 +473,7 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         bus_map: &BusMap,
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
+        apc_candidates_dir_path: Option<&Path>,
     ) -> Option<Self> {
         let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
 
@@ -503,19 +505,20 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         };
 
         // save candidate to disk
-        candidate.save_to_disk();
+        if let Some(path) = apc_candidates_dir_path {
+            candidate.save_to_disk(path);
+        }
 
         Some(candidate)
     }
 
     /// Save the candidate to disk.
-    fn save_to_disk(&self) {
-        let dir = "apc_candidates";
-        let path = format!(
-            "./{}/apc_candidate_{}.cbor",
-            dir, self.block_with_apc.opcode
-        );
-        std::fs::create_dir_all(dir).expect("Failed to create directory for APC candidates");
+    fn save_to_disk(&self, apc_candidates_dir_path: &Path) {
+        let path = apc_candidates_dir_path
+            .join(format!("apc_candidate_{}", self.block_with_apc.opcode))
+            .with_extension("cbor");
+        std::fs::create_dir_all(apc_candidates_dir_path)
+            .expect("Failed to create directory for APC candidates");
         let file = std::fs::File::create(&path).expect("Failed to create file for APC candidate");
         serde_cbor::to_writer(file, &self).expect("Failed to write APC candidate to file");
     }
@@ -595,6 +598,7 @@ fn create_apcs_with_cell_pgo(
                 bus_map,
                 config.degree_bound,
                 &pgo_program_idx_count,
+                config.apc_candidates_folder.as_deref()
             )
         }),
         max_cache,

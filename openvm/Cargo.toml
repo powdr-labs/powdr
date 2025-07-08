@@ -65,6 +65,7 @@ toml = "0.8.14"
 
 [dev-dependencies]
 test-log = { version = "0.2.17", features = ["trace"] }
+tempfile = "3.20.0"
 pretty_assertions = "1.4.0"
 openvm-ecc-circuit.workspace = true
 openvm-algebra-circuit.workspace = true
