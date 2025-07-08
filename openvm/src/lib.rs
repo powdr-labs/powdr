@@ -1095,13 +1095,28 @@ mod tests {
             [49, 22, 31]
         );
         // In Cell PGO, check that the apc candidates were persisted to disk
-        let files_count = std::fs::read_dir(apc_candidates_dir_path)
-            .expect("Failed to read APC candidates directory")
+        let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "json"))
             .count();
-        assert!(
-            (files_count > 0) == should_have_exported_apc_candidates,
-            "Unexpected number of APC candidate files"
-        );
+        let cbor_files_count = std::fs::read_dir(apc_candidates_dir_path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "cbor"))
+            .count();
+        if should_have_exported_apc_candidates {
+            assert!(
+                json_files_count == 1,
+                "Expected exactly one JSON file, found {}",
+                json_files_count
+            );
+            assert!(
+                cbor_files_count > 0,
+                "Expected at least one CBOR file, found {}",
+                cbor_files_count
+            );
+        }
     }
 
     fn test_keccak_machine(pgo_config: PgoConfig) {

@@ -1,7 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::io::BufWriter;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
@@ -461,11 +462,29 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 struct ApcCandidate<P, T> {
     block_with_apc: BlockWithApc<P, T>,
     execution_frequency: usize,
-    cells_saved_per_row: usize,
-    width: usize, // only tag this field in Pgo::Cell, the only place it's needed
+    width_before: usize,
+    width_after: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ApcCandidateJsonExport {
+    // opcode
+    opcode: usize,
+    // execution_frequency
+    execution_frequency: usize,
+    // original instructions
+    original_instructions: Vec<Instruction<OpenVmField<BabyBearField>>>,
+    // total width before optimisation
+    total_width_before: usize,
+    // total width after optimisation
+    total_width_after: usize,
+    // path to the apc candidate file
+    apc_candidate_file: String,
 }
 
 impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
+    /// Try to create an autoprecompile candidate from a block.
+    #[allow(clippy::too_many_arguments)]
     pub fn try_create(
         block: BasicBlock<OpenVmField<BabyBearField>>,
         airs: &OriginalAirs<BabyBearField>,
@@ -474,13 +493,14 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
         apc_candidates_dir_path: Option<&Path>,
+        apc_candidates: Arc<Mutex<Vec<ApcCandidateJsonExport>>>,
     ) -> Option<Self> {
         let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
 
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
-        let apc_cells_per_row = apc_metrics.widths.total();
+        let width_after = apc_metrics.widths.total();
 
-        let orig_cells_per_row: usize = block
+        let width_before: usize = block
             .statements
             .iter()
             .map(|instr| {
@@ -491,7 +511,6 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
             })
             .sum();
 
-        let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
         let execution_frequency = *pgo_program_idx_count
             .get(&(block.start_idx as u32))
             .unwrap_or(&0) as usize;
@@ -499,40 +518,63 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         let candidate = Self {
             block_with_apc: BlockWithApc { opcode, block, apc },
             execution_frequency,
-            cells_saved_per_row,
-            width: apc_cells_per_row,
+            width_before,
+            width_after,
         };
 
         // save candidate to disk
         if let Some(path) = apc_candidates_dir_path {
-            candidate.save_to_disk(path);
+            candidate.save_to_disk(path, apc_candidates);
         }
 
         Some(candidate)
     }
 
     /// Save the candidate to disk.
-    fn save_to_disk(&self, apc_candidates_dir_path: &Path) {
-        let path = apc_candidates_dir_path
+    fn save_to_disk(
+        &self,
+        apc_candidates_dir_path: &Path,
+        apc_candidates_json_file: Arc<Mutex<Vec<ApcCandidateJsonExport>>>,
+    ) {
+        let ser_path = apc_candidates_dir_path
             .join(format!("apc_candidate_{}", self.block_with_apc.opcode))
             .with_extension("cbor");
+        apc_candidates_json_file
+            .lock()
+            .unwrap()
+            .push(ApcCandidateJsonExport {
+                opcode: self.block_with_apc.opcode,
+                execution_frequency: self.execution_frequency,
+                original_instructions: self.block_with_apc.block.statements.clone(),
+                total_width_before: self.width_before,
+                total_width_after: self.width_after,
+                apc_candidate_file: ser_path.display().to_string(),
+            });
         std::fs::create_dir_all(apc_candidates_dir_path)
             .expect("Failed to create directory for APC candidates");
-        let file = std::fs::File::create(&path).expect("Failed to create file for APC candidate");
+        let file =
+            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
         serde_cbor::to_writer(file, &self).expect("Failed to write APC candidate to file");
+    }
+}
+
+impl<P, T> ApcCandidate<P, T> {
+    fn cells_saved_per_row(&self) -> usize {
+        // The number of cells saved per row is the difference between the width before and after the APC.
+        self.width_before - self.width_after
     }
 }
 
 impl<P, T> KnapsackItem for ApcCandidate<P, T> {
     fn cost(&self) -> usize {
-        self.width
+        self.width_after
     }
 
     fn value(&self) -> usize {
         // For an APC which is called once and saves 1 cell, this would be 1.
         let value = self
             .execution_frequency
-            .checked_mul(self.cells_saved_per_row)
+            .checked_mul(self.cells_saved_per_row())
             .unwrap();
         // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
         // Therefore, we scale it up by a constant factor.
@@ -587,8 +629,10 @@ fn create_apcs_with_cell_pgo(
         max_total_columns - total_non_apc_columns
     });
 
+    let apc_candidates = Arc::new(Mutex::new(vec![]));
+
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    fractional_knapsack(
+    let res = fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             ApcCandidate::try_create(
                 block,
@@ -597,7 +641,8 @@ fn create_apcs_with_cell_pgo(
                 bus_map,
                 config.degree_bound,
                 &pgo_program_idx_count,
-                config.apc_candidates_folder.as_deref()
+                config.apc_candidates_folder.as_deref(),
+                apc_candidates.clone()
             )
         }),
         max_cache,
@@ -610,12 +655,24 @@ fn create_apcs_with_cell_pgo(
             c.block_with_apc.block.start_idx,
             c.value() / c.cost(),
             c.execution_frequency,
-            c.cells_saved_per_row,
+            c.cells_saved_per_row(),
         );
 
         c.block_with_apc
     })
-    .collect()
+    .collect();
+
+    // Write the APC candidates JSON to disk if the directory is specified.
+    if let Some(apc_candidates_dir_path) = &config.apc_candidates_folder {
+        let apc_candidates_json_file = apc_candidates.lock().unwrap();
+        let json_path = apc_candidates_dir_path.join("apc_candidates.json");
+        let file = std::fs::File::create(&json_path)
+            .expect("Failed to create file for APC candidates JSON");
+        serde_json::to_writer(BufWriter::new(file), &*apc_candidates_json_file)
+            .expect("Failed to write APC candidates JSON to file");
+    }
+
+    res
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
