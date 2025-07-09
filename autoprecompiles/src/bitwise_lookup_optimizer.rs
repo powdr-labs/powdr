@@ -9,10 +9,11 @@ use powdr_constraint_solver::constraint_system::{
 };
 use powdr_constraint_solver::effect::EffectImpl;
 use powdr_constraint_solver::grouped_expression::{
-    NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider,
+    GroupedExpression, NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider,
 };
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
+use powdr_constraint_solver::solver::{self, bus_interaction_variable_wrapper};
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
@@ -20,7 +21,7 @@ use powdr_number::FieldElement;
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
     mut system: ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
-    bus_interaction_handler: &impl BusInteractionHandler<T>,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> ConstraintSystem<T, V> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
@@ -58,7 +59,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
             let mut args = vec![x, y, z];
             if let Some(zero_pos) = args.iter().position(|e| e.is_zero()) {
                 args.remove(zero_pos);
-                // The two remaning expressions in args are equal and bytes.
+                // The two remaining expressions in args are equal and bytes.
                 let [a, b] = args.try_into().unwrap();
                 new_constraints.push(a.clone() - b.clone());
                 to_byte_constrain.push(a.clone());
@@ -75,7 +76,8 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
     let byte_range_constraint = RangeConstraint::from_mask(0xffu64);
-    let range_constraints = RangeConstraints::new(&system, bus_interaction_handler);
+    let range_constraints =
+        determine_range_constraints_using_solver(&system, bus_interaction_handler);
 
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
@@ -84,9 +86,10 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 assert!(n >= T::from(0) && n < T::from(256));
                 // No need to byte-constrain numbers.
                 false
+            } else if let Some(rc) = range_constraints.get(expr) {
+                *rc != rc.conjunction(&byte_range_constraint)
             } else {
-                let rc = expr.range_constraint(&range_constraints);
-                rc != rc.conjunction(&byte_range_constraint)
+                true
             }
         })
         .unique()
@@ -155,4 +158,29 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Display> RangeConstraints<T, V> {
             .reduce(|acc, _key, new_rc| acc.conjunction(&new_rc));
         Self { range_constraints }
     }
+}
+
+fn determine_range_constraints_using_solver<
+    T: FieldElement,
+    V: Clone + Hash + Eq + Ord + Debug + Display,
+>(
+    system: &ConstraintSystem<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
+) -> HashMap<QuadraticSymbolicExpression<T, V>, RangeConstraint<T>> {
+    let (wrapper, transformed_system) = solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper::replace_bus_interaction_expressions(system.clone());
+    solver::determine_range_constraints(transformed_system, bus_interaction_handler)
+        .unwrap()
+        .into_iter()
+        .map(|(var, range_constraint)| {
+            let expr = match var {
+                bus_interaction_variable_wrapper::Variable::BusInteractionField(..) => {
+                    wrapper.bus_interaction_vars[&var].clone()
+                }
+                bus_interaction_variable_wrapper::Variable::Variable(v) => {
+                    GroupedExpression::from_unknown_variable(v)
+                }
+            };
+            (expr, range_constraint)
+        })
+        .collect()
 }

@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-mod bus_interaction_variable_wrapper;
+pub mod bus_interaction_variable_wrapper;
 mod exhaustive_search;
 mod quadratic_equivalences;
 
@@ -44,6 +44,23 @@ where
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
     Ok(bus_interaction_variable_wrapper.finalize(result.assignments))
+}
+
+pub fn determine_range_constraints<T, V>(
+    constraint_system: ConstraintSystemGeneric<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+) -> Result<HashMap<V, RangeConstraint<T::FieldType>>, Error>
+where
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Substitutable<V>
+        + Display
+        + ExpressionConvertible<T::FieldType, V>,
+    V: Ord + Clone + Hash + Eq + Display,
+{
+    Solver::new(constraint_system)
+        .with_bus_interaction_handler(bus_interaction_handler)
+        .determine_range_constraints()
 }
 
 /// The result of the solving process.
@@ -134,6 +151,13 @@ where
             assignments: self.assignments,
             bus_field_assignments: Default::default(),
         })
+    }
+
+    pub fn determine_range_constraints(
+        mut self,
+    ) -> Result<HashMap<V, RangeConstraint<T::FieldType>>, Error> {
+        self.loop_until_no_progress()?;
+        Ok(self.range_constraints.range_constraints)
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
