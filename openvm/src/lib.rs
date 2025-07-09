@@ -29,6 +29,8 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
+use std::iter::Sum;
+use std::ops::Add;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
@@ -109,9 +111,22 @@ pub enum PgoConfig {
     Cell(HashMap<u32, u32>, Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
-    /// disable PGO
+    /// cost = instruction per apc
+    /// cost = instruction per apc
     #[default]
     None,
+}
+
+impl PgoConfig {
+    /// Returns the number of times a certain pc offset was executed in the profile.
+    pub fn pc_offset_execution_count(&self, pc_offset: u32) -> Option<u32> {
+        match self {
+            PgoConfig::Cell(pc_index_count, _) | PgoConfig::Instruction(pc_index_count) => {
+                pc_index_count.get(&pc_offset).copied()
+            }
+            PgoConfig::None => None,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, EnumString, Display)]
@@ -122,7 +137,7 @@ pub enum PgoType {
     Cell(Option<usize>),
     /// cost = instruction per apc * times executed
     Instruction,
-    /// disable PGO
+    /// cost = instruction per apc
     None,
 }
 
@@ -355,6 +370,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
+    /// The path to the APC candidates dir, if any.
+    pub apc_candidates_dir_path: Option<PathBuf>,
 }
 
 impl PowdrConfig {
@@ -367,6 +384,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
+            apc_candidates_dir_path: None,
         }
     }
 
@@ -392,6 +410,11 @@ impl PowdrConfig {
             implementation: precompile_implementation,
             ..self
         }
+    }
+
+    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
     }
 }
 
@@ -508,32 +531,66 @@ pub struct OriginalCompiledProgram {
     pub sdk_vm_config: SdkVmConfig,
 }
 
+#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
 pub struct AirMetrics {
-    pub name: String,
     pub widths: AirWidths,
     pub constraints: usize,
     pub bus_interactions: usize,
 }
 
-impl CompiledProgram {
-    pub fn powdr_airs_metrics(&self) -> Vec<AirMetrics> {
-        let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
+impl Add for AirMetrics {
+    type Output = AirMetrics;
 
-        chip_complex
-            .inventory
+    fn add(self, rhs: AirMetrics) -> AirMetrics {
+        AirMetrics {
+            widths: self.widths + rhs.widths,
+            constraints: self.constraints + rhs.constraints,
+            bus_interactions: self.bus_interactions + rhs.bus_interactions,
+        }
+    }
+}
+
+impl Sum<AirMetrics> for AirMetrics {
+    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
+        iter.fold(AirMetrics::default(), Add::add)
+    }
+}
+
+impl AirMetrics {
+    pub fn total_width(&self) -> usize {
+        self.widths.total()
+    }
+}
+
+pub enum AirMetricsType {
+    Powdr,
+    NonPowdr,
+}
+
+impl CompiledProgram {
+    pub fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
+        let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
+
+        inventory
             .executors()
             .iter()
-            .filter_map(|executor| {
-                let air = executor.air();
+            .map(|executor| executor.air())
+            .chain(
+                inventory
+                    .periphery()
+                    .iter()
+                    .map(|periphery| periphery.air()),
+            )
+            .filter_map(|air| {
                 let name = air.name();
 
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
-                if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                    Some(get_air_metrics(air))
-                } else {
-                    None
+                let is_powdr_air = name.starts_with("PowdrAir") || name.starts_with("PlonkAir");
+                match metrics_type {
+                    AirMetricsType::Powdr => is_powdr_air.then(|| get_air_metrics(air)),
+                    AirMetricsType::NonPowdr => (!is_powdr_air).then(|| get_air_metrics(air)),
                 }
             })
             .collect()
@@ -695,12 +752,12 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     // print the total and by pc counts
     tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
 
-    if tracing::enabled!(Level::DEBUG) {
+    if tracing::enabled!(Level::TRACE) {
         // print pc_index map in descending order of pc_index count
         let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
         pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
         pc_index_count_sorted.iter().for_each(|(pc, count)| {
-            tracing::debug!("pc_index {}: {}", pc, count);
+            tracing::trace!("pc_index {}: {}", pc, count);
         });
     }
 
@@ -1248,7 +1305,10 @@ mod tests {
         machine_length: usize,
     }
     fn test_machine(params: MachineTestParams) {
-        let config = PowdrConfig::new(params.guest_apc, params.guest_skip);
+        let apc_candidates_dir = tempfile::tempdir().unwrap();
+        let apc_candidates_dir_path = apc_candidates_dir.path();
+        let config = PowdrConfig::new(params.guest_apc, params.guest_skip).with_apc_candidates_dir(apc_candidates_dir_path);
+        let should_have_exported_apc_candidates = matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(
             params.guest,
             GuestOptions::default(),
@@ -1256,17 +1316,26 @@ mod tests {
             params.pgo_config,
         )
         .unwrap()
-        .powdr_airs_metrics();
+         .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), params.machine_length);
         let m = &machines[0];
         assert_eq!(
             [m.widths.main, m.constraints, m.bus_interactions],
             [params.width, params.constraints, params.bus_interactions]
         );
+
+        // In Cell PGO, check that the apc candidates were persisted to disk
+        let files_count = std::fs::read_dir(apc_candidates_dir_path)
+            .expect("Failed to read APC candidates directory")
+            .count();
+        assert!(
+            (files_count > 0) == should_have_exported_apc_candidates,
+            "Unexpected number of APC candidate files"
+        );
     }
 
     #[test]
-    fn guest_machine_pgo() {
+    fn guest_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
@@ -1328,7 +1397,7 @@ mod tests {
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
         let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
             .unwrap()
-            .powdr_airs_metrics();
+            .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), 1);
         let m = &machines[0];
         assert_eq!(m.widths.main, 26);
@@ -1337,7 +1406,11 @@ mod tests {
     }
 
     #[test]
-    fn keccak_machine() {
+    fn keccak_machine_pgo_mode() {
+        // All three modes happen to create 1 APC for the same basic block
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
         test_machine(MachineTestParams {
             pgo_config: PgoConfig::None,
             guest: GUEST_KECCAK,
@@ -1348,15 +1421,7 @@ mod tests {
             bus_interactions: 1783,
             machine_length: 1,
         });
-    }
-
-    #[test]
-    fn keccak_machine_pgo() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-
-        test_machine(MachineTestParams {
+         test_machine(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
@@ -1377,5 +1442,66 @@ mod tests {
             bus_interactions: 1783,
             machine_length: 1,
         });
+
+    }
+
+    #[test]
+    fn keccak_machine_cell_pgo_max_columns() {
+        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
+
+        const MAX_TOTAL_COLUMNS: usize = 10_000;
+
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let pgo_data =
+            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+
+        let compiled_program = compile_guest(
+            GUEST_KECCAK,
+            GuestOptions::default(),
+            config,
+            PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)), // limit to 10_000 total columns
+        )
+        .unwrap();
+
+        let powdr_metrics = compiled_program.air_metrics(AirMetricsType::Powdr);
+
+        // Check all APC
+        assert_eq!(powdr_metrics.len(), 18); // Number of APC chips
+
+        let expected = AirMetrics {
+            widths: AirWidths {
+                preprocessed: 0,
+                main: 4824,
+                log_up: 3968,
+            },
+            constraints: 935,
+            bus_interactions: 3826,
+        };
+        let powdr_metrics_sum = powdr_metrics.into_iter().sum::<AirMetrics>();
+        assert_eq!(powdr_metrics_sum, expected);
+
+        // Check non-APC metrics
+        let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
+        assert_eq!(non_powdr_metrics.len(), 18); // Number of non-APC chips
+
+        let expected = AirMetrics {
+            widths: AirWidths {
+                preprocessed: 5,
+                main: 797,
+                log_up: 388,
+            },
+            constraints: 604,
+            bus_interactions: 252,
+        };
+        let non_powdr_metrics_sum = non_powdr_metrics.into_iter().sum::<AirMetrics>();
+        assert_eq!(non_powdr_metrics_sum, expected);
+
+        // Assert that total columns don't exceed the initial limit set
+        let total_columns = (powdr_metrics_sum + non_powdr_metrics_sum).widths.total();
+        assert!(
+            total_columns <= MAX_TOTAL_COLUMNS,
+            "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
+        );
     }
 }

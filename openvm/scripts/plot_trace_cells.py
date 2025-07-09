@@ -1,45 +1,30 @@
 #!/usr/bin/env python3
 
-import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import argparse
+from metrics_utils import load_metrics_dataframes
 
 def autopct_with_billions(pct, total):
     val = pct * total / 100
     return f'{pct:.1f}%\n{val/1e9:.2f}B'
 
 def main(metrics_path, output_path=None, subtitle=None):
-    with open(metrics_path) as f:
-        metrics = json.load(f)
-
-    # metrics["counter"] has entries of the form:
-    # {
-    #     "metric": "cells", // This is the only one we're interested in
-    #     "value": "<value>", // The number of cells
-    #     "labels": [
-    #         ["segment", "<segment>"],
-    #         ["air_name", "<air_name>"],
-    #         ...
-    #     ],
-    # }
-
-    total_cells = sum(
-        int(c["value"]) for c in metrics["counter"] if c["metric"] == "total_cells"
-    )
+    # Load only the app dataframe
+    app, _, _ = load_metrics_dataframes(metrics_path)
+    
+    # Get total cells from app dataframe
+    total_cells_df = app[app["metric"] == "total_cells"]
+    total_cells = pd.to_numeric(total_cells_df["value"]).sum()
     print(f"Total cells: {total_cells/1e9:.2f}B")
-
-    cell_entries = [
-        (dict(c["labels"]), c["value"])
-        for c in metrics["counter"]
-        if c["metric"] == "cells"
-    ]
-    rows = [
-        (int(labels.get("segment", 0)), labels["air_name"], int(cells))
-        for (labels, cells) in cell_entries
-    ]
-
-    df = pd.DataFrame(rows, columns=["segment", "air_name", "cells"])
+    
+    # Get cell entries from app dataframe
+    cells_df = app[app["metric"] == "cells"].copy()
+    cells_df["segment"] = pd.to_numeric(cells_df["segment"].fillna(0))
+    cells_df["cells"] = pd.to_numeric(cells_df["value"])
+    
+    # Create dataframe with required columns
+    df = cells_df[["segment", "air_name", "cells"]]
 
     # Group and threshold
     cells_by_air = df.groupby('air_name')['cells'].sum().sort_values(ascending=False)
@@ -47,12 +32,7 @@ def main(metrics_path, output_path=None, subtitle=None):
     print(cells_by_air)
 
     # Sanity check: #cells should match total_cells
-    # Doesn't currently match exactly (not sure why), but should be close
-    total_cells2 = cells_by_air.sum()
-    diff = abs(total_cells - total_cells2)
-    relative_diff = diff / total_cells
-    if relative_diff > 0.01:
-        print(f"\nWarning: Total cells mismatch: {total_cells} vs {total_cells2} (diff: {relative_diff* 100:.2f}%)")
+    assert total_cells == cells_by_air.sum()
 
     threshold_ratio = 0.015
     threshold = threshold_ratio * cells_by_air.sum()
@@ -70,7 +50,7 @@ def main(metrics_path, output_path=None, subtitle=None):
     def autopct_filtered(pct):
         return autopct_with_billions(pct, total) if pct > 5 else ''
 
-    wedges, texts, autotexts = ax.pie(
+    wedges, _, _ = ax.pie(
         large,
         autopct=autopct_filtered,
         startangle=90,

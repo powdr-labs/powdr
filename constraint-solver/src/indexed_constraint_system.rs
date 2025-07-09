@@ -14,7 +14,6 @@ use crate::{
     effect::EffectImpl,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
-    symbolic_expression::SymbolicExpression,
 };
 
 /// Applies multiple substitutions to a ConstraintSystem in an efficient manner.
@@ -22,20 +21,17 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     constraint_system: ConstraintSystemGeneric<T, V>,
     substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
 ) -> ConstraintSystemGeneric<T, V> {
-    let mut indexed_constraint_system = IndexedConstraintSystemGeneric::from(constraint_system);
+    let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
     for (variable, substitution) in substitutions {
         indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
     }
     indexed_constraint_system.into()
 }
 
-pub type IndexedConstraintSystem<T, V> =
-    IndexedConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
-
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone, Default)]
-pub struct IndexedConstraintSystemGeneric<T, V> {
+pub struct IndexedConstraintSystem<T, V> {
     /// The constraint system.
     constraint_system: ConstraintSystemGeneric<T, V>,
     /// Stores where each unknown variable appears.
@@ -49,26 +45,26 @@ enum ConstraintSystemItem {
 }
 
 impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystemGeneric<T, V>>
-    for IndexedConstraintSystemGeneric<T, V>
+    for IndexedConstraintSystem<T, V>
 {
     fn from(constraint_system: ConstraintSystemGeneric<T, V>) -> Self {
         let variable_occurrences = variable_occurrences(&constraint_system);
-        IndexedConstraintSystemGeneric {
+        IndexedConstraintSystem {
             constraint_system,
             variable_occurrences,
         }
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq> From<IndexedConstraintSystemGeneric<T, V>>
+impl<T: RuntimeConstant, V: Clone + Eq> From<IndexedConstraintSystem<T, V>>
     for ConstraintSystemGeneric<T, V>
 {
-    fn from(indexed_constraint_system: IndexedConstraintSystemGeneric<T, V>) -> Self {
+    fn from(indexed_constraint_system: IndexedConstraintSystem<T, V>) -> Self {
         indexed_constraint_system.constraint_system
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     pub fn system(&self) -> &ConstraintSystemGeneric<T, V> {
         &self.constraint_system
     }
@@ -160,7 +156,7 @@ fn retain<V, Item>(
     });
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
     /// Adds new algebraic constraints to the system.
     pub fn add_algebraic_constraints(
         &mut self,
@@ -209,7 +205,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystemGeneric<T
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables<'a>(
         &'a self,
@@ -231,7 +227,7 @@ impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystemGene
 }
 
 impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
-    IndexedConstraintSystemGeneric<T, V>
+    IndexedConstraintSystem<T, V>
 {
     /// Substitutes a variable with a symbolic expression in the whole system
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
@@ -296,7 +292,7 @@ impl<
             + ExpressionConvertible<T::FieldType, V>
             + Display,
         V: Clone + Hash + Ord + Eq + Display,
-    > IndexedConstraintSystemGeneric<T, V>
+    > IndexedConstraintSystem<T, V>
 {
     /// Given a list of assignments, tries to extend it with more assignments, based on the
     /// constraints in the constraint system.
@@ -430,7 +426,7 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
-    for IndexedConstraintSystemGeneric<T, V>
+    for IndexedConstraintSystem<T, V>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.constraint_system)
@@ -443,7 +439,7 @@ mod tests {
 
     use super::*;
 
-    fn format_system(s: &IndexedConstraintSystemGeneric<GoldilocksField, &'static str>) -> String {
+    fn format_system(s: &IndexedConstraintSystem<GoldilocksField, &'static str>) -> String {
         format!(
             "{}  |  {}",
             s.algebraic_constraints().iter().format("  |  "),
@@ -469,7 +465,7 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystemGeneric<_, _> = ConstraintSystemGeneric {
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
@@ -504,7 +500,7 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystemGeneric<_, _> = ConstraintSystemGeneric {
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystemGeneric {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
