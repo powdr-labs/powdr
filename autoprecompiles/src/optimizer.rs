@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
-    journaling_constraint_system::JournalingConstraintSystemGeneric,
+    journaling_constraint_system::JournalingConstraintSystem,
 };
 use powdr_number::FieldElement;
 
@@ -63,7 +63,7 @@ fn optimization_loop_iteration<T: FieldElement>(
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystemGeneric::from(constraint_system);
+    let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
