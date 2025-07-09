@@ -258,6 +258,13 @@ mod single_instruction_tests {
     }
 
     #[test]
+    fn single_sll_by_8() {
+        // r68 = r40 << 8
+        let program = [sll(68, 40, 8, 0)];
+        assert_machine_output(program.to_vec(), "single_sll_by_8");
+    }
+
+    #[test]
     fn single_sra() {
         // r68 = sign_extend(r40 >> val(R3))
         let program = [sra(68, 40, 3, 1)];

@@ -1,2 +1,4 @@
 pandas
 matplotlib
+psrecord
+pytest
