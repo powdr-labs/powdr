@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+import argparse
+import numpy as np
+
+def load_apc_data(json_path):
+    """Load APC candidates and compute effectiveness."""
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    
+    return pd.DataFrame([{
+        'effectiveness': item['total_width_before'] / item['total_width_after'],
+        'instructions': len(item['original_instructions']),
+        'frequency': item['execution_frequency']
+    } for item in data])
+
+def remove_outliers(df, column, factor=2):
+    """Remove outliers using IQR method."""
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - factor * IQR
+    upper_bound = Q3 + factor * IQR
+    return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
+
+def group_instruction_count(count):
+    """Group instruction counts into ranges."""
+    if count <= 9:
+        return str(count)
+    elif count <= 14:
+        return '10-14'
+    elif count <= 19:
+        return '15-19'
+    elif count <= 29:
+        return '20-29'
+    elif count <= 49:
+        return '30-49'
+    elif count <= 100:
+        return '50-100'
+    else:
+        return '>100'
+
+def prepare_histogram_data(df, bins):
+    """Prepare weighted histogram data grouped by instruction count."""
+    df['inst_group'] = df['instructions'].apply(group_instruction_count)
+    
+    group_order = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 
+                   '10-14', '15-19', '20-29', '30-49', '50-100', '>100']
+    existing_groups = [g for g in group_order if g in df['inst_group'].values]
+    
+    hist_data = []
+    for group in existing_groups:
+        group_df = df[df['inst_group'] == group]
+        weighted_data = []
+        for _, row in group_df.iterrows():
+            weighted_data.extend([row['effectiveness']] * int(row['frequency']))
+        
+        hist = np.histogram(weighted_data, bins=bins)[0] if weighted_data else np.zeros(len(bins) - 1)
+        hist_data.append(hist)
+    
+    return existing_groups, hist_data
+
+def plot_effectiveness(json_path, output_prefix=None):
+    """Generate stacked histogram of effectiveness data."""
+    df = load_apc_data(json_path)
+    
+    # Calculate mean from full dataset
+    total_weight = df['frequency'].sum()
+    mean_effectiveness = (df['effectiveness'] * df['frequency']).sum() / total_weight
+    
+    # Remove outliers for visualization
+    df_clean = remove_outliers(df, 'effectiveness')
+    outliers_removed = len(df) - len(df_clean)
+    
+    # Prepare histogram
+    bins = np.linspace(df_clean['effectiveness'].min(), df_clean['effectiveness'].max(), 20)
+    existing_groups, hist_data = prepare_histogram_data(df_clean, bins)
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Stacked bar chart
+    bottom = np.zeros(len(bins) - 1)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(existing_groups)))
+    
+    for i, (group, data) in enumerate(zip(existing_groups, hist_data)):
+        label = f'{group} instruction{"s" if group != "1" else ""}'
+        ax.bar(bins[:-1], data, width=np.diff(bins), bottom=bottom, 
+               label=label, color=colors[i], 
+               edgecolor='black', linewidth=0.5, alpha=0.8)
+        bottom += data
+    
+    # Formatting
+    ax.set_xlabel('Effectiveness', fontsize=12)
+    ax.set_ylabel('CPU Cycles', fontsize=12)
+    ax.set_title(f'Distribution of Effectiveness\n(removed {outliers_removed} outliers out of {len(df)} APCs)', 
+                 fontsize=14)
+    ax.grid(True, alpha=0.3, axis='y')
+    ax.legend(title='Basic Block size', loc='upper right', frameon=True, fancybox=True, shadow=True)
+    
+    # Add mean line
+    ax.axvline(mean_effectiveness, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    
+    # Add statistics text
+    stats_text = f'Mean: {mean_effectiveness:.2f}'
+    props = dict(boxstyle='round,pad=0.5', facecolor='wheat', alpha=0.8)
+    ax.text(0.02, 0.97, stats_text, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=props)
+    
+    plt.tight_layout()
+    
+    # Save or show
+    if output_prefix:
+        plt.savefig(f'{output_prefix}_stacked_histogram.png', dpi=300, bbox_inches='tight')
+    else:
+        plt.show()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Plot effectiveness analysis from APC candidates JSON file.")
+    parser.add_argument("json_path", help="Path to the APC candidates JSON file")
+    parser.add_argument("-o", "--output", help="Output prefix for saving plots")
+    args = parser.parse_args()
+    
+    plot_effectiveness(args.json_path, args.output)
