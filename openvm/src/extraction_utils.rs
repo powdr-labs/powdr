@@ -24,6 +24,8 @@ use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
+use std::iter::Sum;
+use std::ops::Add;
 use std::ops::Deref;
 use std::sync::MutexGuard;
 
@@ -271,7 +273,7 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_metrics(&self) -> Vec<AirMetrics> {
+    pub fn chip_inventory_air_metrics(&self) -> HashMap<String, AirMetrics> {
         let inventory = &self.chip_complex().inventory;
 
         inventory
@@ -286,7 +288,7 @@ impl OriginalVmConfig {
             )
             .map(|air| {
                 // both executors and periphery implement the same `air()` API
-                get_air_metrics(air)
+                (air.name(), get_air_metrics(air))
             })
             .collect()
     }
@@ -347,7 +349,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
     let app_log_blow_up = 2;
     let max_degree = (1 << app_log_blow_up) + 1;
 
-    let name = air.name();
     let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
@@ -365,7 +366,6 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         * EXT_DEGREE;
 
     AirMetrics {
-        name,
         widths: AirWidths {
             preprocessed,
             main,
@@ -392,6 +392,23 @@ pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
     pub log_up: usize,
+}
+
+impl Add for AirWidths {
+    type Output = AirWidths;
+    fn add(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocessed: self.preprocessed + rhs.preprocessed,
+            main: self.main + rhs.main,
+            log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+impl Sum<AirWidths> for AirWidths {
+    fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
+        iter.fold(AirWidths::default(), Add::add)
+    }
 }
 
 impl AirWidths {
