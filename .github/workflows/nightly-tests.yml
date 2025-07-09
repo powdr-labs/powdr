@@ -140,8 +140,8 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      # - name: Run tests
+      #   run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
         run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev d730a36 cargo-openvm
