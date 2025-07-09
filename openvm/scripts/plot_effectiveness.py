@@ -19,13 +19,32 @@ def load_apc_data(json_path):
         'software_version_cells': item['total_width_before'] * item['execution_frequency']
     } for item in data])
 
-def remove_outliers(df, column, factor=2):
-    """Remove outliers using IQR method."""
-    Q1 = df[column].quantile(0.25)
-    Q3 = df[column].quantile(0.75)
-    IQR = Q3 - Q1
-    lower_bound = Q1 - factor * IQR
-    upper_bound = Q3 + factor * IQR
+def weighted_quantile(values, weights, quantile):
+    """Calculate weighted quantile."""
+    indices = np.argsort(values)
+    sorted_values = values[indices]
+    sorted_weights = weights[indices]
+    cumsum_weights = np.cumsum(sorted_weights)
+    total_weight = cumsum_weights[-1]
+    
+    # Find the value at the given quantile
+    target_weight = quantile * total_weight
+    idx = np.searchsorted(cumsum_weights, target_weight)
+    
+    if idx >= len(sorted_values):
+        return sorted_values[-1]
+    return sorted_values[idx]
+
+def remove_outliers(df, column, weight_column, factor=1.1):
+    """Remove outliers using weighted IQR method."""
+    values = df[column].values
+    weights = df[weight_column].values
+    
+    percentile5 = weighted_quantile(values, weights, 0.05)
+    percentile95 = weighted_quantile(values, weights, 0.95)
+    IQR = percentile95 - percentile5
+    lower_bound = percentile5 - factor * IQR
+    upper_bound = percentile95 + factor * IQR
     return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
 
 def group_instruction_count(count):
@@ -73,7 +92,7 @@ def plot_effectiveness(json_path, output_prefix=None):
     mean_effectiveness = (df['effectiveness'] * df['software_version_cells']).sum() / total_software_version_cells
     
     # Remove outliers for visualization
-    df_clean = remove_outliers(df, 'effectiveness')
+    df_clean = remove_outliers(df, 'effectiveness', 'software_version_cells')
     outliers_removed = len(df) - len(df_clean)
     
     # Prepare histogram
