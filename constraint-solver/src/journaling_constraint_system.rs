@@ -1,7 +1,7 @@
 use crate::{
     constraint_system::{BusInteraction, ConstraintSystemGeneric},
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::IndexedConstraintSystemGeneric,
+    indexed_constraint_system::IndexedConstraintSystem,
     runtime_constant::{RuntimeConstant, Substitutable},
     symbolic_expression::SymbolicExpression,
 };
@@ -12,10 +12,10 @@ pub type JournalingConstraintSystem<T, V> =
 
 /// A wrapper around `ConstraintSystem` that keeps track of changes.
 pub struct JournalingConstraintSystemGeneric<T, V> {
-    system: IndexedConstraintSystemGeneric<T, V>,
+    system: IndexedConstraintSystem<T, V>,
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystemGeneric<T, V>>> From<C>
+impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystem<T, V>>> From<C>
     for JournalingConstraintSystemGeneric<T, V>
 {
     fn from(system: C) -> Self {
@@ -31,7 +31,7 @@ impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric
         self.system.system()
     }
 
-    pub fn indexed_system(&self) -> &IndexedConstraintSystemGeneric<T, V> {
+    pub fn indexed_system(&self) -> &IndexedConstraintSystem<T, V> {
         &self.system
     }
 

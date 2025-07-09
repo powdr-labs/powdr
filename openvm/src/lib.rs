@@ -112,6 +112,7 @@ pub enum PgoConfig {
     /// cost = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
     /// cost = instruction per apc
+    /// cost = instruction per apc
     #[default]
     None,
 }
@@ -1179,7 +1180,7 @@ mod tests {
     }
 
     #[test]
-    fn keccak_machine_cell_pgo() {
+    fn keccak_machine_cell_pgo_max_columns() {
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
 
         const MAX_TOTAL_COLUMNS: usize = 10_000;

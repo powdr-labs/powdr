@@ -5,7 +5,7 @@ use powdr_number::LargeInt;
 
 use crate::constraint_system::BusInteractionHandler;
 use crate::grouped_expression::RangeConstraintProvider;
-use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::runtime_constant::ReferencedSymbols;
 use crate::runtime_constant::RuntimeConstant;
 use crate::runtime_constant::Substitutable;
@@ -28,7 +28,7 @@ const MAX_VAR_RANGE_WIDTH: u64 = 5;
 /// Returns an error if there are any contradictions between those assignments, or if no
 /// assignment satisfies the constraint system for any group of variables.
 pub fn get_unique_assignments<T, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystemGeneric<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
 ) -> Result<BTreeMap<V, T::FieldType>, Error>
@@ -94,7 +94,7 @@ where
 /// If multiple assignments satisfy the constraint system, it returns `None`.
 /// Returns an error if all assignments are contradictory.
 fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystemGeneric<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
     variables: &BTreeSet<V>,
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
@@ -139,7 +139,7 @@ fn get_brute_force_candidates<
     T: RuntimeConstant + ReferencedSymbols<V>,
     V: Clone + Hash + Ord,
 >(
-    constraint_system: &'a IndexedConstraintSystemGeneric<T, V>,
+    constraint_system: &'a IndexedConstraintSystem<T, V>,
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
     constraint_system

@@ -1,0 +1,1038 @@
+Apc(opcode: 4381, execution_frequency: 240, cells_saved_per_row: 42131, cells_per_row_after_saving: 3799, percent_saved: 91.73%)
+BasicBlock(start_idx: 555, statements: [
+   instr   0:   STOREW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   STOREW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   STOREW rd_rs2_ptr = 92, rs1_ptr = 8, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   STOREW rd_rs2_ptr = 72, rs1_ptr = 8, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   STOREW rd_rs2_ptr = 76, rs1_ptr = 8, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   6:   STOREW rd_rs2_ptr = 112, rs1_ptr = 8, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   7:   STOREW rd_rs2_ptr = 100, rs1_ptr = 8, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   8:   STOREW rd_rs2_ptr = 116, rs1_ptr = 8, imm = 60, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   9:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  10:   XOR rd_ptr = 68, rs1_ptr = 40, rs2 = 24, rs2_as = 1
+   instr  11:   LOADW rd_rs2_ptr = 120, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  12:   XOR rd_ptr = 20, rs1_ptr = 120, rs2 = 60, rs2_as = 1
+   instr  13:   XOR rd_ptr = 68, rs1_ptr = 68, rs2 = 20, rs2_as = 1
+   instr  14:   LOADW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  15:   XOR rd_ptr = 20, rs1_ptr = 24, rs2 = 48, rs2_as = 1
+   instr  16:   LOADW rd_rs2_ptr = 84, rs1_ptr = 8, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  17:   XOR rd_ptr = 116, rs1_ptr = 84, rs2 = 124, rs2_as = 1
+   instr  18:   XOR rd_ptr = 44, rs1_ptr = 20, rs2 = 116, rs2_as = 1
+   instr  19:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  20:   STOREW rd_rs2_ptr = 64, rs1_ptr = 8, imm = 32, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  21:   ADD rd_ptr = 112, rs1_ptr = 52, rs2 = 0, rs2_as = 0
+   instr  22:   ADD rd_ptr = 60, rs1_ptr = 40, rs2 = 0, rs2_as = 0
+   instr  23:   ADD rd_ptr = 56, rs1_ptr = 96, rs2 = 0, rs2_as = 0
+   instr  24:   ADD rd_ptr = 52, rs1_ptr = 88, rs2 = 0, rs2_as = 0
+   instr  25:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  26:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  27:   XOR rd_ptr = 20, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr  28:   ADD rd_ptr = 28, rs1_ptr = 80, rs2 = 0, rs2_as = 0
+   instr  29:   STOREW rd_rs2_ptr = 80, rs1_ptr = 8, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  30:   STOREW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  31:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  32:   XOR rd_ptr = 116, rs1_ptr = 40, rs2 = 32, rs2_as = 1
+   instr  33:   XOR rd_ptr = 116, rs1_ptr = 20, rs2 = 116, rs2_as = 1
+   instr  34:   LOADW rd_rs2_ptr = 88, rs1_ptr = 8, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  35:   LOADW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  36:   XOR rd_ptr = 20, rs1_ptr = 104, rs2 = 88, rs2_as = 1
+   instr  37:   XOR rd_ptr = 32, rs1_ptr = 92, rs2 = 72, rs2_as = 1
+   instr  38:   XOR rd_ptr = 32, rs1_ptr = 20, rs2 = 32, rs2_as = 1
+   instr  39:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  40:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  41:   XOR rd_ptr = 20, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr  42:   ADD rd_ptr = 48, rs1_ptr = 36, rs2 = 0, rs2_as = 0
+   instr  43:   STOREW rd_rs2_ptr = 36, rs1_ptr = 8, imm = 44, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  44:   LOADW rd_rs2_ptr = 36, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  45:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  46:   XOR rd_ptr = 36, rs1_ptr = 40, rs2 = 36, rs2_as = 1
+   instr  47:   XOR rd_ptr = 36, rs1_ptr = 20, rs2 = 36, rs2_as = 1
+   instr  48:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  49:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  50:   XOR rd_ptr = 20, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr  51:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  52:   XOR rd_ptr = 72, rs1_ptr = 40, rs2 = 100, rs2_as = 1
+   instr  53:   XOR rd_ptr = 72, rs1_ptr = 20, rs2 = 72, rs2_as = 1
+   instr  54:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  55:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  56:   XOR rd_ptr = 20, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr  57:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  58:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  59:   XOR rd_ptr = 76, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr  60:   XOR rd_ptr = 40, rs1_ptr = 20, rs2 = 76, rs2_as = 1
+   instr  61:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  62:   LOADW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 96, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  63:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  64:   XOR rd_ptr = 76, rs1_ptr = 40, rs2 = 4, rs2_as = 1
+   instr  65:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  66:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  67:   XOR rd_ptr = 80, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr  68:   XOR rd_ptr = 40, rs1_ptr = 76, rs2 = 80, rs2_as = 1
+   instr  69:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  70:   LOADW rd_rs2_ptr = 76, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  71:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  72:   XOR rd_ptr = 76, rs1_ptr = 40, rs2 = 76, rs2_as = 1
+   instr  73:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  74:   XOR rd_ptr = 92, rs1_ptr = 40, rs2 = 48, rs2_as = 1
+   instr  75:   XOR rd_ptr = 92, rs1_ptr = 76, rs2 = 92, rs2_as = 1
+   instr  76:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  77:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  78:   XOR rd_ptr = 76, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr  79:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  80:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  81:   XOR rd_ptr = 96, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr  82:   XOR rd_ptr = 100, rs1_ptr = 76, rs2 = 96, rs2_as = 1
+   instr  83:   XOR rd_ptr = 96, rs1_ptr = 32, rs2 = 52, rs2_as = 1
+   instr  84:   ADD rd_ptr = 20, rs1_ptr = 52, rs2 = 0, rs2_as = 0
+   instr  85:   ADD rd_ptr = 44, rs1_ptr = 108, rs2 = 0, rs2_as = 0
+   instr  86:   XOR rd_ptr = 116, rs1_ptr = 116, rs2 = 108, rs2_as = 1
+   instr  87:   SRL rd_ptr = 32, rs1_ptr = 116, rs2 = 31, rs2_as = 0
+   instr  88:   SLL rd_ptr = 76, rs1_ptr = 96, rs2 = 1, rs2_as = 0
+   instr  89:   OR rd_ptr = 32, rs1_ptr = 76, rs2 = 32, rs2_as = 1
+   instr  90:   SLL rd_ptr = 76, rs1_ptr = 116, rs2 = 1, rs2_as = 0
+   instr  91:   SRL rd_ptr = 108, rs1_ptr = 96, rs2 = 31, rs2_as = 0
+   instr  92:   OR rd_ptr = 108, rs1_ptr = 76, rs2 = 108, rs2_as = 1
+   instr  93:   XOR rd_ptr = 76, rs1_ptr = 68, rs2 = 112, rs2_as = 1
+   instr  94:   XOR rd_ptr = 68, rs1_ptr = 100, rs2 = 64, rs2_as = 1
+   instr  95:   XOR rd_ptr = 32, rs1_ptr = 68, rs2 = 32, rs2_as = 1
+   instr  96:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  97:   XOR rd_ptr = 80, rs1_ptr = 32, rs2 = 40, rs2_as = 1
+   instr  98:   STOREW rd_rs2_ptr = 80, rs1_ptr = 8, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  99:   XOR rd_ptr = 60, rs1_ptr = 32, rs2 = 60, rs2_as = 1
+   instr 100:   STOREW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 56, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 101:   XOR rd_ptr = 40, rs1_ptr = 32, rs2 = 120, rs2_as = 1
+   instr 102:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 103:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 104:   XOR rd_ptr = 48, rs1_ptr = 32, rs2 = 48, rs2_as = 1
+   instr 105:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 106:   XOR rd_ptr = 52, rs1_ptr = 32, rs2 = 112, rs2_as = 1
+   instr 107:   STOREW rd_rs2_ptr = 52, rs1_ptr = 8, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 108:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 109:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 110:   XOR rd_ptr = 60, rs1_ptr = 60, rs2 = 48, rs2_as = 1
+   instr 111:   XOR rd_ptr = 52, rs1_ptr = 92, rs2 = 28, rs2_as = 1
+   instr 112:   XOR rd_ptr = 120, rs1_ptr = 52, rs2 = 108, rs2_as = 1
+   instr 113:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 114:   XOR rd_ptr = 28, rs1_ptr = 120, rs2 = 40, rs2_as = 1
+   instr 115:   STOREW rd_rs2_ptr = 28, rs1_ptr = 8, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 116:   XOR rd_ptr = 40, rs1_ptr = 120, rs2 = 24, rs2_as = 1
+   instr 117:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 118:   XOR rd_ptr = 108, rs1_ptr = 120, rs2 = 84, rs2_as = 1
+   instr 119:   XOR rd_ptr = 24, rs1_ptr = 120, rs2 = 124, rs2_as = 1
+   instr 120:   STOREW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 121:   XOR rd_ptr = 48, rs1_ptr = 120, rs2 = 48, rs2_as = 1
+   instr 122:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 123:   XOR rd_ptr = 112, rs1_ptr = 72, rs2 = 56, rs2_as = 1
+   instr 124:   LOADW rd_rs2_ptr = 92, rs1_ptr = 8, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 125:   XOR rd_ptr = 72, rs1_ptr = 36, rs2 = 92, rs2_as = 1
+   instr 126:   SLL rd_ptr = 48, rs1_ptr = 72, rs2 = 1, rs2_as = 0
+   instr 127:   SRL rd_ptr = 24, rs1_ptr = 112, rs2 = 31, rs2_as = 0
+   instr 128:   OR rd_ptr = 48, rs1_ptr = 48, rs2 = 24, rs2_as = 1
+   instr 129:   SRL rd_ptr = 24, rs1_ptr = 72, rs2 = 31, rs2_as = 0
+   instr 130:   SLL rd_ptr = 120, rs1_ptr = 112, rs2 = 1, rs2_as = 0
+   instr 131:   OR rd_ptr = 24, rs1_ptr = 120, rs2 = 24, rs2_as = 1
+   instr 132:   XOR rd_ptr = 24, rs1_ptr = 24, rs2 = 76, rs2_as = 1
+   instr 133:   XOR rd_ptr = 32, rs1_ptr = 24, rs2 = 88, rs2_as = 1
+   instr 134:   XOR rd_ptr = 40, rs1_ptr = 24, rs2 = 104, rs2_as = 1
+   instr 135:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 136:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 137:   XOR rd_ptr = 100, rs1_ptr = 24, rs2 = 40, rs2_as = 1
+   instr 138:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 139:   XOR rd_ptr = 40, rs1_ptr = 24, rs2 = 40, rs2_as = 1
+   instr 140:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 141:   XOR rd_ptr = 40, rs1_ptr = 24, rs2 = 20, rs2_as = 1
+   instr 142:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 143:   XOR rd_ptr = 48, rs1_ptr = 48, rs2 = 60, rs2_as = 1
+   instr 144:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 145:   XOR rd_ptr = 120, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr 146:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 147:   XOR rd_ptr = 40, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr 148:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 149:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 150:   XOR rd_ptr = 80, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr 151:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 152:   XOR rd_ptr = 40, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr 153:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 154:   XOR rd_ptr = 40, rs1_ptr = 48, rs2 = 44, rs2_as = 1
+   instr 155:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 156:   LOADW rd_rs2_ptr = 88, rs1_ptr = 8, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 157:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 158:   XOR rd_ptr = 28, rs1_ptr = 40, rs2 = 88, rs2_as = 1
+   instr 159:   LOADW rd_rs2_ptr = 84, rs1_ptr = 8, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 160:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 161:   XOR rd_ptr = 20, rs1_ptr = 40, rs2 = 84, rs2_as = 1
+   instr 162:   SRL rd_ptr = 40, rs1_ptr = 20, rs2 = 31, rs2_as = 0
+   instr 163:   SLL rd_ptr = 44, rs1_ptr = 28, rs2 = 1, rs2_as = 0
+   instr 164:   OR rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 165:   SLL rd_ptr = 44, rs1_ptr = 20, rs2 = 1, rs2_as = 0
+   instr 166:   SRL rd_ptr = 48, rs1_ptr = 28, rs2 = 31, rs2_as = 0
+   instr 167:   OR rd_ptr = 44, rs1_ptr = 44, rs2 = 48, rs2_as = 1
+   instr 168:   XOR rd_ptr = 44, rs1_ptr = 44, rs2 = 116, rs2_as = 1
+   instr 169:   XOR rd_ptr = 40, rs1_ptr = 40, rs2 = 96, rs2_as = 1
+   instr 170:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 171:   XOR rd_ptr = 48, rs1_ptr = 44, rs2 = 48, rs2_as = 1
+   instr 172:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 173:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 174:   XOR rd_ptr = 64, rs1_ptr = 44, rs2 = 48, rs2_as = 1
+   instr 175:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 176:   XOR rd_ptr = 48, rs1_ptr = 44, rs2 = 48, rs2_as = 1
+   instr 177:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 178:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 179:   XOR rd_ptr = 124, rs1_ptr = 44, rs2 = 48, rs2_as = 1
+   instr 180:   XOR rd_ptr = 104, rs1_ptr = 44, rs2 = 92, rs2_as = 1
+   instr 181:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 182:   XOR rd_ptr = 44, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 183:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 184:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 185:   XOR rd_ptr = 96, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 186:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 187:   XOR rd_ptr = 44, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 188:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 189:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 190:   XOR rd_ptr = 24, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 191:   XOR rd_ptr = 40, rs1_ptr = 40, rs2 = 56, rs2_as = 1
+   instr 192:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 193:   SLL rd_ptr = 40, rs1_ptr = 52, rs2 = 1, rs2_as = 0
+   instr 194:   SRL rd_ptr = 44, rs1_ptr = 68, rs2 = 31, rs2_as = 0
+   instr 195:   OR rd_ptr = 40, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 196:   SRL rd_ptr = 52, rs1_ptr = 52, rs2 = 31, rs2_as = 0
+   instr 197:   SLL rd_ptr = 68, rs1_ptr = 68, rs2 = 1, rs2_as = 0
+   instr 198:   OR rd_ptr = 44, rs1_ptr = 68, rs2 = 52, rs2_as = 1
+   instr 199:   XOR rd_ptr = 116, rs1_ptr = 44, rs2 = 112, rs2_as = 1
+   instr 200:   XOR rd_ptr = 40, rs1_ptr = 40, rs2 = 72, rs2_as = 1
+   instr 201:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 202:   XOR rd_ptr = 68, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 203:   LOADW rd_rs2_ptr = 36, rs1_ptr = 8, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 204:   XOR rd_ptr = 36, rs1_ptr = 40, rs2 = 36, rs2_as = 1
+   instr 205:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 206:   XOR rd_ptr = 44, rs1_ptr = 40, rs2 = 44, rs2_as = 1
+   instr 207:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 208:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 209:   XOR rd_ptr = 48, rs1_ptr = 40, rs2 = 48, rs2_as = 1
+   instr 210:   XOR rd_ptr = 84, rs1_ptr = 40, rs2 = 84, rs2_as = 1
+   instr 211:   XOR rd_ptr = 52, rs1_ptr = 116, rs2 = 4, rs2_as = 1
+   instr 212:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 213:   XOR rd_ptr = 112, rs1_ptr = 116, rs2 = 40, rs2_as = 1
+   instr 214:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 215:   XOR rd_ptr = 40, rs1_ptr = 116, rs2 = 40, rs2_as = 1
+   instr 216:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 217:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 218:   XOR rd_ptr = 44, rs1_ptr = 116, rs2 = 40, rs2_as = 1
+   instr 219:   XOR rd_ptr = 4, rs1_ptr = 116, rs2 = 88, rs2_as = 1
+   instr 220:   SLL rd_ptr = 116, rs1_ptr = 60, rs2 = 1, rs2_as = 0
+   instr 221:   SRL rd_ptr = 72, rs1_ptr = 76, rs2 = 31, rs2_as = 0
+   instr 222:   OR rd_ptr = 116, rs1_ptr = 116, rs2 = 72, rs2_as = 1
+   instr 223:   SRL rd_ptr = 60, rs1_ptr = 60, rs2 = 31, rs2_as = 0
+   instr 224:   SLL rd_ptr = 76, rs1_ptr = 76, rs2 = 1, rs2_as = 0
+   instr 225:   OR rd_ptr = 60, rs1_ptr = 76, rs2 = 60, rs2_as = 1
+   instr 226:   XOR rd_ptr = 60, rs1_ptr = 28, rs2 = 60, rs2_as = 1
+   instr 227:   XOR rd_ptr = 40, rs1_ptr = 20, rs2 = 116, rs2_as = 1
+   instr 228:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 229:   XOR rd_ptr = 116, rs1_ptr = 60, rs2 = 56, rs2_as = 1
+   instr 230:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 231:   XOR rd_ptr = 20, rs1_ptr = 56, rs2 = 60, rs2_as = 1
+   instr 232:   STOREW rd_rs2_ptr = 20, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 233:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 234:   XOR rd_ptr = 20, rs1_ptr = 56, rs2 = 60, rs2_as = 1
+   instr 235:   STOREW rd_rs2_ptr = 20, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 236:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 237:   XOR rd_ptr = 76, rs1_ptr = 56, rs2 = 60, rs2_as = 1
+   instr 238:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 32, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 239:   XOR rd_ptr = 20, rs1_ptr = 56, rs2 = 60, rs2_as = 1
+   instr 240:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 241:   XOR rd_ptr = 28, rs1_ptr = 40, rs2 = 60, rs2_as = 1
+   instr 242:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 243:   XOR rd_ptr = 60, rs1_ptr = 60, rs2 = 40, rs2_as = 1
+   instr 244:   STOREW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 245:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 246:   XOR rd_ptr = 60, rs1_ptr = 60, rs2 = 40, rs2_as = 1
+   instr 247:   STOREW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 248:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 44, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 249:   XOR rd_ptr = 72, rs1_ptr = 60, rs2 = 40, rs2_as = 1
+   instr 250:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 251:   XOR rd_ptr = 60, rs1_ptr = 60, rs2 = 40, rs2_as = 1
+   instr 252:   SRL rd_ptr = 40, rs1_ptr = 32, rs2 = 31, rs2_as = 0
+   instr 253:   SLL rd_ptr = 92, rs1_ptr = 120, rs2 = 1, rs2_as = 0
+   instr 254:   OR rd_ptr = 40, rs1_ptr = 92, rs2 = 40, rs2_as = 1
+   instr 255:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 256:   SRL rd_ptr = 40, rs1_ptr = 120, rs2 = 31, rs2_as = 0
+   instr 257:   SLL rd_ptr = 32, rs1_ptr = 32, rs2 = 1, rs2_as = 0
+   instr 258:   OR rd_ptr = 40, rs1_ptr = 32, rs2 = 40, rs2_as = 1
+   instr 259:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 260:   SRL rd_ptr = 40, rs1_ptr = 108, rs2 = 29, rs2_as = 0
+   instr 261:   LOADW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 262:   SLL rd_ptr = 120, rs1_ptr = 32, rs2 = 3, rs2_as = 0
+   instr 263:   OR rd_ptr = 92, rs1_ptr = 120, rs2 = 40, rs2_as = 1
+   instr 264:   SRL rd_ptr = 40, rs1_ptr = 32, rs2 = 29, rs2_as = 0
+   instr 265:   SLL rd_ptr = 88, rs1_ptr = 108, rs2 = 3, rs2_as = 0
+   instr 266:   OR rd_ptr = 40, rs1_ptr = 88, rs2 = 40, rs2_as = 1
+   instr 267:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 268:   SRL rd_ptr = 40, rs1_ptr = 96, rs2 = 26, rs2_as = 0
+   instr 269:   SLL rd_ptr = 120, rs1_ptr = 64, rs2 = 6, rs2_as = 0
+   instr 270:   OR rd_ptr = 40, rs1_ptr = 120, rs2 = 40, rs2_as = 1
+   instr 271:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 272:   SRL rd_ptr = 40, rs1_ptr = 64, rs2 = 26, rs2_as = 0
+   instr 273:   SLL rd_ptr = 56, rs1_ptr = 96, rs2 = 6, rs2_as = 0
+   instr 274:   OR rd_ptr = 40, rs1_ptr = 56, rs2 = 40, rs2_as = 1
+   instr 275:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 276:   SRL rd_ptr = 40, rs1_ptr = 80, rs2 = 22, rs2_as = 0
+   instr 277:   SLL rd_ptr = 56, rs1_ptr = 100, rs2 = 10, rs2_as = 0
+   instr 278:   OR rd_ptr = 40, rs1_ptr = 56, rs2 = 40, rs2_as = 1
+   instr 279:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 280:   SRL rd_ptr = 40, rs1_ptr = 100, rs2 = 22, rs2_as = 0
+   instr 281:   SLL rd_ptr = 80, rs1_ptr = 80, rs2 = 10, rs2_as = 0
+   instr 282:   OR rd_ptr = 40, rs1_ptr = 80, rs2 = 40, rs2_as = 1
+   instr 283:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 284:   SRL rd_ptr = 40, rs1_ptr = 124, rs2 = 17, rs2_as = 0
+   instr 285:   SLL rd_ptr = 56, rs1_ptr = 24, rs2 = 15, rs2_as = 0
+   instr 286:   OR rd_ptr = 40, rs1_ptr = 56, rs2 = 40, rs2_as = 1
+   instr 287:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 288:   SRL rd_ptr = 40, rs1_ptr = 24, rs2 = 17, rs2_as = 0
+   instr 289:   SLL rd_ptr = 124, rs1_ptr = 124, rs2 = 15, rs2_as = 0
+   instr 290:   OR rd_ptr = 40, rs1_ptr = 124, rs2 = 40, rs2_as = 1
+   instr 291:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 292:   SRL rd_ptr = 40, rs1_ptr = 48, rs2 = 11, rs2_as = 0
+   instr 293:   SLL rd_ptr = 56, rs1_ptr = 44, rs2 = 21, rs2_as = 0
+   instr 294:   OR rd_ptr = 100, rs1_ptr = 56, rs2 = 40, rs2_as = 1
+   instr 295:   SRL rd_ptr = 44, rs1_ptr = 44, rs2 = 11, rs2_as = 0
+   instr 296:   SLL rd_ptr = 48, rs1_ptr = 48, rs2 = 21, rs2_as = 0
+   instr 297:   OR rd_ptr = 24, rs1_ptr = 48, rs2 = 44, rs2_as = 1
+   instr 298:   SRL rd_ptr = 40, rs1_ptr = 52, rs2 = 4, rs2_as = 0
+   instr 299:   SLL rd_ptr = 44, rs1_ptr = 68, rs2 = 28, rs2_as = 0
+   instr 300:   OR rd_ptr = 120, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 301:   SRL rd_ptr = 40, rs1_ptr = 68, rs2 = 4, rs2_as = 0
+   instr 302:   SLL rd_ptr = 52, rs1_ptr = 52, rs2 = 28, rs2_as = 0
+   instr 303:   OR rd_ptr = 88, rs1_ptr = 52, rs2 = 40, rs2_as = 1
+   instr 304:   LOADW rd_rs2_ptr = 108, rs1_ptr = 8, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 305:   SRL rd_ptr = 40, rs1_ptr = 108, rs2 = 28, rs2_as = 0
+   instr 306:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 56, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 307:   SLL rd_ptr = 44, rs1_ptr = 48, rs2 = 4, rs2_as = 0
+   instr 308:   OR rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 309:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 310:   SRL rd_ptr = 40, rs1_ptr = 48, rs2 = 28, rs2_as = 0
+   instr 311:   SLL rd_ptr = 108, rs1_ptr = 108, rs2 = 4, rs2_as = 0
+   instr 312:   OR rd_ptr = 40, rs1_ptr = 108, rs2 = 40, rs2_as = 1
+   instr 313:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 314:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 315:   SRL rd_ptr = 40, rs1_ptr = 48, rs2 = 19, rs2_as = 0
+   instr 316:   LOADW rd_rs2_ptr = 52, rs1_ptr = 8, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 317:   SLL rd_ptr = 44, rs1_ptr = 52, rs2 = 13, rs2_as = 0
+   instr 318:   OR rd_ptr = 108, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 319:   SRL rd_ptr = 40, rs1_ptr = 52, rs2 = 19, rs2_as = 0
+   instr 320:   SLL rd_ptr = 44, rs1_ptr = 48, rs2 = 13, rs2_as = 0
+   instr 321:   OR rd_ptr = 124, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 322:   SRL rd_ptr = 40, rs1_ptr = 36, rs2 = 9, rs2_as = 0
+   instr 323:   SLL rd_ptr = 44, rs1_ptr = 112, rs2 = 23, rs2_as = 0
+   instr 324:   OR rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 325:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 56, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 326:   SRL rd_ptr = 40, rs1_ptr = 112, rs2 = 9, rs2_as = 0
+   instr 327:   SLL rd_ptr = 36, rs1_ptr = 36, rs2 = 23, rs2_as = 0
+   instr 328:   OR rd_ptr = 40, rs1_ptr = 36, rs2 = 40, rs2_as = 1
+   instr 329:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 44, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 330:   LOADW rd_rs2_ptr = 52, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 331:   SRL rd_ptr = 40, rs1_ptr = 52, rs2 = 30, rs2_as = 0
+   instr 332:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 333:   SLL rd_ptr = 44, rs1_ptr = 48, rs2 = 2, rs2_as = 0
+   instr 334:   OR rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 335:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 336:   SRL rd_ptr = 40, rs1_ptr = 48, rs2 = 30, rs2_as = 0
+   instr 337:   SLL rd_ptr = 44, rs1_ptr = 52, rs2 = 2, rs2_as = 0
+   instr 338:   OR rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 339:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 340:   SRL rd_ptr = 40, rs1_ptr = 60, rs2 = 18, rs2_as = 0
+   instr 341:   SLL rd_ptr = 48, rs1_ptr = 20, rs2 = 14, rs2_as = 0
+   instr 342:   OR rd_ptr = 64, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr 343:   SRL rd_ptr = 40, rs1_ptr = 20, rs2 = 18, rs2_as = 0
+   instr 344:   SLL rd_ptr = 60, rs1_ptr = 60, rs2 = 14, rs2_as = 0
+   instr 345:   OR rd_ptr = 48, rs1_ptr = 60, rs2 = 40, rs2_as = 1
+   instr 346:   SRL rd_ptr = 44, rs1_ptr = 116, rs2 = 5, rs2_as = 0
+   instr 347:   SLL rd_ptr = 52, rs1_ptr = 28, rs2 = 27, rs2_as = 0
+   instr 348:   OR rd_ptr = 44, rs1_ptr = 52, rs2 = 44, rs2_as = 1
+   instr 349:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 32, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 350:   SRL rd_ptr = 44, rs1_ptr = 28, rs2 = 5, rs2_as = 0
+   instr 351:   SLL rd_ptr = 116, rs1_ptr = 116, rs2 = 27, rs2_as = 0
+   instr 352:   OR rd_ptr = 40, rs1_ptr = 116, rs2 = 44, rs2_as = 1
+   instr 353:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 354:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 355:   SRL rd_ptr = 44, rs1_ptr = 40, rs2 = 23, rs2_as = 0
+   instr 356:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 357:   SLL rd_ptr = 52, rs1_ptr = 56, rs2 = 9, rs2_as = 0
+   instr 358:   OR rd_ptr = 44, rs1_ptr = 52, rs2 = 44, rs2_as = 1
+   instr 359:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 360:   SRL rd_ptr = 44, rs1_ptr = 56, rs2 = 23, rs2_as = 0
+   instr 361:   SLL rd_ptr = 52, rs1_ptr = 40, rs2 = 9, rs2_as = 0
+   instr 362:   OR rd_ptr = 44, rs1_ptr = 52, rs2 = 44, rs2_as = 1
+   instr 363:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 364:   SRL rd_ptr = 44, rs1_ptr = 4, rs2 = 8, rs2_as = 0
+   instr 365:   SLL rd_ptr = 52, rs1_ptr = 84, rs2 = 24, rs2_as = 0
+   instr 366:   OR rd_ptr = 44, rs1_ptr = 52, rs2 = 44, rs2_as = 1
+   instr 367:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 368:   SRL rd_ptr = 44, rs1_ptr = 84, rs2 = 8, rs2_as = 0
+   instr 369:   SLL rd_ptr = 36, rs1_ptr = 4, rs2 = 24, rs2_as = 0
+   instr 370:   OR rd_ptr = 36, rs1_ptr = 36, rs2 = 44, rs2_as = 1
+   instr 371:   SRL rd_ptr = 44, rs1_ptr = 72, rs2 = 24, rs2_as = 0
+   instr 372:   SLL rd_ptr = 52, rs1_ptr = 76, rs2 = 8, rs2_as = 0
+   instr 373:   OR rd_ptr = 4, rs1_ptr = 52, rs2 = 44, rs2_as = 1
+   instr 374:   SRL rd_ptr = 44, rs1_ptr = 76, rs2 = 24, rs2_as = 0
+   instr 375:   SLL rd_ptr = 60, rs1_ptr = 72, rs2 = 8, rs2_as = 0
+   instr 376:   OR rd_ptr = 60, rs1_ptr = 60, rs2 = 44, rs2_as = 1
+   instr 377:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 378:   SRL rd_ptr = 44, rs1_ptr = 56, rs2 = 7, rs2_as = 0
+   instr 379:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 380:   SLL rd_ptr = 52, rs1_ptr = 40, rs2 = 25, rs2_as = 0
+   instr 381:   OR rd_ptr = 44, rs1_ptr = 52, rs2 = 44, rs2_as = 1
+   instr 382:   SRL rd_ptr = 52, rs1_ptr = 40, rs2 = 7, rs2_as = 0
+   instr 383:   SLL rd_ptr = 56, rs1_ptr = 56, rs2 = 25, rs2_as = 0
+   instr 384:   OR rd_ptr = 52, rs1_ptr = 56, rs2 = 52, rs2_as = 1
+   instr 385:   LOADW rd_rs2_ptr = 20, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 386:   SRL rd_ptr = 56, rs1_ptr = 20, rs2 = 21, rs2_as = 0
+   instr 387:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 388:   SLL rd_ptr = 68, rs1_ptr = 40, rs2 = 11, rs2_as = 0
+   instr 389:   OR rd_ptr = 56, rs1_ptr = 68, rs2 = 56, rs2_as = 1
+   instr 390:   SRL rd_ptr = 68, rs1_ptr = 40, rs2 = 21, rs2_as = 0
+   instr 391:   SLL rd_ptr = 20, rs1_ptr = 20, rs2 = 11, rs2_as = 0
+   instr 392:   OR rd_ptr = 72, rs1_ptr = 20, rs2 = 68, rs2_as = 1
+   instr 393:   LOADW rd_rs2_ptr = 28, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 394:   SRL rd_ptr = 68, rs1_ptr = 28, rs2 = 2, rs2_as = 0
+   instr 395:   LOADW rd_rs2_ptr = 112, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 396:   SLL rd_ptr = 20, rs1_ptr = 112, rs2 = 30, rs2_as = 0
+   instr 397:   OR rd_ptr = 40, rs1_ptr = 20, rs2 = 68, rs2_as = 1
+   instr 398:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 399:   SRL rd_ptr = 68, rs1_ptr = 112, rs2 = 2, rs2_as = 0
+   instr 400:   SLL rd_ptr = 20, rs1_ptr = 28, rs2 = 30, rs2_as = 0
+   instr 401:   OR rd_ptr = 40, rs1_ptr = 20, rs2 = 68, rs2_as = 1
+   instr 402:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 403:   LOADW rd_rs2_ptr = 28, rs1_ptr = 8, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 404:   SRL rd_ptr = 68, rs1_ptr = 28, rs2 = 14, rs2_as = 0
+   instr 405:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 406:   SLL rd_ptr = 20, rs1_ptr = 40, rs2 = 18, rs2_as = 0
+   instr 407:   OR rd_ptr = 84, rs1_ptr = 20, rs2 = 68, rs2_as = 1
+   instr 408:   SRL rd_ptr = 68, rs1_ptr = 40, rs2 = 14, rs2_as = 0
+   instr 409:   SLL rd_ptr = 20, rs1_ptr = 28, rs2 = 18, rs2_as = 0
+   instr 410:   OR rd_ptr = 116, rs1_ptr = 20, rs2 = 68, rs2_as = 1
+   instr 411:   LOADW rd_rs2_ptr = 28, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 412:   SRL rd_ptr = 68, rs1_ptr = 28, rs2 = 25, rs2_as = 0
+   instr 413:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 414:   SLL rd_ptr = 20, rs1_ptr = 40, rs2 = 7, rs2_as = 0
+   instr 415:   OR rd_ptr = 20, rs1_ptr = 20, rs2 = 68, rs2_as = 1
+   instr 416:   SRL rd_ptr = 68, rs1_ptr = 40, rs2 = 25, rs2_as = 0
+   instr 417:   SLL rd_ptr = 28, rs1_ptr = 28, rs2 = 7, rs2_as = 0
+   instr 418:   OR rd_ptr = 68, rs1_ptr = 28, rs2 = 68, rs2_as = 1
+   instr 419:   LOADW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 420:   SRL rd_ptr = 28, rs1_ptr = 32, rs2 = 3, rs2_as = 0
+   instr 421:   SLL rd_ptr = 112, rs1_ptr = 104, rs2 = 29, rs2_as = 0
+   instr 422:   OR rd_ptr = 28, rs1_ptr = 112, rs2 = 28, rs2_as = 1
+   instr 423:   SRL rd_ptr = 112, rs1_ptr = 104, rs2 = 3, rs2_as = 0
+   instr 424:   SLL rd_ptr = 32, rs1_ptr = 32, rs2 = 29, rs2_as = 0
+   instr 425:   OR rd_ptr = 112, rs1_ptr = 32, rs2 = 112, rs2_as = 1
+   instr 426:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 427:   SRL rd_ptr = 32, rs1_ptr = 40, rs2 = 12, rs2_as = 0
+   instr 428:   LOADW rd_rs2_ptr = 96, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 429:   SLL rd_ptr = 76, rs1_ptr = 96, rs2 = 20, rs2_as = 0
+   instr 430:   OR rd_ptr = 80, rs1_ptr = 76, rs2 = 32, rs2_as = 1
+   instr 431:   SRL rd_ptr = 32, rs1_ptr = 96, rs2 = 12, rs2_as = 0
+   instr 432:   SLL rd_ptr = 76, rs1_ptr = 40, rs2 = 20, rs2_as = 0
+   instr 433:   OR rd_ptr = 32, rs1_ptr = 76, rs2 = 32, rs2_as = 1
+   instr 434:   LOADW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 435:   SRL rd_ptr = 76, rs1_ptr = 104, rs2 = 20, rs2_as = 0
+   instr 436:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 437:   SLL rd_ptr = 96, rs1_ptr = 40, rs2 = 12, rs2_as = 0
+   instr 438:   OR rd_ptr = 76, rs1_ptr = 96, rs2 = 76, rs2_as = 1
+   instr 439:   SRL rd_ptr = 96, rs1_ptr = 40, rs2 = 20, rs2_as = 0
+   instr 440:   SLL rd_ptr = 104, rs1_ptr = 104, rs2 = 12, rs2_as = 0
+   instr 441:   OR rd_ptr = 96, rs1_ptr = 104, rs2 = 96, rs2_as = 1
+   instr 442:   XOR rd_ptr = 104, rs1_ptr = 76, rs2 = 16777215, rs2_as = 0
+   instr 443:   AND rd_ptr = 40, rs1_ptr = 72, rs2 = 104, rs2_as = 1
+   instr 444:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 445:   XOR rd_ptr = 104, rs1_ptr = 100, rs2 = 16777215, rs2_as = 0
+   instr 446:   AND rd_ptr = 104, rs1_ptr = 64, rs2 = 104, rs2_as = 1
+   instr 447:   XOR rd_ptr = 104, rs1_ptr = 104, rs2 = 72, rs2_as = 1
+   instr 448:   STOREW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 449:   XOR rd_ptr = 72, rs1_ptr = 72, rs2 = 16777215, rs2_as = 0
+   instr 450:   AND rd_ptr = 72, rs1_ptr = 100, rs2 = 72, rs2_as = 1
+   instr 451:   XOR rd_ptr = 104, rs1_ptr = 64, rs2 = 16777215, rs2_as = 0
+   instr 452:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 453:   AND rd_ptr = 104, rs1_ptr = 40, rs2 = 104, rs2_as = 1
+   instr 454:   XOR rd_ptr = 100, rs1_ptr = 100, rs2 = 104, rs2_as = 1
+   instr 455:   STOREW rd_rs2_ptr = 100, rs1_ptr = 8, imm = 96, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 456:   XOR rd_ptr = 100, rs1_ptr = 96, rs2 = 16777215, rs2_as = 0
+   instr 457:   AND rd_ptr = 100, rs1_ptr = 56, rs2 = 100, rs2_as = 1
+   instr 458:   STOREW rd_rs2_ptr = 100, rs1_ptr = 8, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 459:   XOR rd_ptr = 100, rs1_ptr = 24, rs2 = 16777215, rs2_as = 0
+   instr 460:   AND rd_ptr = 100, rs1_ptr = 48, rs2 = 100, rs2_as = 1
+   instr 461:   XOR rd_ptr = 100, rs1_ptr = 100, rs2 = 56, rs2_as = 1
+   instr 462:   STOREW rd_rs2_ptr = 100, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 463:   XOR rd_ptr = 56, rs1_ptr = 56, rs2 = 16777215, rs2_as = 0
+   instr 464:   AND rd_ptr = 56, rs1_ptr = 24, rs2 = 56, rs2_as = 1
+   instr 465:   XOR rd_ptr = 100, rs1_ptr = 48, rs2 = 16777215, rs2_as = 0
+   instr 466:   LOADW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 467:   AND rd_ptr = 100, rs1_ptr = 104, rs2 = 100, rs2_as = 1
+   instr 468:   XOR rd_ptr = 24, rs1_ptr = 24, rs2 = 100, rs2_as = 1
+   instr 469:   STOREW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 470:   XOR rd_ptr = 56, rs1_ptr = 56, rs2 = 96, rs2_as = 1
+   instr 471:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 472:   XOR rd_ptr = 56, rs1_ptr = 104, rs2 = 16777215, rs2_as = 0
+   instr 473:   AND rd_ptr = 56, rs1_ptr = 96, rs2 = 56, rs2_as = 1
+   instr 474:   XOR rd_ptr = 24, rs1_ptr = 72, rs2 = 76, rs2_as = 1
+   instr 475:   STOREW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 476:   XOR rd_ptr = 24, rs1_ptr = 40, rs2 = 16777215, rs2_as = 0
+   instr 477:   AND rd_ptr = 24, rs1_ptr = 76, rs2 = 24, rs2_as = 1
+   instr 478:   XOR rd_ptr = 40, rs1_ptr = 24, rs2 = 64, rs2_as = 1
+   instr 479:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 480:   XOR rd_ptr = 48, rs1_ptr = 56, rs2 = 48, rs2_as = 1
+   instr 481:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 482:   XOR rd_ptr = 40, rs1_ptr = 32, rs2 = 16777215, rs2_as = 0
+   instr 483:   AND rd_ptr = 40, rs1_ptr = 92, rs2 = 40, rs2_as = 1
+   instr 484:   XOR rd_ptr = 48, rs1_ptr = 108, rs2 = 16777215, rs2_as = 0
+   instr 485:   AND rd_ptr = 48, rs1_ptr = 28, rs2 = 48, rs2_as = 1
+   instr 486:   XOR rd_ptr = 48, rs1_ptr = 92, rs2 = 48, rs2_as = 1
+   instr 487:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 488:   XOR rd_ptr = 48, rs1_ptr = 92, rs2 = 16777215, rs2_as = 0
+   instr 489:   AND rd_ptr = 48, rs1_ptr = 108, rs2 = 48, rs2_as = 1
+   instr 490:   XOR rd_ptr = 56, rs1_ptr = 28, rs2 = 16777215, rs2_as = 0
+   instr 491:   AND rd_ptr = 56, rs1_ptr = 88, rs2 = 56, rs2_as = 1
+   instr 492:   XOR rd_ptr = 56, rs1_ptr = 56, rs2 = 108, rs2_as = 1
+   instr 493:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 494:   XOR rd_ptr = 56, rs1_ptr = 80, rs2 = 16777215, rs2_as = 0
+   instr 495:   LOADW rd_rs2_ptr = 64, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 496:   AND rd_ptr = 56, rs1_ptr = 64, rs2 = 56, rs2_as = 1
+   instr 497:   XOR rd_ptr = 24, rs1_ptr = 124, rs2 = 16777215, rs2_as = 0
+   instr 498:   AND rd_ptr = 24, rs1_ptr = 112, rs2 = 24, rs2_as = 1
+   instr 499:   XOR rd_ptr = 24, rs1_ptr = 64, rs2 = 24, rs2_as = 1
+   instr 500:   STOREW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 501:   XOR rd_ptr = 24, rs1_ptr = 64, rs2 = 16777215, rs2_as = 0
+   instr 502:   AND rd_ptr = 24, rs1_ptr = 124, rs2 = 24, rs2_as = 1
+   instr 503:   XOR rd_ptr = 72, rs1_ptr = 112, rs2 = 16777215, rs2_as = 0
+   instr 504:   AND rd_ptr = 72, rs1_ptr = 120, rs2 = 72, rs2_as = 1
+   instr 505:   XOR rd_ptr = 64, rs1_ptr = 72, rs2 = 124, rs2_as = 1
+   instr 506:   STOREW rd_rs2_ptr = 64, rs1_ptr = 8, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 507:   XOR rd_ptr = 56, rs1_ptr = 120, rs2 = 56, rs2_as = 1
+   instr 508:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 509:   XOR rd_ptr = 56, rs1_ptr = 24, rs2 = 80, rs2_as = 1
+   instr 510:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 511:   XOR rd_ptr = 56, rs1_ptr = 120, rs2 = 16777215, rs2_as = 0
+   instr 512:   AND rd_ptr = 56, rs1_ptr = 80, rs2 = 56, rs2_as = 1
+   instr 513:   XOR rd_ptr = 40, rs1_ptr = 88, rs2 = 40, rs2_as = 1
+   instr 514:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 515:   XOR rd_ptr = 48, rs1_ptr = 48, rs2 = 32, rs2_as = 1
+   instr 516:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 517:   XOR rd_ptr = 40, rs1_ptr = 88, rs2 = 16777215, rs2_as = 0
+   instr 518:   AND rd_ptr = 40, rs1_ptr = 32, rs2 = 40, rs2_as = 1
+   instr 519:   XOR rd_ptr = 40, rs1_ptr = 40, rs2 = 28, rs2_as = 1
+   instr 520:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 521:   XOR rd_ptr = 40, rs1_ptr = 56, rs2 = 112, rs2_as = 1
+   instr 522:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 523:   LOADW rd_rs2_ptr = 112, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 524:   XOR rd_ptr = 40, rs1_ptr = 112, rs2 = 16777215, rs2_as = 0
+   instr 525:   AND rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr 526:   XOR rd_ptr = 48, rs1_ptr = 4, rs2 = 16777215, rs2_as = 0
+   instr 527:   AND rd_ptr = 48, rs1_ptr = 84, rs2 = 48, rs2_as = 1
+   instr 528:   XOR rd_ptr = 48, rs1_ptr = 44, rs2 = 48, rs2_as = 1
+   instr 529:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 530:   XOR rd_ptr = 44, rs1_ptr = 44, rs2 = 16777215, rs2_as = 0
+   instr 531:   AND rd_ptr = 44, rs1_ptr = 4, rs2 = 44, rs2_as = 1
+   instr 532:   XOR rd_ptr = 48, rs1_ptr = 84, rs2 = 16777215, rs2_as = 0
+   instr 533:   LOADW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 534:   AND rd_ptr = 48, rs1_ptr = 24, rs2 = 48, rs2_as = 1
+   instr 535:   XOR rd_ptr = 48, rs1_ptr = 48, rs2 = 4, rs2_as = 1
+   instr 536:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 537:   LOADW rd_rs2_ptr = 28, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 538:   XOR rd_ptr = 48, rs1_ptr = 28, rs2 = 16777215, rs2_as = 0
+   instr 539:   AND rd_ptr = 48, rs1_ptr = 52, rs2 = 48, rs2_as = 1
+   instr 540:   XOR rd_ptr = 56, rs1_ptr = 60, rs2 = 16777215, rs2_as = 0
+   instr 541:   AND rd_ptr = 56, rs1_ptr = 116, rs2 = 56, rs2_as = 1
+   instr 542:   XOR rd_ptr = 56, rs1_ptr = 52, rs2 = 56, rs2_as = 1
+   instr 543:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 544:   XOR rd_ptr = 52, rs1_ptr = 52, rs2 = 16777215, rs2_as = 0
+   instr 545:   AND rd_ptr = 52, rs1_ptr = 60, rs2 = 52, rs2_as = 1
+   instr 546:   XOR rd_ptr = 56, rs1_ptr = 116, rs2 = 16777215, rs2_as = 0
+   instr 547:   LOADW rd_rs2_ptr = 64, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 548:   AND rd_ptr = 56, rs1_ptr = 64, rs2 = 56, rs2_as = 1
+   instr 549:   XOR rd_ptr = 56, rs1_ptr = 56, rs2 = 60, rs2_as = 1
+   instr 550:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 551:   XOR rd_ptr = 48, rs1_ptr = 48, rs2 = 64, rs2_as = 1
+   instr 552:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 553:   XOR rd_ptr = 48, rs1_ptr = 52, rs2 = 28, rs2_as = 1
+   instr 554:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 555:   XOR rd_ptr = 52, rs1_ptr = 64, rs2 = 16777215, rs2_as = 0
+   instr 556:   AND rd_ptr = 52, rs1_ptr = 28, rs2 = 52, rs2_as = 1
+   instr 557:   XOR rd_ptr = 40, rs1_ptr = 40, rs2 = 24, rs2_as = 1
+   instr 558:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 559:   XOR rd_ptr = 92, rs1_ptr = 44, rs2 = 112, rs2_as = 1
+   instr 560:   XOR rd_ptr = 40, rs1_ptr = 24, rs2 = 16777215, rs2_as = 0
+   instr 561:   AND rd_ptr = 40, rs1_ptr = 112, rs2 = 40, rs2_as = 1
+   instr 562:   XOR rd_ptr = 40, rs1_ptr = 84, rs2 = 40, rs2_as = 1
+   instr 563:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 564:   XOR rd_ptr = 40, rs1_ptr = 116, rs2 = 52, rs2_as = 1
+   instr 565:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 566:   LOADW rd_rs2_ptr = 116, rs1_ptr = 8, imm = 60, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 567:   LOADW rd_rs2_ptr = 112, rs1_ptr = 8, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 568:   XOR rd_ptr = 40, rs1_ptr = 112, rs2 = 16777215, rs2_as = 0
+   instr 569:   LOADW rd_rs2_ptr = 52, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 570:   AND rd_ptr = 44, rs1_ptr = 52, rs2 = 40, rs2_as = 1
+   instr 571:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 572:   XOR rd_ptr = 40, rs1_ptr = 48, rs2 = 16777215, rs2_as = 0
+   instr 573:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 574:   AND rd_ptr = 40, rs1_ptr = 56, rs2 = 40, rs2_as = 1
+   instr 575:   XOR rd_ptr = 100, rs1_ptr = 40, rs2 = 52, rs2_as = 1
+   instr 576:   XOR rd_ptr = 40, rs1_ptr = 52, rs2 = 16777215, rs2_as = 0
+   instr 577:   AND rd_ptr = 52, rs1_ptr = 48, rs2 = 40, rs2_as = 1
+   instr 578:   XOR rd_ptr = 40, rs1_ptr = 56, rs2 = 16777215, rs2_as = 0
+   instr 579:   ADD rd_ptr = 76, rs1_ptr = 56, rs2 = 0, rs2_as = 0
+   instr 580:   LOADW rd_rs2_ptr = 120, rs1_ptr = 8, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 581:   AND rd_ptr = 40, rs1_ptr = 120, rs2 = 40, rs2_as = 1
+   instr 582:   XOR rd_ptr = 40, rs1_ptr = 40, rs2 = 48, rs2_as = 1
+   instr 583:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 584:   LOADW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 585:   XOR rd_ptr = 40, rs1_ptr = 24, rs2 = 16777215, rs2_as = 0
+   instr 586:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 587:   AND rd_ptr = 40, rs1_ptr = 60, rs2 = 40, rs2_as = 1
+   instr 588:   LOADW rd_rs2_ptr = 64, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 589:   XOR rd_ptr = 56, rs1_ptr = 64, rs2 = 16777215, rs2_as = 0
+   instr 590:   AND rd_ptr = 56, rs1_ptr = 36, rs2 = 56, rs2_as = 1
+   instr 591:   XOR rd_ptr = 48, rs1_ptr = 56, rs2 = 60, rs2_as = 1
+   instr 592:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 593:   XOR rd_ptr = 56, rs1_ptr = 60, rs2 = 16777215, rs2_as = 0
+   instr 594:   AND rd_ptr = 56, rs1_ptr = 64, rs2 = 56, rs2_as = 1
+   instr 595:   ADD rd_ptr = 48, rs1_ptr = 64, rs2 = 0, rs2_as = 0
+   instr 596:   XOR rd_ptr = 64, rs1_ptr = 36, rs2 = 16777215, rs2_as = 0
+   instr 597:   LOADW rd_rs2_ptr = 60, rs1_ptr = 8, imm = 32, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 598:   AND rd_ptr = 64, rs1_ptr = 60, rs2 = 64, rs2_as = 1
+   instr 599:   XOR rd_ptr = 48, rs1_ptr = 64, rs2 = 48, rs2_as = 1
+   instr 600:   STOREW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 601:   XOR rd_ptr = 124, rs1_ptr = 40, rs2 = 60, rs2_as = 1
+   instr 602:   XOR rd_ptr = 32, rs1_ptr = 24, rs2 = 56, rs2_as = 1
+   instr 603:   XOR rd_ptr = 56, rs1_ptr = 60, rs2 = 16777215, rs2_as = 0
+   instr 604:   AND rd_ptr = 56, rs1_ptr = 24, rs2 = 56, rs2_as = 1
+   instr 605:   XOR rd_ptr = 60, rs1_ptr = 44, rs2 = 120, rs2_as = 1
+   instr 606:   XOR rd_ptr = 72, rs1_ptr = 112, rs2 = 52, rs2_as = 1
+   instr 607:   XOR rd_ptr = 52, rs1_ptr = 120, rs2 = 16777215, rs2_as = 0
+   instr 608:   AND rd_ptr = 52, rs1_ptr = 112, rs2 = 52, rs2_as = 1
+   instr 609:   XOR rd_ptr = 40, rs1_ptr = 76, rs2 = 52, rs2_as = 1
+   instr 610:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 611:   XOR rd_ptr = 36, rs1_ptr = 36, rs2 = 56, rs2_as = 1
+   instr 612:   LOADW rd_rs2_ptr = 120, rs1_ptr = 8, imm = 44, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 613:   XOR rd_ptr = 52, rs1_ptr = 120, rs2 = 16777215, rs2_as = 0
+   instr 614:   AND rd_ptr = 52, rs1_ptr = 20, rs2 = 52, rs2_as = 1
+   instr 615:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 616:   XOR rd_ptr = 56, rs1_ptr = 44, rs2 = 16777215, rs2_as = 0
+   instr 617:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 618:   AND rd_ptr = 56, rs1_ptr = 40, rs2 = 56, rs2_as = 1
+   instr 619:   XOR rd_ptr = 96, rs1_ptr = 56, rs2 = 20, rs2_as = 1
+   instr 620:   XOR rd_ptr = 56, rs1_ptr = 20, rs2 = 16777215, rs2_as = 0
+   instr 621:   AND rd_ptr = 20, rs1_ptr = 44, rs2 = 56, rs2_as = 1
+   instr 622:   ADD rd_ptr = 48, rs1_ptr = 44, rs2 = 0, rs2_as = 0
+   instr 623:   XOR rd_ptr = 56, rs1_ptr = 40, rs2 = 16777215, rs2_as = 0
+   instr 624:   ADD rd_ptr = 44, rs1_ptr = 40, rs2 = 0, rs2_as = 0
+   instr 625:   LOADW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 626:   AND rd_ptr = 56, rs1_ptr = 104, rs2 = 56, rs2_as = 1
+   instr 627:   XOR rd_ptr = 112, rs1_ptr = 48, rs2 = 56, rs2_as = 1
+   instr 628:   LOADW rd_rs2_ptr = 88, rs1_ptr = 8, imm = 56, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 629:   XOR rd_ptr = 56, rs1_ptr = 88, rs2 = 16777215, rs2_as = 0
+   instr 630:   AND rd_ptr = 64, rs1_ptr = 68, rs2 = 56, rs2_as = 1
+   instr 631:   LOADW rd_rs2_ptr = 24, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 632:   XOR rd_ptr = 56, rs1_ptr = 24, rs2 = 16777215, rs2_as = 0
+   instr 633:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 634:   AND rd_ptr = 56, rs1_ptr = 48, rs2 = 56, rs2_as = 1
+   instr 635:   XOR rd_ptr = 40, rs1_ptr = 56, rs2 = 68, rs2_as = 1
+   instr 636:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 637:   XOR rd_ptr = 68, rs1_ptr = 68, rs2 = 16777215, rs2_as = 0
+   instr 638:   AND rd_ptr = 68, rs1_ptr = 24, rs2 = 68, rs2_as = 1
+   instr 639:   ADD rd_ptr = 40, rs1_ptr = 24, rs2 = 0, rs2_as = 0
+   instr 640:   XOR rd_ptr = 24, rs1_ptr = 48, rs2 = 16777215, rs2_as = 0
+   instr 641:   LOADW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 642:   AND rd_ptr = 24, rs1_ptr = 56, rs2 = 24, rs2_as = 1
+   instr 643:   XOR rd_ptr = 76, rs1_ptr = 40, rs2 = 24, rs2_as = 1
+   instr 644:   XOR rd_ptr = 40, rs1_ptr = 64, rs2 = 56, rs2_as = 1
+   instr 645:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 646:   XOR rd_ptr = 108, rs1_ptr = 88, rs2 = 68, rs2_as = 1
+   instr 647:   XOR rd_ptr = 68, rs1_ptr = 56, rs2 = 16777215, rs2_as = 0
+   instr 648:   AND rd_ptr = 68, rs1_ptr = 88, rs2 = 68, rs2_as = 1
+   instr 649:   XOR rd_ptr = 52, rs1_ptr = 52, rs2 = 104, rs2_as = 1
+   instr 650:   XOR rd_ptr = 88, rs1_ptr = 120, rs2 = 20, rs2_as = 1
+   instr 651:   XOR rd_ptr = 20, rs1_ptr = 104, rs2 = 16777215, rs2_as = 0
+   instr 652:   AND rd_ptr = 20, rs1_ptr = 120, rs2 = 20, rs2_as = 1
+   instr 653:   LOADW rd_rs2_ptr = 24, rs1_ptr = 116, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 654:   XOR rd_ptr = 64, rs1_ptr = 20, rs2 = 44, rs2_as = 1
+   instr 655:   LOADW rd_rs2_ptr = 20, rs1_ptr = 116, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 656:   XOR rd_ptr = 80, rs1_ptr = 68, rs2 = 48, rs2_as = 1
+   instr 657:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 658:   XOR rd_ptr = 68, rs1_ptr = 24, rs2 = 40, rs2_as = 1
+   instr 659:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 660:   XOR rd_ptr = 24, rs1_ptr = 40, rs2 = 68, rs2_as = 1
+   instr 661:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 662:   XOR rd_ptr = 68, rs1_ptr = 20, rs2 = 40, rs2_as = 1
+   instr 663:   ADD rd_ptr = 116, rs1_ptr = 116, rs2 = 8, rs2_as = 0
+   instr 664:   LUI 40 0 518 1 0
+   instr 665:   ADD rd_ptr = 40, rs1_ptr = 40, rs2 = 16776960, rs2_as = 0
+   instr 666:   ADD rd_ptr = 20, rs1_ptr = 40, rs2 = 192, rs2_as = 0
+   instr 667:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr 668:   XOR rd_ptr = 48, rs1_ptr = 40, rs2 = 68, rs2_as = 1
+   instr 669:   BNE 116 20 2013263245 1 1
+])
+
+Apc(opcode: 4394, execution_frequency: 280, cells_saved_per_row: 559, cells_per_row_after_saving: 237, percent_saved: 70.23%)
+BasicBlock(start_idx: 1459, statements: [
+   instr   0:   LOADW rd_rs2_ptr = 60, rs1_ptr = 56, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   LOADW rd_rs2_ptr = 64, rs1_ptr = 56, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   LOADW rd_rs2_ptr = 68, rs1_ptr = 56, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   LOADW rd_rs2_ptr = 20, rs1_ptr = 56, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   STOREW rd_rs2_ptr = 60, rs1_ptr = 52, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   STOREW rd_rs2_ptr = 64, rs1_ptr = 52, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   6:   STOREW rd_rs2_ptr = 68, rs1_ptr = 52, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   7:   STOREW rd_rs2_ptr = 20, rs1_ptr = 52, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   8:   ADD rd_ptr = 56, rs1_ptr = 56, rs2 = 16, rs2_as = 0
+   instr   9:   ADD rd_ptr = 48, rs1_ptr = 48, rs2 = 16777200, rs2_as = 0
+   instr  10:   ADD rd_ptr = 52, rs1_ptr = 52, rs2 = 16, rs2_as = 0
+   instr  11:   BLTU 44 48 2013265877 1 1
+])
+
+Apc(opcode: 4368, execution_frequency: 320, cells_saved_per_row: 291, cells_per_row_after_saving: 150, percent_saved: 65.99%)
+BasicBlock(start_idx: 198, statements: [
+   instr   0:   LOADBU rd_rs2_ptr = 52, rs1_ptr = 36, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   LOADBU rd_rs2_ptr = 56, rs1_ptr = 44, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   XOR rd_ptr = 52, rs1_ptr = 56, rs2 = 52, rs2_as = 1
+   instr   3:   STOREB rd_rs2_ptr = 52, rs1_ptr = 44, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   ADD rd_ptr = 36, rs1_ptr = 36, rs2 = 1, rs2_as = 0
+   instr   5:   ADD rd_ptr = 44, rs1_ptr = 44, rs2 = 1, rs2_as = 0
+   instr   6:   BNE 36 48 2013265897 1 1
+])
+
+Apc(opcode: 4390, execution_frequency: 50, cells_saved_per_row: 543, cells_per_row_after_saving: 189, percent_saved: 74.18%)
+BasicBlock(start_idx: 1374, statements: [
+   instr   0:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   6:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   7:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   8:   ADD rd_ptr = 48, rs1_ptr = 48, rs2 = 16777184, rs2_as = 0
+   instr   9:   ADD rd_ptr = 52, rs1_ptr = 52, rs2 = 32, rs2_as = 0
+   instr  10:   BLTU 56 48 2013265881 1 1
+])
+
+Apc(opcode: 4391, execution_frequency: 30, cells_saved_per_row: 211, cells_per_row_after_saving: 81, percent_saved: 72.26%)
+BasicBlock(start_idx: 1386, statements: [
+   instr   0:   AND rd_ptr = 52, rs1_ptr = 44, rs2 = 3, rs2_as = 0
+   instr   1:   SLTU rd_ptr = 52, rs1_ptr = 52, rs2 = 1, rs2_as = 0
+   instr   2:   SLTU rd_ptr = 56, rs1_ptr = 48, rs2 = 1, rs2_as = 0
+   instr   3:   OR rd_ptr = 52, rs1_ptr = 52, rs2 = 56, rs2_as = 1
+   instr   4:   BNE 52 0 248 1 1
+])
+
+Apc(opcode: 4392, execution_frequency: 30, cells_saved_per_row: 159, cells_per_row_after_saving: 75, percent_saved: 67.95%)
+BasicBlock(start_idx: 1452, statements: [
+   instr   0:   ADD rd_ptr = 52, rs1_ptr = 40, rs2 = 0, rs2_as = 0
+   instr   1:   ADD rd_ptr = 56, rs1_ptr = 44, rs2 = 0, rs2_as = 0
+   instr   2:   AND rd_ptr = 44, rs1_ptr = 52, rs2 = 3, rs2_as = 0
+   instr   3:   BNE 44 0 2013265733 1 1
+])
+
+Apc(opcode: 4396, execution_frequency: 20, cells_saved_per_row: 279, cells_per_row_after_saving: 125, percent_saved: 69.06%)
+BasicBlock(start_idx: 1473, statements: [
+   instr   0:   LOADW rd_rs2_ptr = 44, rs1_ptr = 56, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   LOADW rd_rs2_ptr = 60, rs1_ptr = 56, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   STOREW rd_rs2_ptr = 60, rs1_ptr = 52, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   ADD rd_ptr = 52, rs1_ptr = 52, rs2 = 8, rs2_as = 0
+   instr   5:   ADD rd_ptr = 56, rs1_ptr = 56, rs2 = 8, rs2_as = 0
+])
+
+Apc(opcode: 4399, execution_frequency: 30, cells_saved_per_row: 63, cells_per_row_after_saving: 43, percent_saved: 59.43%)
+BasicBlock(start_idx: 1571, statements: [
+   instr   0:   AND rd_ptr = 44, rs1_ptr = 48, rs2 = 1, rs2_as = 0
+   instr   1:   BNE 44 0 44 1 1
+])
+
+Apc(opcode: 4398, execution_frequency: 30, cells_saved_per_row: 63, cells_per_row_after_saving: 43, percent_saved: 59.43%)
+BasicBlock(start_idx: 1569, statements: [
+   instr   0:   AND rd_ptr = 44, rs1_ptr = 48, rs2 = 2, rs2_as = 0
+   instr   1:   BNE 44 0 16 1 1
+])
+
+Apc(opcode: 4397, execution_frequency: 30, cells_saved_per_row: 63, cells_per_row_after_saving: 43, percent_saved: 59.43%)
+BasicBlock(start_idx: 1479, statements: [
+   instr   0:   AND rd_ptr = 44, rs1_ptr = 48, rs2 = 4, rs2_as = 0
+   instr   1:   BEQ 44 0 356 1 1
+])
+
+Apc(opcode: 4395, execution_frequency: 30, cells_saved_per_row: 63, cells_per_row_after_saving: 43, percent_saved: 59.43%)
+BasicBlock(start_idx: 1471, statements: [
+   instr   0:   AND rd_ptr = 44, rs1_ptr = 48, rs2 = 8, rs2_as = 0
+   instr   1:   BEQ 44 0 28 1 1
+])
+
+Apc(opcode: 4386, execution_frequency: 10, cells_saved_per_row: 636, cells_per_row_after_saving: 159, percent_saved: 80.00%)
+BasicBlock(start_idx: 1340, statements: [
+   instr   0:   SUB rd_ptr = 52, rs1_ptr = 0, rs2 = 40, rs2_as = 1
+   instr   1:   AND rd_ptr = 56, rs1_ptr = 52, rs2 = 3, rs2_as = 0
+   instr   2:   ADD rd_ptr = 52, rs1_ptr = 40, rs2 = 56, rs2_as = 1
+   instr   3:   SUB rd_ptr = 48, rs1_ptr = 48, rs2 = 56, rs2_as = 1
+   instr   4:   AND rd_ptr = 48, rs1_ptr = 48, rs2 = 16777212, rs2_as = 0
+   instr   5:   AND rd_ptr = 44, rs1_ptr = 44, rs2 = 255, rs2_as = 0
+   instr   6:   LUI 56 0 4112 1 0
+   instr   7:   ADD rd_ptr = 56, rs1_ptr = 56, rs2 = 257, rs2_as = 0
+   instr   8:   MUL 44 44 56 1 0
+   instr   9:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  10:   ADD rd_ptr = 56, rs1_ptr = 52, rs2 = 48, rs2_as = 1
+   instr  11:   STOREW rd_rs2_ptr = 44, rs1_ptr = 56, imm = 65532, mem_as = 2, needs_write = 1, imm_sign = 1
+   instr  12:   BLTU 48 60 132 1 1
+])
+
+Apc(opcode: 4393, execution_frequency: 30, cells_saved_per_row: 66, cells_per_row_after_saving: 50, percent_saved: 56.90%)
+BasicBlock(start_idx: 1456, statements: [
+   instr   0:   ADD rd_ptr = 44, rs1_ptr = 0, rs2 = 16, rs2_as = 0
+   instr   1:   BLTU 48 44 56 1 1
+])
+
+Apc(opcode: 4382, execution_frequency: 10, cells_saved_per_row: 5184, cells_per_row_after_saving: 1621, percent_saved: 76.18%)
+BasicBlock(start_idx: 1225, statements: [
+   instr   0:   LOADW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   STOREW rd_rs2_ptr = 48, rs1_ptr = 40, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   STOREW rd_rs2_ptr = 24, rs1_ptr = 40, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   6:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 44, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   7:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   8:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   9:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  10:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  11:   STOREW rd_rs2_ptr = 124, rs1_ptr = 40, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  12:   STOREW rd_rs2_ptr = 60, rs1_ptr = 40, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  13:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  14:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  15:   STOREW rd_rs2_ptr = 52, rs1_ptr = 40, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  16:   LOADW rd_rs2_ptr = 48, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  17:   STOREW rd_rs2_ptr = 48, rs1_ptr = 40, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  18:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  19:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  20:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  21:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  22:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  23:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  24:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  25:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  26:   STOREW rd_rs2_ptr = 92, rs1_ptr = 40, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  27:   STOREW rd_rs2_ptr = 32, rs1_ptr = 40, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  28:   STOREW rd_rs2_ptr = 72, rs1_ptr = 40, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  29:   STOREW rd_rs2_ptr = 108, rs1_ptr = 40, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  30:   STOREW rd_rs2_ptr = 88, rs1_ptr = 40, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  31:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  32:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  33:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  34:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  35:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  36:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 56, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  37:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  38:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 60, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  39:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  40:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 96, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  41:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  42:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  43:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  44:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  45:   STOREW rd_rs2_ptr = 100, rs1_ptr = 40, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  46:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  47:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  48:   STOREW rd_rs2_ptr = 96, rs1_ptr = 40, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  49:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  50:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  51:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 96, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  52:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  53:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  54:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  55:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  56:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  57:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  58:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  59:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  60:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  61:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  62:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  63:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  64:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  65:   STOREW rd_rs2_ptr = 76, rs1_ptr = 40, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  66:   STOREW rd_rs2_ptr = 112, rs1_ptr = 40, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  67:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  68:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  69:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  70:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 32, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  71:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  72:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  73:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  74:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  75:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  76:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  77:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  78:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  79:   LOADW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  80:   STOREW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  81:   STOREW rd_rs2_ptr = 36, rs1_ptr = 40, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  82:   STOREW rd_rs2_ptr = 64, rs1_ptr = 40, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  83:   STOREW rd_rs2_ptr = 80, rs1_ptr = 40, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  84:   LOADW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 252, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  85:   LOADW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 248, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  86:   LOADW rd_rs2_ptr = 36, rs1_ptr = 8, imm = 244, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  87:   LOADW rd_rs2_ptr = 72, rs1_ptr = 8, imm = 240, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  88:   LOADW rd_rs2_ptr = 76, rs1_ptr = 8, imm = 236, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  89:   LOADW rd_rs2_ptr = 80, rs1_ptr = 8, imm = 232, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  90:   LOADW rd_rs2_ptr = 84, rs1_ptr = 8, imm = 228, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  91:   LOADW rd_rs2_ptr = 88, rs1_ptr = 8, imm = 224, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  92:   LOADW rd_rs2_ptr = 92, rs1_ptr = 8, imm = 220, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  93:   LOADW rd_rs2_ptr = 96, rs1_ptr = 8, imm = 216, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  94:   LOADW rd_rs2_ptr = 100, rs1_ptr = 8, imm = 212, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  95:   LOADW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 208, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  96:   LOADW rd_rs2_ptr = 108, rs1_ptr = 8, imm = 204, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  97:   ADD rd_ptr = 8, rs1_ptr = 8, rs2 = 256, rs2_as = 0
+   instr  98:   JALR 0 4 0 1 0
+])
+
+Apc(opcode: 4380, execution_frequency: 10, cells_saved_per_row: 5214, cells_per_row_after_saving: 1641, percent_saved: 76.06%)
+BasicBlock(start_idx: 455, statements: [
+   instr   0:   ADD rd_ptr = 8, rs1_ptr = 8, rs2 = 16776960, rs2_as = 0
+   instr   1:   STOREW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 252, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   STOREW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 248, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   STOREW rd_rs2_ptr = 36, rs1_ptr = 8, imm = 244, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   STOREW rd_rs2_ptr = 72, rs1_ptr = 8, imm = 240, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   STOREW rd_rs2_ptr = 76, rs1_ptr = 8, imm = 236, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   6:   STOREW rd_rs2_ptr = 80, rs1_ptr = 8, imm = 232, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   7:   STOREW rd_rs2_ptr = 84, rs1_ptr = 8, imm = 228, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   8:   STOREW rd_rs2_ptr = 88, rs1_ptr = 8, imm = 224, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   9:   STOREW rd_rs2_ptr = 92, rs1_ptr = 8, imm = 220, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  10:   STOREW rd_rs2_ptr = 96, rs1_ptr = 8, imm = 216, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  11:   STOREW rd_rs2_ptr = 100, rs1_ptr = 8, imm = 212, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  12:   STOREW rd_rs2_ptr = 104, rs1_ptr = 8, imm = 208, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  13:   STOREW rd_rs2_ptr = 108, rs1_ptr = 8, imm = 204, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  14:   LOADW rd_rs2_ptr = 24, rs1_ptr = 40, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  15:   LOADW rd_rs2_ptr = 48, rs1_ptr = 40, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  16:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 44, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  17:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  18:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 40, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  19:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  20:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  21:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  22:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 80, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  23:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  24:   LOADW rd_rs2_ptr = 60, rs1_ptr = 40, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  25:   LOADW rd_rs2_ptr = 124, rs1_ptr = 40, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  26:   LOADW rd_rs2_ptr = 52, rs1_ptr = 40, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  27:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  28:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  29:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  30:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  31:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  32:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  33:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 52, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  34:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  35:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 48, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  36:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  37:   LOADW rd_rs2_ptr = 92, rs1_ptr = 40, imm = 92, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  38:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 88, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  39:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 160, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  40:   LOADW rd_rs2_ptr = 72, rs1_ptr = 40, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  41:   LOADW rd_rs2_ptr = 32, rs1_ptr = 40, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  42:   LOADW rd_rs2_ptr = 88, rs1_ptr = 40, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  43:   LOADW rd_rs2_ptr = 108, rs1_ptr = 40, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  44:   LOADW rd_rs2_ptr = 56, rs1_ptr = 40, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  45:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 200, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  46:   LOADW rd_rs2_ptr = 56, rs1_ptr = 40, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  47:   STOREW rd_rs2_ptr = 56, rs1_ptr = 8, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  48:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 60, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  49:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  50:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 56, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  51:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  52:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 100, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  53:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 120, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  54:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 96, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  55:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  56:   LOADW rd_rs2_ptr = 100, rs1_ptr = 40, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  57:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  58:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 124, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  59:   LOADW rd_rs2_ptr = 96, rs1_ptr = 40, imm = 180, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  60:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  61:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 84, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  62:   LOADW rd_rs2_ptr = 68, rs1_ptr = 40, imm = 28, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  63:   STOREW rd_rs2_ptr = 68, rs1_ptr = 8, imm = 96, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  64:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  65:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 168, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  66:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 68, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  67:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  68:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 64, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  69:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 132, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  70:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  71:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 172, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  72:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 104, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  73:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 108, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  74:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  75:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 128, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  76:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 144, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  77:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  78:   LOADW rd_rs2_ptr = 112, rs1_ptr = 40, imm = 188, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  79:   LOADW rd_rs2_ptr = 76, rs1_ptr = 40, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  80:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 36, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  81:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 184, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  82:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 32, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  83:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 176, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  84:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 76, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  85:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 148, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  86:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 72, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  87:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 140, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  88:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 116, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  89:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 164, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  90:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  91:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 136, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  92:   LOADW rd_rs2_ptr = 44, rs1_ptr = 40, imm = 156, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  93:   STOREW rd_rs2_ptr = 44, rs1_ptr = 8, imm = 112, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  94:   LOADW rd_rs2_ptr = 36, rs1_ptr = 40, imm = 152, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  95:   LOADW rd_rs2_ptr = 64, rs1_ptr = 40, imm = 196, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  96:   STOREW rd_rs2_ptr = 40, rs1_ptr = 8, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  97:   LOADW rd_rs2_ptr = 80, rs1_ptr = 40, imm = 192, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr  98:   LUI 116 0 518 1 0
+   instr  99:   ADD rd_ptr = 116, rs1_ptr = 116, rs2 = 16776960, rs2_as = 0
+])
+
+Apc(opcode: 4388, execution_frequency: 10, cells_saved_per_row: 648, cells_per_row_after_saving: 212, percent_saved: 75.35%)
+BasicBlock(start_idx: 1359, statements: [
+   instr   0:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   1:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   STOREW rd_rs2_ptr = 44, rs1_ptr = 52, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   STOREW rd_rs2_ptr = 44, rs1_ptr = 56, imm = 65508, mem_as = 2, needs_write = 1, imm_sign = 1
+   instr   5:   STOREW rd_rs2_ptr = 44, rs1_ptr = 56, imm = 65512, mem_as = 2, needs_write = 1, imm_sign = 1
+   instr   6:   STOREW rd_rs2_ptr = 44, rs1_ptr = 56, imm = 65516, mem_as = 2, needs_write = 1, imm_sign = 1
+   instr   7:   AND rd_ptr = 60, rs1_ptr = 52, rs2 = 4, rs2_as = 0
+   instr   8:   OR rd_ptr = 60, rs1_ptr = 60, rs2 = 24, rs2_as = 0
+   instr   9:   SUB rd_ptr = 48, rs1_ptr = 48, rs2 = 60, rs2_as = 1
+   instr  10:   ADD rd_ptr = 64, rs1_ptr = 0, rs2 = 32, rs2_as = 0
+   instr  11:   STOREW rd_rs2_ptr = 44, rs1_ptr = 56, imm = 65520, mem_as = 2, needs_write = 1, imm_sign = 1
+   instr  12:   BLTU 48 64 56 1 1
+])
+
+Apc(opcode: 4362, execution_frequency: 10, cells_saved_per_row: 373, cells_per_row_after_saving: 143, percent_saved: 72.29%)
+BasicBlock(start_idx: 153, statements: [
+   instr   0:   ADD rd_ptr = 40, rs1_ptr = 0, rs2 = 136, rs2_as = 0
+   instr   1:   STOREW rd_rs2_ptr = 40, rs1_ptr = 32, imm = 204, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   2:   ADD rd_ptr = 40, rs1_ptr = 0, rs2 = 1, rs2_as = 0
+   instr   3:   STOREH rd_rs2_ptr = 40, rs1_ptr = 32, imm = 208, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   4:   LOADW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   LOADW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   6:   ADD rd_ptr = 8, rs1_ptr = 8, rs2 = 16, rs2_as = 0
+   instr   7:   JALR 0 4 0 1 0
+])
+
+Apc(opcode: 4374, execution_frequency: 10, cells_saved_per_row: 340, cells_per_row_after_saving: 138, percent_saved: 71.13%)
+BasicBlock(start_idx: 332, statements: [
+   instr   0:   ADD rd_ptr = 44, rs1_ptr = 8, rs2 = 8, rs2_as = 0
+   instr   1:   ADD rd_ptr = 40, rs1_ptr = 44, rs2 = 40, rs2_as = 1
+   instr   2:   LOADBU rd_rs2_ptr = 44, rs1_ptr = 40, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   3:   XOR rd_ptr = 44, rs1_ptr = 44, rs2 = 128, rs2_as = 0
+   instr   4:   STOREB rd_rs2_ptr = 44, rs1_ptr = 40, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   instr   5:   ADD rd_ptr = 40, rs1_ptr = 8, rs2 = 8, rs2_as = 0
+   instr   6:   AUIPC 4 0 0 1 0
+   instr   7:   JALR 4 4 468 1 0
+])
+
