@@ -285,7 +285,7 @@ pub fn build<
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     M: InstructionMachineHandler<T>,
->( 
+>(
     block: SymbolicBlock<T>,
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
@@ -317,13 +317,11 @@ pub fn build<
     };
 
     if let Some(path) = apc_candidates_dir_path {
-        let file_name = format!("apc_{}.cbor", opcode);
+        let file_name = format!("apc_{opcode}.cbor");
         let file_path = path.join(file_name);
-        let file = std::fs::File::create(&file_path)
-            .expect("Failed to create APC candidate file");
+        let file = std::fs::File::create(&file_path).expect("Failed to create APC candidate file");
         let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc)
-            .expect("Failed to write APC candidate to JSON file");
+        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to JSON file");
     }
 
     Ok(apc)

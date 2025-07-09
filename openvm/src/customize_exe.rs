@@ -439,7 +439,13 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_map: bus_map.clone(),
     };
 
-    let apc = powdr_autoprecompiles::build(block, vm_config, degree_bound, apc_opcode as u32, apc_candidates_dir_path)?;
+    let apc = powdr_autoprecompiles::build(
+        block,
+        vm_config,
+        degree_bound,
+        apc_opcode as u32,
+        apc_candidates_dir_path,
+    )?;
 
     // Check that substitution values are unique over all instructions
     assert!(apc.subs().iter().flatten().all_unique());
@@ -503,7 +509,15 @@ impl ApcCandidate<BabyBearField> {
         pgo_program_idx_count: &HashMap<u32, u32>,
         apc_candidates_dir_path: &Option<PathBuf>,
     ) -> Option<Self> {
-        let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound, apc_candidates_dir_path).ok()?;
+        let apc = generate_autoprecompile(
+            &block,
+            airs,
+            opcode,
+            bus_map,
+            degree_bound,
+            apc_candidates_dir_path,
+        )
+        .ok()?;
 
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths.total();
@@ -544,7 +558,10 @@ impl ApcCandidate<BabyBearField> {
             original_block: self.apc.block.clone(),
             total_width_before: self.width_before,
             total_width_after: self.width_after,
-            apc_candidate_file: apc_candidates_dir_path.join(format!("apc_{}.cbor", self.apc.opcode)).display().to_string()
+            apc_candidate_file: apc_candidates_dir_path
+                .join(format!("apc_{}.cbor", self.apc.opcode))
+                .display()
+                .to_string(),
         }
     }
 }
