@@ -504,7 +504,6 @@ struct ApcCandidateJsonExport {
 
 impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
     /// Try to create an autoprecompile candidate from a block.
-    #[allow(clippy::too_many_arguments)]
     pub fn try_create(
         block: BasicBlock<OpenVmField<BabyBearField>>,
         airs: &OriginalAirs<BabyBearField>,
@@ -544,30 +543,23 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
     }
 
     /// Save the candidate to disk.
-    fn save_to_disk(
-        &self,
-        apc_candidates_dir_path: &Path,
-        apc_candidates_json_file: Arc<Mutex<Vec<ApcCandidateJsonExport>>>,
-    ) {
+    fn save_to_disk(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
         let ser_path = apc_candidates_dir_path
             .join(format!("apc_candidate_{}", self.block_with_apc.opcode))
             .with_extension("cbor");
-        apc_candidates_json_file
-            .lock()
-            .unwrap()
-            .push(ApcCandidateJsonExport {
-                opcode: self.block_with_apc.opcode,
-                execution_frequency: self.execution_frequency,
-                original_instructions: self.block_with_apc.block.statements.clone(),
-                total_width_before: self.width_before,
-                total_width_after: self.width_after,
-                apc_candidate_file: ser_path.display().to_string(),
-            });
         std::fs::create_dir_all(apc_candidates_dir_path)
             .expect("Failed to create directory for APC candidates");
         let file =
             std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
         serde_cbor::to_writer(file, &self).expect("Failed to write APC candidate to file");
+        ApcCandidateJsonExport {
+            opcode: self.block_with_apc.opcode,
+            execution_frequency: self.execution_frequency,
+            original_instructions: self.block_with_apc.block.statements.clone(),
+            total_width_before: self.width_before,
+            total_width_after: self.width_after,
+            apc_candidate_file: ser_path.display().to_string(),
+        }
     }
 }
 
@@ -653,7 +645,8 @@ fn create_apcs_with_cell_pgo(
                 &pgo_program_idx_count,
             ).inspect(|candidate| {
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    candidate.save_to_disk(apc_candidates_dir_path, apc_candidates.clone());
+                    let json_export = candidate.save_to_disk(apc_candidates_dir_path);
+                    apc_candidates.lock().unwrap().push(json_export);
                 }
             })
         }),
