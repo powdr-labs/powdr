@@ -99,8 +99,8 @@ def plot_effectiveness(json_path, output_prefix=None):
     bins = np.linspace(df_clean['effectiveness'].min(), df_clean['effectiveness'].max(), 20)
     existing_groups, hist_data = prepare_histogram_data(df_clean, bins)
     
-    # Create plot
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # Create plot with extra space for legend
+    fig, ax = plt.subplots(figsize=(12, 6))
     
     # Stacked bar chart
     bottom = np.zeros(len(bins) - 1)
@@ -119,7 +119,9 @@ def plot_effectiveness(json_path, output_prefix=None):
     ax.set_title(f'Distribution of Effectiveness\n(removed {outliers_removed} outliers out of {len(df)} APCs)', 
                  fontsize=14)
     ax.grid(True, alpha=0.3, axis='y')
-    ax.legend(title='Basic Block size', loc='upper right', frameon=True, fancybox=True, shadow=True)
+    # Place legend outside the plot area
+    ax.legend(title='Basic Block size', loc='center left', bbox_to_anchor=(1, 0.5), 
+              frameon=True, fancybox=True, shadow=True)
     
     # Add mean line
     ax.axvline(mean_effectiveness, color='red', linestyle='--', linewidth=2, alpha=0.7)
@@ -131,6 +133,7 @@ def plot_effectiveness(json_path, output_prefix=None):
             verticalalignment='top', bbox=props)
     
     plt.tight_layout()
+    plt.subplots_adjust(right=0.85)  # Make room for the legend
     
     # Save or show
     if output_prefix:
