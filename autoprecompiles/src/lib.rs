@@ -317,11 +317,14 @@ pub fn build<
     };
 
     if let Some(path) = apc_candidates_dir_path {
-        let file_name = format!("apc_{opcode}.cbor");
-        let file_path = path.join(file_name);
-        let file = std::fs::File::create(&file_path).expect("Failed to create APC candidate file");
+        let ser_path = path
+            .join(format!("apc_candidate_{opcode}"))
+            .with_extension("cbor");
+        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+        let file =
+            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
         let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to JSON file");
+        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
     }
 
     Ok(apc)

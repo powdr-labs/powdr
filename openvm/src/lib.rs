@@ -1309,8 +1309,7 @@ mod tests {
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = PowdrConfig::new(params.guest_apc, params.guest_skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let should_have_exported_apc_candidates =
-            matches!(params.pgo_config, PgoConfig::Cell(_, _));
+        let should_have_exported_json_summary = matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(
             params.guest,
             GuestOptions::default(),
@@ -1337,14 +1336,13 @@ mod tests {
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
             .count();
-        if should_have_exported_apc_candidates {
-            assert!(cbor_files_count > 0, "No APC candidate files found");
+        assert!(cbor_files_count > 0, "No APC candidate files found");
+        if should_have_exported_json_summary {
             assert_eq!(
                 json_files_count, 1,
                 "Expected exactly one APC candidate JSON file"
             );
         } else {
-            assert_eq!(cbor_files_count, 0, "Unexpected APC candidate files found");
             assert_eq!(
                 json_files_count, 0,
                 "Unexpected APC candidate JSON files found"
