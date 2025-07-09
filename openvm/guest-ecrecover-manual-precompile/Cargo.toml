@@ -10,7 +10,6 @@ members = []
 openvm = { git = "https://github.com/powdr-labs/openvm.git", features = ["std"] }
 openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false }
 openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false }
-openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", default-features = false }
 
 hex = "0.4"
 revm-precompile = { git = "https://github.com/bluealloy/revm.git", tag = "v75", default-features = false }
