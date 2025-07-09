@@ -25,6 +25,10 @@ plot_cells() {
     python3 $SCRIPTS_DIR/plot_trace_cells.py -o trace_cells.png $1 > trace_cells.txt
 }
 
+plot_effectiveness() {
+    python3 $SCRIPTS_DIR/plot_effectiveness.py $1 --output effectiveness.png
+}
+
 # usage: run_bench guest guest_manual_pcp apc_num input
 run_bench() {
     guest="$1"
@@ -39,12 +43,14 @@ run_bench() {
         cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
     fi
     # prove with no APCs
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion
+    mkdir -p apcs_{apcs}
+    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion --apc-candidates-dir apcs_{apcs}
     # proving with APCs and record memory usage
     with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion"
     # process results
     basic_metrics
     plot_cells ${apcs}apc.json
+    plot_effectiveness ${apcs}apc/apc_candidates.json
     rm debug.pil
     popd
 }

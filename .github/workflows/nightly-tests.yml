@@ -166,7 +166,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: main
+          ref: store-apcs
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
@@ -190,12 +190,14 @@ jobs:
           # prove with no APCs
           MODE="prove-stark" APC=0 ./run.sh
           mv metrics.json $RES_DIR/noapc.json
+          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
           # prove with 100 APCs, recording mem usage
           MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
           mv metrics.json $RES_DIR/100apc.json
 
           python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
+          python ../openvm/scripts/plot_effectiveness.py $RES_DIR/100apc.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
 
