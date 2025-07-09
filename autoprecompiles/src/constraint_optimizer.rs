@@ -27,7 +27,6 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Panics if the solver fails.
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
-/// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
