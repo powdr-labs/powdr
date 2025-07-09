@@ -1,9 +1,14 @@
-use ark_bn254::{Bn254, Fq, Fq2, G1Affine, G2Affine};
-use ark_ec::pairing::Pairing;
-use ark_ff::fields::PrimeField;
-use ark_ff::One;
-
+#![cfg_attr(target_os = "zkvm", no_std)]
 openvm::entry!(main);
+
+use ark_bn254::{Fq, Fq2, G1Affine, G2Affine};
+use ark_ff::fields::PrimeField;
+extern crate alloc;
+use alloc::vec::Vec;
+
+mod pairing_check_with_hint;
+mod pairing_utils;
+use pairing_check_with_hint::pairing_check;
 
 const PAIR_ELEMENT_LEN: usize = 32 * (2 + 4); // G1 (2 Fq), G2 (4 Fq)
 
@@ -54,7 +59,6 @@ fn main() {
         g2_vec.push(g2);
     }
 
-    let result = Bn254::multi_pairing(g1_vec, g2_vec);
-    assert_eq!(result.0, <Bn254 as Pairing>::TargetField::one());
+    let result = pairing_check(&g1_vec, &g2_vec).is_ok();
+    assert!(result)
 }
-
