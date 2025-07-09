@@ -3,6 +3,7 @@
 use std::iter::once;
 
 use derive_more::From;
+use openvm_stark_backend::ChipUsageGetter;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::extraction_utils::OriginalAirs;
@@ -159,6 +160,15 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PowdrExecutor<P> {
         match self {
             PowdrExecutor::Powdr(powdr_chip) => powdr_chip.get_opcode_name(opcode),
             PowdrExecutor::Plonk(plonk_chip) => plonk_chip.get_opcode_name(opcode),
+        }
+    }
+}
+
+impl<P: IntoOpenVm> PowdrExecutor<P> {
+    pub fn air_name(&self) -> String {
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.air_name(),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.air_name(),
         }
     }
 }

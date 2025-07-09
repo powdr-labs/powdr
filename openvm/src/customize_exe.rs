@@ -1,8 +1,13 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::fmt::Write;
+use std::fs::File;
+use std::io::BufWriter;
 use std::sync::Arc;
 
-use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{
+    export_cell_pgo_data, get_air_metrics, OriginalAirs, OriginalVmConfig,
+};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
@@ -456,6 +461,72 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     Ok(SymbolicBusInteraction { id, mult, args })
 }
 
+// each generated apc becomes a candidate for caching
+// it is only ordered by cost, but carries all needed data for modifying the blocks, extending the cache, and debug print
+pub struct ApcCandidate<P: IntoOpenVm> {
+    block_with_apc: BlockWithApc<P>,
+    execution_frequency: usize,
+    cells_saved_per_row: usize,
+    width: usize, // only tag this field in Pgo::Cell, the only place it's needed
+}
+
+impl<P: IntoOpenVm> ApcCandidate<P> {
+    /// Produce a formatted summary + the underlying block pretty_print
+    pub fn pretty_print(&self) -> String {
+        let saved = self.cells_saved_per_row;
+        let width = self.width;
+        // percentage of cells saved
+        let percent = if saved + width > 0 {
+            saved as f64 / (saved + width) as f64 * 100.0
+        } else {
+            0.0
+        };
+
+        let mut out = String::new();
+        // first summary line
+        writeln!(
+            out,
+            "Apc(opcode: {}, execution_frequency: {}, cells_saved_per_row: {}, cells_per_row_after_saving: {}, percent_saved: {:.2}%)",
+            self.block_with_apc.opcode,
+            self.execution_frequency,
+            saved,
+            width,
+            percent
+        )
+        .unwrap();
+
+        // following basic block pretty print
+        let bb_str = self
+            .block_with_apc
+            .block
+            .pretty_print(openvm_instruction_formatter);
+        writeln!(out, "{bb_str}").unwrap();
+
+        out
+    }
+}
+
+impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
+    fn cost(&self) -> usize {
+        self.width
+    }
+
+    fn value(&self) -> usize {
+        // For an APC which is called once and saves 1 cell, this would be 1.
+        let value = self
+            .execution_frequency
+            .checked_mul(self.cells_saved_per_row)
+            .unwrap();
+        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+        // Therefore, we scale it up by a constant factor.
+        value.checked_mul(1000).unwrap()
+    }
+
+    fn tie_breaker(&self) -> usize {
+        self.block_with_apc.opcode
+    }
+}
+
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
     mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
@@ -500,36 +571,6 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
         max_cache,
     );
 
-    // each generated apc becomes a candidate for caching
-    // it is only ordered by cost, but carries all needed data for modifying the blocks, extending the cache, and debug print
-    struct ApcCandidate<P: IntoOpenVm> {
-        block_with_apc: BlockWithApc<P>,
-        execution_frequency: usize,
-        cells_saved_per_row: usize,
-        width: usize, // only tag this field in Pgo::Cell, the only place it's needed
-    }
-
-    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
-        fn cost(&self) -> usize {
-            self.width
-        }
-
-        fn value(&self) -> usize {
-            // For an APC which is called once and saves 1 cell, this would be 1.
-            let value = self
-                .execution_frequency
-                .checked_mul(self.cells_saved_per_row)
-                .unwrap();
-            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-            // Therefore, we scale it up by a constant factor.
-            value.checked_mul(1000).unwrap()
-        }
-
-        fn tie_breaker(&self) -> usize {
-            self.block_with_apc.opcode
-        }
-    }
-
     let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
         let total_non_apc_columns = chip_inventory_air_metrics
             .values()
@@ -539,7 +580,7 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
     });
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    fractional_knapsack(
+    let apcs_with_pgo_stats: Vec<ApcCandidate<P>> = fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             // try to create apc for a candidate block
             let apc = generate_autoprecompile(
@@ -580,18 +621,18 @@ fn create_apcs_with_cell_pgo<P: IntoOpenVm<Field = BabyBear>>(
         max_total_apc_columns,
     )
     .skip(config.skip_autoprecompiles as usize)
-    .map(|c| {
-        tracing::debug!(
-            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
-            c.block_with_apc.block.start_idx,
-            c.value() / c.cost(),
-            c.execution_frequency,
-            c.cells_saved_per_row,
-        );
+    .collect();
 
-        c.block_with_apc
-    })
-    .collect()
+    // APCs are sorted descending by value / cost
+    export_cell_pgo_data(
+        &mut BufWriter::new(File::create("cell_pgo.metrics").unwrap()),
+        &apcs_with_pgo_stats,
+    );
+
+    apcs_with_pgo_stats
+        .into_iter()
+        .map(|c| c.block_with_apc)
+        .collect()
 }
 
 fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
