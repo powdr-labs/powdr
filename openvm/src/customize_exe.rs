@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use std::io::BufWriter;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
@@ -389,6 +389,7 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
                 apc_opcode,
                 bus_map,
                 powdr_config.degree_bound,
+                &powdr_config.apc_candidates_dir_path,
             )
             .unwrap()
         })
@@ -409,6 +410,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
     apc_opcode: usize,
     bus_map: &BusMap,
     degree_bound: DegreeBound,
+    apc_candidates_dir_path: &Option<PathBuf>,
 ) -> Result<Apc<P>, Error> {
     tracing::debug!(
         "Generating autoprecompile for block at index {}",
@@ -437,7 +439,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         bus_map: bus_map.clone(),
     };
 
-    let apc = powdr_autoprecompiles::build(block, vm_config, degree_bound, apc_opcode as u32)?;
+    let apc = powdr_autoprecompiles::build(block, vm_config, degree_bound, apc_opcode as u32, apc_candidates_dir_path)?;
 
     // Check that substitution values are unique over all instructions
     assert!(apc.subs().iter().flatten().all_unique());
@@ -499,8 +501,9 @@ impl ApcCandidate<BabyBearField> {
         bus_map: &BusMap,
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
+        apc_candidates_dir_path: &Option<PathBuf>,
     ) -> Option<Self> {
-        let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
+        let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound, apc_candidates_dir_path).ok()?;
 
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths.total();
@@ -530,26 +533,18 @@ impl ApcCandidate<BabyBearField> {
         Some(candidate)
     }
 
-    /// Save the candidate to disk.
-    fn save_to_disk(
+    /// Return a JSON export of the APC candidate.
+    fn to_json_export(
         &self,
         apc_candidates_dir_path: &Path,
     ) -> ApcCandidateJsonExport<BabyBearField> {
-        let ser_path = apc_candidates_dir_path
-            .join(format!("apc_candidate_{}", self.apc.opcode))
-            .with_extension("cbor");
-        std::fs::create_dir_all(apc_candidates_dir_path)
-            .expect("Failed to create directory for APC candidates");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-        serde_cbor::to_writer(file, &self).expect("Failed to write APC candidate to file");
         ApcCandidateJsonExport {
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
             total_width_before: self.width_before,
             total_width_after: self.width_after,
-            apc_candidate_file: ser_path.display().to_string(),
+            apc_candidate_file: apc_candidates_dir_path.join(format!("apc_{}.cbor", self.apc.opcode)).display().to_string()
         }
     }
 }
@@ -634,9 +629,10 @@ fn create_apcs_with_cell_pgo(
                 bus_map,
                 config.degree_bound,
                 &pgo_program_idx_count,
+                &config.apc_candidates_dir_path,
             ).inspect(|candidate| {
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.save_to_disk(apc_candidates_dir_path);
+                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
                     apc_candidates.lock().unwrap().push(json_export);
                 }
             })

@@ -11,7 +11,9 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::io::BufWriter;
 use std::iter::once;
+use std::path::PathBuf;
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
@@ -283,11 +285,12 @@ pub fn build<
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     M: InstructionMachineHandler<T>,
->(
+>( 
     block: SymbolicBlock<T>,
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
+    apc_candidates_dir_path: &Option<PathBuf>,
 ) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &block.statements,
@@ -306,12 +309,24 @@ pub fn build<
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
 
-    Ok(Apc {
+    let apc = Apc {
         block,
         machine,
         subs,
         opcode,
-    })
+    };
+
+    if let Some(path) = apc_candidates_dir_path {
+        let file_name = format!("apc_{}.cbor", opcode);
+        let file_path = path.join(file_name);
+        let file = std::fs::File::create(&file_path)
+            .expect("Failed to create APC candidate file");
+        let writer = BufWriter::new(file);
+        serde_cbor::to_writer(writer, &apc)
+            .expect("Failed to write APC candidate to JSON file");
+    }
+
+    Ok(apc)
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
