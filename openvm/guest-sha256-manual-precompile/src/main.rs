@@ -12,9 +12,9 @@ openvm::entry!(main);
 
 pub fn main() {
     let n = read();
-    let mut output = [0u8; 32];
+    let mut output = black_box([0u8; 32]);
     for _ in 0..n {
-        output = sha256(&black_box(output));
+        output = sha256(&output);
     }
 
     reveal_u32(output[0] as u32, 0);
