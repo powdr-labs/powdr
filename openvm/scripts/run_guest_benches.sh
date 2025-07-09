@@ -52,7 +52,7 @@ run_bench() {
     plot_cells ${apcs}apc.json
     plot_effectiveness ${apcs}apc/apc_candidates.json
     rm debug.pil
-    rm {apcs}apc/*.cbor
+    rm ${apcs}apc/*.cbor
     popd
 }
 
