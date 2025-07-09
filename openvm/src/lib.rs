@@ -1327,13 +1327,29 @@ mod tests {
         );
 
         // In Cell PGO, check that the apc candidates were persisted to disk
-        let files_count = std::fs::read_dir(apc_candidates_dir_path)
-            .expect("Failed to read APC candidates directory")
+        let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
             .count();
-        assert!(
-            (files_count > 0) == should_have_exported_apc_candidates,
-            "Unexpected number of APC candidate files"
-        );
+        let cbor_files_count = std::fs::read_dir(apc_candidates_dir_path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
+            .count();
+        if should_have_exported_apc_candidates {
+            assert!(cbor_files_count > 0, "No APC candidate files found");
+            assert_eq!(
+                json_files_count, 1,
+                "Expected exactly one APC candidate JSON file"
+            );
+        } else {
+            assert_eq!(cbor_files_count, 0, "Unexpected APC candidate files found");
+            assert_eq!(
+                json_files_count, 0,
+                "Unexpected APC candidate JSON files found"
+            );
+        }
     }
 
     #[test]
