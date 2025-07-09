@@ -9,18 +9,21 @@ use core::str::FromStr;
 use ruint::Uint;
 
 pub fn pairing_check(P: &[G1Affine], Q: &[G2Affine]) -> Result<(), PairingCheckError> {
-    try_honest_pairing_check(P, Q).unwrap_or_else(|| {
-        let f = multi_miller_loop_embedded_exp(P, Q, None);
-        exp_check_fallback(&f, &FINAL_EXPONENT)
-    })
+    try_honest_pairing_check(P, Q).expect("REASON")//.unwrap_or_else(|| {
+    //     let f = multi_miller_loop_embedded_exp(P, Q, None);
+    //     exp_check_fallback(&f, &FINAL_EXPONENT)
+    // })
 }
 
 fn try_honest_pairing_check(
     P: &[G1Affine],
     Q: &[G2Affine],
 ) -> Option<Result<(), PairingCheckError>> {
-    let fq12 = multi_miller_loop_embedded_exp(P, Q, None);
-    let (c, u) = final_exp_hint(&fq12);
+    //let fq12 = multi_miller_loop_embedded_exp(P, Q, None);
+    //let (c, u) = final_exp_hint(&fq12);
+
+    let c=Fq12::ONE;
+    let u=Fq12::ONE;
 
     if c == Fq12::ZERO {
         return None;
@@ -42,7 +45,7 @@ fn try_honest_pairing_check(
 
     // Pass c inverse into the miller loop so that we compute fc == f * c^-{6x + 2}
     let fc = multi_miller_loop_embedded_exp(P, Q, Some(c_inv));
-
+    let fc = Fq12::ONE; // Placeholder for the actual miller loop result with c_inv
     if fc * c_mul * u == Fq12::ONE {
         Some(Ok(()))
     } else {

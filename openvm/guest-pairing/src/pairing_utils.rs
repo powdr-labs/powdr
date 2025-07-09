@@ -7,6 +7,8 @@ use ark_ff::Fp6Config;
 use ark_ff::{AdditiveGroup, Field};
 use core::iter::zip;
 use core::ops::Neg;
+extern crate alloc;
+use alloc::vec::Vec;
 
 /// The expected output of this function when running the Miller loop with embedded exponent is
 /// c^2 * l_{2Q}
@@ -244,7 +246,7 @@ pub fn multi_miller_loop_embedded_exp(P: &[G1Affine], Q: &[G2Affine], c: Option<
                 let line = line_2S.evaluate(xy_frac);
                 lines.push(line);
             }
-        } else {
+         } else {
             // use embedded exponent technique if c is provided
             f = if let Some(c) = c.as_ref() {
                 match BN254_PSEUDO_BINARY_ENCODING[i] {
