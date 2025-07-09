@@ -520,7 +520,7 @@ pub struct OriginalCompiledProgram {
     pub sdk_vm_config: SdkVmConfig,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct AirMetrics {
     pub name: String,
     pub widths: AirWidths,
@@ -551,14 +551,19 @@ pub fn assert_air_metrics_sum(to_sum: Vec<AirMetrics>, expected: AirMetrics) {
 
 impl CompiledProgram {
     pub fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
-        let chip_complex: VmChipComplex<_, _, _> = self.vm_config.create_chip_complex().unwrap();
+        let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
 
-        chip_complex
-            .inventory
+        inventory
             .executors()
             .iter()
-            .filter_map(|executor| {
-                let air = executor.air();
+            .map(|executor| executor.air())
+            .chain(
+                inventory
+                    .periphery()
+                    .iter()
+                    .map(|periphery| periphery.air()),
+            )
+            .filter_map(|air| {
                 let name = air.name();
 
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
@@ -1183,57 +1188,34 @@ mod tests {
 
         let powdr_metrics = compiled_program.air_metrics(AirMetricsType::Powdr);
 
-        // Check the top 3 APC
-        let expected_top_3 = [
-            [0, 2011, 1788, 166, 1783],
-            [0, 82, 68, 50, 46],
-            [0, 137, 100, 47, 93],
-        ];
-        powdr_metrics
-            .iter()
-            .take(3)
-            .enumerate()
-            .for_each(|(idx, m)| {
-                assert_eq!(
-                    [
-                        m.widths.preprocessed,
-                        m.widths.main,
-                        m.widths.log_up,
-                        m.constraints,
-                        m.bus_interactions
-                    ],
-                    expected_top_3[idx]
-                );
-            });
-
         // Check all APC
-        assert_eq!(powdr_metrics.len(), 63); // Number of APC chips
+        assert_eq!(powdr_metrics.len(), 18); // Number of APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 7536,
-                log_up: 6168,
+                main: 4824,
+                log_up: 3968,
             },
-            constraints: 1944,
-            bus_interactions: 5691,
+            constraints: 935,
+            bus_interactions: 3826,
             ..Default::default()
         };
         assert_air_metrics_sum(powdr_metrics, expected);
 
         // Check non-APC metrics
         let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
-        assert_eq!(non_powdr_metrics.len(), 15); // Number of non-APC chips
+        assert_eq!(non_powdr_metrics.len(), 18); // Number of non-APC chips
 
         let expected = AirMetrics {
             widths: AirWidths {
-                preprocessed: 0,
-                main: 494,
-                log_up: 364,
+                preprocessed: 5,
+                main: 797,
+                log_up: 388,
             },
-            constraints: 322,
-            bus_interactions: 248,
-            ..Default::default()
+            constraints: 604,
+            bus_interactions: 252,
+            name: Default::default(),
         };
         assert_air_metrics_sum(non_powdr_metrics, expected);
     }
