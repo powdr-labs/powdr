@@ -493,7 +493,6 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         bus_map: &BusMap,
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        apc_candidates_dir_path: Option<&Path>,
     ) -> Option<Self> {
         let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
 
@@ -522,11 +521,6 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
             cells_saved_per_row,
             width: apc_cells_per_row,
         };
-
-        // save candidate to disk
-        if let Some(path) = apc_candidates_dir_path {
-            candidate.save_to_disk(path);
-        }
 
         Some(candidate)
     }
@@ -617,8 +611,11 @@ fn create_apcs_with_cell_pgo(
                 bus_map,
                 config.degree_bound,
                 &pgo_program_idx_count,
-                config.apc_candidates_folder.as_deref()
-            )
+            ).inspect(|candidate| {
+                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+                    candidate.save_to_disk(apc_candidates_dir_path);
+                }
+            })
         }),
         max_cache,
         max_total_apc_columns,

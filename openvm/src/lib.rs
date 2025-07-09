@@ -367,8 +367,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
-    /// The path to the APC candidates folder, if any.
-    pub apc_candidates_folder: Option<PathBuf>,
+    /// The path to the APC candidates dir, if any.
+    pub apc_candidates_dir_path: Option<PathBuf>,
 }
 
 impl PowdrConfig {
@@ -381,7 +381,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
-            apc_candidates_folder: None,
+            apc_candidates_dir_path: None,
         }
     }
 
@@ -409,8 +409,8 @@ impl PowdrConfig {
         }
     }
 
-    pub fn with_apc_candidates_folder<P: AsRef<Path>>(mut self, path: P) -> Self {
-        self.apc_candidates_folder = Some(path.as_ref().to_path_buf());
+    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
         self
     }
 }
@@ -1095,7 +1095,7 @@ mod tests {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO)
-            .with_apc_candidates_folder(apc_candidates_dir_path);
+            .with_apc_candidates_dir(apc_candidates_dir_path);
         let should_have_exported_apc_candidates = matches!(pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(GUEST, GuestOptions::default(), config.clone(), pgo_config)
             .unwrap()
