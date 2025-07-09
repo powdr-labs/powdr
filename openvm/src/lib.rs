@@ -114,6 +114,18 @@ pub enum PgoConfig {
     None,
 }
 
+impl PgoConfig {
+    /// Returns the number of times a certain pc offset was executed in the profile.
+    pub fn pc_offset_execution_count(&self, pc_offset: u32) -> Option<u32> {
+        match self {
+            PgoConfig::Cell(pc_index_count, _) | PgoConfig::Instruction(pc_index_count) => {
+                pc_index_count.get(&pc_offset).copied()
+            }
+            PgoConfig::None => None,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
@@ -355,8 +367,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
-    /// The path to the APC candidates folder, if any.
-    pub apc_candidates_folder: Option<PathBuf>,
+    /// The path to the APC candidates dir, if any.
+    pub apc_candidates_dir_path: Option<PathBuf>,
 }
 
 impl PowdrConfig {
@@ -369,7 +381,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
-            apc_candidates_folder: None,
+            apc_candidates_dir_path: None,
         }
     }
 
@@ -397,8 +409,8 @@ impl PowdrConfig {
         }
     }
 
-    pub fn with_apc_candidates_folder<P: AsRef<Path>>(mut self, path: P) -> Self {
-        self.apc_candidates_folder = Some(path.as_ref().to_path_buf());
+    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
         self
     }
 }
@@ -704,12 +716,12 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     // print the total and by pc counts
     tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
 
-    if tracing::enabled!(Level::DEBUG) {
+    if tracing::enabled!(Level::TRACE) {
         // print pc_index map in descending order of pc_index count
         let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
         pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
         pc_index_count_sorted.iter().for_each(|(pc, count)| {
-            tracing::debug!("pc_index {}: {}", pc, count);
+            tracing::trace!("pc_index {}: {}", pc, count);
         });
     }
 
@@ -1083,7 +1095,7 @@ mod tests {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO)
-            .with_apc_candidates_folder(apc_candidates_dir_path);
+            .with_apc_candidates_dir(apc_candidates_dir_path);
         let should_have_exported_apc_candidates = matches!(pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(GUEST, GuestOptions::default(), config.clone(), pgo_config)
             .unwrap()

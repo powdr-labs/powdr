@@ -124,6 +124,26 @@ pub fn customize(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        for (count, block) in blocks
+            .iter()
+            .filter_map(|block| {
+                Some((
+                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
+                    block,
+                ))
+            })
+            .sorted_by_key(|(count, _)| *count)
+            .rev()
+            .take(10)
+        {
+            tracing::debug!(
+                "Basic block (executed {count} times):\n{}",
+                block.pretty_print(openvm_instruction_formatter)
+            );
+        }
+    }
 
     let blocks = blocks
         .into_iter()
@@ -492,8 +512,6 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         bus_map: &BusMap,
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        apc_candidates_dir_path: Option<&Path>,
-        apc_candidates: Arc<Mutex<Vec<ApcCandidateJsonExport>>>,
     ) -> Option<Self> {
         let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
 
@@ -521,11 +539,6 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
             width_before,
             width_after,
         };
-
-        // save candidate to disk
-        if let Some(path) = apc_candidates_dir_path {
-            candidate.save_to_disk(path, apc_candidates);
-        }
 
         Some(candidate)
     }
@@ -641,9 +654,11 @@ fn create_apcs_with_cell_pgo(
                 bus_map,
                 config.degree_bound,
                 &pgo_program_idx_count,
-                config.apc_candidates_folder.as_deref(),
-                apc_candidates.clone()
-            )
+            ).inspect(|candidate| {
+                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+                    candidate.save_to_disk(apc_candidates_dir_path, apc_candidates.clone());
+                }
+            })
         }),
         max_cache,
         max_total_apc_columns,
@@ -663,7 +678,7 @@ fn create_apcs_with_cell_pgo(
     .collect();
 
     // Write the APC candidates JSON to disk if the directory is specified.
-    if let Some(apc_candidates_dir_path) = &config.apc_candidates_folder {
+    if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
         let apc_candidates_json_file = apc_candidates.lock().unwrap();
         let json_path = apc_candidates_dir_path.join("apc_candidates.json");
         let file = std::fs::File::create(&json_path)
