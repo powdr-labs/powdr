@@ -1,0 +1,21 @@
+[workspace]
+[package]
+name = "openvm-ruint-test-programs"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git" }
+ruint = { version = "1.9", default-features = false, features = ["alloc"] }
+
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+] }
+num-traits = { version = "0.2.19", default-features = false }
+hex = "0.4"
+hex-literal = "1.0.0"
+ark-bn254 = "0.5"
+ark-ff = "0.5"
+
+
