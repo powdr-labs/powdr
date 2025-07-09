@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystemGeneric},
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
     journaling_constraint_system::JournalingConstraintSystemGeneric,
 };
@@ -57,12 +57,12 @@ pub fn optimize<T: FieldElement>(
 }
 
 fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: ConstraintSystemGeneric<T, AlgebraicReference>,
+    constraint_system: ConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
-) -> Result<ConstraintSystemGeneric<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
+) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
     let constraint_system = JournalingConstraintSystemGeneric::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
@@ -206,8 +206,8 @@ pub fn optimize_exec_bus<T: FieldElement>(
 
 fn symbolic_machine_to_constraint_system<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
-) -> ConstraintSystemGeneric<P, AlgebraicReference> {
-    ConstraintSystemGeneric {
+) -> ConstraintSystem<P, AlgebraicReference> {
+    ConstraintSystem {
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
@@ -222,7 +222,7 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
 }
 
 fn constraint_system_to_symbolic_machine<P: FieldElement>(
-    constraint_system: ConstraintSystemGeneric<P, AlgebraicReference>,
+    constraint_system: ConstraintSystem<P, AlgebraicReference>,
 ) -> SymbolicMachine<P> {
     SymbolicMachine {
         constraints: constraint_system

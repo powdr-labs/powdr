@@ -1,5 +1,5 @@
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystemGeneric},
+    constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     runtime_constant::{RuntimeConstant, Substitutable},
@@ -27,7 +27,7 @@ impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystem<T, V>>> 
 
 impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric<T, V> {
     /// Returns the underlying `ConstraintSystem`.
-    pub fn system(&self) -> &ConstraintSystemGeneric<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
         self.system.system()
     }
 
