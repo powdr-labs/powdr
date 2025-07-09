@@ -23,7 +23,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .unwrap()
             .clone();
 
-        let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
+        let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;
 
         let pc_lookup: PcLookupBusInteraction<T> = machine

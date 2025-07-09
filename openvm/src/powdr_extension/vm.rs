@@ -25,7 +25,7 @@ use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::prover::types::AirProofInput;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
-    Chip,
+    Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
@@ -119,6 +119,15 @@ impl<P: IntoOpenVm> PowdrExtension<P> {
 pub enum PowdrExecutor<P: IntoOpenVm> {
     Powdr(PowdrChip<P>),
     Plonk(PlonkChip<P>),
+}
+
+impl<P: IntoOpenVm> PowdrExecutor<P> {
+    pub fn air_name(&self) -> String {
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.air_name(),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.air_name(),
+        }
+    }
 }
 
 // These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
