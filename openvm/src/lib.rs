@@ -29,6 +29,8 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
+use std::iter::Sum;
+use std::ops::Add;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
@@ -520,33 +522,40 @@ pub struct OriginalCompiledProgram {
     pub sdk_vm_config: SdkVmConfig,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, Debug)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
 pub struct AirMetrics {
-    pub name: String,
     pub widths: AirWidths,
     pub constraints: usize,
     pub bus_interactions: usize,
 }
 
+impl Add for AirMetrics {
+    type Output = AirMetrics;
+
+    fn add(self, rhs: AirMetrics) -> AirMetrics {
+        AirMetrics {
+            widths: self.widths + rhs.widths,
+            constraints: self.constraints + rhs.constraints,
+            bus_interactions: self.bus_interactions + rhs.bus_interactions,
+        }
+    }
+}
+
+impl Sum<AirMetrics> for AirMetrics {
+    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
+        iter.fold(AirMetrics::default(), Add::add)
+    }
+}
+
+impl AirMetrics {
+    pub fn total_width(&self) -> usize {
+        self.widths.total()
+    }
+}
+
 pub enum AirMetricsType {
     Powdr,
     NonPowdr,
-}
-
-pub fn assert_air_metrics_sum(to_sum: &[AirMetrics], expected: AirMetrics) {
-    let sum = to_sum
-        .iter()
-        .fold(AirMetrics::default(), |mut acc, metric| {
-            acc.widths.preprocessed += metric.widths.preprocessed;
-            acc.widths.main += metric.widths.main;
-            acc.widths.log_up += metric.widths.log_up;
-            acc.constraints += metric.constraints;
-            acc.bus_interactions += metric.bus_interactions;
-            acc
-        });
-    assert_eq!(sum.widths, expected.widths);
-    assert_eq!(sum.constraints, expected.constraints);
-    assert_eq!(sum.bus_interactions, expected.bus_interactions);
 }
 
 impl CompiledProgram {
@@ -1201,9 +1210,9 @@ mod tests {
             },
             constraints: 935,
             bus_interactions: 3826,
-            ..Default::default()
         };
-        assert_air_metrics_sum(&powdr_metrics, expected);
+        let powdr_metrics_sum = powdr_metrics.into_iter().sum::<AirMetrics>();
+        assert_eq!(powdr_metrics_sum, expected);
 
         // Check non-APC metrics
         let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
@@ -1217,16 +1226,12 @@ mod tests {
             },
             constraints: 604,
             bus_interactions: 252,
-            name: Default::default(),
         };
-        assert_air_metrics_sum(&non_powdr_metrics, expected);
+        let non_powdr_metrics_sum = non_powdr_metrics.into_iter().sum::<AirMetrics>();
+        assert_eq!(non_powdr_metrics_sum, expected);
 
         // Assert that total columns don't exceed the initial limit set
-        let total_columns = powdr_metrics
-            .iter()
-            .chain(non_powdr_metrics.iter())
-            .fold(0, |acc, metric| acc + metric.widths.total());
-
+        let total_columns = (powdr_metrics_sum + non_powdr_metrics_sum).widths.total();
         assert!(
             total_columns <= MAX_TOTAL_COLUMNS,
             "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
