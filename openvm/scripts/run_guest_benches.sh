@@ -43,8 +43,8 @@ run_bench() {
         cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
     fi
     # prove with no APCs
-    mkdir -p {apcs}apcs
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion --apc-candidates-dir {apcs}apcs
+    mkdir -p ${apcs}apcs
+    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion --apc-candidates-dir ${apcs}apcs
     # proving with APCs and record memory usage
     with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion"
     # process results
@@ -57,6 +57,6 @@ run_bench() {
 }
 
 # keccak for 10000 iterations, 100 apcs
-run_bench guest-keccak guest-keccak-manual-precompile 100 10000
+run_bench guest-keccak guest-keccak-manual-precompile 100 10
 
 # run_bench guest-matmul "" 100 0
