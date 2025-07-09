@@ -197,7 +197,7 @@ jobs:
 
           python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
-          python ../openvm/scripts/plot_effectiveness.py $RES_DIR/100apc.json --output $RES_DIR/effectiveness.png
+          python ../openvm/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
 
