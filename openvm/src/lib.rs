@@ -533,7 +533,7 @@ pub enum AirMetricsType {
     NonPowdr,
 }
 
-pub fn assert_air_metrics_sum(to_sum: Vec<AirMetrics>, expected: AirMetrics) {
+pub fn assert_air_metrics_sum(to_sum: &[AirMetrics], expected: AirMetrics) {
     let sum = to_sum
         .iter()
         .fold(AirMetrics::default(), |mut acc, metric| {
@@ -1173,6 +1173,8 @@ mod tests {
     fn keccak_machine_cell_pgo() {
         let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
 
+        const MAX_TOTAL_COLUMNS: usize = 10_000;
+
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data =
@@ -1182,7 +1184,7 @@ mod tests {
             GUEST_KECCAK,
             GuestOptions::default(),
             config,
-            PgoConfig::Cell(pgo_data, Some(10_000)), // limit to 10_000 total columns
+            PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)), // limit to 10_000 total columns
         )
         .unwrap();
 
@@ -1201,7 +1203,7 @@ mod tests {
             bus_interactions: 3826,
             ..Default::default()
         };
-        assert_air_metrics_sum(powdr_metrics, expected);
+        assert_air_metrics_sum(&powdr_metrics, expected);
 
         // Check non-APC metrics
         let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
@@ -1217,6 +1219,17 @@ mod tests {
             bus_interactions: 252,
             name: Default::default(),
         };
-        assert_air_metrics_sum(non_powdr_metrics, expected);
+        assert_air_metrics_sum(&non_powdr_metrics, expected);
+
+        // Assert that total columns don't exceed the initial limit set
+        let total_columns = powdr_metrics
+            .iter()
+            .chain(non_powdr_metrics.iter())
+            .fold(0, |acc, metric| acc + metric.widths.total());
+
+        assert!(
+            total_columns <= MAX_TOTAL_COLUMNS,
+            "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
+        );
     }
 }
