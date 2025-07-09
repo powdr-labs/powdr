@@ -74,7 +74,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
         .collect()
 }
 
-pub trait UniqueReferences<'a, T: 'a> {
+pub(crate) trait UniqueReferences<'a, T: 'a> {
     /// Returns an iterator over the unique references
     fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference>;
 }

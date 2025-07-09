@@ -1,4 +1,3 @@
-use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
@@ -19,7 +18,7 @@ fn load_machine_cbor() {
     // might be one less than in other tests.
     assert_eq!(
         [
-            machine.unique_references().count(),
+            machine.main_columns().count(),
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
@@ -47,7 +46,7 @@ fn test_optimize() {
 
     println!(
         "Columns: {}, bus interactions: {}, constraints: {}",
-        machine.unique_references().count(),
+        machine.main_columns().count(),
         machine.bus_interactions.len(),
         machine.constraints.len()
     );
@@ -56,7 +55,7 @@ fn test_optimize() {
     // might be one less than in other tests.
     assert_eq!(
         [
-            machine.unique_references().count(),
+            machine.main_columns().count(),
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
