@@ -444,7 +444,7 @@ fn generate_autoprecompile<P: IntoOpenVm>(
         vm_config,
         degree_bound,
         apc_opcode as u32,
-        apc_candidates_dir_path,
+        apc_candidates_dir_path.as_deref(),
     )?;
 
     // Check that substitution values are unique over all instructions

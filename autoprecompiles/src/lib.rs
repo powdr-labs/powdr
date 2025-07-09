@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
@@ -290,7 +290,7 @@ pub fn build<
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
-    apc_candidates_dir_path: &Option<PathBuf>,
+    apc_candidates_dir_path: Option<&Path>,
 ) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &block.statements,

@@ -45,6 +45,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         vm_config,
         degree_bound,
         POWDR_OPCODE as u32,
+        None,
     )
     .unwrap()
     .machine()
