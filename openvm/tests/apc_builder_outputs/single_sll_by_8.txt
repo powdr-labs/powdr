@@ -17,9 +17,5 @@ mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
-// Bus 6 (BITWISE_LOOKUP):
-mult=is_valid * 1, args=[a__1_0, a__2_0, 0, 0]
-mult=is_valid * 1, args=[a__3_0, 0, 0, 0]
-
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
