@@ -14,7 +14,9 @@ def load_apc_data(json_path):
     return pd.DataFrame([{
         'effectiveness': item['total_width_before'] / item['total_width_after'],
         'instructions': len(item['original_instructions']),
-        'frequency': item['execution_frequency']
+        'frequency': item['execution_frequency'],
+        'total_width_before': item['total_width_before'],
+        'software_version_cells': item['total_width_before'] * item['execution_frequency']
     } for item in data])
 
 def remove_outliers(df, column, factor=2):
@@ -54,11 +56,10 @@ def prepare_histogram_data(df, bins):
     hist_data = []
     for group in existing_groups:
         group_df = df[df['inst_group'] == group]
-        weighted_data = []
-        for _, row in group_df.iterrows():
-            weighted_data.extend([row['effectiveness']] * int(row['frequency']))
+        software_version_cells = group_df['software_version_cells'].values
+        values = group_df['effectiveness'].values
         
-        hist = np.histogram(weighted_data, bins=bins)[0] if weighted_data else np.zeros(len(bins) - 1)
+        hist = np.histogram(values, bins=bins, weights=software_version_cells)[0] if len(values) > 0 else np.zeros(len(bins) - 1)
         hist_data.append(hist)
     
     return existing_groups, hist_data
@@ -68,8 +69,8 @@ def plot_effectiveness(json_path, output_prefix=None):
     df = load_apc_data(json_path)
     
     # Calculate mean from full dataset
-    total_weight = df['frequency'].sum()
-    mean_effectiveness = (df['effectiveness'] * df['frequency']).sum() / total_weight
+    total_software_version_cells = df['software_version_cells'].sum()
+    mean_effectiveness = (df['effectiveness'] * df['software_version_cells']).sum() / total_software_version_cells
     
     # Remove outliers for visualization
     df_clean = remove_outliers(df, 'effectiveness')
@@ -95,7 +96,7 @@ def plot_effectiveness(json_path, output_prefix=None):
     
     # Formatting
     ax.set_xlabel('Effectiveness', fontsize=12)
-    ax.set_ylabel('CPU Cycles', fontsize=12)
+    ax.set_ylabel('Trace cells (software version)', fontsize=12)
     ax.set_title(f'Distribution of Effectiveness\n(removed {outliers_removed} outliers out of {len(df)} APCs)', 
                  fontsize=14)
     ax.grid(True, alpha=0.3, axis='y')
