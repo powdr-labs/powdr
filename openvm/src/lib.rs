@@ -1307,8 +1307,10 @@ mod tests {
     fn test_machine(params: MachineTestParams) {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
-        let config = PowdrConfig::new(params.guest_apc, params.guest_skip).with_apc_candidates_dir(apc_candidates_dir_path);
-        let should_have_exported_apc_candidates = matches!(params.pgo_config, PgoConfig::Cell(_, _));
+        let config = PowdrConfig::new(params.guest_apc, params.guest_skip)
+            .with_apc_candidates_dir(apc_candidates_dir_path);
+        let should_have_exported_apc_candidates =
+            matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(
             params.guest,
             GuestOptions::default(),
@@ -1316,7 +1318,7 @@ mod tests {
             params.pgo_config,
         )
         .unwrap()
-         .air_metrics(AirMetricsType::Powdr);
+        .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), params.machine_length);
         let m = &machines[0];
         assert_eq!(
@@ -1421,7 +1423,7 @@ mod tests {
             bus_interactions: 1783,
             machine_length: 1,
         });
-         test_machine(MachineTestParams {
+        test_machine(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
@@ -1442,7 +1444,6 @@ mod tests {
             bus_interactions: 1783,
             machine_length: 1,
         });
-
     }
 
     #[test]
