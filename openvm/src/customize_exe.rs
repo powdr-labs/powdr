@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
@@ -26,6 +27,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_autoprecompiles::{Apc, DegreeBound};
 use powdr_number::{BabyBearField, FieldElement};
+use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::instruction_formatter::openvm_instruction_formatter;
@@ -54,8 +56,9 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
-struct BlockWithApc<P: IntoOpenVm> {
-    block: BasicBlock<OpenVmField<P>>,
+#[derive(Serialize, Deserialize)]
+struct BlockWithApc<P, T> {
+    block: BasicBlock<T>,
     opcode: usize,
     apc: Apc<P>,
 }
@@ -67,7 +70,7 @@ fn generate_apcs_with_pgo(
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
-) -> Vec<BlockWithApc<BabyBearField>> {
+) -> Vec<BlockWithApc<BabyBearField, OpenVmField<BabyBearField>>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -245,7 +248,7 @@ pub fn customize(
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BasicBlock<F> {
     pub start_idx: usize,
     pub statements: Vec<Instruction<F>>,
@@ -365,7 +368,7 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
     powdr_config: &PowdrConfig,
     airs: &OriginalAirs<P>,
     bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
+) -> Vec<BlockWithApc<P, OpenVmField<P>>> {
     let n_acc = powdr_config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
@@ -474,6 +477,87 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     Ok(SymbolicBusInteraction { id, mult, args })
 }
 
+#[derive(Serialize, Deserialize)]
+struct ApcCandidate<P, T> {
+    block_with_apc: BlockWithApc<P, T>,
+    execution_frequency: usize,
+    cells_saved_per_row: usize,
+    width: usize, // only tag this field in Pgo::Cell, the only place it's needed
+}
+
+impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
+    pub fn try_create(
+        block: BasicBlock<OpenVmField<BabyBearField>>,
+        airs: &OriginalAirs<BabyBearField>,
+        opcode: usize,
+        bus_map: &BusMap,
+        degree_bound: DegreeBound,
+        pgo_program_idx_count: &HashMap<u32, u32>,
+    ) -> Option<Self> {
+        let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
+
+        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
+        let apc_cells_per_row = apc_metrics.widths.total();
+
+        let orig_cells_per_row: usize = block
+            .statements
+            .iter()
+            .map(|instr| {
+                airs.get_instruction_metrics(instr.opcode.as_usize())
+                    .unwrap()
+                    .widths
+                    .total()
+            })
+            .sum();
+
+        let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
+        let execution_frequency = *pgo_program_idx_count
+            .get(&(block.start_idx as u32))
+            .unwrap_or(&0) as usize;
+
+        let candidate = Self {
+            block_with_apc: BlockWithApc { opcode, block, apc },
+            execution_frequency,
+            cells_saved_per_row,
+            width: apc_cells_per_row,
+        };
+
+        Some(candidate)
+    }
+
+    /// Save the candidate to disk.
+    fn save_to_disk(&self, apc_candidates_dir_path: &Path) {
+        let path = apc_candidates_dir_path
+            .join(format!("apc_candidate_{}", self.block_with_apc.opcode))
+            .with_extension("cbor");
+        std::fs::create_dir_all(apc_candidates_dir_path)
+            .expect("Failed to create directory for APC candidates");
+        let file = std::fs::File::create(&path).expect("Failed to create file for APC candidate");
+        serde_cbor::to_writer(file, &self).expect("Failed to write APC candidate to file");
+    }
+}
+
+impl<P, T> KnapsackItem for ApcCandidate<P, T> {
+    fn cost(&self) -> usize {
+        self.width
+    }
+
+    fn value(&self) -> usize {
+        // For an APC which is called once and saves 1 cell, this would be 1.
+        let value = self
+            .execution_frequency
+            .checked_mul(self.cells_saved_per_row)
+            .unwrap();
+        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+        // Therefore, we scale it up by a constant factor.
+        value.checked_mul(1000).unwrap()
+    }
+
+    fn tie_breaker(&self) -> usize {
+        self.block_with_apc.opcode
+    }
+}
+
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo(
     mut blocks: Vec<BasicBlock<OpenVmField<BabyBearField>>>,
@@ -483,7 +567,7 @@ fn create_apcs_with_cell_pgo(
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     bus_map: &BusMap,
-) -> Vec<BlockWithApc<BabyBearField>> {
+) -> Vec<BlockWithApc<BabyBearField, OpenVmField<BabyBearField>>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -505,36 +589,6 @@ fn create_apcs_with_cell_pgo(
         max_cache,
     );
 
-    // each generated apc becomes a candidate for caching
-    // it is only ordered by cost, but carries all needed data for modifying the blocks, extending the cache, and debug print
-    struct ApcCandidate<P: IntoOpenVm> {
-        block_with_apc: BlockWithApc<P>,
-        execution_frequency: usize,
-        cells_saved_per_row: usize,
-        width: usize, // only tag this field in Pgo::Cell, the only place it's needed
-    }
-
-    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
-        fn cost(&self) -> usize {
-            self.width
-        }
-
-        fn value(&self) -> usize {
-            // For an APC which is called once and saves 1 cell, this would be 1.
-            let value = self
-                .execution_frequency
-                .checked_mul(self.cells_saved_per_row)
-                .unwrap();
-            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-            // Therefore, we scale it up by a constant factor.
-            value.checked_mul(1000).unwrap()
-        }
-
-        fn tie_breaker(&self) -> usize {
-            self.block_with_apc.opcode
-        }
-    }
-
     let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
         let total_non_apc_columns = original_config
             .chip_inventory_air_metrics()
@@ -547,39 +601,17 @@ fn create_apcs_with_cell_pgo(
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            // try to create apc for a candidate block
-            let apc = generate_autoprecompile(
-                &block,
+            ApcCandidate::try_create(
+                block,
                 airs,
-                POWDR_OPCODE + i,
+        POWDR_OPCODE + i,
                 bus_map,
                 config.degree_bound,
-            )
-            .ok()?; // if apc creation fails, filter out this candidate block
-
-            let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
-
-            // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc_metrics.widths.total();
-            let orig_cells_per_row: usize = block
-                .statements
-                .iter()
-                .map(|instr| airs.get_instruction_metrics(instr.opcode.as_usize()).unwrap().widths.total())
-                .sum();
-            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
-            let execution_frequency = *pgo_program_idx_count
-                .get(&(block.start_idx as u32))
-                .unwrap_or(&0) as usize;
-
-            Some(ApcCandidate {
-                block_with_apc: BlockWithApc {
-                    opcode: POWDR_OPCODE + i,
-                    block,
-                    apc,
-                },
-                execution_frequency,
-                cells_saved_per_row,
-                width: apc_cells_per_row,
+                &pgo_program_idx_count,
+            ).inspect(|candidate| {
+                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+                    candidate.save_to_disk(apc_candidates_dir_path);
+                }
             })
         }),
         max_cache,
@@ -606,7 +638,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
+) -> Vec<BlockWithApc<P, OpenVmField<P>>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -646,7 +678,7 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
+) -> Vec<BlockWithApc<P, OpenVmField<P>>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 

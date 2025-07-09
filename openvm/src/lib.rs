@@ -370,6 +370,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// Implementation of the precompiles, i.e., how to compile them to a RAP.
     pub implementation: PrecompileImplementation,
+    /// The path to the APC candidates dir, if any.
+    pub apc_candidates_dir_path: Option<PathBuf>,
 }
 
 impl PowdrConfig {
@@ -382,6 +384,7 @@ impl PowdrConfig {
                 bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
             },
             implementation: PrecompileImplementation::default(),
+            apc_candidates_dir_path: None,
         }
     }
 
@@ -407,6 +410,11 @@ impl PowdrConfig {
             implementation: precompile_implementation,
             ..self
         }
+    }
+
+    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
     }
 }
 
@@ -1120,8 +1128,12 @@ mod tests {
 
     // The following are compilation tests only
     fn test_guest_machine(pgo_config: PgoConfig) {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, pgo_config)
+        let apc_candidates_dir = tempfile::tempdir().unwrap();
+        let apc_candidates_dir_path = apc_candidates_dir.path();
+        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP_PGO)
+            .with_apc_candidates_dir(apc_candidates_dir_path);
+        let should_have_exported_apc_candidates = matches!(pgo_config, PgoConfig::Cell(_, _));
+        let machines = compile_guest(GUEST, GuestOptions::default(), config.clone(), pgo_config)
             .unwrap()
             .air_metrics(AirMetricsType::Powdr);
         assert_eq!(machines.len(), 1);
@@ -1129,6 +1141,14 @@ mod tests {
         assert_eq!(
             [m.widths.main, m.constraints, m.bus_interactions],
             [49, 22, 31]
+        );
+        // In Cell PGO, check that the apc candidates were persisted to disk
+        let files_count = std::fs::read_dir(apc_candidates_dir_path)
+            .expect("Failed to read APC candidates directory")
+            .count();
+        assert!(
+            (files_count > 0) == should_have_exported_apc_candidates,
+            "Unexpected number of APC candidate files"
         );
     }
 
