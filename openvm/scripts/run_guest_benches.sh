@@ -43,8 +43,8 @@ run_bench() {
         cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
     fi
     # prove with no APCs
-    mkdir -p apcs_{apcs}
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion --apc-candidates-dir apcs_{apcs}
+    mkdir -p {apcs}apcs
+    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion --apc-candidates-dir {apcs}apcs
     # proving with APCs and record memory usage
     with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion"
     # process results
@@ -52,6 +52,7 @@ run_bench() {
     plot_cells ${apcs}apc.json
     plot_effectiveness ${apcs}apc/apc_candidates.json
     rm debug.pil
+    rm {apcs}apc/*.cbor
     popd
 }
 
