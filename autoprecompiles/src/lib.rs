@@ -1,5 +1,5 @@
 use crate::bus_map::{BusMap, BusType};
-use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
+use crate::expression_conversion::algebraic_to_grouped_expression;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -303,7 +303,7 @@ pub fn build<
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     let mut zeroed_expr = expr.clone();
     powdr::make_refs_zero(&mut zeroed_expr);
-    let zeroed_expr = algebraic_to_quadratic_symbolic_expression(&zeroed_expr);
+    let zeroed_expr = algebraic_to_grouped_expression(&zeroed_expr);
     zeroed_expr.try_to_number().unwrap().is_zero()
 }
 

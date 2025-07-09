@@ -1,6 +1,6 @@
 use crate::constraint_system::ConstraintRef;
 use crate::grouped_expression::GroupedExpression;
-use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::journaling_constraint_system::JournalingConstraintSystemGeneric;
 use crate::runtime_constant::{RuntimeConstant, Substitutable};
 
@@ -101,7 +101,7 @@ fn find_inlinable_variables<
 fn is_valid_substitution<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &GroupedExpression<T, V>,
-    constraint_system: &IndexedConstraintSystemGeneric<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
     degree_bound: DegreeBound,
 ) -> bool {
     let replacement_deg = expression_degree(expr);
