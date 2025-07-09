@@ -1,7 +1,7 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintSystemGeneric, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
 use crate::effect::EffectImpl;
 use crate::grouped_expression::GroupedExpression;
@@ -24,7 +24,7 @@ mod quadratic_equivalences;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
-    constraint_system: ConstraintSystemGeneric<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
 ) -> Result<SolveResult<T, V>, Error>
 where
@@ -89,7 +89,7 @@ struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
     Solver<T, V, DefaultBusInteractionHandler<T::FieldType>>
 {
-    pub fn new(constraint_system: ConstraintSystemGeneric<T, V>) -> Self {
+    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
