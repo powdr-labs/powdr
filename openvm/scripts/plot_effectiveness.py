@@ -47,6 +47,17 @@ def remove_outliers(df, column, weight_column, factor=1.1):
     upper_bound = percentile95 + factor * IQR
     return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
 
+def format_cell_count(count):
+    """Format cell count with appropriate units."""
+    if count >= 1e9:
+        return f"{count/1e9:.1f}B"
+    elif count >= 1e6:
+        return f"{count/1e6:.1f}M"
+    elif count >= 1e3:
+        return f"{count/1e3:.1f}K"
+    else:
+        return f"{count:.0f}"
+
 def group_instruction_count(count):
     """Group instruction counts into ranges."""
     if count <= 9:
@@ -93,7 +104,11 @@ def plot_effectiveness(json_path, output_prefix=None):
     
     # Remove outliers for visualization
     df_clean = remove_outliers(df, 'effectiveness', 'software_version_cells')
-    outliers_removed = len(df) - len(df_clean)
+    
+    # Calculate trace cells statistics
+    total_cells_full = df['software_version_cells'].sum()
+    total_cells_clean = df_clean['software_version_cells'].sum()
+    percentage = (total_cells_clean / total_cells_full) * 100
     
     # Prepare histogram
     bins = np.linspace(df_clean['effectiveness'].min(), df_clean['effectiveness'].max(), 20)
@@ -115,8 +130,10 @@ def plot_effectiveness(json_path, output_prefix=None):
     
     # Formatting
     ax.set_xlabel('Effectiveness', fontsize=12)
-    ax.set_ylabel('Trace cells (software version)', fontsize=12)
-    ax.set_title(f'Distribution of Effectiveness\n(removed {outliers_removed} outliers out of {len(df)} APCs)', 
+    ax.set_ylabel('Instruction trace cells (software version)', fontsize=12)
+    
+    cells_str = format_cell_count(total_cells_clean)
+    ax.set_title(f'Distribution of Effectiveness\n(Accounting for {cells_str} instruction trace cells ({percentage:.0f}%))', 
                  fontsize=14)
     ax.grid(True, alpha=0.3, axis='y')
     # Place legend outside the plot area
