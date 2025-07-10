@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
+use std::io::BufReader;
+use std::path::Path;
+use std::fs::File;
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, IntoOpenVm, SpecializedExecutor};
+use crate::customize_exe::ApcCandidateJsonExport;
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -28,6 +32,7 @@ use std::iter::Sum;
 use std::ops::Add;
 use std::ops::Deref;
 use std::sync::MutexGuard;
+use std::path::PathBuf;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
 
@@ -405,6 +410,18 @@ impl Add for AirWidths {
     }
 }
 
+impl Sub for AirWidths {
+    type Output = AirWidths;
+
+    fn sub(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocessed: self.preprocessed - rhs.preprocessed,
+            main: self.main - rhs.main,
+            log_up: self.log_up - rhs.log_up,
+        }
+    }
+}
+
 impl Sum<AirWidths> for AirWidths {
     fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
         iter.fold(AirWidths::default(), Add::add)
@@ -428,6 +445,17 @@ impl std::fmt::Display for AirWidths {
             self.log_up
         )
     }
+}
+
+pub fn load_apc_candidates_summary(
+    apc_candidates_dir_path: PathBuf,
+) -> Vec<ApcCandidateJsonExport> {
+    // Open the file in read-only mode.
+    let json_path = apc_candidates_dir_path.join("apc_candidates.json");
+    let file = File::open(json_path).expect("Failed to open APC candidates JSON file");
+    // Deserialize from the reader.
+    let reader = BufReader::new(file);
+    serde_json::from_reader(reader)
 }
 
 #[cfg(test)]

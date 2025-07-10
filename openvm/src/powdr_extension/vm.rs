@@ -128,6 +128,13 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             PowdrExecutor::Plonk(plonk_chip) => plonk_chip.air_name(),
         }
     }
+
+    pub fn opcode(&self) -> usize {
+        match self {
+            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.opcode.global_opcode(),
+            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.opcode.global_opcode(),
+        }
+    }
 }
 
 // These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
