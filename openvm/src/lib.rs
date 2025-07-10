@@ -431,7 +431,31 @@ pub fn compile_guest(
         tally_opcode_frequency(&pgo_config, &original_program.exe);
     }
 
-    compile_exe(guest, guest_opts, original_program, config, pgo_config)
+    // Build the ELF with guest options and a target filter.
+    // We need these extra Rust flags to get the labels.
+    let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
+
+    // Point to our local guest
+    use std::path::PathBuf;
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).to_path_buf();
+    path.push(guest);
+    let target_path = path.to_str().unwrap();
+
+    let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
+    let elf = std::fs::read(&elf_binary_path)?;
+
+    let compiled = customize(
+        original_program,
+        &powdr_riscv_elf::load_elf_from_buffer(&elf).text_labels,
+        config,
+        pgo_config,
+    );
+    // Export the compiled program to a PIL file for debugging purposes.
+    export_pil(
+        &mut BufWriter::new(File::create("debug.pil").unwrap()),
+        &compiled.vm_config,
+    );
+    Ok(compiled)
 }
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
@@ -469,53 +493,6 @@ fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBe
             // Log the opcode and its count
             tracing::debug!("   {}: {count}", openvm_opcode_formatter(&opcode));
         });
-}
-
-pub fn compile_exe(
-    guest: &str,
-    guest_opts: GuestOptions,
-    original_program: OriginalCompiledProgram,
-    config: PowdrConfig,
-    pgo_config: PgoConfig,
-) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    // Build the ELF with guest options and a target filter.
-    // We need these extra Rust flags to get the labels.
-    let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
-
-    // Point to our local guest
-    use std::path::PathBuf;
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    path.push(guest);
-    let target_path = path.to_str().unwrap();
-
-    let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-
-    compile_exe_with_elf(
-        original_program,
-        &std::fs::read(elf_binary_path)?,
-        config,
-        pgo_config,
-    )
-}
-
-pub fn compile_exe_with_elf(
-    original_program: OriginalCompiledProgram,
-    elf: &[u8],
-    config: PowdrConfig,
-    pgo_config: PgoConfig,
-) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let compiled = customize(
-        original_program,
-        &powdr_riscv_elf::load_elf_from_buffer(elf).text_labels,
-        config,
-        pgo_config,
-    );
-    // Export the compiled program to a PIL file for debugging purposes.
-    export_pil(
-        &mut BufWriter::new(File::create("debug.pil").unwrap()),
-        &compiled.vm_config,
-    );
-    Ok(compiled)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
