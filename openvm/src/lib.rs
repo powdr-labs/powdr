@@ -1417,7 +1417,7 @@ mod tests {
                     log_up: 12144,
                 },
                 constraints: 4143,
-                bus_interactions: 11692, // Bus interactions are not implemented yet
+                bus_interactions: 11692,
             }],
             machine_count: vec![10],
         });
@@ -1435,7 +1435,7 @@ mod tests {
                     log_up: 12124,
                 },
                 constraints: 4127,
-                bus_interactions: 11682, // Bus interactions are not implemented yet
+                bus_interactions: 11682,
             }],
             machine_count: vec![10],
         });
