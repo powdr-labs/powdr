@@ -94,7 +94,7 @@ def prepare_histogram_data(df, bins):
     
     return existing_groups, hist_data
 
-def plot_effectiveness(json_path, output_prefix=None):
+def plot_effectiveness(json_path, filename=None):
     """Generate stacked histogram of effectiveness data."""
     df = load_apc_data(json_path)
     
@@ -153,15 +153,15 @@ def plot_effectiveness(json_path, output_prefix=None):
     plt.subplots_adjust(right=0.85)  # Make room for the legend
     
     # Save or show
-    if output_prefix:
-        plt.savefig(f'{output_prefix}_stacked_histogram.png', dpi=300, bbox_inches='tight')
+    if filename:
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
     else:
         plt.show()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot effectiveness analysis from APC candidates JSON file.")
     parser.add_argument("json_path", help="Path to the APC candidates JSON file")
-    parser.add_argument("-o", "--output", help="Output prefix for saving plots")
+    parser.add_argument("-o", "--output", help="Optional file name to save the plot", default=None)
     args = parser.parse_args()
     
     plot_effectiveness(args.json_path, args.output)
