@@ -8,10 +8,10 @@ use powdr_ast::analyzed::{
     Analyzed, Challenge, Identity, PolynomialIdentity,
 };
 use powdr_constraint_solver::constraint_system::{ConstraintSystem, DefaultBusInteractionHandler};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
-    grouped_expression::QuadraticSymbolicExpression,
     solver::{self, SolveResult},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
@@ -113,8 +113,8 @@ impl Display for Variable {
 /// are unknown variables.
 pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
-) -> QuadraticSymbolicExpression<T, Variable> {
-    type Qse<T> = QuadraticSymbolicExpression<T, Variable>;
+) -> GroupedExpression<SymbolicExpression<T, Variable>, Variable> {
+    type Qse<T> = GroupedExpression<SymbolicExpression<T, Variable>, Variable>;
 
     struct TerminalConverter;
 
@@ -142,7 +142,7 @@ pub fn algebraic_to_quadratic_symbolic_expression<T: FieldElement>(
 /// Tries to simplify the expression wrt negation and constant factors
 /// to aid human readability.
 pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
-    expr: &QuadraticSymbolicExpression<T, Variable>,
+    expr: &GroupedExpression<SymbolicExpression<T, Variable>, Variable>,
 ) -> AlgebraicExpression<T> {
     // Turn the expression into a list of to-be-summed items and try to
     // simplify on the way.

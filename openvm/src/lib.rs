@@ -540,6 +540,8 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
+const APP_LOG_BLOWUP: usize = 2;
+
 impl Add for AirMetrics {
     type Output = AirMetrics;
 
@@ -636,8 +638,7 @@ pub fn prove(
     let sdk = Sdk::default();
 
     // Set app configuration
-    let app_log_blowup = 2;
-    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup);
+    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Commit the exe
@@ -649,7 +650,7 @@ pub fn prove(
     if mock {
         tracing::info!("Checking constraints and witness in Mock prover...");
         let engine = BabyBearPoseidon2Engine::new(
-            FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup),
+            FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP),
         );
         let vm = VirtualMachine::new(engine, vm_config.clone());
         let pk = vm.keygen();
@@ -1311,8 +1312,7 @@ mod tests {
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = PowdrConfig::new(params.guest_apc, params.guest_skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let should_have_exported_apc_candidates =
-            matches!(params.pgo_config, PgoConfig::Cell(_, _));
+        let should_have_exported_json_summary = matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(
             params.guest,
             GuestOptions::default(),
@@ -1339,14 +1339,13 @@ mod tests {
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
             .count();
-        if should_have_exported_apc_candidates {
-            assert!(cbor_files_count > 0, "No APC candidate files found");
+        assert!(cbor_files_count > 0, "No APC candidate files found");
+        if should_have_exported_json_summary {
             assert_eq!(
                 json_files_count, 1,
                 "Expected exactly one APC candidate JSON file"
             );
         } else {
-            assert_eq!(cbor_files_count, 0, "Unexpected APC candidate files found");
             assert_eq!(
                 json_files_count, 0,
                 "Unexpected APC candidate JSON files found"

@@ -11,9 +11,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_constraint_solver::{
     effect::Condition,
-    grouped_expression::{
-        Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
-    },
+    grouped_expression::{Error, ProcessResult, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
@@ -26,6 +24,7 @@ use crate::witgen::{
         mutable_state::MutableState,
     },
     global_constraints::RangeConstraintSet,
+    jit::QuadraticSymbolicExpression,
     FixedData, QueryCallback,
 };
 

@@ -1,5 +1,5 @@
 use crate::{
-    effect::EffectImpl,
+    effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
@@ -169,7 +169,7 @@ impl<
         &self,
         bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
         range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Result<Vec<EffectImpl<T, V>>, ViolatesBusRules> {
+    ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
@@ -187,7 +187,7 @@ impl<
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    (!rc.is_unconstrained()).then(|| EffectImpl::RangeConstraint(var.clone(), rc))
+                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
             })
             .collect())

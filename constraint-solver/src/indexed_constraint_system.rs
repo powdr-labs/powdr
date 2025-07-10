@@ -9,7 +9,7 @@ use powdr_number::ExpressionConvertible;
 
 use crate::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
-    effect::EffectImpl,
+    effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
 };
@@ -335,7 +335,7 @@ impl<
             .into_iter()
             .flatten()
             .filter_map(|effect| {
-                if let EffectImpl::Assignment(variable, value) = effect {
+                if let Effect::Assignment(variable, value) = effect {
                     Some((variable, value.try_to_number()?))
                 } else {
                     None
