@@ -23,14 +23,13 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
+use powdr_autoprecompiles::{AirMetrics, AirMetricsType};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
-use std::iter::Sum;
-use std::ops::Add;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
@@ -49,7 +48,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, get_air_metrics, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
@@ -63,6 +62,8 @@ mod utils;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
+
+const APP_LOG_BLOWUP: usize = 2;
 
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
@@ -531,44 +532,6 @@ pub struct OriginalCompiledProgram {
     pub sdk_vm_config: SdkVmConfig,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
-pub struct AirMetrics {
-    pub widths: AirWidths,
-    pub constraints: usize,
-    pub bus_interactions: usize,
-}
-
-const APP_LOG_BLOWUP: usize = 2;
-
-impl Add for AirMetrics {
-    type Output = AirMetrics;
-
-    fn add(self, rhs: AirMetrics) -> AirMetrics {
-        AirMetrics {
-            widths: self.widths + rhs.widths,
-            constraints: self.constraints + rhs.constraints,
-            bus_interactions: self.bus_interactions + rhs.bus_interactions,
-        }
-    }
-}
-
-impl Sum<AirMetrics> for AirMetrics {
-    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
-        iter.fold(AirMetrics::default(), Add::add)
-    }
-}
-
-impl AirMetrics {
-    pub fn total_width(&self) -> usize {
-        self.widths.total()
-    }
-}
-
-pub enum AirMetricsType {
-    Powdr,
-    NonPowdr,
-}
-
 impl CompiledProgram {
     pub fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
@@ -847,6 +810,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use powdr_autoprecompiles::AirWidths;
     use test_log::test;
 
     fn compile_and_prove(
