@@ -281,6 +281,68 @@ mod single_instruction_tests {
         let program = [sra(68, 40, 3, 1)];
         assert_machine_output(program.to_vec(), "single_sra");
     }
+
+    #[test]
+    fn memset_inner_loop() {
+        // This is the most executed basic block in the reth benchmark.
+        // It looks more like "memcpy", but it is stored under the symbol
+        // "memset".
+        //    instr   0:   LOADW rd_rs2_ptr = 60, rs1_ptr = 56, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   1:   LOADW rd_rs2_ptr = 64, rs1_ptr = 56, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   2:   LOADW rd_rs2_ptr = 68, rs1_ptr = 56, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   3:   LOADW rd_rs2_ptr = 20, rs1_ptr = 56, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   4:   STOREW rd_rs2_ptr = 60, rs1_ptr = 52, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   5:   STOREW rd_rs2_ptr = 64, rs1_ptr = 52, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   6:   STOREW rd_rs2_ptr = 68, rs1_ptr = 52, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   7:   STOREW rd_rs2_ptr = 20, rs1_ptr = 52, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   8:   ADD rd_ptr = 56, rs1_ptr = 56, rs2 = 16, rs2_as = 0
+        //    instr   9:   ADD rd_ptr = 48, rs1_ptr = 48, rs2 = 16777200, rs2_as = 0
+        //    instr  10:   ADD rd_ptr = 52, rs1_ptr = 52, rs2 = 16, rs2_as = 0
+        //    instr  11:   BLTU 44 48 -0x2c 1 1
+
+        let memset_loop = vec![
+            loadw(60, 56, 0, 2, 1, 0),
+            loadw(64, 56, 4, 2, 1, 0),
+            loadw(68, 56, 8, 2, 1, 0),
+            loadw(20, 56, 12, 2, 1, 0),
+            storew(60, 52, 0, 2, 1, 1),
+            storew(64, 52, 4, 2, 1, 1),
+            storew(68, 52, 8, 2, 1, 1),
+            storew(20, 52, 12, 2, 1, 1),
+            add(56, 56, 16, 0),
+            add(48, 48, 16777200, 0),
+            add(52, 52, 16, 0),
+            bltu(44, 48, -44),
+        ];
+        let memset_loop_unrolled = vec![
+            loadw(60, 56, 0, 2, 1, 0),
+            loadw(64, 56, 4, 2, 1, 0),
+            loadw(68, 56, 8, 2, 1, 0),
+            loadw(20, 56, 12, 2, 1, 0),
+            storew(60, 52, 0, 2, 1, 1),
+            storew(64, 52, 4, 2, 1, 1),
+            storew(68, 52, 8, 2, 1, 1),
+            storew(20, 52, 12, 2, 1, 1),
+            add(56, 56, 16, 0),
+            add(48, 48, 16777200, 0),
+            add(52, 52, 16, 0),
+            add(52, 52, 0, 0), // bltu turned to no-op
+            loadw(60, 56, 0, 2, 1, 0),
+            loadw(64, 56, 4, 2, 1, 0),
+            loadw(68, 56, 8, 2, 1, 0),
+            loadw(20, 56, 12, 2, 1, 0),
+            storew(60, 52, 0, 2, 1, 1),
+            storew(64, 52, 4, 2, 1, 1),
+            storew(68, 52, 8, 2, 1, 1),
+            storew(20, 52, 12, 2, 1, 1),
+            add(56, 56, 16, 0),
+            add(48, 48, 16777200, 0),
+            add(52, 52, 16, 0),
+            bltu(44, 48, -88),
+        ];
+        assert_machine_output(memset_loop, "memset_loop");
+        assert_machine_output(memset_loop_unrolled, "memset_loop_unrolled");
+    }
 }
 
 mod complex_tests {
