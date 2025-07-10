@@ -1,5 +1,5 @@
-#![cfg_attr(not(feature = "std"), no_main)]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(target_os = "zkvm", no_main)]
+#![cfg_attr(target_os = "zkvm", no_std)]
 use hex_literal::hex;
 use k256::elliptic_curve::sec1::FromEncodedPoint;
 use k256::elliptic_curve::PrimeField;
