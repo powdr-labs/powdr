@@ -1437,7 +1437,7 @@ mod tests {
                 constraints: 4127,
                 bus_interactions: 11682, // Bus interactions are not implemented yet
             }],
-            machine_count: vec![0],
+            machine_count: vec![10],
         });
     }
 
