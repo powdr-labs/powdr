@@ -8,9 +8,7 @@ use itertools::Itertools;
 use powdr_number::ExpressionConvertible;
 
 use crate::{
-    constraint_system::{
-        BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystemGeneric,
-    },
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
     effect::EffectImpl,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
@@ -18,9 +16,9 @@ use crate::{
 
 /// Applies multiple substitutions to a ConstraintSystem in an efficient manner.
 pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq + Clone + Ord>(
-    constraint_system: ConstraintSystemGeneric<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
-) -> ConstraintSystemGeneric<T, V> {
+) -> ConstraintSystem<T, V> {
     let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
     for (variable, substitution) in substitutions {
         indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
@@ -33,7 +31,7 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
 #[derive(Clone, Default)]
 pub struct IndexedConstraintSystem<T, V> {
     /// The constraint system.
-    constraint_system: ConstraintSystemGeneric<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
     variable_occurrences: HashMap<V, Vec<ConstraintSystemItem>>,
 }
@@ -44,10 +42,10 @@ enum ConstraintSystemItem {
     BusInteraction(usize),
 }
 
-impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystemGeneric<T, V>>
+impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>>
     for IndexedConstraintSystem<T, V>
 {
-    fn from(constraint_system: ConstraintSystemGeneric<T, V>) -> Self {
+    fn from(constraint_system: ConstraintSystem<T, V>) -> Self {
         let variable_occurrences = variable_occurrences(&constraint_system);
         IndexedConstraintSystem {
             constraint_system,
@@ -57,7 +55,7 @@ impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystemGeneri
 }
 
 impl<T: RuntimeConstant, V: Clone + Eq> From<IndexedConstraintSystem<T, V>>
-    for ConstraintSystemGeneric<T, V>
+    for ConstraintSystem<T, V>
 {
     fn from(indexed_constraint_system: IndexedConstraintSystem<T, V>) -> Self {
         indexed_constraint_system.constraint_system
@@ -65,7 +63,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> From<IndexedConstraintSystem<T, V>>
 }
 
 impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
-    pub fn system(&self) -> &ConstraintSystemGeneric<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
         &self.constraint_system
     }
 
@@ -162,7 +160,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
-        self.extend(ConstraintSystemGeneric {
+        self.extend(ConstraintSystem {
             algebraic_constraints: constraints.into_iter().collect(),
             bus_interactions: Vec::new(),
         });
@@ -173,14 +171,14 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
         &mut self,
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
     ) {
-        self.extend(ConstraintSystemGeneric {
+        self.extend(ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: bus_interactions.into_iter().collect(),
         });
     }
 
     /// Extends the constraint system by the constraints of another system.
-    pub fn extend(&mut self, system: ConstraintSystemGeneric<T, V>) {
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
         let bus_interactions_count = self.constraint_system.bus_interactions.len();
         // Compute the occurrences of the variables in the new constraints,
@@ -360,7 +358,7 @@ impl<
 /// Returns a hash map mapping all unknown variables in the constraint system
 /// to the items they occur in.
 fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
-    constraint_system: &ConstraintSystemGeneric<T, V>,
+    constraint_system: &ConstraintSystem<T, V>,
 ) -> HashMap<V, Vec<ConstraintSystemItem>> {
     let occurrences_in_algebraic_constraints = constraint_system
         .algebraic_constraints
@@ -389,7 +387,7 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
 }
 
 fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>(
-    constraint_system: &mut ConstraintSystemGeneric<T, V>,
+    constraint_system: &mut ConstraintSystem<T, V>,
     item: ConstraintSystemItem,
     variable: &V,
     substitution: &T,
@@ -407,7 +405,7 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
 }
 
 fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>(
-    constraint_system: &mut ConstraintSystemGeneric<T, V>,
+    constraint_system: &mut ConstraintSystem<T, V>,
     item: ConstraintSystemItem,
     variable: &V,
     substitution: &GroupedExpression<T, V>,
@@ -465,7 +463,7 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystemGeneric {
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
@@ -500,7 +498,7 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystemGeneric {
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),

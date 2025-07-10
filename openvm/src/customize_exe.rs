@@ -147,7 +147,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let blocks_with_apcs = generate_apcs_with_pgo(
+    let apcs = generate_apcs_with_pgo(
         blocks,
         &airs,
         &bus_map,
@@ -171,7 +171,7 @@ pub fn customize(
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
-    let extensions = blocks_with_apcs
+    let extensions = apcs
         .into_iter()
         .map(
             |Apc {

@@ -4,7 +4,7 @@ use inliner::DegreeBound;
 use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::BusInteractionHandler, grouped_expression::GroupedExpression, inliner,
-    journaling_constraint_system::JournalingConstraintSystemGeneric, solver::solve_system,
+    journaling_constraint_system::JournalingConstraintSystem, solver::solve_system,
 };
 use powdr_number::FieldElement;
 
@@ -28,11 +28,11 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
-    constraint_system: JournalingConstraintSystemGeneric<P, V>,
+    constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
-) -> Result<JournalingConstraintSystemGeneric<P, V>, Error> {
+) -> Result<JournalingConstraintSystem<P, V>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
     stats_logger.log("solver-based optimization", &constraint_system);
@@ -59,9 +59,9 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystemGeneric<T, V>,
+    mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
-) -> Result<JournalingConstraintSystemGeneric<T, V>, Error> {
+) -> Result<JournalingConstraintSystem<T, V>, Error> {
     let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in result.assignments.iter() {
@@ -83,9 +83,9 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystemGeneric<T, V>,
+    mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T>,
-) -> JournalingConstraintSystemGeneric<T, V> {
+) -> JournalingConstraintSystem<T, V> {
     // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
     let mut variables_to_keep = constraint_system
         .system()
@@ -135,8 +135,8 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
-    mut constraint_system: JournalingConstraintSystemGeneric<P, V>,
-) -> JournalingConstraintSystemGeneric<P, V> {
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
     let zero = GroupedExpression::zero();
     constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
     constraint_system
@@ -145,17 +145,17 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord
 }
 
 fn remove_equal_constraints<P: FieldElement, V: Eq + Hash + Clone>(
-    mut constraint_system: JournalingConstraintSystemGeneric<P, V>,
-) -> JournalingConstraintSystemGeneric<P, V> {
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
     let mut seen = HashSet::new();
     constraint_system.retain_algebraic_constraints(|constraint| seen.insert(constraint.clone()));
     constraint_system
 }
 
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
-    mut constraint_system: JournalingConstraintSystemGeneric<P, V>,
+    mut constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
-) -> JournalingConstraintSystemGeneric<P, V> {
+) -> JournalingConstraintSystem<P, V> {
     let mut seen = HashSet::new();
     constraint_system.retain_bus_interactions(|interaction| {
         // We only touch interactions with non-stateful buses.
