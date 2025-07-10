@@ -17,7 +17,7 @@ pub trait KnapsackItem {
 
 /// Fractional knapsack algorithm that uses parallel iterators to find the best items.
 /// It returns an iterator over the items that fit into the knapsack, sorted by their density (value/cost).
-pub(crate) fn fractional_knapsack<E: KnapsackItem + Send>(
+pub(crate) fn parallel_fractional_knapsack<E: KnapsackItem + Send>(
     elements: impl IntoParallelIterator<Item = E>,
     max_count: usize,
     max_cost: Option<usize>,
@@ -133,7 +133,7 @@ mod tests {
         // In case of tie, the second item (with larger index) should be chosen
         for _ in 0..10 {
             let result: Vec<_> =
-                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
+                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.len(), 1);
             assert_eq!(result[0].index, 1);
         }
@@ -149,7 +149,7 @@ mod tests {
         // All items fit, so both should be returned in the order of their (density, index)
         for _ in 0..10 {
             let result: Vec<_> =
-                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
+                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result, items);
         }
     }
@@ -168,7 +168,7 @@ mod tests {
         // Only the first two items fit, since their costs add up to 3 and they have the highest density
         for _ in 0..10 {
             let result: Vec<_> =
-                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
+                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.as_slice(), &items[0..2]);
         }
     }
@@ -191,7 +191,7 @@ mod tests {
         // Due to the same density, tie is broken by items with higher index coming up first.
         for _ in 0..10 {
             let result: Vec<_> =
-                fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
+                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
             assert_eq!(result.len(), 5);
             assert_eq!(result[0].index, 1);
             assert_eq!(result[1].index, 0);

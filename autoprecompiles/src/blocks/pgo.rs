@@ -11,7 +11,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    blocks::selection::{fractional_knapsack, KnapsackItem},
+    blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
     constraint_optimizer::IsBusStateful,
     Apc, BasicBlock, InstructionMachineHandler, PowdrConfig, VmConfig,
 };
@@ -101,7 +101,7 @@ fn create_apcs_with_cell_pgo<
     let apc_candidates = Arc::new(Mutex::new(vec![]));
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    let res = fractional_knapsack(
+    let res = parallel_fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
             let apc = crate::build(
                 block.clone(),
@@ -185,7 +185,7 @@ fn create_apcs_with_instruction_pgo<
 fn create_apcs_with_no_pgo<
     P: FieldElement,
     I: InstructionMachineHandler<P> + Clone + Sync,
-    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
+    B: BusInteractionHandler<P> + IsBusStateful<P> + Clone + Sync,
 >(
     mut blocks: Vec<BasicBlock<P>>,
     config: &PowdrConfig,
