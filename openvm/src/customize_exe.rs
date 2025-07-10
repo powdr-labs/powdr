@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::extraction_utils::{get_air_metrics, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
@@ -24,7 +24,7 @@ use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{Apc, InstructionMachineHandler};
+use powdr_autoprecompiles::Apc;
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -292,17 +292,15 @@ struct OpenVmApcCandidate<P> {
     width_after: usize,
 }
 
-impl<
-        I: InstructionMachineHandler<BabyBearField> + Clone + Send + Sync,
-        B: BusInteractionHandler<BabyBearField> + Clone + Send + Sync + IsBusStateful<BabyBearField>,
-    > Candidate<BabyBearField, I, B> for OpenVmApcCandidate<BabyBearField>
+impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<BabyBearField>>
+    Candidate<BabyBearField, OriginalAirs<BabyBearField>, B> for OpenVmApcCandidate<BabyBearField>
 {
     type JsonExport = OpenVmApcCandidateJsonExport<BabyBearField>;
 
     fn create(
         apc: Apc<BabyBearField>,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        vm_config: VmConfig<I, B>,
+        vm_config: VmConfig<OriginalAirs<BabyBearField>, B>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths.total();

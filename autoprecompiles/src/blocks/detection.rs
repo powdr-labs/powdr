@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::blocks::{BasicBlock, Program};
 
+/// Collects basic blocks from a program
 pub fn collect_basic_blocks<T: Clone>(
     program: &Program<T>,
     labels: &BTreeSet<u32>,

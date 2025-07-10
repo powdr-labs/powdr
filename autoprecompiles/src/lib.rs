@@ -13,8 +13,7 @@ use powdr_expression::{
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::io::BufWriter;
-use std::iter::{once, Sum};
-use std::ops::Add;
+use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
@@ -252,91 +251,9 @@ pub struct VmConfig<'a, M, B> {
     pub bus_map: BusMap,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
-pub struct AirWidths {
-    pub preprocessed: usize,
-    pub main: usize,
-    pub log_up: usize,
-}
-
-impl Add for AirWidths {
-    type Output = AirWidths;
-    fn add(self, rhs: AirWidths) -> AirWidths {
-        AirWidths {
-            preprocessed: self.preprocessed + rhs.preprocessed,
-            main: self.main + rhs.main,
-            log_up: self.log_up + rhs.log_up,
-        }
-    }
-}
-
-impl Sum<AirWidths> for AirWidths {
-    fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
-        iter.fold(AirWidths::default(), Add::add)
-    }
-}
-
-impl AirWidths {
-    pub fn total(&self) -> usize {
-        self.preprocessed + self.main + self.log_up
-    }
-}
-
-impl std::fmt::Display for AirWidths {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
-            self.preprocessed + self.main + self.log_up,
-            self.preprocessed,
-            self.main,
-            self.log_up
-        )
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
-pub struct AirMetrics {
-    pub widths: AirWidths,
-    pub constraints: usize,
-    pub bus_interactions: usize,
-}
-
-impl Add for AirMetrics {
-    type Output = AirMetrics;
-
-    fn add(self, rhs: AirMetrics) -> AirMetrics {
-        AirMetrics {
-            widths: self.widths + rhs.widths,
-            constraints: self.constraints + rhs.constraints,
-            bus_interactions: self.bus_interactions + rhs.bus_interactions,
-        }
-    }
-}
-
-impl Sum<AirMetrics> for AirMetrics {
-    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
-        iter.fold(AirMetrics::default(), Add::add)
-    }
-}
-
-impl AirMetrics {
-    pub fn total_width(&self) -> usize {
-        self.widths.total()
-    }
-}
-
-pub enum AirMetricsType {
-    Powdr,
-    NonPowdr,
-}
-
 pub trait InstructionMachineHandler<T> {
     /// Returns the AIR for the given opcode.
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
-
-    /// Returns the metrics for the given opcode.
-    fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

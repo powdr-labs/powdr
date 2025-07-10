@@ -21,9 +21,11 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{AirWidths, InstructionMachineHandler, SymbolicMachine};
+use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
+use std::iter::Sum;
+use std::ops::Add;
 use std::ops::Deref;
 use std::sync::MutexGuard;
 
@@ -51,16 +53,6 @@ impl<P> InstructionMachineHandler<P> for OriginalAirs<P> {
                     .map(|(machine, _)| machine)
             })
     }
-
-    fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics> {
-        self.opcode_to_air
-            .get(&VmOpcode::from_usize(opcode))
-            .and_then(|air_name| {
-                self.air_name_to_machine
-                    .get(air_name)
-                    .map(|(_, metrics)| metrics)
-            })
-    }
 }
 
 impl<P: IntoOpenVm> OriginalAirs<P> {
@@ -84,6 +76,16 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
 
         self.opcode_to_air.insert(opcode, air_name);
         Ok(())
+    }
+
+    pub fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics> {
+        self.opcode_to_air
+            .get(&VmOpcode::from_usize(opcode))
+            .and_then(|air_name| {
+                self.air_name_to_machine
+                    .get(air_name)
+                    .map(|(_, metrics)| metrics)
+            })
     }
 
     pub fn allow_list(&self) -> BTreeSet<usize> {
@@ -382,6 +384,49 @@ pub fn symbolic_builder_with_degree(
     let config = config_from_perm(&perm, security_params);
     let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
+}
+
+#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+pub struct AirWidths {
+    pub preprocessed: usize,
+    pub main: usize,
+    pub log_up: usize,
+}
+
+impl Add for AirWidths {
+    type Output = AirWidths;
+    fn add(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocessed: self.preprocessed + rhs.preprocessed,
+            main: self.main + rhs.main,
+            log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+impl Sum<AirWidths> for AirWidths {
+    fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
+        iter.fold(AirWidths::default(), Add::add)
+    }
+}
+
+impl AirWidths {
+    pub fn total(&self) -> usize {
+        self.preprocessed + self.main + self.log_up
+    }
+}
+
+impl std::fmt::Display for AirWidths {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
+            self.preprocessed + self.main + self.log_up,
+            self.preprocessed,
+            self.main,
+            self.log_up
+        )
+    }
 }
 
 #[cfg(test)]

@@ -45,8 +45,10 @@ impl PgoConfig {
     }
 }
 
-pub trait Candidate<P, I, B>: Sized {
-    type JsonExport: Serialize + for<'de> Deserialize<'de> + Send + Sync;
+/// Trait for autoprecompile candidates.
+/// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
+pub trait Candidate<P, I, B>: Sized + KnapsackItem {
+    type JsonExport: Serialize + for<'de> Deserialize<'de> + Send;
 
     /// Try to create an autoprecompile candidate from a block.
     fn create(
@@ -64,10 +66,10 @@ pub trait Candidate<P, I, B>: Sized {
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<
-    C: KnapsackItem + Candidate<P, I, B> + Send + Sync,
+    C: Candidate<P, I, B> + Send,
     P: FieldElement,
-    I: InstructionMachineHandler<P> + Clone + Send + Sync,
-    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
+    I: InstructionMachineHandler<P> + Clone + Sync,
+    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
 >(
     mut blocks: Vec<BasicBlock<P>>,
     pgo_program_idx_count: HashMap<u32, u32>,
@@ -138,8 +140,8 @@ fn create_apcs_with_cell_pgo<
 
 fn create_apcs_with_instruction_pgo<
     P: FieldElement,
-    I: InstructionMachineHandler<P> + Clone + Send + Sync,
-    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
+    I: InstructionMachineHandler<P> + Clone + Sync,
+    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
 >(
     mut blocks: Vec<BasicBlock<P>>,
     pgo_program_idx_count: HashMap<u32, u32>,
@@ -182,8 +184,8 @@ fn create_apcs_with_instruction_pgo<
 
 fn create_apcs_with_no_pgo<
     P: FieldElement,
-    I: InstructionMachineHandler<P> + Clone + Send + Sync,
-    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
+    I: InstructionMachineHandler<P> + Clone + Sync,
+    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
 >(
     mut blocks: Vec<BasicBlock<P>>,
     config: &PowdrConfig,
@@ -206,10 +208,10 @@ fn create_apcs_with_no_pgo<
 }
 
 pub fn generate_apcs_with_pgo<
-    C: KnapsackItem + Candidate<P, I, B> + Send + Sync,
+    C: Candidate<P, I, B> + Send,
     P: FieldElement,
-    I: InstructionMachineHandler<P> + Clone + Send + Sync,
-    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
+    I: InstructionMachineHandler<P> + Clone + Sync,
+    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
 >(
     blocks: Vec<BasicBlock<P>>,
     config: &PowdrConfig,
@@ -244,8 +246,8 @@ pub fn generate_apcs_with_pgo<
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<
     P: FieldElement,
-    I: InstructionMachineHandler<P> + Clone + Send + Sync,
-    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
+    I: InstructionMachineHandler<P> + Clone + Sync,
+    B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
 >(
     blocks: Vec<BasicBlock<P>>,
     powdr_config: &PowdrConfig,
