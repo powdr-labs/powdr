@@ -1445,14 +1445,23 @@ mod tests {
     fn guest_machine_plonk() {
         let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        let machines = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
+        let metrics = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
             .unwrap()
             .air_metrics(AirMetricsType::Powdr);
-        assert_eq!(machines.len(), 1);
-        let m = &machines[0];
-        assert_eq!(m.widths.main, 26);
-        assert_eq!(m.constraints, 1);
-        assert_eq!(m.bus_interactions, 16);
+        assert_eq!(metrics.len(), 1);
+        let metrics = metrics.into_iter().sum::<AirMetrics>();
+        assert_eq!(
+            metrics,
+            AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 26,
+                    log_up: 20,
+                },
+                constraints: 1,
+                bus_interactions: 16,
+            }
+        );
     }
 
     #[test]
