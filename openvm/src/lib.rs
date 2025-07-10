@@ -562,6 +562,7 @@ impl AirMetrics {
     }
 }
 
+#[derive(Clone)]
 pub enum AirMetricsType {
     Powdr,
     NonPowdr,
@@ -1299,32 +1300,39 @@ mod tests {
         guest: &'a str,
         guest_apc: u64,
         guest_skip: u64,
-        width: usize,
-        constraints: usize,
-        bus_interactions: usize,
-        machine_length: usize,
+        metrics_type: Vec<AirMetricsType>,
+        metrics: Vec<AirMetrics>,
+        machine_count: Vec<usize>,
     }
-    fn test_machine(params: MachineTestParams) {
+
+    fn test_machine_compilation(params: MachineTestParams) {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = PowdrConfig::new(params.guest_apc, params.guest_skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let should_have_exported_apc_candidates =
             matches!(params.pgo_config, PgoConfig::Cell(_, _));
-        let machines = compile_guest(
+
+        let compiled_program = compile_guest(
             params.guest,
             GuestOptions::default(),
             config,
             params.pgo_config,
         )
-        .unwrap()
-        .air_metrics(AirMetricsType::Powdr);
-        assert_eq!(machines.len(), params.machine_length);
-        let m = &machines[0];
-        assert_eq!(
-            [m.widths.main, m.constraints, m.bus_interactions],
-            [params.width, params.constraints, params.bus_interactions]
-        );
+        .unwrap();
+
+        params
+            .metrics_type
+            .into_iter()
+            .zip_eq(params.metrics.into_iter().zip_eq(params.machine_count))
+            .for_each(
+                |(metrics_type, (expected_metrics_sum, expected_machine_count))| {
+                    let metrics = compiled_program.air_metrics(metrics_type);
+                    assert_eq!(metrics.len(), expected_machine_count);
+                    let metrics_sum = metrics.into_iter().sum::<AirMetrics>();
+                    assert_eq!(metrics_sum, expected_metrics_sum);
+                },
+            );
 
         // In Cell PGO, check that the apc candidates were persisted to disk
         let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
@@ -1358,25 +1366,35 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
 
-        test_machine(MachineTestParams {
+        let metrics_type = vec![AirMetricsType::Powdr];
+        let metrics = vec![AirMetrics {
+            widths: AirWidths {
+                preprocessed: 0,
+                main: 49,
+                log_up: 36,
+            },
+            constraints: 22,
+            bus_interactions: 31,
+        }];
+        let machine_count = vec![1];
+
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST,
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
-            width: 49,
-            constraints: 22,
-            bus_interactions: 31,
-            machine_length: 1,
+            metrics_type: metrics_type.clone(),
+            metrics: metrics.clone(),
+            machine_count: machine_count.clone(),
         });
-        test_machine(MachineTestParams {
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
             guest: GUEST,
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
-            width: 49,
-            constraints: 22,
-            bus_interactions: 31,
-            machine_length: 1,
+            metrics_type,
+            metrics,
+            machine_count,
         });
     }
 
@@ -1386,26 +1404,40 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin);
 
-        test_machine(MachineTestParams {
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST_SHA256,
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
-            width: 12494,
-            constraints: 3635,
-            bus_interactions: 10075,
-            machine_length: 10,
+            metrics_type: vec![AirMetricsType::Powdr],
+            metrics: vec![AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 14695,
+                    log_up: 12144,
+                },
+                constraints: 4143,
+                bus_interactions: 11692, // Bus interactions are not implemented yet
+            }],
+            machine_count: vec![10],
         });
 
-        test_machine(MachineTestParams {
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
             guest: GUEST_SHA256,
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
-            width: 12494,
-            constraints: 3635,
-            bus_interactions: 10075,
-            machine_length: 10,
+            metrics_type: vec![AirMetricsType::Powdr],
+            metrics: vec![AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 14675,
+                    log_up: 12124,
+                },
+                constraints: 4127,
+                bus_interactions: 11682, // Bus interactions are not implemented yet
+            }],
+            machine_count: vec![0],
         });
     }
 
@@ -1424,48 +1456,56 @@ mod tests {
     }
 
     #[test]
-    fn keccak_machine_pgo_mode() {
+    fn keccak_machine_pgo_modes() {
         // All three modes happen to create 1 APC for the same basic block
+        let metrics_type = vec![AirMetricsType::Powdr];
+        let metrics = vec![AirMetrics {
+            widths: AirWidths {
+                preprocessed: 0,
+                main: 2011,
+                log_up: 1788,
+            },
+            constraints: 166,
+            bus_interactions: 1783,
+        }];
+        let machine_count = vec![1];
+
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
-        test_machine(MachineTestParams {
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::None,
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
-            width: 2011,
-            constraints: 166,
-            bus_interactions: 1783,
-            machine_length: 1,
+            metrics_type: metrics_type.clone(),
+            metrics: metrics.clone(),
+            machine_count: machine_count.clone(),
         });
-        test_machine(MachineTestParams {
+
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
-            width: 2011,
-            constraints: 166,
-            bus_interactions: 1783,
-            machine_length: 1,
+            metrics_type: metrics_type.clone(),
+            metrics: metrics.clone(),
+            machine_count: machine_count.clone(),
         });
 
-        test_machine(MachineTestParams {
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
-            width: 2011,
-            constraints: 166,
-            bus_interactions: 1783,
-            machine_length: 1,
+            metrics_type,
+            metrics,
+            machine_count,
         });
     }
 
     #[test]
     fn keccak_machine_cell_pgo_max_columns() {
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
-
         const MAX_TOTAL_COLUMNS: usize = 10_000;
 
         let mut stdin = StdIn::default();
@@ -1473,20 +1513,7 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
-        let compiled_program = compile_guest(
-            GUEST_KECCAK,
-            GuestOptions::default(),
-            config,
-            PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)), // limit to 10_000 total columns
-        )
-        .unwrap();
-
-        let powdr_metrics = compiled_program.air_metrics(AirMetricsType::Powdr);
-
-        // Check all APC
-        assert_eq!(powdr_metrics.len(), 18); // Number of APC chips
-
-        let expected = AirMetrics {
+        let powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
                 main: 4824,
@@ -1495,24 +1522,26 @@ mod tests {
             constraints: 935,
             bus_interactions: 3826,
         };
-        let powdr_metrics_sum = powdr_metrics.into_iter().sum::<AirMetrics>();
-        assert_eq!(powdr_metrics_sum, expected);
 
-        // Check non-APC metrics
-        let non_powdr_metrics = compiled_program.air_metrics(AirMetricsType::NonPowdr);
-        assert_eq!(non_powdr_metrics.len(), 18); // Number of non-APC chips
-
-        let expected = AirMetrics {
+        let non_powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
-                preprocessed: 5,
+                preprocessed: 0,
                 main: 797,
                 log_up: 388,
             },
             constraints: 604,
             bus_interactions: 252,
         };
-        let non_powdr_metrics_sum = non_powdr_metrics.into_iter().sum::<AirMetrics>();
-        assert_eq!(non_powdr_metrics_sum, expected);
+
+        test_machine_compilation(MachineTestParams {
+            pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
+            guest: GUEST_KECCAK,
+            guest_apc: GUEST_KECCAK_APC_PGO_LARGE,
+            guest_skip: GUEST_KECCAK_SKIP,
+            metrics_type: vec![AirMetricsType::Powdr, AirMetricsType::NonPowdr],
+            metrics: vec![powdr_metrics_sum.clone(), non_powdr_metrics_sum.clone()],
+            machine_count: vec![18, 18], // Number of APC chips
+        });
 
         // Assert that total columns don't exceed the initial limit set
         let total_columns = (powdr_metrics_sum + non_powdr_metrics_sum).widths.total();
