@@ -241,6 +241,7 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
+#[derive(Clone)]
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
     pub instruction_machine_handler: &'a M,
