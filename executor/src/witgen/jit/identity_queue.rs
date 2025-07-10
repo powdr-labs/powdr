@@ -11,14 +11,16 @@ use powdr_ast::{
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_constraint_solver::{
-    grouped_expression::QuadraticSymbolicExpression,
     runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,
     variable_update::{UpdateKind, VariableUpdate},
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{data_structures::identity::Identity, jit::variable::MachineCallVariable};
+use crate::witgen::{
+    data_structures::identity::Identity,
+    jit::{variable::MachineCallVariable, QuadraticSymbolicExpression},
+};
 
 use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 
