@@ -504,9 +504,11 @@ pub fn compile_exe_with_elf(
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
+    let elf = powdr_riscv_elf::load_elf_from_buffer(elf);
     let compiled = customize(
         original_program,
-        &powdr_riscv_elf::load_elf_from_buffer(elf).text_labels,
+        elf.text_labels(),
+        elf.debug_info(),
         config,
         pgo_config,
     );

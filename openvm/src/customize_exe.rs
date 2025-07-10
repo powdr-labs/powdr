@@ -28,6 +28,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_autoprecompiles::{Apc, DegreeBound};
 use powdr_number::{BabyBearField, FieldElement};
+use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -103,6 +104,7 @@ pub fn customize(
         sdk_vm_config,
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
@@ -138,8 +140,13 @@ pub fn customize(
             .rev()
             .take(10)
         {
+            let name = debug_info
+                .symbols
+                .try_get_one_or_preceding(OPENVM_INIT_PC + block.start_idx as u32)
+                .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
+                .unwrap_or_default();
             tracing::debug!(
-                "Basic block (executed {count} times):\n{}",
+                "Basic block (executed {count} times), {name}:\n{}",
                 block.pretty_print(openvm_instruction_formatter)
             );
         }

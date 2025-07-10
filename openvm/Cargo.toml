@@ -63,6 +63,7 @@ struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.gi
 
 toml = "0.8.14"
 serde_json = "1.0.140"
+rustc-demangle = "0.1.25"
 
 [dev-dependencies]
 test-log = { version = "0.2.17", features = ["trace"] }
