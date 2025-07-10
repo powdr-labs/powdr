@@ -146,7 +146,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let apcs = generate_apcs_with_pgo::<OpenVmApcCandidate<_, _, _>, _, _, _>(
+    let apcs = generate_apcs_with_pgo::<OpenVmApcCandidate<_>, _, _, _>(
         blocks,
         &config.core,
         max_total_apc_columns,
@@ -285,18 +285,17 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 #[derive(Serialize, Deserialize)]
-struct OpenVmApcCandidate<P, I, B> {
+struct OpenVmApcCandidate<P> {
     apc: Apc<P>,
     execution_frequency: usize,
     width_before: usize,
     width_after: usize,
-    _phantom: std::marker::PhantomData<(I, B)>,
 }
 
 impl<
         I: InstructionMachineHandler<BabyBearField> + Clone + Send + Sync,
         B: BusInteractionHandler<BabyBearField> + Clone + Send + Sync + IsBusStateful<BabyBearField>,
-    > Candidate<BabyBearField, I, B> for OpenVmApcCandidate<BabyBearField, I, B>
+    > Candidate<BabyBearField, I, B> for OpenVmApcCandidate<BabyBearField>
 {
     type JsonExport = OpenVmApcCandidateJsonExport<BabyBearField>;
 
@@ -331,7 +330,6 @@ impl<
             execution_frequency,
             width_before,
             width_after,
-            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -374,14 +372,14 @@ struct OpenVmApcCandidateJsonExport<P> {
     apc_candidate_file: String,
 }
 
-impl<P, I, B> OpenVmApcCandidate<P, I, B> {
+impl<P> OpenVmApcCandidate<P> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
         self.width_before - self.width_after
     }
 }
 
-impl<P, I, B> KnapsackItem for OpenVmApcCandidate<P, I, B> {
+impl<P> KnapsackItem for OpenVmApcCandidate<P> {
     fn cost(&self) -> usize {
         self.width_after
     }
