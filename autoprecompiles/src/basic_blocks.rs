@@ -7,7 +7,7 @@ use crate::SymbolicInstructionStatement;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<T> {
-    // The index of the first instruction in this block in the original program.
+    /// The index of the first instruction in this block in the original program.
     pub start_idx: usize,
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
@@ -31,11 +31,11 @@ impl<T> BasicBlock<T> {
 
 /// Represents a symbolic program, which is a sequence of symbolic instructions
 pub struct Program<T> {
-    // The address of the first instruction in the program.
+    /// The address of the first instruction in the program.
     pub base_pc: u32,
-    // The step size between addresses of consecutive instructions.
+    /// The step size between addresses of consecutive instructions.
     pub pc_step: u32,
-    // The instructions in the program.
+    /// The instructions in the program.
     pub instructions: Vec<SymbolicInstructionStatement<T>>,
 }
 
