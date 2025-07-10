@@ -563,13 +563,21 @@ impl AirMetrics {
 }
 
 #[derive(Clone, Copy)]
-pub enum AirMetricsType {
+enum AirMetricsType {
     Powdr,
     NonPowdr,
 }
 
 impl CompiledProgram {
-    pub fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
+    pub fn powdr_air_metrics(&self) -> Vec<AirMetrics> {
+        self.air_metrics(AirMetricsType::Powdr)
+    }
+
+    pub fn non_powdr_air_metrics(&self) -> Vec<AirMetrics> {
+        self.air_metrics(AirMetricsType::NonPowdr)
+    }
+
+    fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
 
         inventory
@@ -1331,7 +1339,10 @@ mod tests {
                  expected_sum,
                  expected_machine_count,
              }| {
-                let metrics = compiled_program.air_metrics(*air_type);
+                let metrics = match air_type {
+                    AirMetricsType::Powdr => compiled_program.powdr_air_metrics(),
+                    AirMetricsType::NonPowdr => compiled_program.non_powdr_air_metrics(),
+                };
                 assert_eq!(metrics.len(), *expected_machine_count);
                 let metrics_sum = metrics.into_iter().sum::<AirMetrics>();
                 assert_eq!(metrics_sum, expected_sum.clone());
