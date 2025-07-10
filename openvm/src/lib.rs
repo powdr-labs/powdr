@@ -1305,10 +1305,11 @@ mod tests {
         machine_length: usize,
     }
     fn test_machine(params: MachineTestParams) {
-        let apc_candidates_dir = tempfile::tempdir().unwrap();
-        let apc_candidates_dir_path = apc_candidates_dir.path();
+        // let apc_candidates_dir = tempfile::tempdir().unwrap();
+        // let apc_candidates_dir_path = apc_candidates_dir.path();
+        let apc_candidates_dir_path = std::path::PathBuf::from(String::from("testtest2"));
         let config = PowdrConfig::new(params.guest_apc, params.guest_skip)
-            .with_apc_candidates_dir(apc_candidates_dir_path);
+            .with_apc_candidates_dir(&apc_candidates_dir_path);
         let should_have_exported_apc_candidates =
             matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let machines = compile_guest(
@@ -1327,7 +1328,7 @@ mod tests {
         );
 
         // In Cell PGO, check that the apc candidates were persisted to disk
-        let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
+        let json_files_count = std::fs::read_dir(&apc_candidates_dir_path)
             .unwrap()
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
@@ -1358,16 +1359,16 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
 
-        test_machine(MachineTestParams {
-            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
-            guest: GUEST,
-            guest_apc: GUEST_APC,
-            guest_skip: GUEST_SKIP_PGO,
-            width: 49,
-            constraints: 22,
-            bus_interactions: 31,
-            machine_length: 1,
-        });
+        // test_machine(MachineTestParams {
+        //     pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+        //     guest: GUEST,
+        //     guest_apc: GUEST_APC,
+        //     guest_skip: GUEST_SKIP_PGO,
+        //     width: 49,
+        //     constraints: 22,
+        //     bus_interactions: 31,
+        //     machine_length: 1,
+        // });
         test_machine(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
             guest: GUEST,

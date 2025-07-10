@@ -4,7 +4,7 @@ use std::io::BufWriter;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, AirWidths, OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
@@ -482,8 +482,8 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 struct ApcCandidate<P, T> {
     block_with_apc: BlockWithApc<P, T>,
     execution_frequency: usize,
-    width_before: usize,
-    width_after: usize,
+    widths_before: AirWidths,
+    widths_after: AirWidths,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -494,10 +494,10 @@ struct ApcCandidateJsonExport {
     execution_frequency: usize,
     // original instructions
     original_instructions: Vec<Instruction<OpenVmField<BabyBearField>>>,
-    // total width before optimisation
-    total_width_before: usize,
-    // total width after optimisation
-    total_width_after: usize,
+    // width before optimisation
+    widths_before: AirWidths,
+    // width after optimisation
+    widths_after: AirWidths,
     // path to the apc candidate file
     apc_candidate_file: String,
 }
@@ -515,16 +515,16 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         let apc = generate_autoprecompile(&block, airs, opcode, bus_map, degree_bound).ok()?;
 
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
-        let width_after = apc_metrics.widths.total();
+        let widths_after = apc_metrics.widths;
 
-        let width_before: usize = block
+        let widths_before: AirWidths = block
             .statements
             .iter()
             .map(|instr| {
                 airs.get_instruction_metrics(instr.opcode.as_usize())
                     .unwrap()
                     .widths
-                    .total()
+                    .clone()
             })
             .sum();
 
@@ -535,8 +535,8 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
         let candidate = Self {
             block_with_apc: BlockWithApc { opcode, block, apc },
             execution_frequency,
-            width_before,
-            width_after,
+            widths_before,
+            widths_after,
         };
 
         Some(candidate)
@@ -556,8 +556,8 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
             opcode: self.block_with_apc.opcode,
             execution_frequency: self.execution_frequency,
             original_instructions: self.block_with_apc.block.statements.clone(),
-            total_width_before: self.width_before,
-            total_width_after: self.width_after,
+            widths_before: self.widths_before.clone(),
+            widths_after: self.widths_after.clone(),
             apc_candidate_file: ser_path.display().to_string(),
         }
     }
@@ -566,13 +566,13 @@ impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {
 impl<P, T> ApcCandidate<P, T> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
-        self.width_before - self.width_after
+        self.widths_before.total() - self.widths_after.total()
     }
 }
 
 impl<P, T> KnapsackItem for ApcCandidate<P, T> {
     fn cost(&self) -> usize {
-        self.width_after
+        self.widths_after.total()
     }
 
     fn value(&self) -> usize {

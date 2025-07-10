@@ -12,11 +12,12 @@ def load_apc_data(json_path):
         data = json.load(f)
     
     return pd.DataFrame([{
-        'effectiveness': item['total_width_before'] / item['total_width_after'],
-        'instructions': len(item['original_instructions']),
-        'frequency': item['execution_frequency'],
-        'total_width_before': item['total_width_before'],
-        'software_version_cells': item['total_width_before'] * item['execution_frequency']
+        'effectiveness': (wb := sum(item['widths_before'].values())) 
+                         / sum(item['widths_after'].values()),
+        'instructions':         len(item['original_instructions']),
+        'frequency':            item['execution_frequency'],
+        'total_width_before':   wb,
+        'software_version_cells': wb * item['execution_frequency']
     } for item in data])
 
 def weighted_quantile(values, weights, quantile):
