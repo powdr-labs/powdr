@@ -38,10 +38,6 @@ use crate::{
 
 pub const OPENVM_DEGREE_BOUND: usize = 5;
 
-// TODO: read this from program
-const OPENVM_INIT_PC: u32 = 0x0020_0800;
-const OPENVM_PC_STEP: u32 = 4;
-
 pub const POWDR_OPCODE: usize = 0x10ff;
 
 use crate::{PgoConfig, PowdrConfig};
@@ -103,7 +99,12 @@ pub fn customize(
 
     let opcodes_allowlist = airs.allow_list();
 
-    let labels = add_extra_targets(&exe.program, labels.clone());
+    let labels = add_extra_targets(
+        &exe.program,
+        labels.clone(),
+        exe.program.pc_base,
+        exe.program.step,
+    );
 
     let program = SymbolicProgram::new(
         exe.program
@@ -120,8 +121,8 @@ pub fn customize(
                 .collect(),
             })
             .collect_vec(),
-        OPENVM_INIT_PC,
-        OPENVM_PC_STEP,
+        exe.program.pc_base,
+        exe.program.step,
     );
 
     let vm_config = VmConfig {
@@ -266,6 +267,8 @@ pub struct BasicBlock<F> {
 fn add_extra_targets<F: PrimeField32>(
     program: &Program<F>,
     mut labels: BTreeSet<u32>,
+    base_pc: u32,
+    pc_step: u32,
 ) -> BTreeSet<u32> {
     let branch_opcodes_bigint = branch_opcodes_bigint_set();
     let new_labels = program
@@ -274,7 +277,7 @@ fn add_extra_targets<F: PrimeField32>(
         .enumerate()
         .filter_map(|(i, instr)| {
             let instr = instr.as_ref().unwrap().0.clone();
-            let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
+            let adjusted_pc = base_pc + (i as u32) * pc_step;
             let op = instr.opcode.as_usize();
             branch_opcodes_bigint
                 .contains(&op)

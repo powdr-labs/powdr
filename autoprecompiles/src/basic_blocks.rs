@@ -1,11 +1,13 @@
 use std::collections::BTreeSet;
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::SymbolicInstructionStatement;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SymbolicBlock<T> {
+    // The index of the first instruction in this block in the original program.
     pub start_idx: usize,
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
@@ -21,15 +23,19 @@ impl<T> SymbolicBlock<T> {
                 .iter()
                 .enumerate()
                 .map(|(i, instr)| format!("   instr {i:>3}:   {}", instr_formatter(instr)))
-                .collect::<Vec<_>>()
-                .join("\n")
+                .format("\n")
+                .to_string()
             + "\n])"
     }
 }
 
+/// Represents a symbolic program, which is a sequence of symbolic instructions
 pub struct SymbolicProgram<T> {
+    // The address of the first instruction in the program.
     pub base_pc: u32,
+    // The step size between addresses of consecutive instructions.
     pub pc_step: u32,
+    // The instructions in the program.
     pub instructions: Vec<SymbolicInstructionStatement<T>>,
 }
 
