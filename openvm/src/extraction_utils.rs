@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, IntoOpenVm, SpecializedExecutor};
+use crate::{AirMetrics, IntoOpenVm, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -346,8 +346,7 @@ pub fn get_constraints(
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
-    let app_log_blow_up = 2;
-    let max_degree = (1 << app_log_blow_up) + 1;
+    let max_degree = (1 << APP_LOG_BLOWUP) + 1;
 
     let main = air.width();
 
@@ -432,6 +431,8 @@ impl std::fmt::Display for AirWidths {
 
 #[cfg(test)]
 mod tests {
+    use crate::APP_LOG_BLOWUP;
+
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
     use openvm_bigint_circuit::Int256;
@@ -444,13 +445,11 @@ mod tests {
     #[test]
     fn test_get_bus_map() {
         // Adapted from openvm-reth-benchmark for a config which has a lot of extensions
-
-        let app_log_blowup = 2;
         let use_kzg_intrinsics = true;
 
         let system_config = SystemConfig::default()
             .with_continuations()
-            .with_max_constraint_degree((1 << app_log_blowup) + 1)
+            .with_max_constraint_degree((1 << APP_LOG_BLOWUP) + 1)
             .with_public_values(32);
         let int256 = Int256::default();
         let bn_config = PairingCurve::Bn254.curve_config();

@@ -538,6 +538,8 @@ pub struct AirMetrics {
     pub bus_interactions: usize,
 }
 
+const APP_LOG_BLOWUP: usize = 2;
+
 impl Add for AirMetrics {
     type Output = AirMetrics;
 
@@ -634,8 +636,7 @@ pub fn prove(
     let sdk = Sdk::default();
 
     // Set app configuration
-    let app_log_blowup = 2;
-    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup);
+    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Commit the exe
@@ -647,7 +648,7 @@ pub fn prove(
     if mock {
         tracing::info!("Checking constraints and witness in Mock prover...");
         let engine = BabyBearPoseidon2Engine::new(
-            FriParameters::standard_with_100_bits_conjectured_security(app_log_blowup),
+            FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP),
         );
         let vm = VirtualMachine::new(engine, vm_config.clone());
         let pk = vm.keygen();
