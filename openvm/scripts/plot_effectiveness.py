@@ -15,7 +15,7 @@ def load_apc_data(json_path):
     return pd.DataFrame([{
         'opcode': item['opcode'],
         'effectiveness': item['total_width_before'] / item['total_width_after'],
-        'instructions': len(item['original_instructions']),
+        'instructions': len(item['original_block']['statements']),
         'software_version_cells': item['total_width_before'] * item['execution_frequency'],
         'total_width_before': item['total_width_before'],
         'total_width_after': item['total_width_after']
