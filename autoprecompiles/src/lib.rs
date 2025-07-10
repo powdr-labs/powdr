@@ -1,5 +1,6 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
+pub use basic_blocks::SymbolicBlock;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -19,6 +20,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+pub mod basic_blocks;
 mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -30,12 +32,6 @@ pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SymbolicBlock<T> {
-    pub start_idx: usize,
-    pub statements: Vec<SymbolicInstructionStatement<T>>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
