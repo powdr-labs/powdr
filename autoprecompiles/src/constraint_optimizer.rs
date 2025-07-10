@@ -3,8 +3,8 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 use inliner::DegreeBound;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler, grouped_expression::QuadraticSymbolicExpression,
-    inliner, journaling_constraint_system::JournalingConstraintSystem, solver::solve_system,
+    constraint_system::BusInteractionHandler, grouped_expression::GroupedExpression, inliner,
+    journaling_constraint_system::JournalingConstraintSystem, solver::solve_system,
 };
 use powdr_number::FieldElement;
 
@@ -27,7 +27,6 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Panics if the solver fails.
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
-/// - Calls `simplify_expression()` on the resulting expressions.
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
@@ -138,7 +137,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
-    let zero = QuadraticSymbolicExpression::zero();
+    let zero = GroupedExpression::zero();
     constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
     constraint_system
         .retain_bus_interactions(|bus_interaction| bus_interaction.multiplicity != zero);

@@ -1,36 +1,21 @@
 #!/usr/bin/env python3
 
-import sys
-import json
 import argparse
 from collections import OrderedDict
 import pandas as pd
+from metrics_utils import load_metrics_dataframes, is_normal_instruction_air
 
 def extract_metrics(filename):
-    with open(filename) as f:
-        metrics_json = json.load(f)
+    app, leaf, internal = load_metrics_dataframes(filename)
     metrics = OrderedDict()
-
-    entries = [
-        dict(c["labels"]) | { "metric": c["metric"], "value": c["value"] }
-        for c in metrics_json["counter"] + metrics_json["gauge"]
-    ]
-
-    df = pd.DataFrame(entries)
-
-    # "group" has different values if coming from reth benchmark or the powdr cli
-    app = df[df["group"].fillna('').str.startswith("app_proof")]
-    if len(app) == 0:
-        app = df[df["group"].fillna('').str.startswith("reth")]
-    if len(app) == 0:
-        print("Invalid metrics.json", file=sys.stderr)
-        exit(1)
-
-    leaf = df[df["group"].fillna('').str.startswith("leaf")]
-    internal = df[df["group"].fillna('').str.startswith("internal")]
 
     powdr_air = app[app["air_name"].fillna('').str.startswith("PowdrAir")]
     non_powdr_air = app[~app["air_name"].fillna('').str.startswith("PowdrAir")]
+    
+    # Split non_powdr_air into normal instructions and openvm precompiles
+    is_normal_instruction = non_powdr_air["air_name"].fillna('').apply(is_normal_instruction_air)
+    normal_instruction_air = non_powdr_air[is_normal_instruction]
+    openvm_precompile_air = non_powdr_air[~is_normal_instruction]
 
     metrics["filename"] = filename
 
@@ -47,11 +32,14 @@ def extract_metrics(filename):
     metrics["leaf_proof_time_ms"] = pd.to_numeric(leaf[leaf["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
     metrics["inner_recursion_proof_time_ms"] = pd.to_numeric(internal[internal["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
 
-    metrics["non_powdr_cells"] = pd.to_numeric(non_powdr_air[non_powdr_air["metric"] == "cells"]["value"]).sum()
-    metrics["powdr_cells"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "cells"]["value"]).sum()
-    # Not sure why the following equality doesn't always hold:
-    # assert(metrics["powdr_cells"] == metrics["app_proof_cells"] - metrics["non_powdr_cells"])
-    metrics["non_powdr_ratio"] = metrics["non_powdr_cells"] / metrics["app_proof_cells"]
+    normal_instruction_cells = pd.to_numeric(normal_instruction_air[normal_instruction_air["metric"] == "cells"]["value"]).sum()
+    openvm_precompile_cells = pd.to_numeric(openvm_precompile_air[openvm_precompile_air["metric"] == "cells"]["value"]).sum()
+    powdr_cells = pd.to_numeric(powdr_air[powdr_air["metric"] == "cells"]["value"]).sum()
+    assert(metrics["app_proof_cells"] == powdr_cells + normal_instruction_cells + openvm_precompile_cells)
+
+    metrics["normal_instruction_ratio"] = normal_instruction_cells / metrics["app_proof_cells"]
+    metrics["openvm_precompile_ratio"] = openvm_precompile_cells / metrics["app_proof_cells"]
+    metrics["powdr_ratio"] = powdr_cells / metrics["app_proof_cells"]
 
     metrics["powdr_rows"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "rows"]["value"]).sum()
 

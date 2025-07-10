@@ -1,9 +1,9 @@
 use powdr_number::GoldilocksField;
 
-use crate::grouped_expression::QuadraticSymbolicExpression;
+use crate::{grouped_expression::GroupedExpression, symbolic_expression::SymbolicExpression};
 
 pub type Var = &'static str;
-pub type Qse = QuadraticSymbolicExpression<GoldilocksField, Var>;
+pub type Qse = GroupedExpression<SymbolicExpression<GoldilocksField, Var>, Var>;
 
 pub fn var(name: Var) -> Qse {
     Qse::from_unknown_variable(name)

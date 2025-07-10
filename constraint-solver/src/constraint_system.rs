@@ -1,19 +1,16 @@
 use crate::{
-    effect::EffectImpl,
+    effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
-    symbolic_expression::SymbolicExpression,
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
-pub type ConstraintSystem<T, V> = ConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
-
 /// Description of a constraint system.
 #[derive(Clone)]
-pub struct ConstraintSystemGeneric<T, V> {
+pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
     /// Bus interactions, which can further restrict variables.
@@ -21,18 +18,16 @@ pub struct ConstraintSystemGeneric<T, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
 }
 
-impl<T, V> Default for ConstraintSystemGeneric<T, V> {
+impl<T, V> Default for ConstraintSystem<T, V> {
     fn default() -> Self {
-        ConstraintSystemGeneric {
+        ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
         }
     }
 }
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
-    for ConstraintSystemGeneric<T, V>
-{
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -50,7 +45,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
     }
 }
 
-impl<T: RuntimeConstant, V> ConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
         Box::new(
             self.algebraic_constraints
@@ -84,7 +79,7 @@ impl<T: RuntimeConstant, V> ConstraintSystemGeneric<T, V> {
 
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
-    pub fn extend(&mut self, system: ConstraintSystemGeneric<T, V>) {
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
@@ -174,7 +169,7 @@ impl<
         &self,
         bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
         range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Result<Vec<EffectImpl<T, V>>, ViolatesBusRules> {
+    ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
@@ -192,7 +187,7 @@ impl<
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    (!rc.is_unconstrained()).then(|| EffectImpl::RangeConstraint(var.clone(), rc))
+                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
             })
             .collect())

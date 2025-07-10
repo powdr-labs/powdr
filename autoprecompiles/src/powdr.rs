@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::iter::from_fn;
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -74,7 +73,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
         .collect()
 }
 
-pub trait UniqueReferences<'a, T: 'a> {
+pub(crate) trait UniqueReferences<'a, T: 'a> {
     /// Returns an iterator over the unique references
     fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference>;
 }
@@ -95,52 +94,63 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
     }
 }
 
-pub fn reassign_ids<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    mut curr_id: u64,
+/// Globalizes the references in the machine by appending a suffix to their names
+/// and offsetting their IDs to start from `curr_id`.
+/// Returns:
+/// - The updated `next_global_id`.
+/// - The substitutions, mapping the local reference IDs to the global ones.
+/// - The updated machine with globalized references.
+pub fn globalize_references<T: FieldElement>(
+    machine: SymbolicMachine<T>,
+    mut next_global_id: u64,
     suffix: usize,
 ) -> (u64, Vec<u64>, SymbolicMachine<T>) {
-    // Build a mapping from local columns to global columns
-    let subs: BTreeMap<AlgebraicReference, AlgebraicReference> = machine
-        .unique_references()
-        // zip with increasing ids, mutating curr_id
-        .zip(from_fn(|| {
-            let id = curr_id;
-            curr_id += 1;
-            Some(id)
-        }))
-        .map(|(local_column, id)| {
-            let global_column = AlgebraicReference {
-                name: Arc::new(format!("{}_{}", local_column.name, suffix)),
-                id,
-            };
-            (local_column, global_column)
-        })
-        .collect();
+    let unique_reference_ids = machine.unique_references().map(|r| r.id).collect_vec();
+    let machine_size = unique_reference_ids.len() as u64;
+    assert_eq!(
+        *unique_reference_ids.iter().max().unwrap(),
+        machine_size - 1,
+        "The reference ids must be contiguous"
+    );
 
-    // Update the machine with the new global column names
+    let machine = globalize_reference_names(machine, suffix);
+    let machine = offset_reference_ids(machine, next_global_id);
+
+    let subs = (next_global_id..(next_global_id + machine_size)).collect::<Vec<_>>();
+    next_global_id += machine_size;
+    (next_global_id, subs, machine)
+}
+
+/// Globalizes the names of references in the machine by appending a suffix.
+fn globalize_reference_names<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    suffix: usize,
+) -> SymbolicMachine<T> {
+    // Allocate a new string for each *unique* reference in the machine
+    let globalized_name = |name| Arc::new(format!("{name}_{suffix}"));
+    let name_by_id = machine
+        .unique_references()
+        .map(|reference| (reference.id, globalized_name(reference.name)))
+        .collect::<BTreeMap<_, _>>();
+
+    // Update the names
     machine.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
-            let new_col = subs.get(r).unwrap().clone();
-            r.id = new_col.id;
-            r.name = new_col.name.clone();
+            r.name = name_by_id.get(&r.id).unwrap().clone();
         }
     });
 
-    let subs: BTreeMap<_, _> = subs.into_iter().map(|(k, v)| (k.id, v.id)).collect();
+    machine
+}
 
-    let poly_id_min = *subs.keys().min().unwrap();
-    let poly_id_max = *subs.keys().max().unwrap();
-    assert_eq!(
-        poly_id_max - poly_id_min,
-        subs.len() as u64 - 1,
-        "The poly_id must be contiguous"
-    );
-
-    // Represent the substitutions as a single vector of the target poly_ids in increasing order of the source poly_ids
-    let subs = (0..subs.len())
-        .map(|i| *subs.get(&(poly_id_min + i as u64)).unwrap())
-        .collect();
-
-    (curr_id, subs, machine)
+fn offset_reference_ids<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    offset: u64,
+) -> SymbolicMachine<T> {
+    machine.pre_visit_expressions_mut(&mut |e| {
+        if let AlgebraicExpression::Reference(r) = e {
+            r.id += offset;
+        }
+    });
+    machine
 }

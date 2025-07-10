@@ -1,13 +1,10 @@
-use std::collections::BTreeMap;
-
-use super::simplify_expression;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    expression::{AlgebraicExpression, AlgebraicReference},
-    powdr, BusMap, BusType, InstructionMachineHandler, PcLookupBusInteraction,
-    SymbolicBusInteraction, SymbolicConstraint, SymbolicInstructionStatement, SymbolicMachine,
+    expression::AlgebraicExpression, powdr, BusMap, BusType, InstructionMachineHandler,
+    PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicInstructionStatement, SymbolicMachine,
 };
 
 pub fn statements_to_symbolic_machine<T: FieldElement>(
@@ -26,7 +23,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .unwrap()
             .clone();
 
-        let (next_global_idx, subs, machine) = powdr::reassign_ids(machine, global_idx, i);
+        let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;
 
         let pc_lookup: PcLookupBusInteraction<T> = machine
@@ -42,17 +39,19 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .exactly_one()
             .expect("Expected single pc lookup");
 
-        let mut sub_map: BTreeMap<AlgebraicReference, AlgebraicExpression<T>> = Default::default();
         let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
-        let is_valid: AlgebraicExpression<T> = exec_receive(
+        // To simplify constraint solving, we constrain `is_valid` to be 1, which effectively
+        // removes the column. The optimized precompile will then have to be guarded by a new
+        // `is_valid` column.
+        let minus_is_valid: AlgebraicExpression<T> = exec_receive(
             &machine,
             bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap(),
         )
         .mult
         .clone();
         let one = AlgebraicExpression::Number(1u64.into());
-        local_constraints.push((is_valid.clone() + one).into());
+        local_constraints.push((minus_is_valid.clone() + one).into());
 
         // Constrain the opcode expression to equal the actual opcode.
         let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
@@ -65,46 +64,19 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .zip_eq(&pc_lookup.args)
             .for_each(|(instr_arg, pc_arg)| {
                 let arg = AlgebraicExpression::Number(*instr_arg);
-                match pc_arg {
-                    AlgebraicExpression::Reference(arg_ref) => {
-                        sub_map.insert(arg_ref.clone(), arg);
-                    }
-                    AlgebraicExpression::BinaryOperation(_expr) => {
-                        local_constraints.push((arg - pc_arg.clone()).into());
-                    }
-                    AlgebraicExpression::UnaryOperation(_expr) => {
-                        local_constraints.push((arg - pc_arg.clone()).into());
-                    }
-                    _ => {}
-                }
+                local_constraints.push((arg - pc_arg.clone()).into());
             });
 
-        let local_identities = machine
-            .constraints
-            .iter()
-            .chain(&local_constraints)
-            .map(|expr| {
-                let mut expr = expr.expr.clone();
-                powdr::substitute_algebraic(&mut expr, &sub_map);
-                expr = simplify_expression(expr);
-                SymbolicConstraint { expr }
-            })
-            .collect::<Vec<_>>();
-
-        constraints.extend(local_identities);
-
-        for bus_int in &machine.bus_interactions {
-            let mut link = bus_int.clone();
-            link.args
-                .iter_mut()
-                .chain(std::iter::once(&mut link.mult))
-                .for_each(|e| {
-                    powdr::substitute_algebraic(e, &sub_map);
-                    *e = simplify_expression(e.clone());
-                });
-            bus_interactions.push(link);
-        }
-
+        constraints.extend(
+            machine
+                .constraints
+                .iter()
+                .chain(&local_constraints)
+                .map(|expr| SymbolicConstraint {
+                    expr: expr.expr.clone(),
+                }),
+        );
+        bus_interactions.extend(machine.bus_interactions.iter().cloned());
         col_subs.push(subs);
     }
 

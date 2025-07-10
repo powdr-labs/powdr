@@ -12,5 +12,11 @@ mod single_step_processor;
 mod variable;
 pub(crate) mod witgen_inference;
 
+type QuadraticSymbolicExpression<T, V> =
+    powdr_constraint_solver::grouped_expression::GroupedExpression<
+        powdr_constraint_solver::symbolic_expression::SymbolicExpression<T, V>,
+        V,
+    >;
+
 #[cfg(test)]
 pub(crate) mod test_util;

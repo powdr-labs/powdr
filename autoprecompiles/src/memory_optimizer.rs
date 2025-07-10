@@ -5,9 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
-use powdr_constraint_solver::grouped_expression::{
-    QuadraticSymbolicExpression, RangeConstraintProvider,
-};
+use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
 use powdr_constraint_solver::utils::possible_concrete_values;
@@ -82,12 +80,12 @@ enum MemoryOp {
 struct MemoryBusInteraction<T: FieldElement, V> {
     op: MemoryOp,
     address_space: T,
-    addr: QuadraticSymbolicExpression<T, V>,
-    data: Vec<QuadraticSymbolicExpression<T, V>>,
+    addr: GroupedExpression<T, V>,
+    data: Vec<GroupedExpression<T, V>>,
     #[allow(dead_code)]
     // TODO: The timestamp is currently ignored. At some point, we should use it
     // to assert that the bus interactions are in the right order.
-    timestamp: QuadraticSymbolicExpression<T, V>,
+    timestamp: GroupedExpression<T, V>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V> {
@@ -98,7 +96,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
     /// (usually because the multiplicity is not -1 or 1).
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
     fn try_from_bus_interaction(
-        bus_interaction: &BusInteraction<QuadraticSymbolicExpression<T, V>>,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
         memory_bus_id: u64,
     ) -> Result<Option<Self>, ()> {
         match bus_interaction.bus_id.try_to_number() {
@@ -135,19 +133,17 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
-) -> (Vec<usize>, Vec<QuadraticSymbolicExpression<T, V>>) {
+) -> (Vec<usize>, Vec<GroupedExpression<T, V>>) {
     let address_comparator = MemoryAddressComparator::new(system, memory_bus_id);
-    let mut new_constraints: Vec<QuadraticSymbolicExpression<T, V>> = Vec::new();
+    let mut new_constraints: Vec<GroupedExpression<T, V>> = Vec::new();
 
     // Address across all memory types.
-    type GlobalAddress<T, V> = (T, QuadraticSymbolicExpression<T, V>);
+    type GlobalAddress<T, V> = (T, GroupedExpression<T, V>);
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<
-        GlobalAddress<T, V>,
-        (usize, Vec<QuadraticSymbolicExpression<_, _>>),
-    > = Default::default();
+    let mut memory_contents: HashMap<GlobalAddress<T, V>, (usize, Vec<GroupedExpression<_, _>>)> =
+        Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -204,8 +200,7 @@ fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone +
     (to_remove, new_constraints)
 }
 
-type BooleanExtractedExpression<T, V> =
-    QuadraticSymbolicExpression<T, boolean_extractor::Variable<V>>;
+type BooleanExtractedExpression<T, V> = GroupedExpression<T, boolean_extractor::Variable<V>>;
 struct MemoryAddressComparator<T: FieldElement, V> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
@@ -249,8 +244,8 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
     /// `a - b` cannot be 0.
     pub fn are_addrs_known_to_be_different(
         &self,
-        a: &(T, QuadraticSymbolicExpression<T, V>),
-        b: &(T, QuadraticSymbolicExpression<T, V>),
+        a: &(T, GroupedExpression<T, V>),
+        b: &(T, GroupedExpression<T, V>),
         rc: impl RangeConstraintProvider<T, V> + Clone,
     ) -> bool {
         if a.0 != b.0 {
@@ -271,9 +266,9 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
 /// according to the given constraint system.
 /// Returns at least one equivalent expression (in the worst case, the expression itself).
 fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
-    expression: &QuadraticSymbolicExpression<T, V>,
+    expression: &GroupedExpression<T, V>,
     constraints: &IndexedConstraintSystem<T, V>,
-) -> Vec<QuadraticSymbolicExpression<T, V>> {
+) -> Vec<GroupedExpression<T, V>> {
     if expression.is_quadratic() {
         // This case is too complicated.
         return vec![expression.clone()];
@@ -298,7 +293,7 @@ fn find_equivalent_expressions<T: FieldElement, V: Clone + Ord + Hash + Eq + Dis
 
 /// Returns true if we can prove that `expr` cannot be 0.
 fn is_known_to_be_nonzero<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
-    expr: &QuadraticSymbolicExpression<T, V>,
+    expr: &GroupedExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     possible_concrete_values(expr, range_constraints, 20)
@@ -310,11 +305,20 @@ mod tests {
     use super::*;
 
     use powdr_constraint_solver::{
-        grouped_expression::NoRangeConstraints,
-        range_constraint::RangeConstraint,
-        test_utils::{constant, var},
+        grouped_expression::NoRangeConstraints, range_constraint::RangeConstraint,
     };
     use powdr_number::GoldilocksField;
+
+    type Var = &'static str;
+    type Qse = GroupedExpression<GoldilocksField, Var>;
+
+    fn var(name: Var) -> Qse {
+        Qse::from_unknown_variable(name)
+    }
+
+    fn constant(value: u64) -> Qse {
+        Qse::from_number(GoldilocksField::from(value))
+    }
 
     #[test]
     fn is_known_to_by_nonzero() {
