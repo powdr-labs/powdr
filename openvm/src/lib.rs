@@ -1534,7 +1534,7 @@ mod tests {
 
         let non_powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
-                preprocessed: 0,
+                preprocessed: 5,
                 main: 797,
                 log_up: 388,
             },
