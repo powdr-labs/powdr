@@ -941,6 +941,12 @@ mod tests {
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
+    const GUEST_ECC_OP_ITER_0: u32 = 0;
+    const GUEST_ECC_OP: &str = "guest-ecc-op";
+    const GUEST_ECC_OP_APC_PGO: u64 = 10;
+    //const GUEST_ECC_OP_APC_PGO_LARGE: u64 = 50;
+    const GUEST_ECC_OP_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1282,6 +1288,24 @@ mod tests {
         );
     }
 
+    #[test]
+    //#[ignore = "Too long"]
+    fn ecc_op_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_OP_ITER_0);
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_ECC_OP,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
     // #[test]
     // #[ignore = "Too much RAM"]
     // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
