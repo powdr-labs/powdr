@@ -4,6 +4,7 @@ pub use basic_blocks::BasicBlock;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
+pub use pgo::PgoConfig;
 use powdr::UniqueReferences;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
@@ -29,6 +30,7 @@ pub mod expression;
 pub mod expression_conversion;
 pub mod memory_optimizer;
 pub mod optimizer;
+pub mod pgo;
 pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;

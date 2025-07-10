@@ -3,7 +3,7 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrConfig};
+use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrOpenVmConfig};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use std::{io, path::PathBuf};
@@ -129,9 +129,12 @@ fn run_command(command: Commands) {
             input,
             apc_candidates_dir,
         } => {
-            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config =
+                PowdrOpenVmConfig::default_plonk(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
-                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+                powdr_config.core = powdr_config
+                    .core
+                    .with_apc_candidates_dir(apc_candidates_dir);
             }
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let program =
@@ -148,9 +151,12 @@ fn run_command(command: Commands) {
             input,
             apc_candidates_dir,
         } => {
-            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config =
+                PowdrOpenVmConfig::default_plonk(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
-                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+                powdr_config.core = powdr_config
+                    .core
+                    .with_apc_candidates_dir(apc_candidates_dir);
             }
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let program =
@@ -170,9 +176,12 @@ fn run_command(command: Commands) {
             metrics,
             apc_candidates_dir,
         } => {
-            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config =
+                PowdrOpenVmConfig::default_plonk(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
-                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+                powdr_config.core = powdr_config
+                    .core
+                    .with_apc_candidates_dir(apc_candidates_dir);
             }
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let program =
