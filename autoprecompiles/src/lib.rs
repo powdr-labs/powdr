@@ -11,7 +11,9 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::io::BufWriter;
 use std::iter::once;
+use std::path::Path;
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
@@ -288,6 +290,7 @@ pub fn build<
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
+    apc_candidates_dir_path: Option<&Path>,
 ) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
         &block.statements,
@@ -306,12 +309,25 @@ pub fn build<
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
 
-    Ok(Apc {
+    let apc = Apc {
         block,
         machine,
         subs,
         opcode,
-    })
+    };
+
+    if let Some(path) = apc_candidates_dir_path {
+        let ser_path = path
+            .join(format!("apc_candidate_{opcode}"))
+            .with_extension("cbor");
+        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+        let file =
+            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
+        let writer = BufWriter::new(file);
+        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+    }
+
+    Ok(apc)
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
