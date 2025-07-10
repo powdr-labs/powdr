@@ -49,7 +49,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, get_air_metrics, AirWidths, OriginalVmConfig, load_apc_candidates_summary};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::traits::OpenVmField;
@@ -569,29 +569,53 @@ pub enum AirMetricsType {
 }
 
 impl CompiledProgram {
-    pub fn air_metrics(&self, metrics_type: AirMetricsType) -> Vec<AirMetrics> {
+    pub fn air_metrics(&self, metrics_type: AirMetricsType, apc_candidates_dir_path: Option<PathBuf>) -> Vec<(AirMetrics, Option<usize>)> {
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
+
+        // Only available in Pgo::Cell mode AND `apc_candidates_dir_path` is set
+        let apc_candidates = apc_candidates_dir_path
+        .map(|path| {
+            load_apc_candidates_summary(path)
+        });
 
         inventory
             .executors()
             .iter()
-            .map(|executor| executor.air())
+            .map(|executor| {
+                let air = executor.air();
+                let (air_name, is_powdr_air, powdr_opcode) = match executor {
+                    SpecializedExecutor::PowdrExecutor(executor) => (executor.air_name(), true, Some(executor.opcode())),
+                    _ => (air.name(), false, None),
+                };
+                (air, air_name, is_powdr_air, powdr_opcode)
+            })
             .chain(
                 inventory
                     .periphery()
                     .iter()
-                    .map(|periphery| periphery.air()),
+                    .map(|periphery| {
+                        let air = periphery.air();
+                        let air_name = air.name();
+                        (air, air_name, false, None)
+                    }),
             )
-            .filter_map(|air| {
-                let name = air.name();
-
-                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
-                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
-                // TODO this is hacky but not sure how to do it better rn.
-                let is_powdr_air = name.starts_with("PowdrAir") || name.starts_with("PlonkAir");
+            .filter_map(|(air, air_name, is_powdr_air, powdr_opcode)| {
                 match metrics_type {
-                    AirMetricsType::Powdr => is_powdr_air.then(|| get_air_metrics(air)),
-                    AirMetricsType::NonPowdr => (!is_powdr_air).then(|| get_air_metrics(air)),
+                    AirMetricsType::Powdr => is_powdr_air.then(|| {
+                        let air_metrics = get_air_metrics(air);
+                        
+                        let columns_saved = apc_candidates
+                            .and_then(|candidates| 
+                                candidates
+                                    .iter()
+                                    .find(|c| c.opcode == powdr_opcode.unwrap())
+                                    .unwrap()
+                                    .columns_saved()
+                            );
+                        
+                        (air_metrics, columns_saved)
+                    }),
+                    AirMetricsType::NonPowdr => (!is_powdr_air).then(|| (get_air_metrics(air), None)),
                 }
             })
             .collect()
@@ -1300,9 +1324,15 @@ mod tests {
         guest: &'a str,
         guest_apc: u64,
         guest_skip: u64,
-        metrics_type: Vec<AirMetricsType>,
-        metrics: Vec<AirMetrics>,
-        machine_count: Vec<usize>,
+        metrics: Vec<MachineTestMetrics>,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct MachineTestMetrics {
+        metrics_type: AirMetricsType,
+        metrics: AirMetrics,
+        columns_saved: Option<usize>,
+        machine_count: usize,
     }
 
     fn test_machine_compilation(params: MachineTestParams) {
@@ -1322,15 +1352,23 @@ mod tests {
         .unwrap();
 
         params
-            .metrics_type
+            .metrics
             .into_iter()
-            .zip_eq(params.metrics.into_iter().zip_eq(params.machine_count))
             .for_each(
-                |(metrics_type, (expected_metrics_sum, expected_machine_count))| {
-                    let metrics = compiled_program.air_metrics(metrics_type);
+                | MachineTestMetrics {
+                    metrics_type,
+                    metrics: expected_metrics_sum,
+                    columns_saved: expected_columns_saved,
+                    machine_count: expected_machine_count,
+                } | {
+                    let metrics = compiled_program.air_metrics(
+                        metrics_type, 
+                        should_have_exported_apc_candidates.then(|| apc_candidates_dir_path.to_path_buf())
+                    );
                     assert_eq!(metrics.len(), expected_machine_count);
                     let metrics_sum = metrics.into_iter().sum::<AirMetrics>();
                     assert_eq!(metrics_sum, expected_metrics_sum);
+                    
                 },
             );
 
@@ -1447,7 +1485,7 @@ mod tests {
             .with_precompile_implementation(PrecompileImplementation::PlonkChip);
         let metrics = compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
             .unwrap()
-            .air_metrics(AirMetricsType::Powdr);
+            .air_metrics(AirMetricsType::Powdr, None);
         assert_eq!(metrics.len(), 1);
         let metrics = metrics.into_iter().sum::<AirMetrics>();
         assert_eq!(

@@ -487,9 +487,9 @@ struct ApcCandidate<P, T> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ApcCandidateJsonExport {
+pub struct ApcCandidateJsonExport {
     // opcode
-    opcode: usize,
+    pub opcode: usize,
     // execution_frequency
     execution_frequency: usize,
     // original instructions
@@ -500,6 +500,12 @@ struct ApcCandidateJsonExport {
     total_width_after: usize,
     // path to the apc candidate file
     apc_candidate_file: String,
+}
+
+impl ApcCandidateJsonExport {
+    pub fn columns_saved(&self) -> usize {
+        self.total_width_before - self.total_width_after
+    }
 }
 
 impl ApcCandidate<BabyBearField, OpenVmField<BabyBearField>> {

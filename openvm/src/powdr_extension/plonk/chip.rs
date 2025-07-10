@@ -38,7 +38,7 @@ use super::air::PlonkAir;
 
 pub struct PlonkChip<P: IntoOpenVm> {
     name: String,
-    opcode: PowdrOpcode,
+    pub opcode: PowdrOpcode,
     air: Arc<PlonkAir<OpenVmField<P>>>,
     executor: PowdrExecutor<P>,
     machine: SymbolicMachine<P>,
