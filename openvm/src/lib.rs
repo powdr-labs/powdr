@@ -562,7 +562,7 @@ impl AirMetrics {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum AirMetricsType {
     Powdr,
     NonPowdr,
@@ -1300,7 +1300,7 @@ mod tests {
         guest: &'a str,
         guest_apc: u64,
         guest_skip: u64,
-        metrics: &[MachineTestMetrics],
+        metrics: &'a [MachineTestMetrics],
     }
 
     struct MachineTestMetrics {
@@ -1325,16 +1325,16 @@ mod tests {
         )
         .unwrap();
 
-        params.metrics.for_each(
+        params.metrics.iter().for_each(
             |MachineTestMetrics {
                  air_type,
                  expected_sum,
                  expected_machine_count,
              }| {
-                let metrics = compiled_program.air_metrics(air_type);
-                assert_eq!(metrics.len(), expected_machine_count);
+                let metrics = compiled_program.air_metrics(*air_type);
+                assert_eq!(metrics.len(), *expected_machine_count);
                 let metrics_sum = metrics.into_iter().sum::<AirMetrics>();
-                assert_eq!(metrics_sum, expected_sum);
+                assert_eq!(metrics_sum, expected_sum.clone());
             },
         );
 
@@ -1370,7 +1370,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
 
-        let metrics = vec![MachineTestMetrics {
+        let expected_metrics = [MachineTestMetrics {
             air_type: AirMetricsType::Powdr,
             expected_sum: AirMetrics {
                 widths: AirWidths {
@@ -1389,14 +1389,14 @@ mod tests {
             guest: GUEST,
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
-            metrics,
+            metrics: &expected_metrics,
         });
         test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
             guest: GUEST,
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
-            metrics,
+            metrics: &expected_metrics,
         });
     }
 
@@ -1406,7 +1406,7 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin);
 
-        let metrics_instruction_mode = vec![MachineTestMetrics {
+        let metrics_instruction_mode = [MachineTestMetrics {
             air_type: AirMetricsType::Powdr,
             expected_sum: AirMetrics {
                 widths: AirWidths {
@@ -1425,10 +1425,10 @@ mod tests {
             guest: GUEST_SHA256,
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
-            metrics: metrics_instruction_mode,
+            metrics: &metrics_instruction_mode,
         });
 
-        let metrics_cell_mode = vec![MachineTestMetrics {
+        let metrics_cell_mode = [MachineTestMetrics {
             air_type: AirMetricsType::Powdr,
             expected_sum: AirMetrics {
                 widths: AirWidths {
@@ -1447,7 +1447,7 @@ mod tests {
             guest: GUEST_SHA256,
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
-            metrics: metrics_cell_mode,
+            metrics: &metrics_cell_mode,
         });
     }
 
@@ -1477,7 +1477,7 @@ mod tests {
     #[test]
     fn keccak_machine_pgo_modes() {
         // All three modes happen to create 1 APC for the same basic block
-        let metrics = vec![MachineTestMetrics {
+        let expected_metrics = [MachineTestMetrics {
             air_type: AirMetricsType::Powdr,
             expected_sum: AirMetrics {
                 widths: AirWidths {
@@ -1498,7 +1498,7 @@ mod tests {
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
-            metrics,
+            metrics: &expected_metrics,
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1506,7 +1506,7 @@ mod tests {
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
-            metrics,
+            metrics: &expected_metrics,
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1514,7 +1514,7 @@ mod tests {
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
-            metrics,
+            metrics: &expected_metrics,
         });
     }
 
@@ -1547,7 +1547,7 @@ mod tests {
             bus_interactions: 252,
         };
 
-        let metrics = vec![
+        let expected_metrics = [
             MachineTestMetrics {
                 air_type: AirMetricsType::Powdr,
                 expected_sum: powdr_metrics_sum.clone(),
@@ -1565,7 +1565,7 @@ mod tests {
             guest: GUEST_KECCAK,
             guest_apc: GUEST_KECCAK_APC_PGO_LARGE,
             guest_skip: GUEST_KECCAK_SKIP,
-            metrics,
+            metrics: &expected_metrics,
         });
 
         // Assert that total columns don't exceed the initial limit set
