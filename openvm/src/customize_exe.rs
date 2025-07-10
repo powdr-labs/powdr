@@ -70,13 +70,15 @@ fn generate_apcs_with_pgo<
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo(
-            blocks,
-            pgo_program_idx_count,
-            config,
-            max_total_apc_columns,
-            vm_config,
-        ),
+        PgoConfig::Cell(pgo_program_idx_count, _) => {
+            create_apcs_with_cell_pgo::<OpenVmApcCandidate<P, I, B>, _, _, _>(
+                blocks,
+                pgo_program_idx_count,
+                config,
+                max_total_apc_columns,
+                vm_config,
+            )
+        }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, config, vm_config)
         }
@@ -366,12 +368,47 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 #[derive(Serialize, Deserialize)]
-struct ApcCandidate<P, I, B> {
+struct OpenVmApcCandidate<P, I, B> {
     apc: Apc<P>,
     execution_frequency: usize,
     width_before: usize,
     width_after: usize,
     _phantom: std::marker::PhantomData<(I, B)>,
+}
+
+impl<
+        P: FieldElement,
+        I: InstructionMachineHandler<P> + Clone + Send + Sync,
+        B: BusInteractionHandler<P> + Clone + Send + Sync + IsBusStateful<P>,
+    > Candidate<P, I, B> for OpenVmApcCandidate<P, I, B>
+{
+    type JsonExport = ApcCandidateJsonExport<P>;
+
+    fn create(
+        apc: Apc<P>,
+        opcode: usize,
+        degree_bound: DegreeBound,
+        pgo_program_idx_count: &HashMap<u32, u32>,
+        apc_candidates_dir_path: &Option<PathBuf>,
+        vm_config: VmConfig<I, B>,
+    ) -> Self {
+        OpenVmApcCandidate::create(
+            apc,
+            opcode,
+            degree_bound,
+            pgo_program_idx_count,
+            apc_candidates_dir_path,
+            vm_config,
+        )
+    }
+
+    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport<P> {
+        self.to_json_export(apc_candidates_dir_path)
+    }
+
+    fn into_apc(self) -> Apc<P> {
+        self.apc
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -394,26 +431,17 @@ impl<
         P: FieldElement,
         I: InstructionMachineHandler<P> + Clone + Send + Sync,
         B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
-    > ApcCandidate<P, I, B>
+    > OpenVmApcCandidate<P, I, B>
 {
     /// Try to create an autoprecompile candidate from a block.
-    pub fn try_create(
-        block: BasicBlock<P>,
+    pub fn create(
+        apc: Apc<P>,
         opcode: usize,
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
         apc_candidates_dir_path: &Option<PathBuf>,
         vm_config: VmConfig<I, B>,
-    ) -> Option<Self> {
-        let apc = powdr_autoprecompiles::build(
-            block,
-            vm_config.clone(),
-            degree_bound,
-            opcode as u32,
-            apc_candidates_dir_path.as_deref(),
-        )
-        .ok()?;
-
+    ) -> Self {
         let apc_metrics: AirMetrics = unimplemented!();
         let width_after = apc_metrics.widths.total();
 
@@ -435,15 +463,15 @@ impl<
             .get(&(apc.block.start_idx as u32))
             .unwrap_or(&0) as usize;
 
-        let candidate = Self {
+        
+
+        Self {
             apc,
             execution_frequency,
             width_before,
             width_after,
             _phantom: std::marker::PhantomData,
-        };
-
-        Some(candidate)
+        }
     }
 
     /// Return a JSON export of the APC candidate.
@@ -462,14 +490,14 @@ impl<
     }
 }
 
-impl<P, I, B> ApcCandidate<P, I, B> {
+impl<P, I, B> OpenVmApcCandidate<P, I, B> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
         self.width_before - self.width_after
     }
 }
 
-impl<P, I, B> KnapsackItem for ApcCandidate<P, I, B> {
+impl<P, I, B> KnapsackItem for OpenVmApcCandidate<P, I, B> {
     fn cost(&self) -> usize {
         self.width_after
     }
@@ -490,8 +518,28 @@ impl<P, I, B> KnapsackItem for ApcCandidate<P, I, B> {
     }
 }
 
+trait Candidate<P, I, B>: Sized {
+    type JsonExport: Serialize + for<'de> Deserialize<'de> + Send + Sync;
+
+    /// Try to create an autoprecompile candidate from a block.
+    fn create(
+        apc: Apc<P>,
+        opcode: usize,
+        degree_bound: DegreeBound,
+        pgo_program_idx_count: &HashMap<u32, u32>,
+        apc_candidates_dir_path: &Option<PathBuf>,
+        vm_config: VmConfig<I, B>,
+    ) -> Self;
+
+    /// Return a JSON export of the APC candidate.
+    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
+
+    fn into_apc(self) -> Apc<P>;
+}
+
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<
+    C: KnapsackItem + Candidate<P, I, B> + Send + Sync,
     P: FieldElement,
     I: InstructionMachineHandler<P> + Clone + Send + Sync,
     B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Send + Sync,
@@ -528,35 +576,33 @@ fn create_apcs_with_cell_pgo<
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     let res = fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            ApcCandidate::try_create(
-                block,
-        POWDR_OPCODE + i,
+            let apc = powdr_autoprecompiles::build(
+                block.clone(),
+                vm_config.clone(),
+                config.degree_bound,
+                (POWDR_OPCODE + i) as u32,
+                config.apc_candidates_dir_path.as_deref(),
+            )
+            .ok()?;
+            let candidate = C::create(
+                apc,
+                POWDR_OPCODE + i,
                 config.degree_bound,
                 &pgo_program_idx_count,
                 &config.apc_candidates_dir_path,
                 vm_config.clone(),
-            ).inspect(|candidate| {
-                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                    apc_candidates.lock().unwrap().push(json_export);
-                }
-            })
+            );
+            if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+                let json_export = candidate.to_json_export(apc_candidates_dir_path);
+                apc_candidates.lock().unwrap().push(json_export);
+            }
+            Some(candidate)
         }),
         max_cache,
         max_total_apc_columns,
     )
     .skip(config.skip_autoprecompiles as usize)
-    .map(|c| {
-        tracing::debug!(
-            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
-            c.apc.block.start_idx,
-            c.value() / c.cost(),
-            c.execution_frequency,
-            c.cells_saved_per_row(),
-        );
-
-        c.apc
-    })
+    .map(C::into_apc)
     .collect();
 
     // Write the APC candidates JSON to disk if the directory is specified.
