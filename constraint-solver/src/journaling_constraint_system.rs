@@ -1,22 +1,18 @@
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystemGeneric},
+    constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::IndexedConstraintSystemGeneric,
+    indexed_constraint_system::IndexedConstraintSystem,
     runtime_constant::{RuntimeConstant, Substitutable},
-    symbolic_expression::SymbolicExpression,
 };
 use std::{fmt::Display, hash::Hash};
 
-pub type JournalingConstraintSystem<T, V> =
-    JournalingConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
-
 /// A wrapper around `ConstraintSystem` that keeps track of changes.
-pub struct JournalingConstraintSystemGeneric<T, V> {
-    system: IndexedConstraintSystemGeneric<T, V>,
+pub struct JournalingConstraintSystem<T, V> {
+    system: IndexedConstraintSystem<T, V>,
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystemGeneric<T, V>>> From<C>
-    for JournalingConstraintSystemGeneric<T, V>
+impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystem<T, V>>> From<C>
+    for JournalingConstraintSystem<T, V>
 {
     fn from(system: C) -> Self {
         Self {
@@ -25,13 +21,13 @@ impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystemGeneric<T
     }
 }
 
-impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Returns the underlying `ConstraintSystem`.
-    pub fn system(&self) -> &ConstraintSystemGeneric<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
         self.system.system()
     }
 
-    pub fn indexed_system(&self) -> &IndexedConstraintSystemGeneric<T, V> {
+    pub fn indexed_system(&self) -> &IndexedConstraintSystem<T, V> {
         &self.system
     }
 
@@ -53,7 +49,7 @@ impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric
 }
 
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display>
-    JournalingConstraintSystemGeneric<T, V>
+    JournalingConstraintSystem<T, V>
 {
     pub fn apply_bus_field_assignments(
         &mut self,
@@ -83,7 +79,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Removes all algebraic constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
@@ -104,7 +100,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystemGeneric<T, V> 
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
-    for JournalingConstraintSystemGeneric<T, V>
+    for JournalingConstraintSystem<T, V>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.system)

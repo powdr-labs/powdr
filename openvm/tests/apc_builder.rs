@@ -1,5 +1,7 @@
 use openvm_sdk::config::SdkVmConfig;
-use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
+use powdr_autoprecompiles::{
+    build, DegreeBound, SymbolicBlock, SymbolicInstructionStatement, VmConfig,
+};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
@@ -35,10 +37,19 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
-        .unwrap()
-        .machine()
-        .render(&bus_map)
+    build(
+        SymbolicBlock {
+            statements: program,
+            start_idx: 0,
+        },
+        vm_config,
+        degree_bound,
+        POWDR_OPCODE as u32,
+        None,
+    )
+    .unwrap()
+    .machine()
+    .render(&bus_map)
 }
 
 /// Compare `actual` against the contents of the file at `path`.
@@ -255,6 +266,13 @@ mod single_instruction_tests {
         // r68 = r40 << 3
         let program = [sll(68, 40, 3, 0)];
         assert_machine_output(program.to_vec(), "single_sll");
+    }
+
+    #[test]
+    fn single_sll_by_8() {
+        // r68 = r40 << 8
+        let program = [sll(68, 40, 8, 0)];
+        assert_machine_output(program.to_vec(), "single_sll_by_8");
     }
 
     #[test]
