@@ -7,11 +7,12 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_constraint_solver::variable_update::UpdateKind;
 use powdr_constraint_solver::{
-    grouped_expression::{self, QuadraticSymbolicExpression},
+    grouped_expression::{self},
     variable_update::VariableUpdate,
 };
 use powdr_number::FieldElement;
 
+use crate::witgen::jit::QuadraticSymbolicExpression;
 use crate::witgen::{
     data_structures::identity::{BusSend, Identity},
     jit::debug_formatter::format_polynomial_identities,

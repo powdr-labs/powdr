@@ -73,10 +73,6 @@ pub struct GroupedExpression<T, V> {
     constant: T,
 }
 
-// TODO: This type is equivalent to a pre-refactoring version of `QuadraticSymbolicExpressionImpl`.
-// It should be removed in a follow-up PR & we should rename `QuadraticSymbolicExpressionImpl` to `QuadraticSymbolicExpression`.
-pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
-
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T, V> {
     pub fn from_number(k: F) -> Self {
         Self {
