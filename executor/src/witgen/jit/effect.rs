@@ -43,10 +43,10 @@ where
     ),
 }
 
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> From<ConstraintSolverEffect<T, V>>
-    for Effect<T, V>
+impl<T: FieldElement, V: Clone + Hash + Eq + Ord>
+    From<ConstraintSolverEffect<SymbolicExpression<T, V>, V>> for Effect<T, V>
 {
-    fn from(effect: ConstraintSolverEffect<T, V>) -> Self {
+    fn from(effect: ConstraintSolverEffect<SymbolicExpression<T, V>, V>) -> Self {
         match effect {
             ConstraintSolverEffect::Assignment(v, expr) => Effect::Assignment(v, expr),
             ConstraintSolverEffect::RangeConstraint(v, range) => Effect::RangeConstraint(v, range),
