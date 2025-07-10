@@ -132,7 +132,9 @@ pub fn customize(
         // .rev()
         // .take(100)
         for block in &blocks {
-            let count = 0;
+            let count = pgo_config
+                .pc_offset_execution_count(block.start_idx as u32)
+                .unwrap_or(0);
             let name = debug_info
                 .symbols
                 .try_get_one_or_preceding(OPENVM_INIT_PC + block.start_idx as u32)
