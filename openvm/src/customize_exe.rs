@@ -20,10 +20,10 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::basic_blocks::{collect_basic_blocks, Program};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program};
+use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::pgo::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::{Apc, InstructionMachineHandler};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};

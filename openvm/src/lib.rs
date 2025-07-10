@@ -23,7 +23,7 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
-use powdr_autoprecompiles::pgo::PowdrConfig;
+use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{AirMetrics, AirMetricsType};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
@@ -60,7 +60,7 @@ pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
 mod utils;
-pub use powdr_autoprecompiles::pgo::PgoConfig;
+pub use powdr_autoprecompiles::PgoConfig;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
