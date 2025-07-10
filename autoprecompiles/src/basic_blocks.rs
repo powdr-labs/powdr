@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::SymbolicInstructionStatement;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SymbolicBlock<T> {
+pub struct BasicBlock<T> {
     // The index of the first instruction in this block in the original program.
     pub start_idx: usize,
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl<T> SymbolicBlock<T> {
+impl<T> BasicBlock<T> {
     pub fn pretty_print(
         &self,
         instr_formatter: impl Fn(&SymbolicInstructionStatement<T>) -> String,
@@ -30,7 +30,7 @@ impl<T> SymbolicBlock<T> {
 }
 
 /// Represents a symbolic program, which is a sequence of symbolic instructions
-pub struct SymbolicProgram<T> {
+pub struct Program<T> {
     // The address of the first instruction in the program.
     pub base_pc: u32,
     // The step size between addresses of consecutive instructions.
@@ -39,7 +39,7 @@ pub struct SymbolicProgram<T> {
     pub instructions: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl<T> SymbolicProgram<T> {
+impl<T> Program<T> {
     pub fn new(
         instructions: Vec<SymbolicInstructionStatement<T>>,
         base_pc: u32,
@@ -54,13 +54,13 @@ impl<T> SymbolicProgram<T> {
 }
 
 pub fn collect_basic_blocks<T: Clone>(
-    program: &SymbolicProgram<T>,
+    program: &Program<T>,
     labels: &BTreeSet<u32>,
     opcode_allowlist: &BTreeSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
-) -> Vec<SymbolicBlock<T>> {
+) -> Vec<BasicBlock<T>> {
     let mut blocks = Vec::new();
-    let mut curr_block = SymbolicBlock {
+    let mut curr_block = BasicBlock {
         start_idx: 0,
         statements: Vec::new(),
     };
@@ -76,12 +76,12 @@ pub fn collect_basic_blocks<T: Clone>(
                 blocks.push(curr_block);
             }
             // Push the instruction itself
-            blocks.push(SymbolicBlock {
+            blocks.push(BasicBlock {
                 start_idx: i,
                 statements: vec![instr.clone()],
             });
             // Skip the instrucion and start a new block from the next instruction.
-            curr_block = SymbolicBlock {
+            curr_block = BasicBlock {
                 start_idx: i + 1,
                 statements: Vec::new(),
             };
@@ -92,7 +92,7 @@ pub fn collect_basic_blocks<T: Clone>(
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
-                curr_block = SymbolicBlock {
+                curr_block = BasicBlock {
                     start_idx: i,
                     statements: Vec::new(),
                 };
@@ -102,7 +102,7 @@ pub fn collect_basic_blocks<T: Clone>(
             // with this instruction and start a new block from the next one.
             if is_branch {
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
-                curr_block = SymbolicBlock {
+                curr_block = BasicBlock {
                     start_idx: i + 1,
                     statements: Vec::new(),
                 };

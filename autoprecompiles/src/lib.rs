@@ -1,6 +1,6 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
-pub use basic_blocks::SymbolicBlock;
+pub use basic_blocks::BasicBlock;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -258,7 +258,7 @@ pub trait InstructionMachineHandler<T> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T> {
-    pub block: SymbolicBlock<T>,
+    pub block: BasicBlock<T>,
     pub opcode: u32,
     pub machine: SymbolicMachine<T>,
     pub subs: Vec<Vec<u64>>,
@@ -283,7 +283,7 @@ pub fn build<
     B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     M: InstructionMachineHandler<T>,
 >(
-    block: SymbolicBlock<T>,
+    block: BasicBlock<T>,
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,

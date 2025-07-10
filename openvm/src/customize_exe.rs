@@ -15,17 +15,17 @@ use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction;
-use openvm_instructions::program::Program;
+use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::basic_blocks::{collect_basic_blocks, SymbolicProgram};
+use powdr_autoprecompiles::basic_blocks::{collect_basic_blocks, Program};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{Apc, DegreeBound};
-use powdr_autoprecompiles::{SymbolicBlock, VmConfig};
+use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_number::{BabyBearField, FieldElement};
 use serde::{Deserialize, Serialize};
@@ -54,7 +54,7 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
 }
 
 fn generate_apcs_with_pgo(
-    blocks: Vec<SymbolicBlock<BabyBearField>>,
+    blocks: Vec<BasicBlock<BabyBearField>>,
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
@@ -106,7 +106,7 @@ pub fn customize(
         exe.program.step,
     );
 
-    let program = SymbolicProgram::new(
+    let program = Program::new(
         exe.program
             .instructions_and_debug_infos
             .iter()
@@ -252,12 +252,6 @@ pub fn customize(
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BasicBlock<F> {
-    pub start_idx: usize,
-    pub statements: Vec<Instruction<F>>,
-}
-
 /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
 /// instruction classes over BranchEqual and BranchLessThan.
 /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
@@ -265,7 +259,7 @@ pub struct BasicBlock<F> {
 /// This means that for a given program address A containing the instruction above,
 /// we add A + target_offset as a target as well.
 fn add_extra_targets<F: PrimeField32>(
-    program: &Program<F>,
+    program: &OpenVmProgram<F>,
     mut labels: BTreeSet<u32>,
     base_pc: u32,
     pc_step: u32,
@@ -291,7 +285,7 @@ fn add_extra_targets<F: PrimeField32>(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<P: FieldElement>(
-    blocks: Vec<SymbolicBlock<P>>,
+    blocks: Vec<BasicBlock<P>>,
     powdr_config: &PowdrConfig,
     vm_config: VmConfig<OriginalAirs<P>, OpenVmBusInteractionHandler<P>>,
 ) -> Vec<Apc<P>> {
@@ -360,7 +354,7 @@ struct ApcCandidateJsonExport<P> {
     // execution_frequency
     execution_frequency: usize,
     // original instructions
-    original_block: SymbolicBlock<P>,
+    original_block: BasicBlock<P>,
     // total width before optimisation
     total_width_before: usize,
     // total width after optimisation
@@ -372,7 +366,7 @@ struct ApcCandidateJsonExport<P> {
 impl ApcCandidate<BabyBearField> {
     /// Try to create an autoprecompile candidate from a block.
     pub fn try_create(
-        block: SymbolicBlock<BabyBearField>,
+        block: BasicBlock<BabyBearField>,
         opcode: usize,
         degree_bound: DegreeBound,
         pgo_program_idx_count: &HashMap<u32, u32>,
@@ -471,7 +465,7 @@ impl<P> KnapsackItem for ApcCandidate<P> {
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo(
-    mut blocks: Vec<SymbolicBlock<BabyBearField>>,
+    mut blocks: Vec<BasicBlock<BabyBearField>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     max_total_columns: Option<usize>,
     config: &PowdrConfig,
@@ -558,7 +552,7 @@ fn create_apcs_with_cell_pgo(
 }
 
 fn create_apcs_with_instruction_pgo<P: FieldElement>(
-    mut blocks: Vec<SymbolicBlock<P>>,
+    mut blocks: Vec<BasicBlock<P>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
     vm_config: VmConfig<OriginalAirs<P>, OpenVmBusInteractionHandler<P>>,
@@ -598,7 +592,7 @@ fn create_apcs_with_instruction_pgo<P: FieldElement>(
 }
 
 fn create_apcs_with_no_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<SymbolicBlock<P>>,
+    mut blocks: Vec<BasicBlock<P>>,
     config: &PowdrConfig,
     vm_config: VmConfig<OriginalAirs<P>, OpenVmBusInteractionHandler<P>>,
 ) -> Vec<Apc<P>> {
