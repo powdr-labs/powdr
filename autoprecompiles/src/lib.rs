@@ -20,7 +20,6 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
-pub mod basic_blocks;
 mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
