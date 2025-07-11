@@ -1,28 +1,22 @@
 use crate::opcode::*;
-use openvm_instructions::{instruction::Instruction, VmOpcode};
-use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_instructions::VmOpcode;
+use powdr_autoprecompiles::SymbolicInstructionStatement;
+use powdr_number::FieldElement;
 
-pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F>) -> String {
-    let Instruction {
-        opcode,
-        a,
-        b,
-        c,
-        d,
-        e,
-        f,
-        g,
-    } = instruction;
-    let opcode_number = opcode.as_usize();
-    let opcode_name = openvm_opcode_formatter(opcode);
+pub fn openvm_instruction_formatter<P: FieldElement>(
+    instruction: &SymbolicInstructionStatement<P>,
+) -> String {
+    let SymbolicInstructionStatement { opcode, args } = instruction;
+    let [a, b, c, d, e, f, g] = args.as_slice().try_into().unwrap();
+    let opcode_name = openvm_opcode_formatter(&VmOpcode::from_usize(*opcode));
 
-    match opcode_number {
+    match opcode {
         // Alu instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/alu.rs#L197-L201
         512..=521 => {
-            assert_eq!(d, &F::ONE);
-            assert_eq!(f, &F::ZERO);
-            assert_eq!(g, &F::ZERO);
+            assert_eq!(d, P::ONE);
+            assert_eq!(f, P::ZERO);
+            assert_eq!(g, P::ZERO);
 
             format!("{opcode_name} rd_ptr = {a}, rs1_ptr = {b}, rs2 = {c}, rs2_as = {e}")
         }
@@ -30,13 +24,13 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
         // Load/Store instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/loadstore.rs#L340-L346
         528..=535 => {
-            assert_eq!(d, &F::ONE);
+            assert_eq!(d, P::ONE);
 
             format!("{opcode_name} rd_rs2_ptr = {a}, rs1_ptr = {b}, imm = {c}, mem_as = {e}, needs_write = {f}, imm_sign = {g}")
         }
 
         // All other opcodes in the list
-        x if ALL_OPCODES.contains(&x) => format!("{opcode_name} {a} {b} {c} {d} {e}"),
+        x if ALL_OPCODES.contains(x) => format!("{opcode_name} {a} {b} {c} {d} {e}"),
 
         // Opcodes not in the list
         _ => format!("{opcode_name} {a} {b} {c} {d} {e} {f} {g}"),

@@ -1,6 +1,6 @@
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{
-    build, DegreeBound, SymbolicBlock, SymbolicInstructionStatement, VmConfig,
+    build, BasicBlock, DegreeBound, SymbolicInstructionStatement, VmConfig,
 };
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -38,7 +38,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
     };
 
     build(
-        SymbolicBlock {
+        BasicBlock {
             statements: program,
             start_idx: 0,
         },
