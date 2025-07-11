@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::SymbolicInstructionStatement;
 
+/// Tools to detect basic blocks in a program
 mod detection;
+/// Tools to generate autoprecompiles using different PGO strategies
 mod pgo;
+/// Tools to select autoprecompiles using a knapsack-like algorithm
 mod selection;
 
 pub use detection::collect_basic_blocks;

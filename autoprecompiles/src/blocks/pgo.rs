@@ -266,11 +266,6 @@ fn create_apcs_for_all_blocks<
                 block.start_idx
             );
 
-            // tracing::debug!(
-            //     "Acc block: {}",
-            //     block.pretty_print(openvm_instruction_formatter)
-            // );
-
             let apc_opcode = config.first_apc_opcode + index;
 
             crate::build(

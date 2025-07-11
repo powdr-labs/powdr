@@ -8,10 +8,10 @@ use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::IntoOpenVm;
 use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
+use crate::{IntoOpenVm, PrecompileImplementation};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::Program as OpenVmProgram;
@@ -24,7 +24,7 @@ use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::Apc;
+use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -38,8 +38,6 @@ use crate::{
 };
 
 pub const POWDR_OPCODE: usize = 0x10ff;
-
-use crate::PowdrOpenVmConfig;
 
 #[derive(Debug)]
 pub enum Error {
@@ -58,7 +56,8 @@ pub fn customize(
         sdk_vm_config,
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
-    config: PowdrOpenVmConfig,
+    config: PowdrConfig,
+    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
@@ -148,7 +147,7 @@ pub fn customize(
 
     let apcs = generate_apcs_with_pgo::<OpenVmApcCandidate<_>, _, _, _>(
         blocks,
-        &config.core,
+        &config,
         max_total_apc_columns,
         pgo_config,
         vm_config,
@@ -234,7 +233,7 @@ pub fn customize(
 
     CompiledProgram {
         exe,
-        vm_config: SpecializedConfig::new(original_config, extensions, config.implementation),
+        vm_config: SpecializedConfig::new(original_config, extensions, implementation),
     }
 }
 
