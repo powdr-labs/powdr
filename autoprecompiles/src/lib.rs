@@ -1,3 +1,5 @@
+use crate::adapter::Adapter;
+use crate::blocks::Program;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 pub use blocks::{BasicBlock, PgoConfig};
@@ -29,6 +31,7 @@ pub mod expression_conversion;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
+pub mod adapter;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
@@ -294,14 +297,14 @@ pub trait InstructionMachineHandler<T> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T> {
-    pub block: BasicBlock<T>,
+pub struct Apc<T, I> {
+    pub block: BasicBlock<I>,
     pub opcode: u32,
     pub machine: SymbolicMachine<T>,
     pub subs: Vec<Vec<u64>>,
 }
 
-impl<T: FieldElement> Apc<T> {
+impl<T: FieldElement, I> Apc<T, I> {
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
@@ -309,25 +312,20 @@ impl<T: FieldElement> Apc<T> {
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
-
-    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        (self.machine, self.subs)
-    }
 }
 
-pub fn build<
-    T: FieldElement,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    M: InstructionMachineHandler<T>,
->(
-    block: BasicBlock<T>,
-    vm_config: VmConfig<M, B>,
+pub fn build<T: FieldElement, A: Adapter<T>>(
+    block: BasicBlock<<<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>,
+    vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
+) -> Result<Apc<T, <<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>, crate::constraint_optimizer::Error> {
+
+    let statements: Vec<SymbolicInstructionStatement<T>> = unimplemented!();
+
     let (machine, subs) = statements_to_symbolic_machine(
-        &block.statements,
+        &statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );

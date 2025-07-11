@@ -16,16 +16,16 @@ pub use pgo::{generate_apcs_with_pgo, Candidate};
 pub use selection::KnapsackItem;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BasicBlock<T> {
+pub struct BasicBlock<I> {
     /// The index of the first instruction in this block in the original program.
     pub start_idx: usize,
-    pub statements: Vec<SymbolicInstructionStatement<T>>,
+    pub statements: Vec<I>,
 }
 
-impl<T> BasicBlock<T> {
+impl<I> BasicBlock<I> {
     pub fn pretty_print(
         &self,
-        instr_formatter: impl Fn(&SymbolicInstructionStatement<T>) -> String,
+        instr_formatter: impl Fn(&I) -> String,
     ) -> String {
         format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
             + &self
@@ -39,26 +39,20 @@ impl<T> BasicBlock<T> {
     }
 }
 
-/// Represents a symbolic program, which is a sequence of symbolic instructions
-pub struct Program<T> {
-    /// The address of the first instruction in the program.
-    pub base_pc: u32,
-    /// The step size between addresses of consecutive instructions.
-    pub pc_step: u32,
-    /// The instructions in the program.
-    pub instructions: Vec<SymbolicInstructionStatement<T>>,
+pub trait Program<F> {
+    type Instruction: Instruction<F> + Serialize + for<'de> Deserialize<'de> + Send;
+
+    /// Returns the base program counter.
+    fn base_pc(&self) -> u32;
+
+    /// Returns the step size of the program counter.
+    fn pc_step(&self) -> u32;
+
+    /// Returns an iterator over the instructions in the program.
+    fn instructions(&self) -> Box<dyn Iterator<Item = Self::Instruction> + '_>;
 }
 
-impl<T> Program<T> {
-    pub fn new(
-        instructions: Vec<SymbolicInstructionStatement<T>>,
-        base_pc: u32,
-        pc_step: u32,
-    ) -> Self {
-        Self {
-            base_pc,
-            pc_step,
-            instructions,
-        }
-    }
+pub trait Instruction<T>: Clone {
+    /// The opcode of the instruction.
+    fn opcode(&self) -> usize;
 }
