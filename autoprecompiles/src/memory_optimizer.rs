@@ -4,9 +4,7 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_constraint_solver::boolean_extractor::{self, RangeConstraintsForBooleans};
-use powdr_constraint_solver::constraint_system::{
-    BusInteraction, ConstraintRef, ConstraintSystemGeneric,
-};
+use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
@@ -20,10 +18,10 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
 pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
-    mut system: ConstraintSystemGeneric<T, V>,
+    mut system: ConstraintSystem<T, V>,
     memory_bus_id: u64,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
-) -> ConstraintSystemGeneric<T, V> {
+) -> ConstraintSystem<T, V> {
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices(&system, memory_bus_id, range_constraints);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
@@ -41,7 +39,7 @@ pub fn optimize_memory<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
 pub fn check_register_operation_consistency<T: FieldElement, V: Clone + Ord + Display + Hash>(
-    system: &ConstraintSystemGeneric<T, V>,
+    system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
 ) -> bool {
     let count_per_addr = system
@@ -132,7 +130,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<T: FieldElement, V: Hash + Eq + Clone + Ord + Display>(
-    system: &ConstraintSystemGeneric<T, V>,
+    system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
 ) -> (Vec<usize>, Vec<GroupedExpression<T, V>>) {
@@ -211,7 +209,7 @@ struct MemoryAddressComparator<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressComparator<T, V> {
-    fn new(system: &ConstraintSystemGeneric<T, V>, memory_bus_id: u64) -> Self {
+    fn new(system: &ConstraintSystem<T, V>, memory_bus_id: u64) -> Self {
         let addresses = system
             .bus_interactions
             .iter()
@@ -224,7 +222,7 @@ impl<T: FieldElement, V: Hash + Eq + Clone + Ord + Display> MemoryAddressCompara
 
         let constraints =
             boolean_extractor::to_boolean_extracted_system(&system.algebraic_constraints);
-        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystemGeneric {
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem {
             algebraic_constraints: constraints,
             bus_interactions: vec![],
         }

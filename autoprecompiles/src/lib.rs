@@ -1,5 +1,6 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
+pub use basic_blocks::BasicBlock;
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -11,12 +12,15 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::io::BufWriter;
 use std::iter::once;
+use std::path::Path;
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+pub mod basic_blocks;
 mod bitwise_lookup_optimizer;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -237,6 +241,7 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
+#[derive(Clone)]
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
     pub instruction_machine_handler: &'a M,
@@ -253,8 +258,10 @@ pub trait InstructionMachineHandler<T> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T> {
-    machine: SymbolicMachine<T>,
-    subs: Vec<Vec<u64>>,
+    pub block: BasicBlock<T>,
+    pub opcode: u32,
+    pub machine: SymbolicMachine<T>,
+    pub subs: Vec<Vec<u64>>,
 }
 
 impl<T: FieldElement> Apc<T> {
@@ -276,13 +283,14 @@ pub fn build<
     B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     M: InstructionMachineHandler<T>,
 >(
-    program: Vec<SymbolicInstructionStatement<T>>,
+    block: BasicBlock<T>,
     vm_config: VmConfig<M, B>,
     degree_bound: DegreeBound,
     opcode: u32,
+    apc_candidates_dir_path: Option<&Path>,
 ) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine(
-        &program,
+        &block.statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );
@@ -298,7 +306,25 @@ pub fn build<
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
 
-    Ok(Apc { machine, subs })
+    let apc = Apc {
+        block,
+        machine,
+        subs,
+        opcode,
+    };
+
+    if let Some(path) = apc_candidates_dir_path {
+        let ser_path = path
+            .join(format!("apc_candidate_{opcode}"))
+            .with_extension("cbor");
+        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+        let file =
+            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
+        let writer = BufWriter::new(file);
+        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+    }
+
+    Ok(apc)
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

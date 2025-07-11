@@ -1,9 +1,9 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintSystemGeneric, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
-use crate::effect::EffectImpl;
+use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
@@ -24,7 +24,7 @@ mod quadratic_equivalences;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
-    constraint_system: ConstraintSystemGeneric<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
 ) -> Result<SolveResult<T, V>, Error>
 where
@@ -89,7 +89,7 @@ struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
     Solver<T, V, DefaultBusInteractionHandler<T::FieldType>>
 {
-    pub fn new(constraint_system: ConstraintSystemGeneric<T, V>) -> Self {
+    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
@@ -226,19 +226,19 @@ where
         Ok(progress)
     }
 
-    fn apply_effect(&mut self, effect: EffectImpl<T, V>) -> bool {
+    fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            EffectImpl::Assignment(v, expr) => {
+            Effect::Assignment(v, expr) => {
                 self.apply_assignment(&v, &GroupedExpression::from_runtime_constant(expr))
             }
-            EffectImpl::RangeConstraint(v, range_constraint) => {
+            Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
-            EffectImpl::BitDecomposition(..) => unreachable!(),
-            EffectImpl::Assertion(..) => unreachable!(),
+            Effect::BitDecomposition(..) => unreachable!(),
+            Effect::Assertion(..) => unreachable!(),
             // There are no known-but-not-concrete variables, so we should never
             // encounter a conditional assignment.
-            EffectImpl::ConditionalAssignment { .. } => unreachable!(),
+            Effect::ConditionalAssignment { .. } => unreachable!(),
         }
     }
 

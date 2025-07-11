@@ -4,7 +4,7 @@ use itertools::Itertools;
 use std::hash::Hash;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystemGeneric},
+    constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable, VarTransformable},
     solver::{SolveResult, VariableAssignment},
@@ -40,8 +40,8 @@ where
         + Substitutable<Variable<V>>,
 {
     pub fn replace_bus_interaction_expressions(
-        constraint_system: ConstraintSystemGeneric<T, V>,
-    ) -> (Self, ConstraintSystemGeneric<T::Transformed, Variable<V>>) {
+        constraint_system: ConstraintSystem<T, V>,
+    ) -> (Self, ConstraintSystem<T::Transformed, Variable<V>>) {
         let mut new_constraints = Vec::new();
         let mut bus_interaction_vars = BTreeMap::new();
         let bus_interactions = constraint_system
@@ -63,7 +63,7 @@ where
                 ))
             })
             .collect();
-        let constraint_system = ConstraintSystemGeneric {
+        let constraint_system = ConstraintSystem {
             algebraic_constraints: constraint_system
                 .algebraic_constraints
                 .iter()

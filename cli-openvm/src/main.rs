@@ -38,6 +38,10 @@ enum Commands {
 
         #[arg(long)]
         input: Option<u32>,
+
+        /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
+        #[arg(long)]
+        apc_candidates_dir: Option<PathBuf>,
     },
 
     Execute {
@@ -58,6 +62,10 @@ enum Commands {
 
         #[arg(long)]
         input: Option<u32>,
+
+        /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
+        #[arg(long)]
+        apc_candidates_dir: Option<PathBuf>,
     },
 
     Prove {
@@ -89,6 +97,10 @@ enum Commands {
 
         #[arg(long)]
         metrics: Option<PathBuf>,
+
+        /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
+        #[arg(long)]
+        apc_candidates_dir: Option<PathBuf>,
     },
 }
 
@@ -115,8 +127,12 @@ fn run_command(command: Commands) {
             pgo,
             max_columns,
             input,
+            apc_candidates_dir,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            if let Some(apc_candidates_dir) = apc_candidates_dir {
+                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+            }
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
@@ -130,8 +146,12 @@ fn run_command(command: Commands) {
             pgo,
             max_columns,
             input,
+            apc_candidates_dir,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            if let Some(apc_candidates_dir) = apc_candidates_dir {
+                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+            }
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
@@ -148,8 +168,12 @@ fn run_command(command: Commands) {
             max_columns,
             input,
             metrics,
+            apc_candidates_dir,
         } => {
-            let powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            if let Some(apc_candidates_dir) = apc_candidates_dir {
+                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+            }
             let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
             let program =
                 powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
