@@ -43,7 +43,7 @@ pub struct OriginalAirs<P> {
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<P>, AirMetrics)>,
 }
 
-impl<P: IntoOpenVm> InstructionMachineHandler<P> for OriginalAirs<P> {
+impl<P> InstructionMachineHandler<P> for OriginalAirs<P> {
     fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
         self.opcode_to_air
             .get(&VmOpcode::from_usize(opcode))
