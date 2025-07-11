@@ -572,6 +572,7 @@ impl CompiledProgram {
 
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
 
+        // Order of precompile is the same as that of Powdr executors in chip inventory
         let mut apc_stats = self
             .vm_config
             .powdr
