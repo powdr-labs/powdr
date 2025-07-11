@@ -1745,7 +1745,6 @@ mod tests {
         let stdin = StdIn::default();
         let pgo_data = execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin);
 
-        // All three modes happen to create 1 APC for the same basic block
         let expected_metrics = MachineTestMetrics {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
@@ -1769,6 +1768,23 @@ mod tests {
             expected_metrics: &expected_metrics,
         });
 
+        print!("None passed");
+
+        let expected_metrics_instruction = MachineTestMetrics {
+            powdr_expected_sum: AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 24616,
+                    log_up: 19516,
+                },
+                constraints: 18687,
+                bus_interactions: 15895,
+            },
+            powdr_expected_machine_count: 10,
+            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+        };
+
         test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST_ECC_OP,
@@ -1776,6 +1792,23 @@ mod tests {
             guest_skip: GUEST_ECC_OP_SKIP,
             expected_metrics: &expected_metrics,
         });
+
+        print!("Instruction passed");
+
+        let expected_metrics_cell = MachineTestMetrics {
+            powdr_expected_sum: AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 24616,
+                    log_up: 19516,
+                },
+                constraints: 18687,
+                bus_interactions: 15895,
+            },
+            powdr_expected_machine_count: 10,
+            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+        };
 
         test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
