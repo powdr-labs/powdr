@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
-use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, SIMPLE_BRANCH_OPCODES};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
 use crate::IntoOpenVm;
@@ -132,6 +132,9 @@ pub fn customize(
         // .rev()
         // .take(100)
         for block in &blocks {
+            if !is_loop_block(block) {
+                continue;
+            }
             let count = pgo_config
                 .pc_offset_execution_count(block.start_idx as u32)
                 .unwrap_or(0);
@@ -332,6 +335,16 @@ pub fn collect_basic_blocks<F: PrimeField32>(
     }
 
     blocks
+}
+
+fn is_loop_block<F: PrimeField32>(block: &BasicBlock<F>) -> bool {
+    let Some(last_statement) = block.statements.last() else {
+        return false;
+    };
+    if !SIMPLE_BRANCH_OPCODES.contains(&last_statement.opcode.as_usize()) {
+        return false;
+    }
+    last_statement.c.as_canonical_u32() == F::ORDER_U32 - (block.statements.len() - 1) as u32 * 4
 }
 
 /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching

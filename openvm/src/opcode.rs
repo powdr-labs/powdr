@@ -112,6 +112,15 @@ pub const BRANCH_OPCODES: &[usize] = &[
     OPCODE_JALR,
 ];
 
+pub const SIMPLE_BRANCH_OPCODES: &[usize] = &[
+    OPCODE_BEQ,
+    OPCODE_BNE,
+    OPCODE_BLT,
+    OPCODE_BLTU,
+    OPCODE_BGE,
+    OPCODE_BGEU,
+];
+
 // Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER
 pub fn instruction_allowlist() -> BTreeSet<usize> {
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
