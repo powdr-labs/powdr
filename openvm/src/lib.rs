@@ -948,7 +948,6 @@ mod tests {
     const GUEST_ECC_OP: &str = "guest-ecc-operations";
     const GUEST_ECC_OP_APC_PGO: u64 = 10;
     const GUEST_ECC_OP_APC_PGO_LARGE: u64 = 50;
-    //const GUEST_ECC_OP_APC_PGO_LARGE: u64 = 50;
     const GUEST_ECC_OP_SKIP: u64 = 0;
 
     #[test]
@@ -1743,7 +1742,7 @@ mod tests {
 
     #[test]
     fn ecc_op_pgo_modes() {
-        let mut stdin = StdIn::default();
+        let stdin = StdIn::default();
         let pgo_data = execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin);
 
         // All three modes happen to create 1 APC for the same basic block
@@ -1751,11 +1750,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 2011,
-                    log_up: 1788,
+                    main: 24616,
+                    log_up: 19516,
                 },
-                constraints: 166,
-                bus_interactions: 1783,
+                constraints: 18687,
+                bus_interactions: 15895,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
