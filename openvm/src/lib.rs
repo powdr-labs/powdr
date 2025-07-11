@@ -789,6 +789,7 @@ mod tests {
     use super::*;
     use test_log::test;
 
+    #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
         config: PowdrConfig,
