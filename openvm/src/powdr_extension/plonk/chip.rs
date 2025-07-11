@@ -62,6 +62,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             name,
             opcode,
             machine,
+            ..
         } = precompile;
         let air = PlonkAir {
             copy_constraint_bus_id,

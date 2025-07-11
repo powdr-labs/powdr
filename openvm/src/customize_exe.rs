@@ -4,7 +4,7 @@ use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, AirWidths, OriginalAirs, OriginalVmConfig};
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
@@ -64,7 +64,7 @@ fn generate_apcs_with_pgo(
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     pgo_config: PgoConfig,
-) -> Vec<Apc<BabyBearField>> {
+) -> Vec<(Apc<BabyBearField>, Option<ApcStats>)> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -174,12 +174,15 @@ pub fn customize(
     let extensions = apcs
         .into_iter()
         .map(
-            |Apc {
-                 block,
-                 opcode,
-                 machine,
-                 subs,
-             }| {
+            |(
+                Apc {
+                    block,
+                    opcode,
+                    machine,
+                    subs,
+                },
+                apc_stats,
+            )| {
                 let new_instr = Instruction {
                     opcode: VmOpcode::from_usize(opcode as usize),
                     a: OpenVmField::<BabyBearField>::ZERO,
@@ -229,6 +232,7 @@ pub fn customize(
                         .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                         .collect(),
                     is_valid_column,
+                    apc_stats,
                 )
             },
         )
@@ -360,7 +364,7 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
     powdr_config: &PowdrConfig,
     airs: &OriginalAirs<P>,
     bus_map: &BusMap,
-) -> Vec<Apc<P>> {
+) -> Vec<(Apc<P>, Option<ApcStats>)> {
     let n_acc = powdr_config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
@@ -383,15 +387,18 @@ fn create_apcs_for_all_blocks<P: IntoOpenVm>(
 
             let apc_opcode = POWDR_OPCODE + index;
 
-            generate_autoprecompile(
-                &acc_block,
-                airs,
-                apc_opcode,
-                bus_map,
-                powdr_config.degree_bound,
-                &powdr_config.apc_candidates_dir_path,
+            (
+                generate_autoprecompile(
+                    &acc_block,
+                    airs,
+                    apc_opcode,
+                    bus_map,
+                    powdr_config.degree_bound,
+                    &powdr_config.apc_candidates_dir_path,
+                )
+                .unwrap(),
+                None, // No apc stats output
             )
-            .unwrap()
         })
         .collect()
 }
@@ -478,8 +485,19 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 struct ApcCandidate<P> {
     apc: Apc<P>,
     execution_frequency: usize,
-    width_before: usize,
-    width_after: usize,
+    width_before: AirWidths,
+    width_after: AirWidths,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ApcStats {
+    pub columns_saved: AirWidths,
+}
+
+impl ApcStats {
+    fn new(columns_saved: AirWidths) -> Self {
+        Self { columns_saved }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -520,16 +538,16 @@ impl ApcCandidate<BabyBearField> {
         .ok()?;
 
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
-        let width_after = apc_metrics.widths.total();
+        let width_after = apc_metrics.widths;
 
-        let width_before: usize = block
+        let width_before = block
             .statements
             .iter()
             .map(|instr| {
                 airs.get_instruction_metrics(instr.opcode.as_usize())
                     .unwrap()
                     .widths
-                    .total()
+                    .clone()
             })
             .sum();
 
@@ -556,8 +574,8 @@ impl ApcCandidate<BabyBearField> {
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
-            total_width_before: self.width_before,
-            total_width_after: self.width_after,
+            total_width_before: self.width_before.total(),
+            total_width_after: self.width_after.total(),
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.opcode))
                 .display()
@@ -569,13 +587,13 @@ impl ApcCandidate<BabyBearField> {
 impl<P> ApcCandidate<P> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
-        self.width_before - self.width_after
+        self.width_before.total() - self.width_after.total()
     }
 }
 
 impl<P> KnapsackItem for ApcCandidate<P> {
     fn cost(&self) -> usize {
-        self.width_after
+        self.width_after.total()
     }
 
     fn value(&self) -> usize {
@@ -603,7 +621,7 @@ fn create_apcs_with_cell_pgo(
     config: &PowdrConfig,
     original_config: &OriginalVmConfig,
     bus_map: &BusMap,
-) -> Vec<Apc<BabyBearField>> {
+) -> Vec<(Apc<BabyBearField>, Option<ApcStats>)> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -667,7 +685,9 @@ fn create_apcs_with_cell_pgo(
             c.cells_saved_per_row(),
         );
 
-        c.apc
+        let columns_saved = c.width_before - c.width_after;
+
+        (c.apc, Some(ApcStats::new(columns_saved)))
     })
     .collect();
 
@@ -690,7 +710,7 @@ fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
-) -> Vec<Apc<P>> {
+) -> Vec<(Apc<P>, Option<ApcStats>)> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -730,7 +750,7 @@ fn create_apcs_with_no_pgo<P: IntoOpenVm>(
     airs: &OriginalAirs<P>,
     config: &PowdrConfig,
     bus_map: &BusMap,
-) -> Vec<Apc<P>> {
+) -> Vec<(Apc<P>, Option<ApcStats>)> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
