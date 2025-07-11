@@ -67,5 +67,10 @@ pub fn collect_basic_blocks<A: Adapter>(
         blocks.push(curr_block);
     }
 
+    tracing::info!(
+        "Got {} basic blocks from `collect_basic_blocks`",
+        blocks.len()
+    );
+
     blocks
 }
