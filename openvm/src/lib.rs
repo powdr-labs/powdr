@@ -1688,7 +1688,7 @@ mod tests {
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            width: 2011,
+            width: 4909,
             constraints: 166,
             bus_interactions: 1783,
             machine_length: 10,
@@ -1698,9 +1698,9 @@ mod tests {
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            width: 2011,
-            constraints: 166,
-            bus_interactions: 1783,
+            width: 4909,
+            constraints: 3836,
+            bus_interactions: 3243,
             machine_length: 10,
         });
 
@@ -1709,9 +1709,9 @@ mod tests {
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            width: 2011,
-            constraints: 166,
-            bus_interactions: 1783,
+            width: 4909,
+            constraints: 3836,
+            bus_interactions: 3243,
             machine_length: 10,
         });
     }
