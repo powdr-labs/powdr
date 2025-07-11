@@ -12,15 +12,16 @@ use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use crate::{IntoOpenVm, PrecompileImplementation};
-use itertools::Itertools;
-use openvm_instructions::instruction::Instruction;
+use itertools::{ExactlyOneError, Itertools};
+use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program};
+use powdr_autoprecompiles::adapter::Adapter;
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
 use powdr_autoprecompiles::expression::try_convert;
@@ -50,6 +51,43 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
+struct OpenVmApcAdapter;
+
+impl Adapter<BabyBearField> for OpenVmApcAdapter {
+    type Field = OpenVmField<BabyBearField>;
+    type InstructionMachineHandler = OriginalAirs<BabyBearField>;
+    type BusInteractionHandler = OpenVmBusInteractionHandler<BabyBearField>;
+    type Candidate = OpenVmApcCandidate<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>>;
+    type Program = OpenVmProgramNewType<OpenVmField<BabyBearField>>;
+}
+
+struct OpenVmProgramNewType<F>(OpenVmProgram<F>);
+
+#[derive(Clone, Serialize, Deserialize)]
+struct InstructionNewType<F>(OpenVmInstruction<F>);
+
+impl<F: PrimeField32> Instruction<F> for InstructionNewType<F> {
+    fn opcode(&self) -> usize {
+        self.0.opcode.as_usize()
+    }
+}
+
+impl<F: PrimeField32> Program<F> for OpenVmProgramNewType<F> {
+    type Instruction = InstructionNewType<F>;
+
+    fn base_pc(&self) -> u32 {
+        todo!()
+    }
+
+    fn pc_step(&self) -> u32 {
+        todo!()
+    }
+
+    fn instructions(&self) -> Box<dyn Iterator<Item = Self::Instruction> + '_> {
+        todo!()
+    }
+}
+
 pub fn customize(
     OriginalCompiledProgram {
         mut exe,
@@ -73,28 +111,30 @@ pub fn customize(
         exe.program.step,
     );
 
-    let program = Program::new(
-        exe.program
-            .instructions_and_debug_infos
-            .iter()
-            .map(|o| o.as_ref().unwrap().0.clone())
-            .map(|instr| SymbolicInstructionStatement {
-                opcode: instr.opcode.as_usize(),
-                args: [
-                    instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
-                ]
-                .iter()
-                .map(|f| BabyBearField::from_openvm_field(*f))
-                .collect(),
-            })
-            .collect_vec(),
-        exe.program.pc_base,
-        exe.program.step,
-    );
+    let program = OpenVmProgramNewType(exe.program);
+
+    // let program = Program::new(
+    //     exe.program
+    //         .instructions_and_debug_infos
+    //         .iter()
+    //         .map(|o| o.as_ref().unwrap().0.clone())
+    //         .map(|instr| SymbolicInstructionStatement {
+    //             opcode: instr.opcode.as_usize(),
+    //             args: [
+    //                 instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
+    //             ]
+    //             .iter()
+    //             .map(|f| BabyBearField::from_openvm_field(*f))
+    //             .collect(),
+    //         })
+    //         .collect_vec(),
+    //     exe.program.pc_base,
+    //     exe.program.step,
+    // );
 
     let vm_config = VmConfig {
         instruction_machine_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
 
@@ -110,7 +150,7 @@ pub fn customize(
         PgoConfig::Instruction(_) | PgoConfig::None => None,
     };
 
-    let blocks = collect_basic_blocks(&program, &labels, &opcodes_allowlist, &branch_opcodes_set());
+    let blocks = collect_basic_blocks::<BabyBearField, OpenVmField<BabyBearField>, _>(&program, &labels, &opcodes_allowlist, &branch_opcodes_set());
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -145,7 +185,7 @@ pub fn customize(
         })
         .collect::<Vec<_>>();
 
-    let apcs = generate_apcs_with_pgo::<OpenVmApcCandidate<_>, _, _, _>(
+    let apcs = generate_apcs_with_pgo(
         blocks,
         &config,
         max_total_apc_columns,
@@ -155,7 +195,7 @@ pub fn customize(
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
-    let noop = Instruction {
+    let noop = OpenVmInstruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
         a: OpenVmField::<BabyBearField>::ZERO,
         b: OpenVmField::<BabyBearField>::ZERO,
@@ -177,7 +217,7 @@ pub fn customize(
                  machine,
                  subs,
              }| {
-                let new_instr = Instruction {
+                let new_instr = OpenVmInstruction {
                     opcode: VmOpcode::from_usize(opcode as usize),
                     a: OpenVmField::<BabyBearField>::ZERO,
                     b: OpenVmField::<BabyBearField>::ZERO,
@@ -284,22 +324,25 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 #[derive(Serialize, Deserialize)]
-struct OpenVmApcCandidate<P> {
-    apc: Apc<P>,
+struct OpenVmApcCandidate<P, I> {
+    apc: Apc<P, I>,
     execution_frequency: usize,
     width_before: usize,
     width_after: usize,
 }
 
-impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<BabyBearField>>
-    Candidate<BabyBearField, OriginalAirs<BabyBearField>, B> for OpenVmApcCandidate<BabyBearField>
+impl Candidate<BabyBearField, OpenVmApcAdapter>
+    for OpenVmApcCandidate<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>>
 {
-    type JsonExport = OpenVmApcCandidateJsonExport<BabyBearField>;
+    type JsonExport = OpenVmApcCandidateJsonExport<InstructionNewType<BabyBearField>>;
 
     fn create(
-        apc: Apc<BabyBearField>,
+        apc: Apc<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>>,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        vm_config: VmConfig<OriginalAirs<BabyBearField>, B>,
+        vm_config: VmConfig<
+            OriginalAirs<BabyBearField>,
+            OpenVmBusInteractionHandler<BabyBearField>,
+        >,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths.total();
@@ -311,7 +354,7 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
             .map(|instr| {
                 vm_config
                     .instruction_machine_handler
-                    .get_instruction_metrics(instr.opcode)
+                    .get_instruction_metrics(instr.opcode())
                     .unwrap()
                     .widths
                     .total()
@@ -334,7 +377,7 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
     fn to_json_export(
         &self,
         apc_candidates_dir_path: &Path,
-    ) -> OpenVmApcCandidateJsonExport<BabyBearField> {
+    ) -> OpenVmApcCandidateJsonExport<InstructionNewType<BabyBearField>> {
         OpenVmApcCandidateJsonExport {
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
@@ -348,19 +391,19 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
         }
     }
 
-    fn into_apc(self) -> Apc<BabyBearField> {
+    fn into_apc(self) -> Apc<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>> {
         self.apc
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct OpenVmApcCandidateJsonExport<P> {
+struct OpenVmApcCandidateJsonExport<I> {
     // opcode
     opcode: u32,
     // execution_frequency
     execution_frequency: usize,
     // original instructions
-    original_block: BasicBlock<P>,
+    original_block: BasicBlock<I>,
     // total width before optimisation
     total_width_before: usize,
     // total width after optimisation
@@ -369,14 +412,14 @@ struct OpenVmApcCandidateJsonExport<P> {
     apc_candidate_file: String,
 }
 
-impl<P> OpenVmApcCandidate<P> {
+impl<P, A> OpenVmApcCandidate<P, A> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
         self.width_before - self.width_after
     }
 }
 
-impl<P> KnapsackItem for OpenVmApcCandidate<P> {
+impl<P, A> KnapsackItem for OpenVmApcCandidate<P, A> {
     fn cost(&self) -> usize {
         self.width_after
     }
