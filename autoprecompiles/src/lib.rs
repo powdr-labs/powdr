@@ -1,6 +1,6 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
-pub use basic_blocks::BasicBlock;
+pub use blocks::{BasicBlock, PgoConfig, PowdrConfig};
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -20,8 +20,8 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
-pub mod basic_blocks;
 mod bitwise_lookup_optimizer;
+pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod expression;

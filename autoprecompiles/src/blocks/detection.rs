@@ -1,58 +1,8 @@
 use std::collections::BTreeSet;
 
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use crate::blocks::{BasicBlock, Program};
 
-use crate::SymbolicInstructionStatement;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BasicBlock<T> {
-    /// The index of the first instruction in this block in the original program.
-    pub start_idx: usize,
-    pub statements: Vec<SymbolicInstructionStatement<T>>,
-}
-
-impl<T> BasicBlock<T> {
-    pub fn pretty_print(
-        &self,
-        instr_formatter: impl Fn(&SymbolicInstructionStatement<T>) -> String,
-    ) -> String {
-        format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
-            + &self
-                .statements
-                .iter()
-                .enumerate()
-                .map(|(i, instr)| format!("   instr {i:>3}:   {}", instr_formatter(instr)))
-                .format("\n")
-                .to_string()
-            + "\n])"
-    }
-}
-
-/// Represents a program, which is a sequence of instructions
-pub struct Program<T> {
-    /// The address of the first instruction in the program.
-    base_pc: u32,
-    /// The step size between addresses of consecutive instructions.
-    pc_step: u32,
-    /// The instructions in the program.
-    instructions: Vec<SymbolicInstructionStatement<T>>,
-}
-
-impl<T> Program<T> {
-    pub fn new(
-        instructions: Vec<SymbolicInstructionStatement<T>>,
-        base_pc: u32,
-        pc_step: u32,
-    ) -> Self {
-        Self {
-            base_pc,
-            pc_step,
-            instructions,
-        }
-    }
-}
-
+/// Collects basic blocks from a program
 pub fn collect_basic_blocks<T: Clone>(
     program: &Program<T>,
     labels: &BTreeSet<u32>,
