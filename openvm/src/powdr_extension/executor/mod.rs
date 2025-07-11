@@ -9,7 +9,6 @@ use crate::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
     },
-    OpenVmField,
 };
 
 use super::{
@@ -33,7 +32,6 @@ use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
 };
 
-use crate::IntoOpenVm;
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
@@ -58,21 +56,21 @@ mod periphery;
 pub use periphery::PowdrPeripheryInstances;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<P: IntoOpenVm> {
-    instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    air_by_opcode_id: OriginalAirs<P>,
+pub struct PowdrExecutor<F: PrimeField32> {
+    instructions: Vec<OriginalInstruction<F>>,
+    air_by_opcode_id: OriginalAirs<F>,
     is_valid_poly_id: u64,
-    inventory: DummyInventory<OpenVmField<P>>,
+    inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
 }
 
-impl<P: IntoOpenVm> PowdrExecutor<P> {
+impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        air_by_opcode_id: OriginalAirs<P>,
+        instructions: Vec<OriginalInstruction<F>>,
+        air_by_opcode_id: OriginalAirs<F>,
         is_valid_column: AlgebraicReference,
-        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
+        memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
@@ -98,7 +96,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
 
     pub fn execute(
         &mut self,
-        memory: &mut MemoryController<OpenVmField<P>>,
+        memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // save the next available `RecordId`
@@ -152,17 +150,16 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<P>],
-    ) -> RowMajorMatrix<OpenVmField<P>>
+        bus_interactions: &[SymbolicBusInteraction<F>],
+    ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
-        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain:
-            PolynomialSpace<Val = OpenVmField<P>>,
+        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <OpenVmField<P> as FieldAlgebra>::zero_vec(height * width);
+        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
         let air_name_by_opcode = self
@@ -339,7 +336,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
                 }
 
                 // Set the is_valid column to 1
-                row_slice[is_valid_index] = OpenVmField::<P>::ONE;
+                row_slice[is_valid_index] = F::ONE;
 
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 

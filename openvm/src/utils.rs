@@ -2,8 +2,6 @@ use core::fmt;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::BusMap;
-use crate::IntoOpenVm;
-use crate::OpenVmField;
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -20,7 +18,6 @@ use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
 };
-use powdr_number::{BabyBearField, FieldElement};
 
 pub enum OpenVmReference {
     /// Reference to a witness column. The boolean indicates if the reference is to the next row.
@@ -59,11 +56,11 @@ impl TryFrom<OpenVmReference> for AlgebraicReference {
     }
 }
 
-pub fn algebraic_to_symbolic<P: IntoOpenVm>(
-    expr: &AlgebraicExpression<P, AlgebraicReference>,
-) -> SymbolicExpression<OpenVmField<P>> {
+pub fn algebraic_to_symbolic<F: PrimeField32>(
+    expr: &AlgebraicExpression<F, AlgebraicReference>,
+) -> SymbolicExpression<F> {
     match expr {
-        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(n.into_openvm_field()),
+        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
                 x: Arc::new(algebraic_to_symbolic(&binary.left)),
@@ -99,14 +96,12 @@ pub fn algebraic_to_symbolic<P: IntoOpenVm>(
     }
 }
 
-pub fn symbolic_to_algebraic<T: PrimeField32, P: FieldElement>(
-    expr: &SymbolicExpression<T>,
+pub fn symbolic_to_algebraic<F: PrimeField32>(
+    expr: &SymbolicExpression<F>,
     columns: &[Arc<String>],
-) -> AlgebraicExpression<P, OpenVmReference> {
+) -> AlgebraicExpression<F, OpenVmReference> {
     match expr {
-        SymbolicExpression::Constant(c) => {
-            AlgebraicExpression::Number(P::from_bytes_le(&c.as_canonical_u32().to_le_bytes()))
-        }
+        SymbolicExpression::Constant(c) => AlgebraicExpression::Number(*c),
         SymbolicExpression::Add { x, y, .. } => {
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                 left: Box::new(symbolic_to_algebraic(x, columns)),
@@ -275,5 +270,5 @@ fn format_expr<F: PrimeField32>(
     // TODO: Implement public references
     _public_values: &[String],
 ) -> String {
-    symbolic_to_algebraic::<_, BabyBearField>(expr, columns).to_string()
+    symbolic_to_algebraic(expr, columns).to_string()
 }

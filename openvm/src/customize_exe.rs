@@ -20,6 +20,7 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::Adapter;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
@@ -27,7 +28,7 @@ use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::{Apc, PowdrConfig, SymbolicInstructionStatement};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -58,12 +59,12 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
-    type Field = OpenVmField<BabyBearField>;
-    type InstructionMachineHandler = OriginalAirs<BabyBearField>;
+    type Field = BabyBear;
+    type InstructionMachineHandler = OriginalAirs<BabyBear>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<BabyBearField>;
-    type Candidate = OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>;
-    type Program = Prog<'a, OpenVmField<BabyBearField>>;
-    type Instruction = Instr<OpenVmField<BabyBearField>>;
+    type Candidate = OpenVmApcCandidate<BabyBear, Instr<BabyBear>>;
+    type Program = Prog<'a, BabyBear>;
+    type Instruction = Instr<BabyBear>;
 
     fn into_field(e: BabyBearField) -> Self::Field {
         e.into_openvm_field()
@@ -322,10 +323,10 @@ fn add_extra_targets<F: PrimeField32>(
     labels
 }
 
-pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
+pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
     interaction: &SymbolicInteraction<F>,
     columns: &[Arc<String>],
-) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
+) -> Result<SymbolicBusInteraction<F>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
     let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
@@ -339,25 +340,20 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<P, I> {
-    apc: Apc<P, I>,
+pub struct OpenVmApcCandidate<F, I> {
+    apc: Apc<F, I>,
     execution_frequency: usize,
     width_before: usize,
     width_after: usize,
 }
 
-impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
-    for OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>
-{
+impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
     type JsonExport = OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>>;
 
     fn create(
-        apc: Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
+        apc: Apc<BabyBear, Instr<BabyBear>>,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        vm_config: VmConfig<
-            OriginalAirs<BabyBearField>,
-            OpenVmBusInteractionHandler<BabyBearField>,
-        >,
+        vm_config: VmConfig<OriginalAirs<BabyBear>, OpenVmBusInteractionHandler<BabyBearField>>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths.total();
@@ -406,7 +402,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
         }
     }
 
-    fn into_apc(self) -> Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>> {
+    fn into_apc(self) -> Apc<BabyBear, Instr<BabyBear>> {
         self.apc
     }
 }
