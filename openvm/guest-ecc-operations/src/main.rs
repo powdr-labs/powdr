@@ -84,7 +84,6 @@ pub fn main() {
     // Ec Mul
     let p1_projective = ProjectivePoint::from(p1_affine);
     let scalar = Scalar::from_u128(12345678);
-    // Calculated with https://learnmeabitcoin.com/technical/cryptography/elliptic-curve/#ec-multiply-tool
 
     let x5 = *FieldBytes::from_slice(&hex!(
         "6D6D216817A448DC312FEE586FA306D189CB404A9CAF72D90308797F38934A19"
