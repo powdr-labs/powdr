@@ -1624,7 +1624,7 @@ mod tests {
             expected_metrics: &expected_metrics,
             expected_columns_saved: Some(AirWidths {
                 preprocessed: 0,
-                main: 30422,
+                main: 34022,
                 log_up: 22864,
             }),
         });
