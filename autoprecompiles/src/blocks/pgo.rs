@@ -16,8 +16,6 @@ use crate::{
     Apc, BasicBlock, InstructionMachineHandler, PowdrConfig, VmConfig,
 };
 
-const POWDR_OPCODE: usize = 0xDEADBEEF;
-
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
 /// The inner HashMap contains number of time a pc is executed.
 #[derive(Default)]
@@ -107,7 +105,7 @@ fn create_apcs_with_cell_pgo<
                 block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
-                (POWDR_OPCODE + i) as u32,
+                (config.first_apc_opcode + i) as u32,
                 config.apc_candidates_dir_path.as_deref(),
             )
             .ok()?;
@@ -250,15 +248,15 @@ fn create_apcs_for_all_blocks<
     B: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync,
 >(
     blocks: Vec<BasicBlock<P>>,
-    powdr_config: &PowdrConfig,
+    config: &PowdrConfig,
     vm_config: VmConfig<I, B>,
 ) -> Vec<Apc<P>> {
-    let n_acc = powdr_config.autoprecompiles as usize;
+    let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
     blocks
         .into_par_iter()
-        .skip(powdr_config.skip_autoprecompiles as usize)
+        .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
         .enumerate()
         .map(|(index, block)| {
@@ -273,14 +271,14 @@ fn create_apcs_for_all_blocks<
             //     block.pretty_print(openvm_instruction_formatter)
             // );
 
-            let apc_opcode = POWDR_OPCODE + index;
+            let apc_opcode = config.first_apc_opcode + index;
 
             crate::build(
                 block,
                 vm_config.clone(),
-                powdr_config.degree_bound,
+                config.degree_bound,
                 apc_opcode as u32,
-                powdr_config.apc_candidates_dir_path.as_deref(),
+                config.apc_candidates_dir_path.as_deref(),
             )
             .unwrap()
         })

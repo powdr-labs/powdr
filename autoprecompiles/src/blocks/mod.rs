@@ -26,15 +26,23 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
+    /// The opcode id of the first APC instruction. Other APC instructions will have consecutive ids.
+    pub first_apc_opcode: usize,
 }
 
 impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
+    pub fn new(
+        autoprecompiles: u64,
+        skip_autoprecompiles: u64,
+        degree_bound: DegreeBound,
+        first_apc_opcode: usize,
+    ) -> Self {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
+            first_apc_opcode,
         }
     }
 

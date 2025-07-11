@@ -370,6 +370,7 @@ impl PowdrOpenVmConfig {
             apc_count,
             skip_count,
             DEFAULT_DEGREE_BOUND,
+            POWDR_OPCODE,
         ))
     }
 
@@ -378,6 +379,7 @@ impl PowdrOpenVmConfig {
             apc_count,
             skip_count,
             DEFAULT_DEGREE_BOUND,
+            POWDR_OPCODE,
         ))
     }
 }
@@ -912,6 +914,7 @@ mod tests {
             GUEST_APC,
             GUEST_SKIP,
             DEFAULT_DEGREE_BOUND,
+            POWDR_OPCODE,
         ));
         prove_simple(GUEST, config, stdin, PgoConfig::None, None);
     }
