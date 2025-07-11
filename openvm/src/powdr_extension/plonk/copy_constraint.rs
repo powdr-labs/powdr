@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
-pub fn generate_permutation_columns<F, P>(
+pub fn generate_permutation_columns<F>(
     values: &mut [F],
-    plonk_circuit: &PlonkCircuit<P, AlgebraicReference>,
+    plonk_circuit: &PlonkCircuit<F, AlgebraicReference>,
     number_of_calls: usize,
     width: usize,
 ) where

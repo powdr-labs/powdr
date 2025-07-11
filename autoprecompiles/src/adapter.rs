@@ -9,9 +9,9 @@ use crate::{
 };
 
 pub trait Adapter: Sized {
-    type Field;
+    type Field: Serialize + for<'de> Deserialize<'de> + Send;
     type PowdrField: FieldElement;
-    type InstructionMachineHandler: InstructionMachineHandler<Self::PowdrField> + Clone + Sync;
+    type InstructionMachineHandler: InstructionMachineHandler<Self::Field> + Clone + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>
