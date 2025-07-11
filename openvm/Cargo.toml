@@ -58,7 +58,6 @@ tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 clap = { version = "^4.3", features = ["derive"] }
 
 log = "0.4.17"
-serde_cbor = "0.11.2"
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
 
 toml = "0.8.14"
@@ -73,6 +72,7 @@ openvm-algebra-circuit.workspace = true
 openvm-bigint-circuit.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
+serde_cbor = "0.11.2"
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458

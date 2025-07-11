@@ -3,7 +3,7 @@ use powdr_number::{ExpressionConvertible, FieldElement};
 use crate::constraint_system::{
     BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
-use crate::effect::EffectImpl;
+use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
@@ -226,19 +226,19 @@ where
         Ok(progress)
     }
 
-    fn apply_effect(&mut self, effect: EffectImpl<T, V>) -> bool {
+    fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            EffectImpl::Assignment(v, expr) => {
+            Effect::Assignment(v, expr) => {
                 self.apply_assignment(&v, &GroupedExpression::from_runtime_constant(expr))
             }
-            EffectImpl::RangeConstraint(v, range_constraint) => {
+            Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
-            EffectImpl::BitDecomposition(..) => unreachable!(),
-            EffectImpl::Assertion(..) => unreachable!(),
+            Effect::BitDecomposition(..) => unreachable!(),
+            Effect::Assertion(..) => unreachable!(),
             // There are no known-but-not-concrete variables, so we should never
             // encounter a conditional assignment.
-            EffectImpl::ConditionalAssignment { .. } => unreachable!(),
+            Effect::ConditionalAssignment { .. } => unreachable!(),
         }
     }
 
