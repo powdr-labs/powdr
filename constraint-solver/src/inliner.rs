@@ -1,7 +1,7 @@
 use crate::constraint_system::ConstraintRef;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::journaling_constraint_system::JournalingConstraintSystemGeneric;
+use crate::journaling_constraint_system::JournalingConstraintSystem;
 use crate::runtime_constant::{RuntimeConstant, Substitutable};
 
 use itertools::Itertools;
@@ -25,9 +25,9 @@ pub fn replace_constrained_witness_columns<
     T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    mut constraint_system: JournalingConstraintSystemGeneric<T, V>,
+    mut constraint_system: JournalingConstraintSystem<T, V>,
     degree_bound: DegreeBound,
-) -> JournalingConstraintSystemGeneric<T, V> {
+) -> JournalingConstraintSystem<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
     let constraint_count = constraint_system

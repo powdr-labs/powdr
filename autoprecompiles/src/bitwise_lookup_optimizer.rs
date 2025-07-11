@@ -4,16 +4,16 @@ use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystemGeneric};
+use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
 /// byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
-    mut system: ConstraintSystemGeneric<T, V>,
+    mut system: ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
-) -> ConstraintSystemGeneric<T, V> {
+) -> ConstraintSystem<T, V> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
@@ -107,7 +107,7 @@ fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Ha
 /// Returns all expressions that are byte-constrained in the machine.
 /// The list does not have to be exhaustive.
 fn all_byte_constrained_expressions<T: FieldElement, V: Clone + Ord + Hash>(
-    machine: &ConstraintSystemGeneric<T, V>,
+    machine: &ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
 ) -> impl Iterator<Item = &GroupedExpression<T, V>> {
     machine

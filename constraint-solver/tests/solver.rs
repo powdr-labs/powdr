@@ -6,10 +6,11 @@ use powdr_constraint_solver::{
     constraint_system::{
         BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
     },
-    grouped_expression::QuadraticSymbolicExpression,
+    grouped_expression::GroupedExpression,
     indexed_constraint_system::apply_substitutions,
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},
+    symbolic_expression::SymbolicExpression,
     test_utils::{constant, var, Qse},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -19,8 +20,10 @@ use pretty_assertions::assert_eq;
 
 pub type Var = &'static str;
 
+pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
+
 pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
-    system: ConstraintSystem<GoldilocksField, Var>,
+    system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
     bus_interaction_handler: B,
     expected_assignments: Vec<(Var, GoldilocksField)>,
 ) {
