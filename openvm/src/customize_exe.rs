@@ -685,6 +685,8 @@ fn create_apcs_with_cell_pgo(
             c.cells_saved_per_row(),
         );
 
+        println!("width_before: {:?}", c.width_before);
+        println!("width_after: {:?}", c.width_after);
         let columns_saved = c.width_before - c.width_after;
 
         (c.apc, Some(ApcStats::new(columns_saved)))

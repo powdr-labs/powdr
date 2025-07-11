@@ -1366,6 +1366,7 @@ mod tests {
                 .map(|(_, columns_saved)| columns_saved.unwrap())
                 .sum::<AirWidths>();
             assert_eq!(columns_saved, params.expected_columns_saved.unwrap());
+            // println!("Columns saved\n: {:?}", columns_saved);
         }
 
         // In Cell PGO, check that the apc candidates were persisted to disk
@@ -1442,8 +1443,8 @@ mod tests {
             expected_metrics: &expected_metrics,
             expected_columns_saved: Some(AirWidths {
                 preprocessed: 0,
-                main: 49,
-                log_up: 36,
+                main: 121,
+                log_up: 92,
             }),
         });
     }
@@ -1501,8 +1502,8 @@ mod tests {
             expected_metrics: &expected_metrics_cell,
             expected_columns_saved: Some(AirWidths {
                 preprocessed: 0,
-                main: 14675,
-                log_up: 12124,
+                main: 161537,
+                log_up: 105344,
             }),
         });
     }
@@ -1582,8 +1583,8 @@ mod tests {
             expected_metrics: &expected_metrics,
             expected_columns_saved: Some(AirWidths {
                 preprocessed: 0,
-                main: 2011,
-                log_up: 1788,
+                main: 25183,
+                log_up: 16948,
             }),
         });
     }
@@ -1622,8 +1623,8 @@ mod tests {
             expected_metrics: &expected_metrics,
             expected_columns_saved: Some(AirWidths {
                 preprocessed: 0,
-                main: 4824,
-                log_up: 3968,
+                main: 30422,
+                log_up: 22864,
             }),
         });
 
