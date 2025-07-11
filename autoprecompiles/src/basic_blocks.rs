@@ -29,14 +29,14 @@ impl<T> BasicBlock<T> {
     }
 }
 
-/// Represents a symbolic program, which is a sequence of symbolic instructions
+/// Represents a program, which is a sequence of instructions
 pub struct Program<T> {
     /// The address of the first instruction in the program.
-    pub base_pc: u32,
+    base_pc: u32,
     /// The step size between addresses of consecutive instructions.
-    pub pc_step: u32,
+    pc_step: u32,
     /// The instructions in the program.
-    pub instructions: Vec<SymbolicInstructionStatement<T>>,
+    instructions: Vec<SymbolicInstructionStatement<T>>,
 }
 
 impl<T> Program<T> {
