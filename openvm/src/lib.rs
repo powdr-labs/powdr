@@ -1292,7 +1292,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too long"]
+    #[ignore = "Too long"]
     fn ecc_op_prove_simple() {
         let stdin = StdIn::default();
         let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
@@ -1310,7 +1310,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too long"]
+    #[ignore = "Too long"]
     fn ecc_prove_mock() {
         let stdin = StdIn::default();
         let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
@@ -1328,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Too much RAM"]
+    #[ignore = "Too much RAM"]
     fn ecc_prove_many_apcs() {
         let stdin = StdIn::default();
         let pgo_data =
