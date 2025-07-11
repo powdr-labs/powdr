@@ -139,25 +139,6 @@ pub fn customize(
 
     let program = OpenVmProgramNewType(exe.program.clone());
 
-    // let program = Program::new(
-    //     exe.program
-    //         .instructions_and_debug_infos
-    //         .iter()
-    //         .map(|o| o.as_ref().unwrap().0.clone())
-    //         .map(|instr| SymbolicInstructionStatement {
-    //             opcode: instr.opcode.as_usize(),
-    //             args: [
-    //                 instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
-    //             ]
-    //             .iter()
-    //             .map(|f| BabyBearField::from_openvm_field(*f))
-    //             .collect(),
-    //         })
-    //         .collect_vec(),
-    //     exe.program.pc_base,
-    //     exe.program.step,
-    // );
-
     let vm_config = VmConfig {
         instruction_machine_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(bus_map.clone()),
