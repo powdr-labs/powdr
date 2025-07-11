@@ -28,6 +28,7 @@ use powdr_autoprecompiles::{Apc, DegreeBound};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_number::{BabyBearField, FieldElement};
+use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -90,6 +91,7 @@ pub fn customize(
         sdk_vm_config,
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
@@ -138,20 +140,27 @@ pub fn customize(
     );
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
-        for (count, block) in blocks
-            .iter()
-            .filter_map(|block| {
-                Some((
-                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
-                    block,
-                ))
-            })
-            .sorted_by_key(|(count, _)| *count)
-            .rev()
-            .take(10)
-        {
+        // for (count, block) in blocks.iter()
+        // .filter_map(|block| {
+        //     Some((
+        //         pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
+        //         block,
+        //     ))
+        // })
+        // .sorted_by_key(|(count, _)| *count)
+        // .rev()
+        // .take(100)
+        for block in &blocks {
+            let count = pgo_config
+                .pc_offset_execution_count(block.start_idx as u32)
+                .unwrap_or(0);
+            let name = debug_info
+                .symbols
+                .try_get_one_or_preceding(OPENVM_INIT_PC + block.start_idx as u32)
+                .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
+                .unwrap_or_default();
             tracing::debug!(
-                "Basic block (executed {count} times):\n{}",
+                "Basic block (executed {count} times), {name}:\n{}",
                 block.pretty_print(openvm_instruction_formatter)
             );
         }
