@@ -1768,8 +1768,6 @@ mod tests {
             expected_metrics: &expected_metrics,
         });
 
-        print!("None passed");
-
         let expected_metrics_instruction = MachineTestMetrics {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
@@ -1793,17 +1791,15 @@ mod tests {
             expected_metrics: &expected_metrics_instruction,
         });
 
-        print!("Instruction passed");
-
         let expected_metrics_cell = MachineTestMetrics {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 24616,
-                    log_up: 19516,
+                    main: 8653,
+                    log_up: 7824,
                 },
-                constraints: 18687,
-                bus_interactions: 15895,
+                constraints: 6356,
+                bus_interactions: 5893,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1815,7 +1811,7 @@ mod tests {
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            expected_metrics: &expected_metrics,
+            expected_metrics: &expected_metrics_cell,
         });
     }
 }
