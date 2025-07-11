@@ -1691,7 +1691,7 @@ mod tests {
             width: 2011,
             constraints: 166,
             bus_interactions: 1783,
-            machine_length: 1,
+            machine_length: 10,
         });
         test_machine(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
@@ -1701,7 +1701,7 @@ mod tests {
             width: 2011,
             constraints: 166,
             bus_interactions: 1783,
-            machine_length: 1,
+            machine_length: 10,
         });
 
         test_machine(MachineTestParams {
@@ -1712,7 +1712,7 @@ mod tests {
             width: 2011,
             constraints: 166,
             bus_interactions: 1783,
-            machine_length: 1,
+            machine_length: 10,
         });
     }
 }
