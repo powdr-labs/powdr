@@ -3,6 +3,7 @@
 import json
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import argparse
 import numpy as np
 
@@ -12,40 +13,13 @@ def load_apc_data(json_path):
         data = json.load(f)
     
     return pd.DataFrame([{
+        'opcode': item['opcode'],
         'effectiveness': item['total_width_before'] / item['total_width_after'],
         'instructions': len(item['original_block']['statements']),
-        'frequency': item['execution_frequency'],
+        'software_version_cells': item['total_width_before'] * item['execution_frequency'],
         'total_width_before': item['total_width_before'],
-        'software_version_cells': item['total_width_before'] * item['execution_frequency']
+        'total_width_after': item['total_width_after']
     } for item in data])
-
-def weighted_quantile(values, weights, quantile):
-    """Calculate weighted quantile."""
-    indices = np.argsort(values)
-    sorted_values = values[indices]
-    sorted_weights = weights[indices]
-    cumsum_weights = np.cumsum(sorted_weights)
-    total_weight = cumsum_weights[-1]
-    
-    # Find the value at the given quantile
-    target_weight = quantile * total_weight
-    idx = np.searchsorted(cumsum_weights, target_weight)
-    
-    if idx >= len(sorted_values):
-        return sorted_values[-1]
-    return sorted_values[idx]
-
-def remove_outliers(df, column, weight_column, factor=1.1):
-    """Remove outliers using weighted IQR method."""
-    values = df[column].values
-    weights = df[weight_column].values
-    
-    percentile5 = weighted_quantile(values, weights, 0.05)
-    percentile95 = weighted_quantile(values, weights, 0.95)
-    IQR = percentile95 - percentile5
-    lower_bound = percentile5 - factor * IQR
-    upper_bound = percentile95 + factor * IQR
-    return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
 
 def format_cell_count(count):
     """Format cell count with appropriate units."""
@@ -58,99 +32,100 @@ def format_cell_count(count):
     else:
         return f"{count:.0f}"
 
-def group_instruction_count(count):
-    """Group instruction counts into ranges."""
-    if count <= 9:
-        return str(count)
-    elif count <= 14:
-        return '10-14'
-    elif count <= 19:
-        return '15-19'
-    elif count <= 29:
-        return '20-29'
-    elif count <= 49:
-        return '30-49'
-    elif count <= 100:
-        return '50-100'
-    else:
-        return '>100'
-
-def prepare_histogram_data(df, bins):
-    """Prepare weighted histogram data grouped by instruction count."""
-    df['inst_group'] = df['instructions'].apply(group_instruction_count)
-    
-    group_order = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 
-                   '10-14', '15-19', '20-29', '30-49', '50-100', '>100']
-    existing_groups = [g for g in group_order if g in df['inst_group'].values]
-    
-    hist_data = []
-    for group in existing_groups:
-        group_df = df[df['inst_group'] == group]
-        software_version_cells = group_df['software_version_cells'].values
-        values = group_df['effectiveness'].values
-        
-        hist = np.histogram(values, bins=bins, weights=software_version_cells)[0] if len(values) > 0 else np.zeros(len(bins) - 1)
-        hist_data.append(hist)
-    
-    return existing_groups, hist_data
-
 def plot_effectiveness(json_path, filename=None):
-    """Generate stacked histogram of effectiveness data."""
+    """Generate bar plot of effectiveness data."""
     df = load_apc_data(json_path)
+    total_cells = df['software_version_cells'].sum()
     
-    # Calculate mean from full dataset
-    total_software_version_cells = df['software_version_cells'].sum()
-    mean_effectiveness = (df['effectiveness'] * df['software_version_cells']).sum() / total_software_version_cells
+    # Print top 10 basic blocks
+    top10 = df.nlargest(10, 'software_version_cells')[['opcode', 'software_version_cells', 'effectiveness', 'instructions', 'total_width_before', 'total_width_after']]
+    top10['software_version_cells'] = top10['software_version_cells'].apply(format_cell_count)
+    top10.columns = ['Opcode', 'Trace Cells', 'Effectiveness', 'Instructions', 'Width Before', 'Width After']
+    print("\nTop 10 Basic Blocks by Trace Cells:")
+    print(top10.to_string(index=False))
+    print()
     
-    # Remove outliers for visualization
-    df_clean = remove_outliers(df, 'effectiveness', 'software_version_cells')
+    # Calculate weighted mean effectiveness
+    mean_effectiveness = (df['effectiveness'] * df['software_version_cells']).sum() / total_cells
     
-    # Calculate trace cells statistics
-    total_cells_full = df['software_version_cells'].sum()
-    total_cells_clean = df_clean['software_version_cells'].sum()
-    percentage = (total_cells_clean / total_cells_full) * 100
+    # Separate large and small APCs (< 0.1% threshold)
+    threshold = total_cells * 0.001
+    df_large = df[df['software_version_cells'] >= threshold].copy()
+    df_small = df[df['software_version_cells'] < threshold]
     
-    # Prepare histogram
-    bins = np.linspace(df_clean['effectiveness'].min(), df_clean['effectiveness'].max(), 20)
-    existing_groups, hist_data = prepare_histogram_data(df_clean, bins)
+    # Sort large APCs by cost
+    df_large = df_large.sort_values('software_version_cells', ascending=False)
     
-    # Create plot with extra space for legend
+    # Create 'Other' entry if there are small APCs
+    if len(df_small) > 0:
+        other_cells = df_small['software_version_cells'].sum()
+        other_effectiveness = (df_small['effectiveness'] * df_small['software_version_cells']).sum() / other_cells
+        other_row = pd.DataFrame([{
+            'effectiveness': other_effectiveness,
+            'software_version_cells': other_cells,
+            'instructions': -1,  # Special marker for Other
+            'is_other': True
+        }])
+        df_plot = pd.concat([df_large.assign(is_other=False), other_row], ignore_index=True)
+    else:
+        df_plot = df_large.assign(is_other=False)
+    
+    # Create plot
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    # Stacked bar chart
-    bottom = np.zeros(len(bins) - 1)
-    colors = plt.cm.viridis(np.linspace(0, 1, len(existing_groups)))
+    # Set up color mapping with log scale
+    valid_instructions = df_plot[~df_plot['is_other']]['instructions']
+    if len(valid_instructions) > 0:
+        norm = mcolors.LogNorm(vmin=valid_instructions.min(), vmax=valid_instructions.max())
+        cmap = plt.cm.RdYlGn  # Red-Yellow-Green colormap
     
-    for i, (group, data) in enumerate(zip(existing_groups, hist_data)):
-        label = f'{group} instruction{"s" if group != "1" else ""}'
-        ax.bar(bins[:-1], data, width=np.diff(bins), bottom=bottom, 
-               label=label, color=colors[i], 
-               edgecolor='black', linewidth=0.5, alpha=0.8)
-        bottom += data
+    # Plot bars
+    x_pos = 0
+    for idx, row in df_plot.iterrows():
+        width = row['software_version_cells']
+        
+        if row.get('is_other', False):
+            color = 'lightgray'
+        else:
+            color = cmap(norm(row['instructions']))
+        
+        ax.bar(x_pos + width/2, row['effectiveness'], width=width,
+               color=color, edgecolor='black', linewidth=0.5, alpha=0.8)
+        
+        # Label 'Other' box if it's wide enough
+        if row.get('is_other', False) and width > total_cells * 0.02:  # Only label if > 2% of total width
+            ax.text(x_pos + width/2, row['effectiveness']/2, 
+                   f'Other\n({len(df_small)} APCs)',
+                   ha='center', va='center', fontsize=10, 
+                   color='black', weight='bold')
+        
+        x_pos += width
     
     # Formatting
-    ax.set_xlabel('Effectiveness', fontsize=12)
-    ax.set_ylabel('Instruction trace cells (software version)', fontsize=12)
-    
-    cells_str = format_cell_count(total_cells_clean)
-    ax.set_title(f'Distribution of Effectiveness\n(Accounting for {cells_str} instruction trace cells ({percentage:.0f}%))', 
-                 fontsize=14)
+    ax.set_xlabel('Cumulative instruction trace cells (software version)', fontsize=12)
+    ax.set_ylabel('Effectiveness', fontsize=12)
+    ax.set_title("Effectiveness by Basic Block", fontsize=14)
     ax.grid(True, alpha=0.3, axis='y')
-    # Place legend outside the plot area
-    ax.legend(title='Basic Block size', loc='center left', bbox_to_anchor=(1, 0.5), 
-              frameon=True, fancybox=True, shadow=True)
+    ax.axhline(mean_effectiveness, color='red', linestyle='--', linewidth=2, alpha=0.7)
     
-    # Add mean line
-    ax.axvline(mean_effectiveness, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    # Format x-axis
+    ax.set_xlim(0, total_cells)
+    x_ticks = ax.get_xticks()
+    ax.set_xticklabels([format_cell_count(x) for x in x_ticks])
     
-    # Add statistics text
-    stats_text = f'Mean: {mean_effectiveness:.2f}'
-    props = dict(boxstyle='round,pad=0.5', facecolor='wheat', alpha=0.8)
-    ax.text(0.02, 0.97, stats_text, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', bbox=props)
+    # Add colorbar for instruction count
+    if len(valid_instructions) > 0:
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax, pad=0.02)
+        cbar.set_label('Instructions (log scale)', rotation=270, labelpad=20)
+    
+    # Add mean text
+    ax.text(0.02, 0.97, f'Mean: {mean_effectiveness:.2f}', 
+            transform=ax.transAxes, fontsize=10, verticalalignment='top',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='wheat', alpha=0.8))
     
     plt.tight_layout()
-    plt.subplots_adjust(right=0.85)  # Make room for the legend
     
     # Save or show
     if filename:
