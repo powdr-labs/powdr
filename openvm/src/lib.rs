@@ -941,9 +941,9 @@ mod tests {
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
-    const GUEST_ECC_OP_ITER_0: u32 = 0;
-    const GUEST_ECC_OP: &str = "guest-ecc-op";
+    const GUEST_ECC_OP: &str = "guest-ecc-operations";
     const GUEST_ECC_OP_APC_PGO: u64 = 10;
+    const GUEST_ECC_OP_APC_PGO_LARGE: u64 = 50;
     //const GUEST_ECC_OP_APC_PGO_LARGE: u64 = 50;
     const GUEST_ECC_OP_SKIP: u64 = 0;
 
@@ -1291,8 +1291,7 @@ mod tests {
     #[test]
     //#[ignore = "Too long"]
     fn ecc_op_prove_simple() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_OP_ITER_0);
+        let stdin = StdIn::default();
         let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
 
         let pgo_data =
@@ -1304,6 +1303,139 @@ mod tests {
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
+        );
+    }
+
+    #[test]
+    //#[ignore = "Too long"]
+    fn ecc_prove_mock() {
+        let stdin = StdIn::default();
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_mock(
+            GUEST_ECC_OP,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    //#[ignore = "Too much RAM"]
+    fn ecc_prove_many_apcs() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO_LARGE, GUEST_ECC_OP_SKIP);
+        prove_recursion(
+            GUEST_ECC_OP,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data.clone()),
+            None,
+        );
+
+        prove_recursion(
+            GUEST_ECC_OP,
+            config.clone(),
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_prove_large() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        prove_recursion(
+            GUEST_ECC_OP,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_small_prove_simple() {
+        let stdin = StdIn::default();
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_ECC_OP,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_small_prove_mock() {
+        let stdin = StdIn::default();
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_mock(
+            GUEST_ECC_OP,
+            config,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_OP,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc addtion and multiplication with PgoConfig::Cell took {:?}",
+            elapsed
+        );
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_OP,
+            config.clone(),
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc addition and multiplication with PgoConfig::Instruction took {:?}",
+            elapsed
         );
     }
     // #[test]
@@ -1544,5 +1676,43 @@ mod tests {
             total_columns <= MAX_TOTAL_COLUMNS,
             "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
         );
+    }
+
+    #[test]
+    fn ecc_op_machine_pgo_mode() {
+        // All three modes happen to create 1 APC for the same basic block
+        let stdin = StdIn::default();
+        let pgo_data = execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin);
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::None,
+            guest: GUEST_ECC_OP,
+            guest_apc: GUEST_ECC_OP_APC_PGO,
+            guest_skip: GUEST_ECC_OP_SKIP,
+            width: 2011,
+            constraints: 166,
+            bus_interactions: 1783,
+            machine_length: 1,
+        });
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+            guest: GUEST_ECC_OP,
+            guest_apc: GUEST_ECC_OP_APC_PGO,
+            guest_skip: GUEST_ECC_OP_SKIP,
+            width: 2011,
+            constraints: 166,
+            bus_interactions: 1783,
+            machine_length: 1,
+        });
+
+        test_machine(MachineTestParams {
+            pgo_config: PgoConfig::Cell(pgo_data, None),
+            guest: GUEST_ECC_OP,
+            guest_apc: GUEST_ECC_OP_APC_PGO,
+            guest_skip: GUEST_ECC_OP_SKIP,
+            width: 2011,
+            constraints: 166,
+            bus_interactions: 1783,
+            machine_length: 1,
+        });
     }
 }
