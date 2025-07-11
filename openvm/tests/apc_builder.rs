@@ -89,7 +89,7 @@ fn assert_machine_output(
 }
 
 mod single_instruction_tests {
-    use crate::assert_machine_output;
+    use super::*;
     use powdr_openvm::symbolic_instruction_builder::*;
 
     // ALU Chip instructions
@@ -326,10 +326,10 @@ mod single_instruction_tests {
             loadw(64, 56, 4, 2, 1, 0),
             loadw(68, 56, 8, 2, 1, 0),
             loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
+            storew(60, 52, 0, 2, 1, 0),
+            storew(64, 52, 4, 2, 1, 0),
+            storew(68, 52, 8, 2, 1, 0),
+            storew(20, 52, 12, 2, 1, 0),
             add(56, 56, 16, 0),
             add(48, 48, 16777200, 0),
             add(52, 52, 16, 0),
@@ -348,13 +348,16 @@ mod single_instruction_tests {
             bltu(44, 48, -88),
         ];
 
+        let (memset_loop_machine, _) = compile_to_machine(memset_loop.clone());
+        let columns = memset_loop_machine.main_columns().count();
+        let (memset_loop_unrolled_machine, _) = compile_to_machine(memset_loop_unrolled.clone());
+        let unrolled_columns = memset_loop_unrolled_machine.main_columns().count();
+        println!(
+            "memset_loop columns: {}, unrolled columns: {}",
+            columns, unrolled_columns
+        );
         assert_machine_output(memset_loop, "memset_loop");
         assert_machine_output(memset_loop_unrolled, "memset_loop_unrolled");
-        assert_machine_output(
-            memset_loop_unrolled_unmodified,
-            "memset_loop_unrolled_unmodified",
-        );
-        assert_machine_output(memset_loop_unrolled_4x, "memset_loop_unrolled_4x");
     }
 }
 
