@@ -5,13 +5,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_number::FieldElement;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::Adapter, blocks::{selection::{parallel_fractional_knapsack, KnapsackItem}, Program}, constraint_optimizer::IsBusStateful, Apc, BasicBlock, InstructionMachineHandler, PowdrConfig, VmConfig
+    adapter::Adapter,
+    blocks::{
+        selection::{parallel_fractional_knapsack, KnapsackItem},
+        Program,
+    },
+    Apc, BasicBlock, PowdrConfig, VmConfig,
 };
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
@@ -61,9 +65,7 @@ pub trait Candidate<P: FieldElement, A: Adapter<P>>: Sized + KnapsackItem {
 }
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
-fn create_apcs_with_cell_pgo<
-P: FieldElement, A: Adapter<P>
->(
+fn create_apcs_with_cell_pgo<P: FieldElement, A: Adapter<P>>(
     mut blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
@@ -131,9 +133,7 @@ P: FieldElement, A: Adapter<P>
     res
 }
 
-fn create_apcs_with_instruction_pgo<
-    P: FieldElement, A: Adapter<P>
->(
+fn create_apcs_with_instruction_pgo<P: FieldElement, A: Adapter<P>>(
     mut blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
@@ -173,10 +173,7 @@ fn create_apcs_with_instruction_pgo<
     create_apcs_for_all_blocks::<P, A>(blocks, config, vm_config)
 }
 
-fn create_apcs_with_no_pgo<
-    P: FieldElement,
-    A: Adapter<P>,
->(
+fn create_apcs_with_no_pgo<P: FieldElement, A: Adapter<P>>(
     mut blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
@@ -197,9 +194,7 @@ fn create_apcs_with_no_pgo<
     create_apcs_for_all_blocks::<P, A>(blocks, config, vm_config)
 }
 
-pub fn generate_apcs_with_pgo<
-    P: FieldElement, A: Adapter<P>
->(
+pub fn generate_apcs_with_pgo<P: FieldElement, A: Adapter<P>>(
     blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
@@ -218,9 +213,12 @@ pub fn generate_apcs_with_pgo<
             max_total_apc_columns,
             vm_config,
         ),
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo::<P, A>(blocks, pgo_program_idx_count, config, vm_config)
-        }
+        PgoConfig::Instruction(pgo_program_idx_count) => create_apcs_with_instruction_pgo::<P, A>(
+            blocks,
+            pgo_program_idx_count,
+            config,
+            vm_config,
+        ),
         PgoConfig::None => create_apcs_with_no_pgo::<P, A>(blocks, config, vm_config),
     };
 
@@ -231,10 +229,7 @@ pub fn generate_apcs_with_pgo<
 
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
-fn create_apcs_for_all_blocks<
-    P: FieldElement,
-    A: Adapter<P>,
->(
+fn create_apcs_for_all_blocks<P: FieldElement, A: Adapter<P>>(
     blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,

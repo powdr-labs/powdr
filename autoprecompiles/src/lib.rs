@@ -3,11 +3,9 @@ use crate::blocks::Program;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 pub use blocks::{BasicBlock, PgoConfig};
-use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
@@ -22,6 +20,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+pub mod adapter;
 mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
@@ -31,7 +30,6 @@ pub mod expression_conversion;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
-pub mod adapter;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
@@ -320,9 +318,15 @@ pub fn build<T: FieldElement, A: Adapter<T>>(
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<T, <<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>, crate::constraint_optimizer::Error> {
-
-    let statements: Vec<SymbolicInstructionStatement<T>> = unimplemented!();
+) -> Result<
+    Apc<T, <<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>,
+    crate::constraint_optimizer::Error,
+> {
+    let statements: Vec<SymbolicInstructionStatement<T>> = block
+        .statements
+        .iter()
+        .map(|instr| A::into_symbolic_instruction(instr))
+        .collect();
 
     let (machine, subs) = statements_to_symbolic_machine(
         &statements,

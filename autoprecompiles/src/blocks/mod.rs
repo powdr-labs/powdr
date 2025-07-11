@@ -1,8 +1,6 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::SymbolicInstructionStatement;
-
 /// Tools to detect basic blocks in a program
 mod detection;
 /// Tools to generate autoprecompiles using different PGO strategies
@@ -23,10 +21,7 @@ pub struct BasicBlock<I> {
 }
 
 impl<I> BasicBlock<I> {
-    pub fn pretty_print(
-        &self,
-        instr_formatter: impl Fn(&I) -> String,
-    ) -> String {
+    pub fn pretty_print(&self, instr_formatter: impl Fn(&I) -> String) -> String {
         format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
             + &self
                 .statements
