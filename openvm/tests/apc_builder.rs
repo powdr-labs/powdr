@@ -1,6 +1,6 @@
 use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{
-    build, DegreeBound, SymbolicBlock, SymbolicInstructionStatement, VmConfig,
+    build, DegreeBound, SymbolicBlock, SymbolicInstructionStatement, SymbolicMachine, VmConfig,
 };
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -10,8 +10,10 @@ use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
 
-// A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String {
+/// A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
+fn compile_to_machine(
+    program: Vec<SymbolicInstructionStatement<BabyBearField>>,
+) -> (SymbolicMachine<BabyBearField>, powdr_openvm::BusMap) {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -37,7 +39,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(
+    let (machine, _) = build(
         SymbolicBlock {
             statements: program,
             start_idx: 0,
@@ -48,8 +50,13 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         None,
     )
     .unwrap()
-    .machine()
-    .render(&bus_map)
+    .into_parts();
+    (machine, bus_map)
+}
+
+fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String {
+    let (machine, bus_map) = compile_to_machine(program);
+    machine.render(&bus_map)
 }
 
 /// Compare `actual` against the contents of the file at `path`.
@@ -305,10 +312,10 @@ mod single_instruction_tests {
             loadw(64, 56, 4, 2, 1, 0),
             loadw(68, 56, 8, 2, 1, 0),
             loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
+            storew(60, 52, 0, 2, 1, 0),
+            storew(64, 52, 4, 2, 1, 0),
+            storew(68, 52, 8, 2, 1, 0),
+            storew(20, 52, 12, 2, 1, 0),
             add(56, 56, 16, 0),
             add(48, 48, 16777200, 0),
             add(52, 52, 16, 0),
@@ -331,91 +338,16 @@ mod single_instruction_tests {
             loadw(64, 56, 4, 2, 1, 0),
             loadw(68, 56, 8, 2, 1, 0),
             loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
+            storew(60, 52, 0, 2, 1, 0),
+            storew(64, 52, 4, 2, 1, 0),
+            storew(68, 52, 8, 2, 1, 0),
+            storew(20, 52, 12, 2, 1, 0),
             add(56, 56, 16, 0),
             add(48, 48, 16777200, 0),
             add(52, 52, 16, 0),
             bltu(44, 48, -88),
         ];
-        let memset_loop_unrolled_unmodified = vec![
-            loadw(60, 56, 0, 2, 1, 0),
-            loadw(64, 56, 4, 2, 1, 0),
-            loadw(68, 56, 8, 2, 1, 0),
-            loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
-            add(56, 56, 16, 0),
-            add(48, 48, 16777200, 0),
-            add(52, 52, 16, 0),
-            bltu(44, 48, -44),
-            loadw(60, 56, 0, 2, 1, 0),
-            loadw(64, 56, 4, 2, 1, 0),
-            loadw(68, 56, 8, 2, 1, 0),
-            loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
-            add(56, 56, 16, 0),
-            add(48, 48, 16777200, 0),
-            add(52, 52, 16, 0),
-            bltu(44, 48, -88),
-        ];
-        let memset_loop_unrolled_4x = vec![
-            loadw(60, 56, 0, 2, 1, 0),
-            loadw(64, 56, 4, 2, 1, 0),
-            loadw(68, 56, 8, 2, 1, 0),
-            loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
-            add(56, 56, 16, 0),
-            add(48, 48, 16777200, 0),
-            add(52, 52, 16, 0),
-            add(52, 52, 0, 0), // bltu turned to no-op
-            loadw(60, 56, 0, 2, 1, 0),
-            loadw(64, 56, 4, 2, 1, 0),
-            loadw(68, 56, 8, 2, 1, 0),
-            loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
-            add(56, 56, 16, 0),
-            add(48, 48, 16777200, 0),
-            add(52, 52, 16, 0),
-            add(52, 52, 0, 0), // bltu turned to no-op
-            loadw(60, 56, 0, 2, 1, 0),
-            loadw(64, 56, 4, 2, 1, 0),
-            loadw(68, 56, 8, 2, 1, 0),
-            loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
-            add(56, 56, 16, 0),
-            add(48, 48, 16777200, 0),
-            add(52, 52, 16, 0),
-            add(52, 52, 0, 0), // bltu turned to no-op
-            loadw(60, 56, 0, 2, 1, 0),
-            loadw(64, 56, 4, 2, 1, 0),
-            loadw(68, 56, 8, 2, 1, 0),
-            loadw(20, 56, 12, 2, 1, 0),
-            storew(60, 52, 0, 2, 1, 1),
-            storew(64, 52, 4, 2, 1, 1),
-            storew(68, 52, 8, 2, 1, 1),
-            storew(20, 52, 12, 2, 1, 1),
-            add(56, 56, 16, 0),
-            add(48, 48, 16777200, 0),
-            add(52, 52, 16, 0),
-            bltu(44, 48, -44 * 4),
-        ];
+
         assert_machine_output(memset_loop, "memset_loop");
         assert_machine_output(memset_loop_unrolled, "memset_loop_unrolled");
         assert_machine_output(
