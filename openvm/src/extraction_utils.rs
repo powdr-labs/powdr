@@ -25,8 +25,8 @@ use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
-use std::ops::Add;
 use std::ops::Deref;
+use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
@@ -400,6 +400,17 @@ impl Add for AirWidths {
             preprocessed: self.preprocessed + rhs.preprocessed,
             main: self.main + rhs.main,
             log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+impl Sub for AirWidths {
+    type Output = AirWidths;
+    fn sub(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocessed: self.preprocessed - rhs.preprocessed,
+            main: self.main - rhs.main,
+            log_up: self.log_up - rhs.log_up,
         }
     }
 }
