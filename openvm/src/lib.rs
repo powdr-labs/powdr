@@ -1742,40 +1742,48 @@ mod tests {
     }
 
     #[test]
-    fn ecc_op_machine_pgo_mode() {
-        // All three modes happen to create 1 APC for the same basic block
-        let stdin = StdIn::default();
+    fn ecc_op_pgo_modes() {
+        let mut stdin = StdIn::default();
         let pgo_data = execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin);
-        test_machine(MachineTestParams {
+
+        // All three modes happen to create 1 APC for the same basic block
+        let expected_metrics = MachineTestMetrics {
+            powdr_expected_sum: AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 2011,
+                    log_up: 1788,
+                },
+                constraints: 166,
+                bus_interactions: 1783,
+            },
+            powdr_expected_machine_count: 10,
+            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+        };
+
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::None,
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            width: 4909,
-            constraints: 166,
-            bus_interactions: 1783,
-            machine_length: 10,
+            expected_metrics: &expected_metrics,
         });
-        test_machine(MachineTestParams {
+
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Instruction(pgo_data.clone()),
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            width: 4909,
-            constraints: 3836,
-            bus_interactions: 3243,
-            machine_length: 10,
+            expected_metrics: &expected_metrics,
         });
 
-        test_machine(MachineTestParams {
+        test_machine_compilation(MachineTestParams {
             pgo_config: PgoConfig::Cell(pgo_data, None),
             guest: GUEST_ECC_OP,
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
-            width: 4909,
-            constraints: 3836,
-            bus_interactions: 3243,
-            machine_length: 10,
+            expected_metrics: &expected_metrics,
         });
     }
 }
