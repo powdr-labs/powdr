@@ -27,7 +27,6 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -55,7 +54,6 @@ use tracing_subscriber::{
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::traits::OpenVmField;
 
 mod air_builder;
 pub mod bus_map;
@@ -66,10 +64,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
-pub use traits::IntoOpenVm;
 
 type BabyBearSC = BabyBearPoseidon2Config;
-type PowdrBB = powdr_number::BabyBearField;
 
 // TODO: These constants should be related
 const APP_LOG_BLOWUP: usize = 2;
@@ -81,23 +77,6 @@ const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 
 pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
-}
-
-impl IntoOpenVm for PowdrBB {
-    type Field = openvm_stark_sdk::p3_baby_bear::BabyBear;
-
-    fn into_openvm_field(self) -> Self::Field {
-        use openvm_stark_backend::p3_field::FieldAlgebra;
-        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
-            self.to_integer().try_into_u32().unwrap(),
-        )
-    }
-
-    fn from_openvm_field(field: Self::Field) -> Self {
-        BabyBearField::from(
-            <Self::Field as openvm_stark_backend::p3_field::PrimeField32>::as_canonical_u32(&field),
-        )
-    }
 }
 
 pub use openvm_build::GuestOptions;
@@ -113,7 +92,6 @@ mod powdr_extension;
 
 pub mod bus_interaction_handler;
 mod instruction_formatter;
-mod traits;
 
 mod plonk;
 
