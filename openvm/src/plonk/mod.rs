@@ -47,7 +47,7 @@ pub struct Gate<F, V> {
     pub q_mul: F,
     pub q_const: F,
 
-    // Fhe selectors for bus interactions.
+    // The selectors for bus interactions.
     pub q_bitwise: F,
     pub q_memory: F,
     pub q_range_check: F,
