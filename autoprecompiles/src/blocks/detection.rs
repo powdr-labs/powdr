@@ -1,19 +1,17 @@
 use std::collections::BTreeSet;
 
-use powdr_number::FieldElement;
-
 use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Instruction, Program},
 };
 
 /// Collects basic blocks from a program
-pub fn collect_basic_blocks<T: FieldElement, A: Adapter<T>>(
+pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     labels: &BTreeSet<u32>,
     opcode_allowlist: &BTreeSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
-) -> Vec<BasicBlock<<<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>> {
+) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_idx: 0,

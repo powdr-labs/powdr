@@ -34,9 +34,7 @@ impl<I> BasicBlock<I> {
     }
 }
 
-pub trait Program<F> {
-    type Instruction: Instruction<F> + Serialize + for<'de> Deserialize<'de> + Send;
-
+pub trait Program<F, I> {
     /// Returns the base program counter.
     fn base_pc(&self) -> u32;
 
@@ -44,7 +42,7 @@ pub trait Program<F> {
     fn pc_step(&self) -> u32;
 
     /// Returns an iterator over the instructions in the program.
-    fn instructions(&self) -> Box<dyn Iterator<Item = Self::Instruction> + '_>;
+    fn instructions(&self) -> Box<dyn Iterator<Item = I> + '_>;
 }
 
 pub trait Instruction<T>: Clone {

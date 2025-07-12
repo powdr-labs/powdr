@@ -1,5 +1,4 @@
 use crate::adapter::Adapter;
-use crate::blocks::Program;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 pub use blocks::{BasicBlock, PgoConfig};
@@ -312,17 +311,14 @@ impl<T: FieldElement, I> Apc<T, I> {
     }
 }
 
-pub fn build<T: FieldElement, A: Adapter<T>>(
-    block: BasicBlock<<<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>,
+pub fn build<A: Adapter>(
+    block: BasicBlock<A::Instruction>,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<
-    Apc<T, <<A as Adapter<T>>::Program as Program<A::Field>>::Instruction>,
-    crate::constraint_optimizer::Error,
-> {
-    let statements: Vec<SymbolicInstructionStatement<T>> = block
+) -> Result<Apc<A::PowdrField, A::Instruction>, crate::constraint_optimizer::Error> {
+    let statements: Vec<_> = block
         .statements
         .iter()
         .map(|instr| A::into_symbolic_instruction(instr))
