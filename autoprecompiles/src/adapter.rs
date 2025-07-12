@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blocks::{Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
-    InstructionMachineHandler, SymbolicInstructionStatement,
+    InstructionMachineHandler,
 };
 
 pub trait Adapter: Sized {
@@ -23,8 +23,4 @@ pub trait Adapter: Sized {
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
-
-    fn into_symbolic_instruction(
-        instr: &Self::Instruction,
-    ) -> SymbolicInstructionStatement<Self::PowdrField>;
 }

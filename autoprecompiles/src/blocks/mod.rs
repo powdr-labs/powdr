@@ -16,6 +16,8 @@ pub use pgo::PgoConfig;
 pub use pgo::{generate_apcs_with_pgo, Candidate};
 pub use selection::KnapsackItem;
 
+use crate::SymbolicInstructionStatement;
+
 #[derive(Clone)]
 pub struct PowdrConfig {
     /// Number of autoprecompiles to generate.
@@ -102,4 +104,7 @@ pub trait Program<F, I> {
 pub trait Instruction<T>: Clone {
     /// The opcode of the instruction.
     fn opcode(&self) -> usize;
+
+    /// Turns the instruction into a symbolic representation.
+    fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<T>;
 }
