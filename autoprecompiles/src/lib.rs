@@ -1,4 +1,5 @@
 use crate::adapter::Adapter;
+use crate::blocks::Instruction;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 pub use blocks::{BasicBlock, PgoConfig};
@@ -320,8 +321,13 @@ pub fn build<A: Adapter>(
 ) -> Result<Apc<A::PowdrField, A::Instruction>, crate::constraint_optimizer::Error> {
     let statements: Vec<_> = block
         .statements
-        .iter()
-        .map(|instr| A::into_symbolic_instruction(instr))
+        .clone()
+        .into_iter()
+        .map(|instr| instr.into_symbolic_instruction())
+        .map(|instr| SymbolicInstructionStatement {
+            opcode: instr.opcode,
+            args: instr.args.into_iter().map(A::from_field).collect(),
+        })
         .collect();
 
     let (machine, subs) = statements_to_symbolic_machine(

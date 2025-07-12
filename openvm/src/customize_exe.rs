@@ -68,20 +68,6 @@ impl Adapter for BabyBearOpenVmApcAdapter {
     fn from_field(e: Self::Field) -> BabyBearField {
         BabyBearField::from_openvm_field(e)
     }
-
-    fn into_symbolic_instruction(
-        instr: &Self::Instruction,
-    ) -> SymbolicInstructionStatement<BabyBearField> {
-        SymbolicInstructionStatement {
-            opcode: instr.opcode(),
-            args: [
-                instr.0.a, instr.0.b, instr.0.c, instr.0.d, instr.0.e, instr.0.f, instr.0.g,
-            ]
-            .iter()
-            .map(|f| BabyBearField::from_openvm_field(*f))
-            .collect(),
-        }
-    }
 }
 
 pub struct OpenVmProgramNewType<F>(OpenVmProgram<F>);
@@ -92,6 +78,15 @@ pub struct InstructionNewType<F>(pub OpenVmInstruction<F>);
 impl<F: PrimeField32> Instruction<F> for InstructionNewType<F> {
     fn opcode(&self) -> usize {
         self.0.opcode.as_usize()
+    }
+
+    fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<F> {
+        SymbolicInstructionStatement {
+            opcode: self.0.opcode.as_usize(),
+            args: vec![
+                self.0.a, self.0.b, self.0.c, self.0.d, self.0.e, self.0.f, self.0.g,
+            ],
+        }
     }
 }
 
