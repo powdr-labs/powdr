@@ -2,31 +2,32 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    expression::AlgebraicExpression, powdr, BusMap, BusType, InstructionMachineHandler,
-    PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
+    adapter::Adapter, expression::AlgebraicExpression, powdr, BusMap, BusType,
+    InstructionMachineHandler, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicInstructionStatement, SymbolicMachine,
 };
 
-pub fn statements_to_symbolic_machine<T: FieldElement>(
-    statements: &[SymbolicInstructionStatement<T>],
-    instruction_machine_handler: &impl InstructionMachineHandler<T>,
+pub fn statements_to_symbolic_machine<A: Adapter>(
+    statements: &[SymbolicInstructionStatement<A::PowdrField>],
+    instruction_machine_handler: &impl InstructionMachineHandler<A::Field>,
     bus_map: &BusMap,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
-    let mut col_subs: Vec<Vec<u64>> = Vec::new();
-    let mut global_idx: u64 = 3;
+) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
+    let constraints: Vec<SymbolicConstraint<_>> = Vec::new();
+    let bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
+    let col_subs: Vec<Vec<u64>> = Vec::new();
+    let global_idx: u64 = 3;
 
-    for (i, instr) in statements.iter().enumerate() {
+    if let Some((i, instr)) = statements.iter().enumerate().next() {
         let machine = instruction_machine_handler
             .get_instruction_air(instr.opcode)
-            .unwrap()
-            .clone();
+            .unwrap();
+
+        let machine: SymbolicMachine<A::PowdrField> = unimplemented!("convert field using A");
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;
 
-        let pc_lookup: PcLookupBusInteraction<T> = machine
+        let pc_lookup: PcLookupBusInteraction<_> = machine
             .bus_interactions
             .iter()
             .filter_map(|bus_int| {
@@ -39,12 +40,12 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
             .exactly_one()
             .expect("Expected single pc lookup");
 
-        let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+        let mut local_constraints: Vec<SymbolicConstraint<_>> = Vec::new();
 
         // To simplify constraint solving, we constrain `is_valid` to be 1, which effectively
         // removes the column. The optimized precompile will then have to be guarded by a new
         // `is_valid` column.
-        let minus_is_valid: AlgebraicExpression<T> = exec_receive(
+        let minus_is_valid: AlgebraicExpression<_> = exec_receive(
             &machine,
             bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap(),
         )

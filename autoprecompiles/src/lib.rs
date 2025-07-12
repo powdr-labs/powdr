@@ -265,7 +265,7 @@ pub struct Apc<T, I> {
     pub subs: Vec<Vec<u64>>,
 }
 
-impl<T: FieldElement, I> Apc<T, I> {
+impl<T, I> Apc<T, I> {
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
@@ -281,7 +281,7 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<A::PowdrField, A::Instruction>, crate::constraint_optimizer::Error> {
+) -> Result<Apc<A::Field, A::Instruction>, crate::constraint_optimizer::Error> {
     let statements: Vec<_> = block
         .statements
         .clone()
@@ -293,7 +293,7 @@ pub fn build<A: Adapter>(
         })
         .collect();
 
-    let (machine, subs) = statements_to_symbolic_machine(
+    let (machine, subs) = statements_to_symbolic_machine::<A>(
         &statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
@@ -315,6 +315,21 @@ pub fn build<A: Adapter>(
         machine,
         subs,
         opcode,
+    };
+
+    fn convert<P, T>(
+        machine: SymbolicMachine<P>,
+        into_field: impl Fn(P) -> T,
+    ) -> SymbolicMachine<T> {
+        // Convert all literals in the machine to the target field type
+        unimplemented!()
+    }
+
+    let apc = Apc {
+        block: apc.block,
+        machine: convert(apc.machine, A::into_field),
+        subs: apc.subs,
+        opcode: apc.opcode,
     };
 
     if let Some(path) = apc_candidates_dir_path {

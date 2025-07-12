@@ -4,10 +4,11 @@ use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::InitFileGenerator;
 use openvm_circuit::arch::{
-    instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
-    SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
+    instructions::exe::VmExe, segment::DefaultSegmentationStrategy, Streams, SystemConfig,
+    VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
 };
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
+use openvm_circuit_derive::InstructionExecutor;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_instructions::program::Program;
 use openvm_sdk::{
@@ -16,16 +17,16 @@ use openvm_sdk::{
     prover::AggStarkProver,
     Sdk, StdIn,
 };
-use openvm_stark_backend::{config::StarkGenericConfig, engine::StarkEngine, rap::AnyRap, Chip};
+use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
-use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
+use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -53,7 +54,6 @@ use tracing_subscriber::{
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::traits::OpenVmField;
 
 mod air_builder;
 pub mod bus_map;
@@ -64,10 +64,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
-pub use traits::IntoOpenVm;
 
 type BabyBearSC = BabyBearPoseidon2Config;
-type PowdrBB = powdr_number::BabyBearField;
 
 // TODO: These constants should be related
 const APP_LOG_BLOWUP: usize = 2;
@@ -79,23 +77,6 @@ const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 
 pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
-}
-
-impl IntoOpenVm for PowdrBB {
-    type Field = openvm_stark_sdk::p3_baby_bear::BabyBear;
-
-    fn into_openvm_field(self) -> Self::Field {
-        use openvm_stark_backend::p3_field::FieldAlgebra;
-        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
-            self.to_integer().try_into_u32().unwrap(),
-        )
-    }
-
-    fn from_openvm_field(field: Self::Field) -> Self {
-        BabyBearField::from(
-            <Self::Field as openvm_stark_backend::p3_field::PrimeField32>::as_canonical_u32(&field),
-        )
-    }
 }
 
 pub use openvm_build::GuestOptions;
@@ -111,7 +92,6 @@ mod powdr_extension;
 
 pub mod bus_interaction_handler;
 mod instruction_formatter;
-mod traits;
 
 mod plonk;
 
@@ -137,7 +117,7 @@ impl Default for PgoType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
-    powdr: PowdrExtension<BabyBearField>,
+    powdr: PowdrExtension<BabyBear>,
 }
 
 // For generation of the init file, we delegate to the underlying SdkVmConfig.
@@ -158,58 +138,12 @@ impl InitFileGenerator for SpecializedConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(ChipUsageGetter, From, AnyEnum)]
-pub enum SpecializedExecutor<P: IntoOpenVm> {
+#[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
+pub enum SpecializedExecutor<F: PrimeField32> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<OpenVmField<P>>),
+    SdkExecutor(SdkVmConfigExecutor<F>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor<P>),
-}
-
-// These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
-// but they don't work with the field types above.
-impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for SpecializedExecutor<P>
-where
-    Val<SC>: PrimeField32,
-{
-    fn generate_air_proof_input(self) -> openvm_stark_backend::prover::types::AirProofInput<SC> {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => executor.generate_air_proof_input(),
-            SpecializedExecutor::PowdrExecutor(executor) => executor.generate_air_proof_input(),
-        }
-    }
-
-    fn air(&self) -> std::sync::Arc<dyn AnyRap<SC>> {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => executor.air(),
-            SpecializedExecutor::PowdrExecutor(executor) => executor.air(),
-        }
-    }
-}
-
-impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for SpecializedExecutor<P> {
-    fn execute(
-        &mut self,
-        memory: &mut openvm_circuit::system::memory::MemoryController<OpenVmField<P>>,
-        instruction: &openvm_instructions::instruction::Instruction<OpenVmField<P>>,
-        from_state: openvm_circuit::arch::ExecutionState<u32>,
-    ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => {
-                executor.execute(memory, instruction, from_state)
-            }
-            SpecializedExecutor::PowdrExecutor(executor) => {
-                executor.execute(memory, instruction, from_state)
-            }
-        }
-    }
-
-    fn get_opcode_name(&self, opcode: usize) -> String {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => executor.get_opcode_name(opcode),
-            SpecializedExecutor::PowdrExecutor(executor) => executor.get_opcode_name(opcode),
-        }
-    }
+    PowdrExecutor(PowdrExecutor<F>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -220,24 +154,21 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
-    type Executor = SpecializedExecutor<BabyBearField>;
-    type Periphery = MyPeriphery<OpenVmField<BabyBearField>>;
+impl VmConfig<BabyBear> for SpecializedConfig {
+    type Executor = SpecializedExecutor<BabyBear>;
+    type Periphery = MyPeriphery<BabyBear>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<OpenVmField<BabyBearField>>::system(self.sdk_config.config())
+        VmConfig::<BabyBear>::system(self.sdk_config.config())
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<OpenVmField<BabyBearField>>::system_mut(self.sdk_config.config_mut())
+        VmConfig::<BabyBear>::system_mut(self.sdk_config.config_mut())
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<
-        VmChipComplex<OpenVmField<BabyBearField>, Self::Executor, Self::Periphery>,
-        VmInventoryError,
-    > {
+    ) -> Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
         let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
@@ -248,7 +179,7 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
 impl SpecializedConfig {
     fn new(
         base_config: OriginalVmConfig,
-        precompiles: Vec<PowdrPrecompile<BabyBearField>>,
+        precompiles: Vec<PowdrPrecompile<BabyBear>>,
         implementation: PrecompileImplementation,
     ) -> Self {
         let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -369,7 +300,7 @@ pub fn compile_guest(
     )
 }
 
-fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
+fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
     let pgo_program_idx_count = match pgo_config {
         PgoConfig::Cell(pgo_program_idx_count, _)
         | PgoConfig::Instruction(pgo_program_idx_count) => {
@@ -459,14 +390,14 @@ pub fn compile_exe_with_elf(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CompiledProgram {
-    pub exe: VmExe<OpenVmField<BabyBearField>>,
+    pub exe: VmExe<BabyBear>,
     pub vm_config: SpecializedConfig,
 }
 
 // the original openvm program and config without powdr extension
 #[derive(Clone)]
 pub struct OriginalCompiledProgram {
-    pub exe: VmExe<OpenVmField<BabyBearField>>,
+    pub exe: VmExe<BabyBear>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -505,6 +436,8 @@ impl AirMetrics {
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
     fn air_metrics(&self) -> (Vec<AirMetrics>, Vec<AirMetrics>) {
+        use openvm_stark_backend::Chip;
+
         use crate::extraction_utils::get_air_metrics;
 
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;

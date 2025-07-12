@@ -48,7 +48,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
 
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: Apc<A::PowdrField, A::Instruction>,
+        apc: Apc<A::Field, A::Instruction>,
         pgo_program_idx_count: &HashMap<u32, u32>,
         vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     ) -> Self;
@@ -57,7 +57,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
 
     /// Convert the candidate into an autoprecompile.
-    fn into_apc(self) -> Apc<A::PowdrField, A::Instruction>;
+    fn into_apc(self) -> Apc<A::Field, A::Instruction>;
 }
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
@@ -67,7 +67,7 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<Apc<A::Field, A::Instruction>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -134,7 +134,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<Apc<A::Field, A::Instruction>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -173,7 +173,7 @@ fn create_apcs_with_no_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<Apc<A::Field, A::Instruction>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
@@ -196,7 +196,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<Apc<A::Field, A::Instruction>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
@@ -226,7 +226,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<Apc<A::Field, A::Instruction>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
