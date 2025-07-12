@@ -51,17 +51,18 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
 
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
-pub struct BabyBearOpenVmApcAdapter;
+pub struct BabyBearOpenVmApcAdapter<'a> {
+    _marker: std::marker::PhantomData<&'a ()>,
+}
 
-impl Adapter for BabyBearOpenVmApcAdapter {
+impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = OpenVmField<BabyBearField>;
     type InstructionMachineHandler = OriginalAirs<BabyBearField>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<BabyBearField>;
-    type Candidate =
-        OpenVmApcCandidate<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>>;
-    type Program = OpenVmProgramNewType<OpenVmField<BabyBearField>>;
-    type Instruction = InstructionNewType<OpenVmField<BabyBearField>>;
+    type Candidate = OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>;
+    type Program = Prog<'a, OpenVmField<BabyBearField>>;
+    type Instruction = Instr<OpenVmField<BabyBearField>>;
 
     fn into_field(e: BabyBearField) -> Self::Field {
         e.into_openvm_field()
@@ -72,12 +73,16 @@ impl Adapter for BabyBearOpenVmApcAdapter {
     }
 }
 
-pub struct OpenVmProgramNewType<F>(OpenVmProgram<F>);
+/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 
+/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct InstructionNewType<F>(pub OpenVmInstruction<F>);
+pub struct Instr<F>(OpenVmInstruction<F>);
 
-impl<F: PrimeField32> Instruction<F> for InstructionNewType<F> {
+impl<F: PrimeField32> Instruction<F> for Instr<F> {
     fn opcode(&self) -> usize {
         self.0.opcode.as_usize()
     }
@@ -92,7 +97,7 @@ impl<F: PrimeField32> Instruction<F> for InstructionNewType<F> {
     }
 }
 
-impl<F: PrimeField32> Program<F, InstructionNewType<F>> for OpenVmProgramNewType<F> {
+impl<'a, F: PrimeField32> Program<F, Instr<F>> for Prog<'a, F> {
     fn base_pc(&self) -> u32 {
         self.0.pc_base
     }
@@ -101,12 +106,12 @@ impl<F: PrimeField32> Program<F, InstructionNewType<F>> for OpenVmProgramNewType
         self.0.step
     }
 
-    fn instructions(&self) -> Box<dyn Iterator<Item = InstructionNewType<F>> + '_> {
+    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
         Box::new(
             self.0
                 .instructions_and_debug_infos
                 .iter()
-                .filter_map(|x| x.as_ref().map(|i| InstructionNewType(i.0.clone()))),
+                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
         )
     }
 }
@@ -134,7 +139,7 @@ pub fn customize(
         exe.program.step,
     );
 
-    let program = OpenVmProgramNewType(exe.program.clone());
+    let program = Prog(&exe.program);
 
     let vm_config = VmConfig {
         instruction_machine_handler: &airs,
@@ -340,13 +345,13 @@ pub struct OpenVmApcCandidate<P, I> {
     width_after: usize,
 }
 
-impl Candidate<BabyBearOpenVmApcAdapter>
-    for OpenVmApcCandidate<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>>
+impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
+    for OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>
 {
-    type JsonExport = OpenVmApcCandidateJsonExport<InstructionNewType<OpenVmField<BabyBearField>>>;
+    type JsonExport = OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>>;
 
     fn create(
-        apc: Apc<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>>,
+        apc: Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
         pgo_program_idx_count: &HashMap<u32, u32>,
         vm_config: VmConfig<
             OriginalAirs<BabyBearField>,
@@ -386,7 +391,7 @@ impl Candidate<BabyBearOpenVmApcAdapter>
     fn to_json_export(
         &self,
         apc_candidates_dir_path: &Path,
-    ) -> OpenVmApcCandidateJsonExport<InstructionNewType<OpenVmField<BabyBearField>>> {
+    ) -> OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>> {
         OpenVmApcCandidateJsonExport {
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
@@ -400,7 +405,7 @@ impl Candidate<BabyBearOpenVmApcAdapter>
         }
     }
 
-    fn into_apc(self) -> Apc<BabyBearField, InstructionNewType<OpenVmField<BabyBearField>>> {
+    fn into_apc(self) -> Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>> {
         self.apc
     }
 }

@@ -3,7 +3,7 @@ use openvm_sdk::config::SdkVmConfig;
 use powdr_autoprecompiles::{build, BasicBlock, DegreeBound, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::customize_exe::InstructionNewType;
+use powdr_openvm::customize_exe::Instr;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::OpenVmApcAdapter;
 use powdr_openvm::OpenVmField;
@@ -41,7 +41,7 @@ fn compile(program: Vec<Instruction<OpenVmField<BabyBearField>>>) -> String {
 
     build::<BabyBearField, OpenVmApcAdapter>(
         BasicBlock {
-            statements: program.into_iter().map(InstructionNewType).collect(),
+            statements: program.into_iter().map(Instr).collect(),
             start_idx: 0,
         },
         vm_config,
