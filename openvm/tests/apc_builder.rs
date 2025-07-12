@@ -5,7 +5,7 @@ use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::customize_exe::Instr;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
-use powdr_openvm::OpenVmApcAdapter;
+use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::OpenVmField;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use pretty_assertions::assert_eq;
@@ -39,7 +39,7 @@ fn compile(program: Vec<Instruction<OpenVmField<BabyBearField>>>) -> String {
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build::<BabyBearField, OpenVmApcAdapter>(
+    build::<BabyBearOpenVmApcAdapter>(
         BasicBlock {
             statements: program.into_iter().map(Instr).collect(),
             start_idx: 0,
