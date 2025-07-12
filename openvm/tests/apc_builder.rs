@@ -1,19 +1,19 @@
 use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfig;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{build, BasicBlock, DegreeBound, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm::customize_exe::Instr;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
-use powdr_openvm::OpenVmField;
+use powdr_openvm::Instr;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
 
 // A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(program: Vec<Instruction<OpenVmField<BabyBearField>>>) -> String {
+fn compile(program: Vec<Instruction<BabyBear>>) -> String {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -56,7 +56,7 @@ fn compile(program: Vec<Instruction<OpenVmField<BabyBearField>>>) -> String {
 
 /// Compare `actual` against the contents of the file at `path`.
 /// If they differ, write `actual` to the file and fail the test.
-fn assert_machine_output(program: Vec<Instruction<OpenVmField<BabyBearField>>>, test_name: &str) {
+fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let actual = compile(program.to_vec());
     let base = Path::new("tests/apc_builder_outputs");
     let file_path = base.join(format!("{test_name}.txt"));

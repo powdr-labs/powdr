@@ -144,7 +144,7 @@ pub fn customize(
 
     let vm_config = VmConfig {
         instruction_machine_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(bus_map.clone()),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
 

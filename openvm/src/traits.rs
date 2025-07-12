@@ -9,4 +9,4 @@ pub trait IntoOpenVm: FieldElement {
     fn from_openvm_field(field: Self::Field) -> Self;
 }
 
-pub type OpenVmField<P> = <P as IntoOpenVm>::Field;
+pub(crate) type OpenVmField<P> = <P as IntoOpenVm>::Field;
