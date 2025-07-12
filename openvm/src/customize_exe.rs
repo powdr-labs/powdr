@@ -51,6 +51,7 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
 
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
+/// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
 pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
@@ -80,7 +81,7 @@ pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Instr<F>(OpenVmInstruction<F>);
+pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
     fn opcode(&self) -> usize {
