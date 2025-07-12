@@ -5,16 +5,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use powdr_number::FieldElement;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::Adapter,
-    blocks::{
-        selection::{parallel_fractional_knapsack, KnapsackItem},
-        Program,
-    },
+    blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
     Apc, BasicBlock, PowdrConfig, VmConfig,
 };
 
@@ -47,12 +43,12 @@ impl PgoConfig {
 
 /// Trait for autoprecompile candidates.
 /// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
-pub trait Candidate<P: FieldElement, A: Adapter<P>>: Sized + KnapsackItem {
+pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     type JsonExport: Serialize + for<'de> Deserialize<'de> + Send;
 
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>,
+        apc: Apc<A::PowdrField, A::Instruction>,
         pgo_program_idx_count: &HashMap<u32, u32>,
         vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     ) -> Self;
@@ -61,17 +57,17 @@ pub trait Candidate<P: FieldElement, A: Adapter<P>>: Sized + KnapsackItem {
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
 
     /// Convert the candidate into an autoprecompile.
-    fn into_apc(self) -> Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>;
+    fn into_apc(self) -> Apc<A::PowdrField, A::Instruction>;
 }
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
-fn create_apcs_with_cell_pgo<P: FieldElement, A: Adapter<P>>(
-    mut blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
+fn create_apcs_with_cell_pgo<A: Adapter>(
+    mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>> {
+) -> Vec<Apc<A::PowdrField, A::Instruction>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -98,7 +94,7 @@ fn create_apcs_with_cell_pgo<P: FieldElement, A: Adapter<P>>(
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     let res = parallel_fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            let apc = crate::build::<P, A>(
+            let apc = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
@@ -133,12 +129,12 @@ fn create_apcs_with_cell_pgo<P: FieldElement, A: Adapter<P>>(
     res
 }
 
-fn create_apcs_with_instruction_pgo<P: FieldElement, A: Adapter<P>>(
-    mut blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
+fn create_apcs_with_instruction_pgo<A: Adapter>(
+    mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>> {
+) -> Vec<Apc<A::PowdrField, A::Instruction>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -170,14 +166,14 @@ fn create_apcs_with_instruction_pgo<P: FieldElement, A: Adapter<P>>(
         );
     }
 
-    create_apcs_for_all_blocks::<P, A>(blocks, config, vm_config)
+    create_apcs_for_all_blocks::<A>(blocks, config, vm_config)
 }
 
-fn create_apcs_with_no_pgo<P: FieldElement, A: Adapter<P>>(
-    mut blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
+fn create_apcs_with_no_pgo<A: Adapter>(
+    mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>> {
+) -> Vec<Apc<A::PowdrField, A::Instruction>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
@@ -191,35 +187,32 @@ fn create_apcs_with_no_pgo<P: FieldElement, A: Adapter<P>>(
         );
     }
 
-    create_apcs_for_all_blocks::<P, A>(blocks, config, vm_config)
+    create_apcs_for_all_blocks::<A>(blocks, config, vm_config)
 }
 
-pub fn generate_apcs_with_pgo<P: FieldElement, A: Adapter<P>>(
-    blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
+pub fn generate_apcs_with_pgo<A: Adapter>(
+    blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>> {
+) -> Vec<Apc<A::PowdrField, A::Instruction>> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo::<P, A>(
+        PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo::<A>(
             blocks,
             pgo_program_idx_count,
             config,
             max_total_apc_columns,
             vm_config,
         ),
-        PgoConfig::Instruction(pgo_program_idx_count) => create_apcs_with_instruction_pgo::<P, A>(
-            blocks,
-            pgo_program_idx_count,
-            config,
-            vm_config,
-        ),
-        PgoConfig::None => create_apcs_with_no_pgo::<P, A>(blocks, config, vm_config),
+        PgoConfig::Instruction(pgo_program_idx_count) => {
+            create_apcs_with_instruction_pgo::<A>(blocks, pgo_program_idx_count, config, vm_config)
+        }
+        PgoConfig::None => create_apcs_with_no_pgo::<A>(blocks, config, vm_config),
     };
 
     assert!(res.len() <= config.autoprecompiles as usize);
@@ -229,11 +222,11 @@ pub fn generate_apcs_with_pgo<P: FieldElement, A: Adapter<P>>(
 
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
-fn create_apcs_for_all_blocks<P: FieldElement, A: Adapter<P>>(
-    blocks: Vec<BasicBlock<<<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>>,
+fn create_apcs_for_all_blocks<A: Adapter>(
+    blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<P, <<A as Adapter<P>>::Program as Program<A::Field>>::Instruction>> {
+) -> Vec<Apc<A::PowdrField, A::Instruction>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
@@ -251,7 +244,7 @@ fn create_apcs_for_all_blocks<P: FieldElement, A: Adapter<P>>(
 
             let apc_opcode = config.first_apc_opcode + index;
 
-            crate::build::<P, A>(
+            crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,

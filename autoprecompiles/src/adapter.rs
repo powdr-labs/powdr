@@ -1,24 +1,30 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    blocks::{Candidate, Program},
+    blocks::{Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
     InstructionMachineHandler, SymbolicInstructionStatement,
 };
 
-pub trait Adapter<P: FieldElement>: Sized {
+pub trait Adapter: Sized {
     type Field;
-    type InstructionMachineHandler: InstructionMachineHandler<P> + Clone + Sync;
-    type BusInteractionHandler: BusInteractionHandler<P> + Clone + IsBusStateful<P> + Sync;
-    type Candidate: Candidate<P, Self> + Send;
-    type Program: Program<Self::Field> + Send;
+    type PowdrField: FieldElement;
+    type InstructionMachineHandler: InstructionMachineHandler<Self::PowdrField> + Clone + Sync;
+    type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
+        + Clone
+        + IsBusStateful<Self::PowdrField>
+        + Sync;
+    type Candidate: Candidate<Self> + Send;
+    type Program: Program<Self::Field, Self::Instruction> + Send;
+    type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
 
-    fn into_field(e: P) -> Self::Field;
+    fn into_field(e: Self::PowdrField) -> Self::Field;
 
-    fn from_field(e: Self::Field) -> P;
+    fn from_field(e: Self::Field) -> Self::PowdrField;
 
     fn into_symbolic_instruction(
-        instr: &<Self::Program as Program<Self::Field>>::Instruction,
-    ) -> SymbolicInstructionStatement<P>;
+        instr: &Self::Instruction,
+    ) -> SymbolicInstructionStatement<Self::PowdrField>;
 }
