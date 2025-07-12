@@ -49,6 +49,8 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
+/// An adapter for the BabyBear OpenVM precompiles.
+/// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
 pub struct BabyBearOpenVmApcAdapter;
 
 impl Adapter for BabyBearOpenVmApcAdapter {
