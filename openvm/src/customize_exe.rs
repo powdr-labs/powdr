@@ -100,7 +100,7 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
     }
 }
 
-impl<'a, F: PrimeField32> Program<F, Instr<F>> for Prog<'a, F> {
+impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
     fn base_pc(&self) -> u32 {
         self.0.pc_base
     }

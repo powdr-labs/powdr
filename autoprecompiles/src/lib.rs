@@ -2,6 +2,7 @@ use crate::adapter::Adapter;
 use crate::blocks::Instruction;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::symbolic_machine_generator::convert_machine;
 pub use blocks::{BasicBlock, PgoConfig};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -354,17 +355,9 @@ pub fn build<A: Adapter>(
         opcode,
     };
 
-    fn convert<P, T>(
-        machine: SymbolicMachine<P>,
-        into_field: impl Fn(P) -> T,
-    ) -> SymbolicMachine<T> {
-        // Convert all literals in the machine to the target field type
-        unimplemented!()
-    }
-
     let apc = Apc {
         block: apc.block,
-        machine: convert(apc.machine, A::into_field),
+        machine: convert_machine(apc.machine, &A::into_field),
         subs: apc.subs,
         opcode: apc.opcode,
     };

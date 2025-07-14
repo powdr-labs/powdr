@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
@@ -7,22 +8,94 @@ use crate::{
     SymbolicInstructionStatement, SymbolicMachine,
 };
 
+pub fn convert_machine<T, U>(
+    machine: SymbolicMachine<T>,
+    convert: &impl Fn(T) -> U,
+) -> SymbolicMachine<U> {
+    SymbolicMachine {
+        constraints: machine
+            .constraints
+            .into_iter()
+            .map(|c| convert_symbolic_constraint(c, convert))
+            .collect(),
+        bus_interactions: machine
+            .bus_interactions
+            .into_iter()
+            .map(|i| convert_bus_interaction(i, convert))
+            .collect(),
+    }
+}
+
+fn convert_symbolic_constraint<T, U>(
+    constraint: SymbolicConstraint<T>,
+    convert: &impl Fn(T) -> U,
+) -> SymbolicConstraint<U> {
+    SymbolicConstraint {
+        expr: convert_expression(constraint.expr, convert),
+    }
+}
+
+fn convert_bus_interaction<T, U>(
+    constraint: SymbolicBusInteraction<T>,
+    convert: &impl Fn(T) -> U,
+) -> SymbolicBusInteraction<U> {
+    SymbolicBusInteraction {
+        id: constraint.id,
+        mult: convert_expression(constraint.mult, convert),
+        args: constraint
+            .args
+            .into_iter()
+            .map(|e| convert_expression(e, convert))
+            .collect(),
+    }
+}
+
+fn convert_expression<T, U>(
+    expr: AlgebraicExpression<T>,
+    convert: &impl Fn(T) -> U,
+) -> AlgebraicExpression<U> {
+    match expr {
+        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(convert(n)),
+        AlgebraicExpression::Reference(r) => AlgebraicExpression::Reference(r),
+        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                op: algebraic_binary_operation.op,
+                left: Box::new(convert_expression(
+                    *algebraic_binary_operation.left,
+                    convert,
+                )),
+                right: Box::new(convert_expression(
+                    *algebraic_binary_operation.right,
+                    convert,
+                )),
+            })
+        }
+        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
+            AlgebraicExpression::UnaryOperation(powdr_expression::AlgebraicUnaryOperation {
+                op: algebraic_unary_operation.op,
+                expr: Box::new(convert_expression(*algebraic_unary_operation.expr, convert)),
+            })
+        }
+    }
+}
+
 pub fn statements_to_symbolic_machine<A: Adapter>(
     statements: &[SymbolicInstructionStatement<A::PowdrField>],
     instruction_machine_handler: &impl InstructionMachineHandler<A::Field>,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
-    let constraints: Vec<SymbolicConstraint<_>> = Vec::new();
-    let bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
-    let col_subs: Vec<Vec<u64>> = Vec::new();
-    let global_idx: u64 = 3;
+    let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
+    let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
+    let mut col_subs: Vec<Vec<u64>> = Vec::new();
+    let mut global_idx: u64 = 3;
 
-    if let Some((i, instr)) = statements.iter().enumerate().next() {
+    for (i, instr) in statements.iter().enumerate() {
         let machine = instruction_machine_handler
             .get_instruction_air(instr.opcode)
             .unwrap();
 
-        let machine: SymbolicMachine<A::PowdrField> = unimplemented!("convert field using A");
+        let machine: SymbolicMachine<A::PowdrField> =
+            convert_machine(machine.clone(), &A::from_field);
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;
