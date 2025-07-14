@@ -1,6 +1,6 @@
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
-pub use basic_blocks::BasicBlock;
+pub use blocks::{BasicBlock, PgoConfig};
 use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
-pub mod basic_blocks;
 mod bitwise_lookup_optimizer;
+pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod expression;
@@ -32,6 +32,43 @@ pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
+
+#[derive(Clone)]
+pub struct PowdrConfig {
+    /// Number of autoprecompiles to generate.
+    pub autoprecompiles: u64,
+    /// Number of basic blocks to skip for autoprecompiles.
+    /// This is either the largest N if no PGO, or the costliest N with PGO.
+    pub skip_autoprecompiles: u64,
+    /// Max degree of constraints.
+    pub degree_bound: DegreeBound,
+    /// The path to the APC candidates dir, if any.
+    pub apc_candidates_dir_path: Option<PathBuf>,
+    /// The opcode id of the first APC instruction. Other APC instructions will have consecutive ids.
+    pub first_apc_opcode: usize,
+}
+
+impl PowdrConfig {
+    pub fn new(
+        autoprecompiles: u64,
+        skip_autoprecompiles: u64,
+        degree_bound: DegreeBound,
+        first_apc_opcode: usize,
+    ) -> Self {
+        Self {
+            autoprecompiles,
+            skip_autoprecompiles,
+            degree_bound,
+            apc_candidates_dir_path: None,
+            first_apc_opcode,
+        }
+    }
+
+    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
