@@ -140,21 +140,23 @@ pub fn customize(
     );
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
-        // for (count, block) in blocks.iter()
-        // .filter_map(|block| {
-        //     Some((
-        //         pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
-        //         block,
-        //     ))
-        // })
-        // .sorted_by_key(|(count, _)| *count)
-        // .rev()
-        // .take(100)
-        for block in &blocks {
-            let count = 0;
+        for (count, block) in blocks
+            .iter()
+            .filter_map(|block| {
+                Some((
+                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
+                    block,
+                ))
+            })
+            .sorted_by_key(|(count, _)| *count)
+            .rev()
+            .take(10)
+        {
             let name = debug_info
                 .symbols
-                .try_get_one_or_preceding(OPENVM_INIT_PC + block.start_idx as u32)
+                .try_get_one_or_preceding(
+                    block.start_address(exe.program.pc_base, exe.program.step),
+                )
                 .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
                 .unwrap_or_default();
             tracing::debug!(
