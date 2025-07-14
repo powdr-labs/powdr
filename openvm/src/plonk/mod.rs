@@ -233,11 +233,10 @@ impl<F, V> PlonkCircuit<F, V> {
 pub mod test_utils {
     use std::sync::Arc;
 
-    
     use openvm_stark_backend::p3_field::FieldAlgebra;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
-    
+
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBear> {
         AlgebraicExpression::Reference(AlgebraicReference {
             name: Arc::new(name.into()),

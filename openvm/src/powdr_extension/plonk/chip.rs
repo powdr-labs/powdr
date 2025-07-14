@@ -221,12 +221,7 @@ where
             }
         }
 
-        generate_permutation_columns::<Val<SC>>(
-            &mut values,
-            &plonk_circuit,
-            number_of_calls,
-            width,
-        );
+        generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
         AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
     }
