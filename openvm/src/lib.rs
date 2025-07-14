@@ -23,6 +23,7 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
+use powdr_autoprecompiles::PowdrConfig;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
@@ -60,13 +61,25 @@ pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
 mod utils;
+pub use opcode::instruction_allowlist;
+pub use powdr_autoprecompiles::DegreeBound;
+pub use powdr_autoprecompiles::PgoConfig;
+pub use traits::IntoOpenVm;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 type PowdrBB = powdr_number::BabyBearField;
 
-pub use opcode::instruction_allowlist;
-pub use powdr_autoprecompiles::DegreeBound;
-pub use traits::IntoOpenVm;
+// TODO: These constants should be related
+const APP_LOG_BLOWUP: usize = 2;
+pub const OPENVM_DEGREE_BOUND: usize = 5;
+const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
+    identities: OPENVM_DEGREE_BOUND,
+    bus_interactions: OPENVM_DEGREE_BOUND - 1,
+};
+
+pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
+    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
+}
 
 impl IntoOpenVm for PowdrBB {
     type Field = openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -91,7 +104,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::{customize, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+pub use customize_exe::{customize, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
@@ -101,33 +114,6 @@ mod instruction_formatter;
 mod traits;
 
 mod plonk;
-
-/// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
-/// The inner HashMap contains number of time a pc is executed.
-#[derive(Default)]
-pub enum PgoConfig {
-    /// cost = cells saved per apc * times executed
-    /// max total columns
-    Cell(HashMap<u32, u32>, Option<usize>),
-    /// cost = instruction per apc * times executed
-    Instruction(HashMap<u32, u32>),
-    /// cost = instruction per apc
-    /// cost = instruction per apc
-    #[default]
-    None,
-}
-
-impl PgoConfig {
-    /// Returns the number of times a certain pc offset was executed in the profile.
-    pub fn pc_offset_execution_count(&self, pc_offset: u32) -> Option<u32> {
-        match self {
-            PgoConfig::Cell(pc_index_count, _) | PgoConfig::Instruction(pc_index_count) => {
-                pc_index_count.get(&pc_offset).copied()
-            }
-            PgoConfig::None => None,
-        }
-    }
-}
 
 #[derive(Copy, Clone, Debug, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
@@ -359,69 +345,11 @@ pub enum PrecompileImplementation {
     PlonkChip,
 }
 
-#[derive(Clone)]
-pub struct PowdrConfig {
-    /// Number of autoprecompiles to generate.
-    pub autoprecompiles: u64,
-    /// Number of basic blocks to skip for autoprecompiles.
-    /// This is either the largest N if no PGO, or the costliest N with PGO.
-    pub skip_autoprecompiles: u64,
-    /// Max degree of constraints.
-    pub degree_bound: DegreeBound,
-    /// Implementation of the precompiles, i.e., how to compile them to a RAP.
-    pub implementation: PrecompileImplementation,
-    /// The path to the APC candidates dir, if any.
-    pub apc_candidates_dir_path: Option<PathBuf>,
-}
-
-impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64) -> Self {
-        Self {
-            autoprecompiles,
-            skip_autoprecompiles,
-            degree_bound: DegreeBound {
-                identities: customize_exe::OPENVM_DEGREE_BOUND,
-                bus_interactions: customize_exe::OPENVM_DEGREE_BOUND - 1,
-            },
-            implementation: PrecompileImplementation::default(),
-            apc_candidates_dir_path: None,
-        }
-    }
-
-    pub fn with_autoprecompiles(self, autoprecompiles: u64) -> Self {
-        Self {
-            autoprecompiles,
-            ..self
-        }
-    }
-
-    pub fn with_degree_bound(self, degree_bound: DegreeBound) -> Self {
-        Self {
-            degree_bound,
-            ..self
-        }
-    }
-
-    pub fn with_precompile_implementation(
-        self,
-        precompile_implementation: PrecompileImplementation,
-    ) -> Self {
-        Self {
-            implementation: precompile_implementation,
-            ..self
-        }
-    }
-
-    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
-        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
-        self
-    }
-}
-
 pub fn compile_guest(
     guest: &str,
     guest_opts: GuestOptions,
     config: PowdrConfig,
+    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
@@ -431,7 +359,14 @@ pub fn compile_guest(
         tally_opcode_frequency(&pgo_config, &original_program.exe);
     }
 
-    compile_exe(guest, guest_opts, original_program, config, pgo_config)
+    compile_exe(
+        guest,
+        guest_opts,
+        original_program,
+        config,
+        implementation,
+        pgo_config,
+    )
 }
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
@@ -476,6 +411,7 @@ pub fn compile_exe(
     guest_opts: GuestOptions,
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
+    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
@@ -494,6 +430,7 @@ pub fn compile_exe(
         original_program,
         &std::fs::read(elf_binary_path)?,
         config,
+        implementation,
         pgo_config,
     )
 }
@@ -502,6 +439,7 @@ pub fn compile_exe_with_elf(
     original_program: OriginalCompiledProgram,
     elf: &[u8],
     config: PowdrConfig,
+    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let elf = powdr_riscv_elf::load_elf_from_buffer(elf);
@@ -510,6 +448,7 @@ pub fn compile_exe_with_elf(
         elf.text_labels(),
         elf.debug_info(),
         config,
+        implementation,
         pgo_config,
     );
     // Export the compiled program to a PIL file for debugging purposes.
@@ -539,8 +478,6 @@ pub struct AirMetrics {
     pub constraints: usize,
     pub bus_interactions: usize,
 }
-
-const APP_LOG_BLOWUP: usize = 2;
 
 impl Add for AirMetrics {
     type Output = AirMetrics;
@@ -854,22 +791,32 @@ mod tests {
     use super::*;
     use test_log::test;
 
+    #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
         config: PowdrConfig,
+        implementation: PrecompileImplementation,
         mock: bool,
         recursion: bool,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
+        let program = compile_guest(
+            guest,
+            GuestOptions::default(),
+            config,
+            implementation,
+            pgo_config,
+        )
+        .unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
     fn prove_simple(
         guest: &str,
         config: PowdrConfig,
+        implementation: PrecompileImplementation,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
@@ -877,6 +824,7 @@ mod tests {
         let result = compile_and_prove(
             guest,
             config,
+            implementation,
             false,
             false,
             stdin,
@@ -889,6 +837,7 @@ mod tests {
     fn prove_mock(
         guest: &str,
         config: PowdrConfig,
+        implementation: PrecompileImplementation,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
@@ -896,6 +845,7 @@ mod tests {
         let result = compile_and_prove(
             guest,
             config,
+            implementation,
             true,
             false,
             stdin,
@@ -908,6 +858,7 @@ mod tests {
     fn prove_recursion(
         guest: &str,
         config: PowdrConfig,
+        implementation: PrecompileImplementation,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
@@ -915,6 +866,7 @@ mod tests {
         let result = compile_and_prove(
             guest,
             config,
+            implementation,
             false,
             true,
             stdin,
@@ -951,16 +903,30 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_simple(GUEST, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        prove_simple(
+            GUEST,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     #[test]
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
-        prove_mock(GUEST, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        prove_mock(
+            GUEST,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
@@ -968,9 +934,15 @@ mod tests {
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
-            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        prove_mock(
+            GUEST,
+            config,
+            PrecompileImplementation::PlonkChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     #[test]
@@ -978,27 +950,46 @@ mod tests {
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
-        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
+        prove_recursion(
+            GUEST,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
     }
 
     #[test]
     #[ignore = "Too long"]
     fn matmul_compile() {
         let guest = "guest-matmul";
-        let config = PowdrConfig::new(1, 0);
-        assert!(
-            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
-        );
+        let config = default_powdr_openvm_config(1, 0);
+        assert!(compile_guest(
+            guest,
+            GuestOptions::default(),
+            config,
+            PrecompileImplementation::SingleRowChip,
+            PgoConfig::default()
+        )
+        .is_ok());
     }
 
     #[test]
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     #[test]
@@ -1006,9 +997,16 @@ mod tests {
         // Set the default segmentation height to a small value to test multi-segment proving
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         // should create two segments
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
+        prove_simple(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            Some(4_000),
+        );
     }
 
     #[test]
@@ -1016,8 +1014,15 @@ mod tests {
     fn keccak_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     #[test]
@@ -1028,10 +1033,11 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
         prove_recursion(
             GUEST_KECCAK,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
             None,
@@ -1040,6 +1046,7 @@ mod tests {
         prove_recursion(
             GUEST_KECCAK,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1054,10 +1061,11 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
         prove_recursion(
             GUEST_KECCAK,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1069,8 +1077,15 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
@@ -1078,9 +1093,15 @@ mod tests {
     fn keccak_plonk_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP)
-            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::PlonkChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     #[test]
@@ -1088,8 +1109,15 @@ mod tests {
     fn keccak_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
     }
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
@@ -1099,7 +1127,7 @@ mod tests {
         // Config
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
         let pgo_data =
@@ -1110,6 +1138,7 @@ mod tests {
         prove_simple(
             GUEST_KECCAK,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1122,6 +1151,7 @@ mod tests {
         prove_simple(
             GUEST_KECCAK,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1138,7 +1168,7 @@ mod tests {
     fn sha256_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
@@ -1146,6 +1176,7 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1157,7 +1188,7 @@ mod tests {
     fn sha256_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
@@ -1165,6 +1196,7 @@ mod tests {
         prove_mock(
             GUEST_SHA256,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1179,10 +1211,11 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
 
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP);
         prove_recursion(
             GUEST_SHA256,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
             None,
@@ -1191,6 +1224,7 @@ mod tests {
         prove_recursion(
             GUEST_SHA256,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1205,10 +1239,11 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
 
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
         prove_recursion(
             GUEST_SHA256,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1219,7 +1254,7 @@ mod tests {
     fn sha256_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
@@ -1227,6 +1262,7 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1237,7 +1273,7 @@ mod tests {
     fn sha256_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
@@ -1245,6 +1281,7 @@ mod tests {
         prove_mock(
             GUEST_SHA256,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1257,7 +1294,7 @@ mod tests {
 
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let config = PowdrConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
@@ -1266,6 +1303,7 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1277,6 +1315,7 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1318,13 +1357,14 @@ mod tests {
     fn test_machine_compilation(params: MachineTestParams) {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
-        let config = PowdrConfig::new(params.guest_apc, params.guest_skip)
+        let config = default_powdr_openvm_config(params.guest_apc, params.guest_skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let should_have_exported_json_summary = matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let compiled_program = compile_guest(
             params.guest,
             GuestOptions::default(),
             config,
+            PrecompileImplementation::SingleRowChip,
             params.pgo_config,
         )
         .unwrap();
@@ -1476,12 +1516,16 @@ mod tests {
 
     #[test]
     fn guest_machine_plonk() {
-        let config = PowdrConfig::new(GUEST_APC, GUEST_SKIP)
-            .with_precompile_implementation(PrecompileImplementation::PlonkChip);
-        let (powdr_metrics, _) =
-            compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None)
-                .unwrap()
-                .air_metrics();
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let (powdr_metrics, _) = compile_guest(
+            GUEST,
+            GuestOptions::default(),
+            config,
+            PrecompileImplementation::PlonkChip,
+            PgoConfig::None,
+        )
+        .unwrap()
+        .air_metrics();
         assert_eq!(powdr_metrics.len(), 1);
         let powdr_metrics_sum = powdr_metrics.into_iter().sum::<AirMetrics>();
         assert_eq!(
@@ -1553,7 +1597,6 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data =
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
-
         let powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
