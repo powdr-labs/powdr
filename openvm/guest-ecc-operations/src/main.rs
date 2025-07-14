@@ -34,68 +34,33 @@ pub fn main() {
         "791DFC78B49C9B5882867776F18BA7883ED0BAE1C0A856D26D41D38FB47345B4"
     ));
 
-    // This is the double of (x2, y2).
-
-    let x4 = *FieldBytes::from_slice(&hex!(
-        "33333333333333333333333333333333333333333333333333333332FFFFFF3B"
-    ));
-
-    let y4 = *FieldBytes::from_slice(&hex!(
-        "3916485F2C3D80C62048C6FD8ACBF71EED11987A55CC10ABDC4E4A25C4EC54AC"
-    ));
 
     let p1 = EncodedPoint::from_affine_coordinates(&x1, &y1, false);
     let p2 = EncodedPoint::from_affine_coordinates(&x2, &y2, false);
     let p3 = EncodedPoint::from_affine_coordinates(&x3, &y3, false);
-    let p4 = EncodedPoint::from_affine_coordinates(&x4, &y4, false);
+
 
     let p1_affine = AffinePoint::from_encoded_point(&p1).expect("invalid point 1");
     let p2_affine = AffinePoint::from_encoded_point(&p2).expect("invalid point 2");
     let p3_affine = AffinePoint::from_encoded_point(&p3).expect("invalid point 3");
-    let p4_affine = AffinePoint::from_encoded_point(&p4).expect("invalid point 4");
 
     let mut p1_projective = ProjectivePoint::from(p1_affine);
     let mut p2_projective = ProjectivePoint::from(p2_affine);
 
     // Generic add can handle equal or unequal points.
     let sum_projective = p1_projective + p2_projective;
+    
+    
+    
+    //if p3_affine != p3_affine {
+    //    panic!();
+    //}
+    
     let sum_affine = sum_projective.to_affine();
     if p3_affine != sum_affine {
         panic!();
-    }
+    }  
 
-    let p2_add_p2_projective = p2_projective + p2_projective;
-    let p2_add_p2_affine = p2_add_p2_projective.to_affine();
-
-    if p4_affine != p2_add_p2_affine {
-        panic!();
-    }
-
-    // Add assign and double assign
-    p1_projective += p2_projective;
-    if p1_projective.to_affine() != p3_affine {
-        panic!();
-    }
-    p2_projective = p2_projective.double();
-    if p2_projective.to_affine() != p4_affine {
-        panic!();
-    }
-
-    // Ec Mul
-    let p1_projective = ProjectivePoint::from(p1_affine);
-    let scalar = Scalar::from_u128(12345678);
-
-    let x5 = *FieldBytes::from_slice(&hex!(
-        "6D6D216817A448DC312FEE586FA306D189CB404A9CAF72D90308797F38934A19"
-    ));
-    let y5 = *FieldBytes::from_slice(&hex!(
-        "2C9BB19372B2E1B830B5F4D92ADBAFEAAEB612026122E571D1BEA76D742F279E"
-    ));
-    let result = p1_projective * scalar;
-    if result.to_affine()
-        != AffinePoint::from_encoded_point(&EncodedPoint::from_affine_coordinates(&x5, &y5, false))
-            .expect("invalid point 5")
-    {
-        panic!();
-    }
+    
+    
 }

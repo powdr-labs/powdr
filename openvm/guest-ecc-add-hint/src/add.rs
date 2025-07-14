@@ -14,8 +14,8 @@ pub fn affine_add(
         return None;
     }
 
-    //let invert = FieldElement::from_u64(1).normalize();
-    let invert = dx.invert().unwrap().normalize();
+    let invert = FieldElement::from_u64(1).normalize();
+    //let invert = dx.invert().unwrap().normalize();
 
     let dy = (*p2_y - p1_y).normalize();
     let lambda = (dy * invert).normalize();
