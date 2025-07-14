@@ -246,6 +246,6 @@ pub mod test_utils {
     }
 
     pub fn c(value: u64) -> AlgebraicExpression<BabyBear> {
-        AlgebraicExpression::Number(<BabyBear as FieldAlgebra>::from_canonical_u64(value))
+        AlgebraicExpression::Number(BabyBear::from_canonical_u64(value))
     }
 }

@@ -93,7 +93,7 @@ mod tests {
         let bus_interaction = SymbolicBusInteraction {
             id: DEFAULT_MEMORY,
             args: vec![
-                AlgebraicExpression::Number(<BabyBear as FieldAlgebra>::from_canonical_u32(42)),
+                AlgebraicExpression::Number(BabyBear::from_canonical_u32(42)),
                 x.clone() + y.clone(),
                 y.clone(),
                 -(x.clone() * y.clone()),
