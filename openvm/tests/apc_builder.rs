@@ -289,6 +289,12 @@ mod single_instruction_tests {
         let program = [sltu(116, 116, 1, 0)];
         assert_machine_output(program.to_vec(), "single_seqz");
     }
+    #[test]
+    fn single_beqz() {
+        // beqz translates to "beq 0"
+        let program = [beq(8, 0, 2)];
+        assert_machine_output(program.to_vec(), "single_beqz");
+    }
 }
 
 mod complex_tests {
