@@ -29,6 +29,7 @@ use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_number::{BabyBearField, FieldElement};
+use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -56,6 +57,7 @@ pub fn customize(
         sdk_vm_config,
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo,
     config: PowdrConfig,
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
@@ -129,8 +131,15 @@ pub fn customize(
             .rev()
             .take(10)
         {
+            let name = debug_info
+                .symbols
+                .try_get_one_or_preceding(
+                    block.start_address(exe.program.pc_base, exe.program.step),
+                )
+                .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
+                .unwrap_or_default();
             tracing::debug!(
-                "Basic block (executed {count} times):\n{}",
+                "Basic block (executed {count} times), {name}:\n{}",
                 block.pretty_print(openvm_instruction_formatter)
             );
         }
