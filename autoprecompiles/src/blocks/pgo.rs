@@ -20,13 +20,13 @@ use crate::{
 /// The inner HashMap contains number of time a pc is executed.
 #[derive(Default)]
 pub enum PgoConfig {
-    /// cost = cells saved per apc * times executed
-    /// max total columns
+    /// value = cells saved per apc * times executed
+    /// cost = number of columns in the apc
+    /// constraint of max total columns
     Cell(HashMap<u32, u32>, Option<usize>),
-    /// cost = instruction per apc * times executed
+    /// value = instruction per apc * times executed
     Instruction(HashMap<u32, u32>),
-    /// cost = instruction per apc
-    /// cost = instruction per apc
+    /// value = instruction per apc
     #[default]
     None,
 }
