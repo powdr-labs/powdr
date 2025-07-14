@@ -427,14 +427,14 @@ pub struct OpenVmApcCandidateJsonExport<I> {
     apc_candidate_file: String,
 }
 
-impl<P, A> OpenVmApcCandidate<P, A> {
+impl<P, I> OpenVmApcCandidate<P, I> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
         self.width_before - self.width_after
     }
 }
 
-impl<P, A> KnapsackItem for OpenVmApcCandidate<P, A> {
+impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     fn cost(&self) -> usize {
         self.width_after
     }
