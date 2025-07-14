@@ -121,6 +121,14 @@ mod single_instruction_tests {
         ];
         assert_machine_output(program.to_vec(), "single_xor");
     }
+    #[test]
+    fn single_or() {
+        let program = [
+            // [x8] = [x7] || [x5]
+            xor(8, 7, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "single_or");
+    }
 
     // Load/Store Chip instructions
     // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
@@ -280,6 +288,38 @@ mod single_instruction_tests {
         // r68 = sign_extend(r40 >> val(R3))
         let program = [sra(68, 40, 3, 1)];
         assert_machine_output(program.to_vec(), "single_sra");
+    }
+
+    #[test]
+    fn load_bytes() {
+        // Checks that we optimize awya the "or" and "shift" instructions
+        // (into simple additions)
+        // lbu	a0, 610(sp)
+        // lbu	a1, 609(sp)
+        // lbu	a2, 611(sp)
+        // lbu	a3, 612(sp)
+        // slli	a0, a0, 8
+        // or	a0, a0, a1
+        // slli	a2, a2, 16
+        // slli	a3, a3, 24
+        // or	a2, a3, a2
+        // or	a0, a2, a0
+        // sw	a0, 352(sp)
+        // TODO I have no idea if this is the right code.
+        let program = vec![
+            loadb(8, 2, 610, 2, 1, 0),  // a0 = lbu a0, 610(sp)
+            loadb(9, 2, 609, 2, 1, 0),  // a1 = lbu a1, 609(sp)
+            loadb(10, 2, 611, 2, 1, 0), // a2 = lbu a2, 611(sp)
+            loadb(11, 2, 612, 2, 1, 0), // a3 = lbu a3, 612(sp)
+            sll(8, 8, 8, 0),            // slli a0, a0, 8
+            or(8, 8, 9, 0),             // or a0, a0, a1
+            sll(10, 10, 16, 0),         // slli a2, a2, 16
+            sll(11, 11, 24, 0),         // slli a3, a3, 24
+            or(10, 11, 10, 0),          // or a2, a3, a2
+            or(8, 10, 8, 0),            // or a0, a2 ,a0
+            storew(8, 2, 352, 2, 1, 1),
+        ];
+        assert_machine_output(program, "load_bytes");
     }
 }
 
