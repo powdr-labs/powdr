@@ -233,10 +233,11 @@ impl<F, V> PlonkCircuit<F, V> {
 pub mod test_utils {
     use std::sync::Arc;
 
-    use openvm_stark_backend::p3_field::FieldExtensionAlgebra;
+    
+    use openvm_stark_backend::p3_field::FieldAlgebra;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
-    use powdr_number::BabyBearField;
+    
     pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBear> {
         AlgebraicExpression::Reference(AlgebraicReference {
             name: Arc::new(name.into()),
@@ -245,7 +246,6 @@ pub mod test_utils {
     }
 
     pub fn c(value: u64) -> AlgebraicExpression<BabyBear> {
-        unimplemented!("cargo tree issue below")
-        // AlgebraicExpression::Number(BabyBear::from_canonical_u64(value))
+        AlgebraicExpression::Number(<BabyBear as FieldAlgebra>::from_canonical_u64(value))
     }
 }

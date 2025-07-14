@@ -77,10 +77,10 @@ mod tests {
     use super::*;
     use crate::bus_map::{default_openvm_bus_map, DEFAULT_MEMORY};
     use crate::plonk::test_utils::{c, var};
+    use openvm_stark_backend::p3_field::FieldAlgebra;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::expression::AlgebraicExpression;
     use powdr_autoprecompiles::SymbolicBusInteraction;
-    use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -93,7 +93,7 @@ mod tests {
         let bus_interaction = SymbolicBusInteraction {
             id: DEFAULT_MEMORY,
             args: vec![
-                AlgebraicExpression::Number(BabyBear::from_canonical_u32(42)),
+                AlgebraicExpression::Number(<BabyBear as FieldAlgebra>::from_canonical_u32(42)),
                 x.clone() + y.clone(),
                 y.clone(),
                 -(x.clone() * y.clone()),
