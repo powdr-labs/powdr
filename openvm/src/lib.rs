@@ -1336,7 +1336,7 @@ mod tests {
     #[ignore = "Too long"]
     fn ecc_op_prove_simple() {
         let stdin = StdIn::default();
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
@@ -1344,6 +1344,7 @@ mod tests {
         prove_simple(
             GUEST_ECC_OP,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1354,7 +1355,7 @@ mod tests {
     #[ignore = "Too long"]
     fn ecc_prove_mock() {
         let stdin = StdIn::default();
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
@@ -1362,6 +1363,7 @@ mod tests {
         prove_mock(
             GUEST_ECC_OP,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1375,10 +1377,11 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
 
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO_LARGE, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO_LARGE, GUEST_ECC_OP_SKIP);
         prove_recursion(
             GUEST_ECC_OP,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
             None,
@@ -1387,6 +1390,7 @@ mod tests {
         prove_recursion(
             GUEST_ECC_OP,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1400,10 +1404,11 @@ mod tests {
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
 
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
         prove_recursion(
             GUEST_ECC_OP,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1413,7 +1418,7 @@ mod tests {
     #[test]
     fn ecc_small_prove_simple() {
         let stdin = StdIn::default();
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
@@ -1421,6 +1426,7 @@ mod tests {
         prove_simple(
             GUEST_ECC_OP,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1430,7 +1436,7 @@ mod tests {
     #[test]
     fn ecc_small_prove_mock() {
         let stdin = StdIn::default();
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
@@ -1438,6 +1444,7 @@ mod tests {
         prove_mock(
             GUEST_ECC_OP,
             config,
+            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1449,7 +1456,7 @@ mod tests {
         use std::time::Instant;
 
         let stdin = StdIn::default();
-        let config = PowdrConfig::new(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
 
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
@@ -1458,6 +1465,7 @@ mod tests {
         prove_simple(
             GUEST_ECC_OP,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1472,6 +1480,7 @@ mod tests {
         prove_simple(
             GUEST_ECC_OP,
             config.clone(),
+            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
             None,
