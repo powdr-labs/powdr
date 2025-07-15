@@ -6,43 +6,13 @@ edition = "2021"
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git" }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", subdirectory= "crates/toolchain/platform" }
-openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "crates/toolchain/custom_insn", default-features = false }
-
 openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/ecc/guest", default-features = false }
-openvm-ecc-sw-macros = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/ecc/sw-macros", default-features = false }
 openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/algebra/guest", default-features = false }
-openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/algebra/moduli-macros", default-features = false }
-openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/rv32im/guest", default-features = false }
-
-openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "guest-libs/keccak256" }
 openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "guest-libs/k256", package = "k256", features = [
     "ecdsa",
-], optional = true }
-openvm-p256 = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "guest-libs/p256", package = "p256", features = [
-    "ecdsa",
-], optional = true }
+]}
 
-serde = { version = "1.0", default-features = false, features = [
-    "alloc",
-    "derive",
-] }
-serde_with = { version = "3.13.0", default-features = false, features = [
-    "alloc",
-    "macros",
-] }
-hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 hex-literal = { version = "0.4.1", default-features = false }
-ecdsa-core = { version = "0.16.9", package = "ecdsa", default-features = false }
 
 
-[features]
-default = ["k256"]
-std = ["serde/std", "openvm/std"]
-k256 = ["dep:openvm-k256"]
-p256 = ["dep:openvm-p256"]
 
-[profile.release]
-panic = "abort"
-lto = "thin"    # turn on lto = fat to decrease binary size, but this optimizes out some missing extern links so we shouldn't use it for testing
-# strip = "symbols"
