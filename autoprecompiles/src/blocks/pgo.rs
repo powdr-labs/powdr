@@ -9,7 +9,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::Adapter,
+    adapter::{Adapter, AdapterApc, ApcStats},
     blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
     Apc, BasicBlock, PowdrConfig, VmConfig,
 };
@@ -70,7 +70,7 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<(Apc<A::PowdrField, A::Instruction>, <A::Candidate as Candidate<A>>::ApcStats)> {
+) -> Vec<(AdapterApc<A>, ApcStats<A>)> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -199,7 +199,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<(Apc<A::PowdrField, A::Instruction>, Option<<A::Candidate as Candidate<A>>::ApcStats>)> {
+) -> Vec<(AdapterApc<A>, Option<ApcStats<A>>)> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
