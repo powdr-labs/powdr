@@ -50,6 +50,8 @@ use tracing_subscriber::{
     Layer,
 };
 
+#[cfg(test)]
+use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
@@ -104,7 +106,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::{customize, POWDR_OPCODE};
+pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
@@ -137,7 +139,7 @@ impl Default for PgoType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
-    powdr: PowdrExtension<BabyBearField>,
+    pub powdr: PowdrExtension<BabyBearField>,
 }
 
 // For generation of the init file, we delegate to the underlying SdkVmConfig.
@@ -506,10 +508,18 @@ impl AirMetrics {
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(&self) -> (Vec<AirMetrics>, Vec<AirMetrics>) {
+    fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         use crate::extraction_utils::get_air_metrics;
 
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
+
+        // Order of precompile is the same as that of Powdr executors in chip inventory
+        let mut apc_stats = self
+            .vm_config
+            .powdr
+            .precompiles
+            .iter()
+            .map(|precompile| precompile.apc_stats.clone());
 
         inventory
             .executors()
@@ -530,7 +540,10 @@ impl CompiledProgram {
                     // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                     // TODO this is hacky but not sure how to do it better rn.
                     if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                        powdr_air_metrics.push(get_air_metrics(air));
+                        powdr_air_metrics.push((
+                            get_air_metrics(air),
+                            apc_stats.next().unwrap().map(|stats| stats.widths),
+                        ));
                     } else {
                         non_powdr_air_metrics.push(get_air_metrics(air));
                     }
@@ -1509,6 +1522,7 @@ mod tests {
         guest_apc: u64,
         guest_skip: u64,
         expected_metrics: &'a MachineTestMetrics,
+        expected_columns_saved: Option<AirWidthsDiff>, // only available in Pgo::Cell
     }
 
     struct MachineTestMetrics {
@@ -1523,7 +1537,7 @@ mod tests {
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = default_powdr_openvm_config(params.guest_apc, params.guest_skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let should_have_exported_json_summary = matches!(params.pgo_config, PgoConfig::Cell(_, _));
+        let is_cell_pgo = matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let compiled_program = compile_guest(
             params.guest,
             GuestOptions::default(),
@@ -1543,13 +1557,25 @@ mod tests {
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
         let powdr_machine_count = powdr_air_metrics.len();
         let non_powdr_machine_count = non_powdr_air_metrics.len();
-        let powdr_sum = powdr_air_metrics.into_iter().sum::<AirMetrics>();
+        let powdr_sum = powdr_air_metrics
+            .iter()
+            .map(|(metrics, _)| metrics.clone())
+            .sum::<AirMetrics>();
         let non_powdr_sum = non_powdr_air_metrics.into_iter().sum::<AirMetrics>();
 
         assert_eq!(powdr_machine_count, *powdr_expected_machine_count);
         assert_eq!(non_powdr_machine_count, *non_powdr_expected_machine_count);
         assert_eq!(powdr_sum, *powdr_expected_sum);
         assert_eq!(non_powdr_sum, *non_powdr_expected_sum);
+
+        // Test cells saved in Pgo::Cell
+        if is_cell_pgo {
+            let columns_saved = powdr_air_metrics
+                .into_iter()
+                .map(|(_, columns_saved)| columns_saved.unwrap())
+                .sum::<AirWidthsDiff>();
+            assert_eq!(columns_saved, params.expected_columns_saved.unwrap());
+        }
 
         // In Cell PGO, check that the apc candidates were persisted to disk
         let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
@@ -1563,7 +1589,7 @@ mod tests {
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
             .count();
         assert!(cbor_files_count > 0, "No APC candidate files found");
-        if should_have_exported_json_summary {
+        if is_cell_pgo {
             assert_eq!(
                 json_files_count, 1,
                 "Expected exactly one APC candidate JSON file"
@@ -1614,6 +1640,7 @@ mod tests {
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: None, // not tested in instruction mode
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1622,6 +1649,18 @@ mod tests {
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 170,
+                    log_up: 128,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 49,
+                    log_up: 36,
+                },
+            }),
         });
     }
 
@@ -1652,6 +1691,7 @@ mod tests {
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
             expected_metrics: &expected_metrics_instruction,
+            expected_columns_saved: None, // not tested in instruction mode
         });
 
         let expected_metrics_cell = MachineTestMetrics {
@@ -1675,6 +1715,18 @@ mod tests {
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
             expected_metrics: &expected_metrics_cell,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 176212,
+                    log_up: 117468,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 14675,
+                    log_up: 12124,
+                },
+            }),
         });
     }
 
@@ -1691,7 +1743,10 @@ mod tests {
         .unwrap()
         .air_metrics();
         assert_eq!(powdr_metrics.len(), 1);
-        let powdr_metrics_sum = powdr_metrics.into_iter().sum::<AirMetrics>();
+        let powdr_metrics_sum = powdr_metrics
+            .into_iter()
+            .map(|(metrics, _)| metrics)
+            .sum::<AirMetrics>();
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {
@@ -1734,6 +1789,7 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: None, // not tested in none mode
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1742,6 +1798,7 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: None, // not tested in instruction mode
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1750,6 +1807,18 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 27194,
+                    log_up: 18736,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 2011,
+                    log_up: 1788,
+                },
+            }),
         });
     }
 
@@ -1784,6 +1853,18 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC_PGO_LARGE,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 38846,
+                    log_up: 26832,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 4824,
+                    log_up: 3968,
+                },
+            }),
         });
 
         // Assert that total columns don't exceed the initial limit set

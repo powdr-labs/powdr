@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
@@ -13,21 +13,21 @@ use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use crate::{IntoOpenVm, PrecompileImplementation};
 use itertools::Itertools;
-use openvm_instructions::instruction::Instruction;
+use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program};
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::adapter::Adapter;
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
-use powdr_autoprecompiles::constraint_optimizer::IsBusStateful;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{Apc, PowdrConfig};
+use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::{Apc, PowdrConfig, SymbolicInstructionStatement};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
-use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_number::{BabyBearField, FieldElement};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,74 @@ pub enum Error {
 impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     fn from(_e: powdr_autoprecompiles::constraint_optimizer::Error) -> Self {
         Error::AutoPrecompileError
+    }
+}
+
+/// An adapter for the BabyBear OpenVM precompiles.
+/// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
+/// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
+pub struct BabyBearOpenVmApcAdapter<'a> {
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
+    type PowdrField = BabyBearField;
+    type Field = BabyBear;
+    type InstructionMachineHandler = OriginalAirs<Self::PowdrField>;
+    type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
+    type Candidate = OpenVmApcCandidate<Self::PowdrField, Instr<Self::Field>>;
+    type Program = Prog<'a, Self::Field>;
+    type Instruction = Instr<Self::Field>;
+
+    fn into_field(e: Self::PowdrField) -> Self::Field {
+        e.into_openvm_field()
+    }
+
+    fn from_field(e: Self::Field) -> Self::PowdrField {
+        BabyBearField::from_openvm_field(e)
+    }
+}
+
+/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
+
+/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Instr<F>(pub OpenVmInstruction<F>);
+
+impl<F: PrimeField32> Instruction<F> for Instr<F> {
+    fn opcode(&self) -> usize {
+        self.0.opcode.as_usize()
+    }
+
+    fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<F> {
+        SymbolicInstructionStatement {
+            opcode: self.0.opcode.as_usize(),
+            args: vec![
+                self.0.a, self.0.b, self.0.c, self.0.d, self.0.e, self.0.f, self.0.g,
+            ],
+        }
+    }
+}
+
+impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
+    fn base_pc(&self) -> u32 {
+        self.0.pc_base
+    }
+
+    fn pc_step(&self) -> u32 {
+        self.0.step
+    }
+
+    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
+        Box::new(
+            self.0
+                .instructions_and_debug_infos
+                .iter()
+                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
+        )
     }
 }
 
@@ -75,24 +143,7 @@ pub fn customize(
         exe.program.step,
     );
 
-    let program = Program::new(
-        exe.program
-            .instructions_and_debug_infos
-            .iter()
-            .map(|o| o.as_ref().unwrap().0.clone())
-            .map(|instr| SymbolicInstructionStatement {
-                opcode: instr.opcode.as_usize(),
-                args: [
-                    instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
-                ]
-                .iter()
-                .map(|f| BabyBearField::from_openvm_field(*f))
-                .collect(),
-            })
-            .collect_vec(),
-        exe.program.pc_base,
-        exe.program.step,
-    );
+    let program = Prog(&exe.program);
 
     let vm_config = VmConfig {
         instruction_machine_handler: &airs,
@@ -112,7 +163,12 @@ pub fn customize(
         PgoConfig::Instruction(_) | PgoConfig::None => None,
     };
 
-    let blocks = collect_basic_blocks(&program, &labels, &opcodes_allowlist, &branch_opcodes_set());
+    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(
+        &program,
+        &labels,
+        &opcodes_allowlist,
+        &branch_opcodes_set(),
+    );
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -140,7 +196,7 @@ pub fn customize(
                 .unwrap_or_default();
             tracing::debug!(
                 "Basic block (executed {count} times), {name}:\n{}",
-                block.pretty_print(openvm_instruction_formatter)
+                block.pretty_print(|n| openvm_instruction_formatter(&n.0))
             );
         }
     }
@@ -150,11 +206,11 @@ pub fn customize(
         .filter(|b| {
             b.statements
                 .iter()
-                .all(|instr| opcodes_allowlist.contains(&instr.opcode))
+                .all(|instr| opcodes_allowlist.contains(&instr.opcode()))
         })
         .collect::<Vec<_>>();
 
-    let apcs = generate_apcs_with_pgo::<OpenVmApcCandidate<_>, _, _, _>(
+    let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
         blocks,
         &config,
         max_total_apc_columns,
@@ -164,7 +220,7 @@ pub fn customize(
 
     let program = &mut exe.program.instructions_and_debug_infos;
 
-    let noop = Instruction {
+    let noop = OpenVmInstruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
         a: OpenVmField::<BabyBearField>::ZERO,
         b: OpenVmField::<BabyBearField>::ZERO,
@@ -180,13 +236,16 @@ pub fn customize(
     let extensions = apcs
         .into_iter()
         .map(
-            |Apc {
-                 block,
-                 opcode,
-                 machine,
-                 subs,
-             }| {
-                let new_instr = Instruction {
+            |(
+                Apc {
+                    block,
+                    opcode,
+                    machine,
+                    subs,
+                },
+                apc_stats,
+            )| {
+                let new_instr = OpenVmInstruction {
                     opcode: VmOpcode::from_usize(opcode as usize),
                     a: OpenVmField::<BabyBearField>::ZERO,
                     b: OpenVmField::<BabyBearField>::ZERO,
@@ -235,6 +294,7 @@ pub fn customize(
                         .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                         .collect(),
                     is_valid_column,
+                    apc_stats,
                 )
             },
         )
@@ -293,37 +353,50 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 #[derive(Serialize, Deserialize)]
-struct OpenVmApcCandidate<P> {
-    apc: Apc<P>,
+pub struct OpenVmApcCandidate<P, I> {
+    apc: Apc<P, I>,
     execution_frequency: usize,
-    width_before: usize,
-    width_after: usize,
+    widths: AirWidthsDiff,
 }
 
-impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<BabyBearField>>
-    Candidate<BabyBearField, OriginalAirs<BabyBearField>, B> for OpenVmApcCandidate<BabyBearField>
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OvmApcStats {
+    pub widths: AirWidthsDiff,
+}
+
+impl OvmApcStats {
+    fn new(widths: AirWidthsDiff) -> Self {
+        Self { widths }
+    }
+}
+
+impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
+    for OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>
 {
-    type JsonExport = OpenVmApcCandidateJsonExport<BabyBearField>;
+    type JsonExport = OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>>;
+    type ApcStats = OvmApcStats;
 
     fn create(
-        apc: Apc<BabyBearField>,
+        apc: Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        vm_config: VmConfig<OriginalAirs<BabyBearField>, B>,
+        vm_config: VmConfig<
+            OriginalAirs<BabyBearField>,
+            OpenVmBusInteractionHandler<BabyBearField>,
+        >,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
-        let width_after = apc_metrics.widths.total();
+        let width_after = apc_metrics.widths;
 
-        let width_before: usize = apc
+        let width_before = apc
             .block
             .statements
             .iter()
             .map(|instr| {
                 vm_config
                     .instruction_machine_handler
-                    .get_instruction_metrics(instr.opcode)
+                    .get_instruction_metrics(instr.opcode())
                     .unwrap()
                     .widths
-                    .total()
             })
             .sum();
 
@@ -334,8 +407,7 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
         Self {
             apc,
             execution_frequency,
-            width_before,
-            width_after,
+            widths: AirWidthsDiff::new(width_before, width_after),
         }
     }
 
@@ -343,13 +415,13 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
     fn to_json_export(
         &self,
         apc_candidates_dir_path: &Path,
-    ) -> OpenVmApcCandidateJsonExport<BabyBearField> {
+    ) -> OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>> {
         OpenVmApcCandidateJsonExport {
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
-            total_width_before: self.width_before,
-            total_width_after: self.width_after,
+            total_width_before: self.widths.before.total(),
+            total_width_after: self.widths.after.total(),
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.opcode))
                 .display()
@@ -357,19 +429,24 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
         }
     }
 
-    fn into_apc(self) -> Apc<BabyBearField> {
-        self.apc
+    fn into_apc_and_stats(
+        self,
+    ) -> (
+        Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
+        Self::ApcStats,
+    ) {
+        (self.apc, OvmApcStats::new(self.widths))
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct OpenVmApcCandidateJsonExport<P> {
+pub struct OpenVmApcCandidateJsonExport<I> {
     // opcode
     opcode: u32,
     // execution_frequency
     execution_frequency: usize,
     // original instructions
-    original_block: BasicBlock<P>,
+    original_block: BasicBlock<I>,
     // total width before optimisation
     total_width_before: usize,
     // total width after optimisation
@@ -378,16 +455,16 @@ struct OpenVmApcCandidateJsonExport<P> {
     apc_candidate_file: String,
 }
 
-impl<P> OpenVmApcCandidate<P> {
+impl<P, I> OpenVmApcCandidate<P, I> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
-        self.width_before - self.width_after
+        self.widths.columns_saved().total()
     }
 }
 
-impl<P> KnapsackItem for OpenVmApcCandidate<P> {
+impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     fn cost(&self) -> usize {
-        self.width_after
+        self.widths.after.total()
     }
 
     fn value(&self) -> usize {
