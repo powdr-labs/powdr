@@ -142,7 +142,7 @@ impl<F: PrimeField32, V: Display> Display for Gate<F, V> {
             if self.q_const.is_zero() {
                 None
             } else {
-                Some(self.q_const.to_string())
+                Some(format_fe(self.q_const))
             },
         ]
         .into_iter()
@@ -165,6 +165,15 @@ impl<F: PrimeField32, V: Display> Display for Gate<F, V> {
     }
 }
 
+fn format_fe<F: PrimeField32>(v: F) -> String {
+    let v = v.as_canonical_u32();
+    if v < F::ORDER_U32 / 2 {
+        format!("{v}")
+    } else {
+        format!("-{}", -(v as i32))
+    }
+}
+
 /// Pretty-prints a product <scalar> * <factor>, returning `None` if the scalar is zero.
 fn format_product<F: PrimeField32>(scalar: F, factor: impl Display) -> Option<String> {
     if scalar.is_zero() {
@@ -174,7 +183,7 @@ fn format_product<F: PrimeField32>(scalar: F, factor: impl Display) -> Option<St
     } else if scalar == -F::ONE {
         Some(format!("-{factor}"))
     } else {
-        Some(format!("{scalar} * {factor}"))
+        Some(format!("{} * {factor}", format_fe(scalar)))
     }
 }
 /// The PlonK circuit, which is just a collection of gates.
