@@ -6,6 +6,7 @@ use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
+use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::OriginalAirs;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use openvm_circuit::arch::VmInventoryError;
@@ -74,6 +75,7 @@ pub struct PowdrPrecompile<F> {
     pub machine: SymbolicMachine<F>,
     pub original_instructions: Vec<OriginalInstruction<F>>,
     pub is_valid_column: AlgebraicReference,
+    pub apc_stats: Option<OvmApcStats>,
 }
 
 impl<F> PowdrPrecompile<F> {
@@ -83,6 +85,7 @@ impl<F> PowdrPrecompile<F> {
         machine: SymbolicMachine<F>,
         original_instructions: Vec<OriginalInstruction<F>>,
         is_valid_column: AlgebraicReference,
+        apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
             name,
@@ -90,6 +93,7 @@ impl<F> PowdrPrecompile<F> {
             machine,
             original_instructions,
             is_valid_column,
+            apc_stats,
         }
     }
 }

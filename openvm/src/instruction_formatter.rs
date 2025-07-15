@@ -34,6 +34,15 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
 
             format!("{opcode_name} rd_rs2_ptr = {a}, rs1_ptr = {b}, imm = {c}, mem_as = {e}, needs_write = {f}, imm_sign = {g}")
         }
+        OPCODE_BLT | OPCODE_BLTU | OPCODE_BGE | OPCODE_BGEU | OPCODE_BEQ | OPCODE_BNE => {
+            let c = c.as_canonical_u32();
+            let c = if c < F::ORDER_U32 / 2 {
+                format!("{c}")
+            } else {
+                format!("-{}", -(c as i32))
+            };
+            format!("{opcode_name} {a} {b} {c} {d} {e}")
+        }
 
         // All other opcodes in the list
         x if ALL_OPCODES.contains(&x) => format!("{opcode_name} {a} {b} {c} {d} {e}"),

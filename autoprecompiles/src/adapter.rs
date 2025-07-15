@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blocks::{Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
-    InstructionMachineHandler,
+    Apc, InstructionMachineHandler,
 };
 
 pub trait Adapter: Sized {
@@ -24,3 +24,6 @@ pub trait Adapter: Sized {
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
 }
+
+pub type ApcStats<A> = <<A as Adapter>::Candidate as Candidate<A>>::ApcStats;
+pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;

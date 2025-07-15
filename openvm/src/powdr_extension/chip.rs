@@ -63,6 +63,7 @@ impl<F: PrimeField32> PowdrChip<F> {
             is_valid_column,
             name,
             opcode,
+            ..
         } = precompile;
         let air = PowdrAir::new(machine);
         let executor = PowdrExecutor::new(

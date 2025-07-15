@@ -62,6 +62,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             name,
             opcode,
             machine,
+            ..
         } = precompile;
         let air = PlonkAir {
             copy_constraint_bus_id,

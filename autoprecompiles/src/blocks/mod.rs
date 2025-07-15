@@ -34,6 +34,13 @@ impl<I> BasicBlock<I> {
                 .to_string()
             + "\n])"
     }
+
+    /// Returns the address of the first instruction of this block given
+    /// the address of the first instruction of the whole program and the
+    /// size of one instruction.
+    pub fn start_address(&self, base_pc: u32, pc_step: u32) -> u32 {
+        base_pc + self.start_idx as u32 * pc_step
+    }
 }
 
 pub trait Program<I> {
