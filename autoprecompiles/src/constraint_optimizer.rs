@@ -8,7 +8,11 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-use crate::stats_logger::StatsLogger;
+use crate::{
+    constraint_optimizer::equal_zero_checks::replace_equal_zero_checks, stats_logger::StatsLogger,
+};
+
+mod equal_zero_checks;
 
 #[derive(Debug)]
 pub enum Error {
@@ -40,6 +44,9 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system =
         remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
+
+    let constraint_system =
+        replace_equal_zero_checks(constraint_system, bus_interaction_handler.clone());
 
     let constraint_system =
         inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
