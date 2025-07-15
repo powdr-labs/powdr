@@ -21,7 +21,9 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
+use powdr_autoprecompiles::{
+    InstructionMachineHandler, SymbolicInstructionStatement, SymbolicMachine,
+};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
@@ -44,9 +46,12 @@ pub struct OriginalAirs<P> {
 }
 
 impl<P> InstructionMachineHandler<P> for OriginalAirs<P> {
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
+    fn get_instruction_air(
+        &self,
+        instruction: &SymbolicInstructionStatement<P>,
+    ) -> Option<&SymbolicMachine<P>> {
         self.opcode_to_air
-            .get(&VmOpcode::from_usize(opcode))
+            .get(&VmOpcode::from_usize(instruction.opcode))
             .and_then(|air_name| {
                 self.air_name_to_machine
                     .get(air_name)
