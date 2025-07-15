@@ -1901,6 +1901,18 @@ mod tests {
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 38846,
+                    log_up: 26832,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 4824,
+                    log_up: 3968,
+                },
+            }),
         });
 
         let expected_metrics_instruction = MachineTestMetrics {
@@ -1924,6 +1936,18 @@ mod tests {
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
             expected_metrics: &expected_metrics_instruction,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 38846,
+                    log_up: 26832,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 4824,
+                    log_up: 3968,
+                },
+            }),
         });
 
         let expected_metrics_cell = MachineTestMetrics {
@@ -1947,6 +1971,18 @@ mod tests {
             guest_apc: GUEST_ECC_OP_APC_PGO,
             guest_skip: GUEST_ECC_OP_SKIP,
             expected_metrics: &expected_metrics_cell,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 38846,
+                    log_up: 26832,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 4824,
+                    log_up: 3968,
+                },
+            }),
         });
     }
 }
