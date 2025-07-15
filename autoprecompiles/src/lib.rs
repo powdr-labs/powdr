@@ -290,8 +290,11 @@ pub struct VmConfig<'a, M, B> {
 }
 
 pub trait InstructionMachineHandler<T> {
-    /// Returns the AIR for the given opcode.
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+    /// Returns the AIR for the given instruction.
+    fn get_instruction_air(
+        &self,
+        instruction: &SymbolicInstructionStatement<T>,
+    ) -> Option<&SymbolicMachine<T>>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

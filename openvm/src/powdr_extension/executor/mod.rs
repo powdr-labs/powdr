@@ -282,9 +282,8 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .instructions
             .iter()
             .map(|instruction| {
-                let opcode_id = instruction.opcode().as_usize();
                 self.air_by_opcode_id
-                    .get_instruction_air(opcode_id)
+                    .get_instruction_air(&instruction.into())
                     .unwrap()
                     .bus_interactions
                     .iter()

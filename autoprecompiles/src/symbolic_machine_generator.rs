@@ -19,7 +19,7 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
 
     for (i, instr) in statements.iter().enumerate() {
         let machine = instruction_machine_handler
-            .get_instruction_air(instr.opcode)
+            .get_instruction_air(instr)
             .unwrap()
             .clone();
 
