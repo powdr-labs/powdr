@@ -10,7 +10,7 @@ pub fn openvm_instruction_formatter<P: FieldElement>(
     let [a, b, c, d, e, f, g] = args.as_slice().try_into().unwrap();
     let opcode_name = openvm_opcode_formatter(&VmOpcode::from_usize(*opcode));
 
-    match opcode {
+    match *opcode {
         // Alu instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/alu.rs#L197-L201
         512..=521 => {
@@ -28,9 +28,17 @@ pub fn openvm_instruction_formatter<P: FieldElement>(
 
             format!("{opcode_name} rd_rs2_ptr = {a}, rs1_ptr = {b}, imm = {c}, mem_as = {e}, needs_write = {f}, imm_sign = {g}")
         }
+        OPCODE_BLT | OPCODE_BLTU | OPCODE_BGE | OPCODE_BGEU | OPCODE_BEQ | OPCODE_BNE => {
+            let c = if c.is_in_lower_half() {
+                format!("{c}")
+            } else {
+                format!("-{}", -c)
+            };
+            format!("{opcode_name} {a} {b} {c} {d} {e}")
+        }
 
         // All other opcodes in the list
-        x if ALL_OPCODES.contains(x) => format!("{opcode_name} {a} {b} {c} {d} {e}"),
+        x if ALL_OPCODES.contains(&x) => format!("{opcode_name} {a} {b} {c} {d} {e}"),
 
         // Opcodes not in the list
         _ => format!("{opcode_name} {a} {b} {c} {d} {e} {f} {g}"),

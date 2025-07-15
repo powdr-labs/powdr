@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     path::Path,
 };
 
@@ -101,7 +101,9 @@ impl DebugInfo {
             symbols
                 .into_iter()
                 .map(|(name, address)| (address, name))
-                .into_group_map(),
+                .into_group_map()
+                .into_iter()
+                .collect(),
         );
 
         Ok(DebugInfo {
@@ -425,7 +427,7 @@ fn find_first_idx(slice: &[SourceLocationInfo], addr: u32) -> usize {
 
 /// Index the symbols by their addresses.
 #[derive(Default)]
-pub struct SymbolTable(HashMap<u32, Vec<String>>);
+pub struct SymbolTable(BTreeMap<u32, Vec<String>>);
 
 impl SymbolTable {
     pub fn new(elf: &Elf) -> SymbolTable {
@@ -437,7 +439,9 @@ impl SymbolTable {
             symbols
                 .into_iter()
                 .map(|(name, addr)| (addr, name.to_string()))
-                .into_group_map(),
+                .into_group_map()
+                .into_iter()
+                .collect(),
         )
     }
 
@@ -473,6 +477,15 @@ impl SymbolTable {
             .iter()
             .map(|s| Cow::Borrowed(s.as_str()))
             .chain(default)
+    }
+
+    /// Returns a symbol at the address or at the first address before this one that has a symbol.
+    /// Also returns the offset of the provided address relative to that symbol.
+    pub fn try_get_one_or_preceding(&self, addr: u32) -> Option<(&str, u32)> {
+        self.0
+            .range(..=addr)
+            .last()
+            .and_then(|(a, v)| v.first().map(|s| (s.as_str(), addr - a)))
     }
 }
 
