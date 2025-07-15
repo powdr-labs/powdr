@@ -47,6 +47,7 @@ impl PgoConfig {
 /// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
 pub trait Candidate<P, I, B>: Sized + KnapsackItem {
     type JsonExport: Serialize + for<'de> Deserialize<'de> + Send;
+    type ApcStats;
 
     /// Try to create an autoprecompile candidate from a block.
     fn create(
@@ -58,9 +59,11 @@ pub trait Candidate<P, I, B>: Sized + KnapsackItem {
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
 
-    /// Convert the candidate into an autoprecompile.
-    fn into_apc(self) -> Apc<P>;
+    /// Convert the candidate into an autoprecompile and its statistics.
+    fn into_apc_and_stats(self) -> (Apc<P>, Self::ApcStats);
 }
+
+// pub trait ApcStats {}
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<
@@ -74,7 +77,7 @@ fn create_apcs_with_cell_pgo<
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     vm_config: VmConfig<I, B>,
-) -> Vec<Apc<P>> {
+) -> Vec<(Apc<P>, C::ApcStats)> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -120,7 +123,7 @@ fn create_apcs_with_cell_pgo<
         max_total_apc_columns,
     )
     .skip(config.skip_autoprecompiles as usize)
-    .map(C::into_apc)
+    .map(C::into_apc_and_stats)
     .collect();
 
     // Write the APC candidates JSON to disk if the directory is specified.
@@ -216,23 +219,32 @@ pub fn generate_apcs_with_pgo<
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
     vm_config: VmConfig<I, B>,
-) -> Vec<Apc<P>> {
+) -> Vec<(Apc<P>, Option<C::ApcStats>)> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
-    let res = match pgo_config {
+    let res: Vec<_> = match pgo_config {
         PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo::<C, _, _, _>(
             blocks,
             pgo_program_idx_count,
             config,
             max_total_apc_columns,
             vm_config,
-        ),
+        )
+        .into_iter()
+        .map(|(apc, apc_stats)| (apc, Some(apc_stats)))
+        .collect(),
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, config, vm_config)
+                .into_iter()
+                .map(|apc| (apc, None))
+                .collect()
         }
-        PgoConfig::None => create_apcs_with_no_pgo(blocks, config, vm_config),
+        PgoConfig::None => create_apcs_with_no_pgo(blocks, config, vm_config)
+            .into_iter()
+            .map(|apc| (apc, None))
+            .collect(),
     };
 
     assert!(res.len() <= config.autoprecompiles as usize);

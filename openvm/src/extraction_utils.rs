@@ -386,7 +386,7 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
 pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
@@ -437,6 +437,40 @@ impl std::fmt::Display for AirWidths {
             self.main,
             self.log_up
         )
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+pub struct AirWidthsDiff {
+    pub before: AirWidths,
+    pub after: AirWidths,
+}
+
+impl AirWidthsDiff {
+    pub fn new(before: AirWidths, after: AirWidths) -> Self {
+        Self { before, after }
+    }
+
+    pub fn columns_saved(&self) -> AirWidths {
+        self.before - self.after
+    }
+}
+
+impl Add for AirWidthsDiff {
+    type Output = AirWidthsDiff;
+
+    fn add(self, rhs: AirWidthsDiff) -> AirWidthsDiff {
+        AirWidthsDiff {
+            before: self.before + rhs.before,
+            after: self.after + rhs.after,
+        }
+    }
+}
+
+impl Sum<AirWidthsDiff> for AirWidthsDiff {
+    fn sum<I: Iterator<Item = AirWidthsDiff>>(iter: I) -> AirWidthsDiff {
+        let zero = AirWidthsDiff::new(AirWidths::default(), AirWidths::default());
+        iter.fold(zero, Add::add)
     }
 }
 

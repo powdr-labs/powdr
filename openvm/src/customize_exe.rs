@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::extraction_utils::{get_air_metrics, AirWidths, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
@@ -300,18 +300,17 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 struct OpenVmApcCandidate<P> {
     apc: Apc<P>,
     execution_frequency: usize,
-    width_before: AirWidths,
-    width_after: AirWidths,
+    widths: AirWidthsDiff,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct ApcStats {
-    pub columns_saved: AirWidths,
+pub struct OvmApcStats {
+    pub widths: AirWidthsDiff,
 }
 
-impl ApcStats {
-    fn new(columns_saved: AirWidths) -> Self {
-        Self { columns_saved }
+impl OvmApcStats {
+    fn new(widths: AirWidthsDiff) -> Self {
+        Self { widths }
     }
 }
 
@@ -319,6 +318,7 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
     Candidate<BabyBearField, OriginalAirs<BabyBearField>, B> for OpenVmApcCandidate<BabyBearField>
 {
     type JsonExport = OpenVmApcCandidateJsonExport<BabyBearField>;
+    type ApcStats = OvmApcStats;
 
     fn create(
         apc: Apc<BabyBearField>,
@@ -338,7 +338,6 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
                     .get_instruction_metrics(instr.opcode)
                     .unwrap()
                     .widths
-                    .clone()
             })
             .sum();
 
@@ -349,8 +348,7 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
         Self {
             apc,
             execution_frequency,
-            width_before,
-            width_after,
+            widths: AirWidthsDiff::new(width_before, width_after),
         }
     }
 
@@ -363,8 +361,8 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
-            total_width_before: self.width_before.total(),
-            total_width_after: self.width_after.total(),
+            total_width_before: self.widths.before.total(),
+            total_width_after: self.widths.after.total(),
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.opcode))
                 .display()
@@ -372,8 +370,8 @@ impl<B: BusInteractionHandler<BabyBearField> + Clone + Sync + IsBusStateful<Baby
         }
     }
 
-    fn into_apc(self) -> Apc<BabyBearField> {
-        self.apc
+    fn into_apc_and_stats(self) -> (Apc<BabyBearField>, OvmApcStats) {
+        (self.apc, OvmApcStats::new(self.widths))
     }
 }
 
@@ -396,13 +394,13 @@ struct OpenVmApcCandidateJsonExport<P> {
 impl<P> OpenVmApcCandidate<P> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
-        self.width_before.total() - self.width_after.total()
+        self.widths.columns_saved().total()
     }
 }
 
 impl<P> KnapsackItem for OpenVmApcCandidate<P> {
     fn cost(&self) -> usize {
-        self.width_after.total()
+        self.widths.after.total()
     }
 
     fn value(&self) -> usize {

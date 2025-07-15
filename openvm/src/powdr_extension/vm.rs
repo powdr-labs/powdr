@@ -5,7 +5,7 @@ use std::iter::once;
 use derive_more::From;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
-use crate::customize_exe::ApcStats;
+use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::OriginalAirs;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{IntoOpenVm, OpenVmField};
@@ -77,7 +77,7 @@ pub struct PowdrPrecompile<P: IntoOpenVm> {
     pub machine: SymbolicMachine<P>,
     pub original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
     pub is_valid_column: AlgebraicReference,
-    pub apc_stats: Option<ApcStats>,
+    pub apc_stats: Option<OvmApcStats>,
 }
 
 impl<P: IntoOpenVm> PowdrPrecompile<P> {
@@ -87,7 +87,7 @@ impl<P: IntoOpenVm> PowdrPrecompile<P> {
         machine: SymbolicMachine<P>,
         original_instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
         is_valid_column: AlgebraicReference,
-        apc_stats: Option<ApcStats>,
+        apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
             name,

@@ -50,6 +50,8 @@ use tracing_subscriber::{
     Layer,
 };
 
+#[cfg(test)]
+use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
@@ -506,7 +508,7 @@ impl AirMetrics {
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidths>)>, Vec<AirMetrics>) {
+    fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         use crate::extraction_utils::get_air_metrics;
 
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
@@ -540,7 +542,7 @@ impl CompiledProgram {
                     if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                         powdr_air_metrics.push((
                             get_air_metrics(air),
-                            apc_stats.next().unwrap().map(|stats| stats.columns_saved),
+                            apc_stats.next().unwrap().map(|stats| stats.widths),
                         ));
                     } else {
                         non_powdr_air_metrics.push(get_air_metrics(air));
@@ -1356,7 +1358,7 @@ mod tests {
         guest_apc: u64,
         guest_skip: u64,
         expected_metrics: &'a MachineTestMetrics,
-        expected_columns_saved: Option<AirWidths>, // only available in Pgo::Cell
+        expected_columns_saved: Option<AirWidthsDiff>, // only available in Pgo::Cell
     }
 
     struct MachineTestMetrics {
@@ -1407,9 +1409,8 @@ mod tests {
             let columns_saved = powdr_air_metrics
                 .into_iter()
                 .map(|(_, columns_saved)| columns_saved.unwrap())
-                .sum::<AirWidths>();
+                .sum::<AirWidthsDiff>();
             assert_eq!(columns_saved, params.expected_columns_saved.unwrap());
-            // println!("Columns saved\n: {:?}", columns_saved);
         }
 
         // In Cell PGO, check that the apc candidates were persisted to disk
@@ -1484,10 +1485,17 @@ mod tests {
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
             expected_metrics: &expected_metrics,
-            expected_columns_saved: Some(AirWidths {
-                preprocessed: 0,
-                main: 121,
-                log_up: 92,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 170,
+                    log_up: 128,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 49,
+                    log_up: 36,
+                },
             }),
         });
     }
@@ -1543,10 +1551,17 @@ mod tests {
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
             expected_metrics: &expected_metrics_cell,
-            expected_columns_saved: Some(AirWidths {
-                preprocessed: 0,
-                main: 161537,
-                log_up: 105344,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 176212,
+                    log_up: 117468,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 14675,
+                    log_up: 12124,
+                },
             }),
         });
     }
@@ -1628,10 +1643,17 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
-            expected_columns_saved: Some(AirWidths {
-                preprocessed: 0,
-                main: 25183,
-                log_up: 16948,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 27194,
+                    log_up: 18736,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 2011,
+                    log_up: 1788,
+                },
             }),
         });
     }
@@ -1667,10 +1689,17 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC_PGO_LARGE,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
-            expected_columns_saved: Some(AirWidths {
-                preprocessed: 0,
-                main: 34022,
-                log_up: 22864,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 38846,
+                    log_up: 26832,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 4824,
+                    log_up: 3968,
+                },
             }),
         });
 
