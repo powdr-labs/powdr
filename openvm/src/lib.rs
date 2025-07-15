@@ -81,6 +81,15 @@ pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
 }
 
+fn format_fe<F: PrimeField32>(v: F) -> String {
+    let v = v.as_canonical_u32();
+    if v < F::ORDER_U32 / 2 {
+        format!("{v}")
+    } else {
+        format!("{}", v as i32 - F::ORDER_U32 as i32)
+    }
+}
+
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 

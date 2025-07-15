@@ -4,6 +4,8 @@ use std::fmt::{self, Display};
 
 use powdr_autoprecompiles::bus_map::BusType;
 
+use crate::format_fe;
+
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
 
@@ -162,15 +164,6 @@ impl<F: PrimeField32, V: Display> Display for Gate<F, V> {
         };
 
         write!(f, "bus: {}, {}", format_bus_type(self), gate_info)
-    }
-}
-
-fn format_fe<F: PrimeField32>(v: F) -> String {
-    let v = v.as_canonical_u32();
-    if v < F::ORDER_U32 / 2 {
-        format!("{v}")
-    } else {
-        format!("-{}", -(v as i32))
     }
 }
 

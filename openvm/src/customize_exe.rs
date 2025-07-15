@@ -376,7 +376,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     type ApcStats = OvmApcStats;
 
     fn create(
-        apc: Apc<BabyBear, Instr<BabyBear>>,
+        apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_idx_count: &HashMap<u32, u32>,
         vm_config: VmConfig<OriginalAirs<BabyBear>, OpenVmBusInteractionHandler<BabyBearField>>,
     ) -> Self {

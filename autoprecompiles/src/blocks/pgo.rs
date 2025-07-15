@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     adapter::{Adapter, AdapterApc, ApcStats},
     blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
-    Apc, BasicBlock, PowdrConfig, VmConfig,
+    BasicBlock, PowdrConfig, VmConfig,
 };
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
@@ -49,7 +49,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
 
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: Apc<A::Field, A::Instruction>,
+        apc: AdapterApc<A>,
         pgo_program_idx_count: &HashMap<u32, u32>,
         vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     ) -> Self;
@@ -176,7 +176,7 @@ fn create_apcs_with_no_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::Field, A::Instruction>> {
+) -> Vec<AdapterApc<A>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
