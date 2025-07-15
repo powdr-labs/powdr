@@ -1884,11 +1884,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 67597,
-                    log_up: 50200,
+                    main: 24616,
+                    log_up: 19516,
                 },
-                constraints: 8653,
-                bus_interactions: 7824,
+                constraints: 18687,
+                bus_interactions: 15895,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1904,13 +1904,13 @@ mod tests {
             expected_columns_saved: Some(AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
-                    main: 38846,
-                    log_up: 26832,
+                    main: 67597,
+                    log_up: 50200,
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 4824,
-                    log_up: 3968,
+                    main: 8653,
+                    log_up: 7824,
                 },
             }),
         });
