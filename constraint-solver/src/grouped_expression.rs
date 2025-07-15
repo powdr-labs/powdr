@@ -396,6 +396,13 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
+        if !self
+            .range_constraint(range_constraints)
+            .allows_value(Zero::zero())
+        {
+            return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+        }
+
         Ok(if self.is_quadratic() {
             self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
