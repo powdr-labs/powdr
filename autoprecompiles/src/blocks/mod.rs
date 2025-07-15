@@ -43,7 +43,7 @@ impl<I> BasicBlock<I> {
     }
 }
 
-pub trait Program<F, I> {
+pub trait Program<I> {
     /// Returns the base program counter.
     fn base_pc(&self) -> u32;
 

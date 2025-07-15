@@ -17,7 +17,7 @@ pub trait Adapter: Sized {
         + IsBusStateful<Self::PowdrField>
         + Sync;
     type Candidate: Candidate<Self> + Send;
-    type Program: Program<Self::Field, Self::Instruction> + Send;
+    type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
