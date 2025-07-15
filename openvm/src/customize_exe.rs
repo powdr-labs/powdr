@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
@@ -236,12 +236,15 @@ pub fn customize(
     let extensions = apcs
         .into_iter()
         .map(
-            |Apc {
-                 block,
-                 opcode,
-                 machine,
-                 subs,
-             }| {
+            |(
+                Apc {
+                    block,
+                    opcode,
+                    machine,
+                    subs,
+                },
+                apc_stats,
+            )| {
                 let new_instr = OpenVmInstruction {
                     opcode: VmOpcode::from_usize(opcode as usize),
                     a: OpenVmField::<BabyBearField>::ZERO,
@@ -291,6 +294,7 @@ pub fn customize(
                         .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
                         .collect(),
                     is_valid_column,
+                    apc_stats,
                 )
             },
         )
@@ -352,14 +356,25 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 pub struct OpenVmApcCandidate<P, I> {
     apc: Apc<P, I>,
     execution_frequency: usize,
-    width_before: usize,
-    width_after: usize,
+    widths: AirWidthsDiff,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OvmApcStats {
+    pub widths: AirWidthsDiff,
+}
+
+impl OvmApcStats {
+    fn new(widths: AirWidthsDiff) -> Self {
+        Self { widths }
+    }
 }
 
 impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
     for OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>
 {
     type JsonExport = OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>>;
+    type ApcStats = OvmApcStats;
 
     fn create(
         apc: Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
@@ -370,9 +385,9 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
         >,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
-        let width_after = apc_metrics.widths.total();
+        let width_after = apc_metrics.widths;
 
-        let width_before: usize = apc
+        let width_before = apc
             .block
             .statements
             .iter()
@@ -382,7 +397,6 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
                     .get_instruction_metrics(instr.opcode())
                     .unwrap()
                     .widths
-                    .total()
             })
             .sum();
 
@@ -393,8 +407,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
         Self {
             apc,
             execution_frequency,
-            width_before,
-            width_after,
+            widths: AirWidthsDiff::new(width_before, width_after),
         }
     }
 
@@ -407,8 +420,8 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
-            total_width_before: self.width_before,
-            total_width_after: self.width_after,
+            total_width_before: self.widths.before.total(),
+            total_width_after: self.widths.after.total(),
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.opcode))
                 .display()
@@ -416,8 +429,13 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
         }
     }
 
-    fn into_apc(self) -> Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>> {
-        self.apc
+    fn into_apc_and_stats(
+        self,
+    ) -> (
+        Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
+        Self::ApcStats,
+    ) {
+        (self.apc, OvmApcStats::new(self.widths))
     }
 }
 
@@ -440,13 +458,13 @@ pub struct OpenVmApcCandidateJsonExport<I> {
 impl<P, I> OpenVmApcCandidate<P, I> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
-        self.width_before - self.width_after
+        self.widths.columns_saved().total()
     }
 }
 
 impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     fn cost(&self) -> usize {
-        self.width_after
+        self.widths.after.total()
     }
 
     fn value(&self) -> usize {
