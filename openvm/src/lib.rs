@@ -1939,13 +1939,13 @@ mod tests {
             expected_columns_saved: Some(AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
-                    main: 38846,
-                    log_up: 26832,
+                    main: 67597,
+                    log_up: 50200,
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 4824,
-                    log_up: 3968,
+                    main: 8653,
+                    log_up: 7824,
                 },
             }),
         });
@@ -1974,13 +1974,13 @@ mod tests {
             expected_columns_saved: Some(AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
-                    main: 38846,
-                    log_up: 26832,
+                    main: 67597,
+                    log_up: 50200,
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 4824,
-                    log_up: 3968,
+                    main: 8653,
+                    log_up: 7824,
                 },
             }),
         });
