@@ -569,6 +569,10 @@ fn equal_zero_inference() {
                 payload: vec![diff_val_0.clone() - constant(1)],
             },
             send(BYTE_BUS_ID, vec![b_msb_f_0.clone()]),
+            send(BYTE_BUS_ID, vec![b_0_0.clone()]),
+            send(BYTE_BUS_ID, vec![b_1_0.clone()]),
+            send(BYTE_BUS_ID, vec![b_2_0.clone()]),
+            send(BYTE_BUS_ID, vec![b_3_0.clone()]),
         ],
     };
     println!("{constraint_system}");
@@ -586,17 +590,38 @@ fn equal_zero_inference() {
     println!("----------------------------\n{modified_system}");
     assert_conflicting(modified_system, TestBusInteractionHandler);
 
-    // Now set cmp_result_0 to one and see what happens
-    let modified_system = apply_substitutions(
-        constraint_system,
-        [
-            ("cmp_result_0", constant(1)),
-            ("diff_marker__0_0", constant(1)),
-            ("diff_marker__1_0", constant(0)),
-            ("diff_marker__2_0", constant(0)),
-            ("diff_marker__3_0", constant(0)),
-        ],
-    );
+    // // Now set cmp_result_0 to one and see what happens
+    // let modified_system = apply_substitutions(constraint_system, [("cmp_result_0", constant(1))]);
+    // println!("----------------------------------lllllllllllll---------\n{modified_system}");
+    // assert_solve_result(
+    //     modified_system,
+    //     TestBusInteractionHandler,
+    //     vec![
+    //         ("b__0_0", 0.into()),
+    //         ("b__1_0", 0.into()),
+    //         ("b__2_0", 0.into()),
+    //         ("b__3_0", 0.into()),
+    //     ],
+    // );
+
+    // Find redundant variables by doing the contradiction check but leaving them out.
+    // this should mean that the redundant variables are fully constrained by the others.
+    // this means we can remove all constraints that only contain those variables.
+
+    // If we can find deterministic proceduces to compute all the redundant variables
+    // from the inputs, we can remove the constraints that only concern redundant variables and
+    // inputs/outputs (as long as they are not connected to stateful busses).
+
+    // Ok now we look at the system where result = 0 (because we know if it is 1 then all the redundant
+    // variables are zero (or at least have a specific value)).
+    // Since the system is still too complicated and we know that one input has to be nonzero,
+    // we try to set the inputs to nonzero one after the other.
+    let mut modified_system =
+        apply_substitutions(constraint_system, [("cmp_result_0", constant(0))]);
+    modified_system
+        .bus_interactions
+        .push(send(BYTE_BUS_ID, vec![var("b__3_0") - constant(1)]));
+
     println!("----------------------------------lllllllllllll---------\n{modified_system}");
     assert_solve_result(
         modified_system,
