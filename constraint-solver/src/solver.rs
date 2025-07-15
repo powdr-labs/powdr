@@ -169,6 +169,9 @@ where
                 .solve(&self.range_constraints)
                 .map_err(Error::QseSolvingError)?
                 .effects;
+            if !effects.is_empty() {
+                log::debug!("From {}", self.constraint_system.algebraic_constraints()[i]);
+            }
             for effect in effects {
                 progress |= self.apply_effect(effect);
             }
@@ -190,6 +193,7 @@ where
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_e| Error::BusInteractionError)?;
         for effect in effects.into_iter().flatten() {
+            log::debug!("From bus interaction");
             progress |= self.apply_effect(effect);
         }
         Ok(progress)
@@ -202,6 +206,7 @@ where
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
+            log::debug!("Found equivalence from quadratic equivalences: {x} = {y}");
             self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
         }
         !equivalences.is_empty()
@@ -253,7 +258,7 @@ where
                 self.apply_assignment(variable, &GroupedExpression::from_number(value));
             } else {
                 // The range constraint was updated.
-                log::trace!("({variable}: {range_constraint})");
+                log::debug!("({variable}: {range_constraint})");
             }
             true
         } else {

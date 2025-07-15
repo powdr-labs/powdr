@@ -32,11 +32,24 @@ pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
     assert_expected_state(final_state.assignments, expected_final_state);
 }
 
+pub fn assert_conflicting<B: BusInteractionHandler<GoldilocksField>>(
+    system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
+    bus_interaction_handler: B,
+) {
+    match solve_system(system, bus_interaction_handler) {
+        Err(_) => {}
+        Ok(_) => panic!("Expected error, but got a solution!"),
+    }
+}
+
 fn assert_expected_state(
     final_state: impl IntoIterator<Item = (Var, QuadraticSymbolicExpression<GoldilocksField, Var>)>,
     expected_final_state: BTreeMap<Var, GoldilocksField>,
 ) {
     let final_state = final_state.into_iter().collect::<BTreeMap<_, _>>();
+    for (variable, value) in &final_state {
+        log::debug!("-> {variable} = {value}");
+    }
     assert_eq!(
         final_state.keys().collect::<Vec<_>>(),
         expected_final_state.keys().collect::<Vec<_>>(),
@@ -436,5 +449,163 @@ fn ternary_flags() {
         constraint_system,
         DefaultBusInteractionHandler::default(),
         vec![("is_load", 1.into())],
+    );
+}
+
+#[test]
+fn equal_zero_inference() {
+    // // Bus 0 (EXECUTION_BRIDGE):
+    // mult=-is_valid, args=[from_state__pc_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1]
+    // mult=is_valid, args=[from_state__pc_0 + 4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
+
+    // // Bus 1 (MEMORY):
+    // mult=is_valid * -1, args=[1, 116, b__0_0, b__1_0, b__2_0, b__3_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 2)]
+    // mult=is_valid * 1, args=[1, 116, cmp_result_0, 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1]
+
+    // // Bus 2 (PC_LOOKUP):
+    // mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0]
+
+    // // Bus 3 (VARIABLE_RANGE_CHECKER):
+    // mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+    // mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+    // mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+    // mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+
+    // // Bus 6 (BITWISE_LOOKUP):
+    // mult=diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0, args=[diff_val_0 - 1, 0, 0, 0]
+    // mult=is_valid * 1, args=[b_msb_f_0, 0, 0, 0]
+
+    // // Algebraic constraints:
+    // cmp_result_0 * (cmp_result_0 - 1) = 0
+    // (b__3_0 - b_msb_f_0) * (b_msb_f_0 + 256 - b__3_0) = 0
+    // diff_marker__3_0 * (diff_marker__3_0 - 1) = 0
+    // -((1 - diff_marker__3_0) * (b_msb_f_0 * (2 * cmp_result_0 - 1))) = 0
+    // diff_marker__3_0 * (b_msb_f_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+    // diff_marker__2_0 * (diff_marker__2_0 - 1) = 0
+    // -((1 - (diff_marker__2_0 + diff_marker__3_0)) * (b__2_0 * (2 * cmp_result_0 - 1))) = 0
+    // diff_marker__2_0 * (b__2_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+    // diff_marker__1_0 * (diff_marker__1_0 - 1) = 0
+    // -((1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (b__1_0 * (2 * cmp_result_0 - 1))) = 0
+    // diff_marker__1_0 * (b__1_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+    // diff_marker__0_0 * (diff_marker__0_0 - 1) = 0
+    // (1 * is_valid - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * ((1 - b__0_0) * (2 * cmp_result_0 - 1)) = 0
+    // diff_marker__0_0 * ((b__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+    // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
+    // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
+    // (1 - is_valid) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) = 0
+    // is_valid * (is_valid - 1) = 0
+
+    let b_0_0 = var("b__0_0");
+    let b_1_0 = var("b__1_0");
+    let b_2_0 = var("b__2_0");
+    let b_3_0 = var("b__3_0");
+    let diff_marker_0_0 = var("diff_marker__0_0");
+    let diff_marker_1_0 = var("diff_marker__1_0");
+    let diff_marker_2_0 = var("diff_marker__2_0");
+    let diff_marker_3_0 = var("diff_marker__3_0");
+    let cmp_result_0 = var("cmp_result_0");
+    let b_msb_f_0 = var("b_msb_f_0");
+    let diff_val_0 = var("diff_val_0");
+
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: vec![
+            cmp_result_0.clone() * (cmp_result_0.clone() - constant(1)),
+            (b_3_0.clone() - b_msb_f_0.clone())
+                * (b_msb_f_0.clone() + constant(256) - b_3_0.clone()),
+            diff_marker_3_0.clone() * (diff_marker_3_0.clone() - constant(1)),
+            -(constant(1) - diff_marker_3_0.clone())
+                * (b_msb_f_0.clone() * (constant(2) * cmp_result_0.clone() - constant(1))),
+            diff_marker_3_0.clone()
+                * (b_msb_f_0.clone() * (constant(2) * cmp_result_0.clone() - constant(1))
+                    + diff_val_0.clone()),
+            diff_marker_2_0.clone() * (diff_marker_2_0.clone() - constant(1)),
+            -(constant(1) - (diff_marker_2_0.clone() + diff_marker_3_0.clone()))
+                * (b_2_0.clone() * (constant(2) * cmp_result_0.clone() - constant(1))),
+            diff_marker_2_0.clone()
+                * (b_2_0.clone() * (constant(2) * cmp_result_0.clone() - constant(1))
+                    + diff_val_0.clone()),
+            diff_marker_1_0.clone() * (diff_marker_1_0.clone() - constant(1)),
+            -(constant(1)
+                - (diff_marker_1_0.clone() + diff_marker_2_0.clone() + diff_marker_3_0.clone()))
+                * (b_1_0.clone() * (constant(2) * cmp_result_0.clone() - constant(1))),
+            diff_marker_1_0.clone()
+                * (b_1_0.clone() * (constant(2) * cmp_result_0.clone() - constant(1))
+                    + diff_val_0.clone()),
+            diff_marker_0_0.clone() * (diff_marker_0_0.clone() - constant(1)),
+            (constant(1)
+                - (diff_marker_0_0.clone()
+                    + diff_marker_1_0.clone()
+                    + diff_marker_2_0.clone()
+                    + diff_marker_3_0.clone()))
+                * ((constant(1) - b_0_0.clone())
+                    * (constant(2) * cmp_result_0.clone() - constant(1))),
+            diff_marker_0_0.clone()
+                * ((b_0_0.clone() - constant(1))
+                    * (constant(2) * cmp_result_0.clone() - constant(1))
+                    + diff_val_0.clone()),
+            (diff_marker_0_0.clone()
+                + diff_marker_1_0.clone()
+                + diff_marker_2_0.clone()
+                + diff_marker_3_0.clone())
+                * (diff_marker_0_0.clone()
+                    + diff_marker_1_0.clone()
+                    + diff_marker_2_0.clone()
+                    + diff_marker_3_0.clone()
+                    - constant(1)),
+            (constant(1)
+                - (diff_marker_0_0.clone()
+                    + diff_marker_1_0.clone()
+                    + diff_marker_2_0.clone()
+                    + diff_marker_3_0.clone()))
+                * cmp_result_0.clone(),
+        ],
+        bus_interactions: vec![
+            BusInteraction {
+                multiplicity: diff_marker_0_0.clone()
+                    + diff_marker_1_0.clone()
+                    + diff_marker_2_0.clone()
+                    + diff_marker_3_0.clone(),
+                bus_id: constant(BYTE_BUS_ID),
+                payload: vec![diff_val_0.clone() - constant(1)],
+            },
+            send(BYTE_BUS_ID, vec![b_msb_f_0.clone()]),
+        ],
+    };
+    println!("{constraint_system}");
+    // Now set b_*_0 all to zero and also cmp_result_0 to zero and see if we reach a contradiction.
+    let modified_system = apply_substitutions(
+        constraint_system.clone(),
+        [
+            ("b__0_0", constant(0)),
+            ("b__1_0", constant(0)),
+            ("b__2_0", constant(0)),
+            ("b__3_0", constant(0)),
+            ("cmp_result_0", constant(0)),
+        ],
+    );
+    println!("----------------------------\n{modified_system}");
+    assert_conflicting(modified_system, TestBusInteractionHandler);
+
+    // Now set cmp_result_0 to one and see what happens
+    let modified_system = apply_substitutions(
+        constraint_system,
+        [
+            ("cmp_result_0", constant(1)),
+            ("diff_marker__0_0", constant(1)),
+            ("diff_marker__1_0", constant(0)),
+            ("diff_marker__2_0", constant(0)),
+            ("diff_marker__3_0", constant(0)),
+        ],
+    );
+    println!("----------------------------------lllllllllllll---------\n{modified_system}");
+    assert_solve_result(
+        modified_system,
+        TestBusInteractionHandler,
+        vec![
+            ("b__0_0", 0.into()),
+            ("b__1_0", 0.into()),
+            ("b__2_0", 0.into()),
+            ("b__3_0", 0.into()),
+        ],
     );
 }
