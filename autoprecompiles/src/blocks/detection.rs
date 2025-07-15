@@ -1,26 +1,29 @@
 use std::collections::BTreeSet;
 
-use crate::blocks::{BasicBlock, Program};
+use crate::{
+    adapter::Adapter,
+    blocks::{BasicBlock, Instruction, Program},
+};
 
 /// Collects basic blocks from a program
-pub fn collect_basic_blocks<T: Clone>(
-    program: &Program<T>,
+pub fn collect_basic_blocks<A: Adapter>(
+    program: &A::Program,
     labels: &BTreeSet<u32>,
     opcode_allowlist: &BTreeSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
-) -> Vec<BasicBlock<T>> {
+) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_idx: 0,
         statements: Vec::new(),
     };
-    for (i, instr) in program.instructions.iter().enumerate() {
-        let pc = program.base_pc + i as u32 * program.pc_step;
+    for (i, instr) in program.instructions().enumerate() {
+        let pc = program.base_pc() + i as u32 * program.pc_step();
         let is_target = labels.contains(&pc);
-        let is_branch = branch_opcodes.contains(&instr.opcode);
+        let is_branch = branch_opcodes.contains(&instr.opcode());
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
-        if !opcode_allowlist.contains(&instr.opcode) {
+        if !opcode_allowlist.contains(&instr.opcode()) {
             // If not empty, push the current block.
             if !curr_block.statements.is_empty() {
                 blocks.push(curr_block);

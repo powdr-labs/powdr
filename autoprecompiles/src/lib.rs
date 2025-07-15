@@ -1,11 +1,11 @@
+use crate::adapter::Adapter;
+use crate::blocks::Instruction;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 pub use blocks::{BasicBlock, PgoConfig};
-use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
@@ -20,6 +20,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+pub mod adapter;
 mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
@@ -294,14 +295,14 @@ pub trait InstructionMachineHandler<T> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T> {
-    pub block: BasicBlock<T>,
+pub struct Apc<T, I> {
+    pub block: BasicBlock<I>,
     pub opcode: u32,
     pub machine: SymbolicMachine<T>,
     pub subs: Vec<Vec<u64>>,
 }
 
-impl<T: FieldElement> Apc<T> {
+impl<T: FieldElement, I> Apc<T, I> {
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
@@ -309,25 +310,28 @@ impl<T: FieldElement> Apc<T> {
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
-
-    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        (self.machine, self.subs)
-    }
 }
 
-pub fn build<
-    T: FieldElement,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    M: InstructionMachineHandler<T>,
->(
-    block: BasicBlock<T>,
-    vm_config: VmConfig<M, B>,
+pub fn build<A: Adapter>(
+    block: BasicBlock<A::Instruction>,
+    vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
+) -> Result<Apc<A::PowdrField, A::Instruction>, crate::constraint_optimizer::Error> {
+    let statements: Vec<_> = block
+        .statements
+        .clone()
+        .into_iter()
+        .map(|instr| instr.into_symbolic_instruction())
+        .map(|instr| SymbolicInstructionStatement {
+            opcode: instr.opcode,
+            args: instr.args.into_iter().map(A::from_field).collect(),
+        })
+        .collect();
+
     let (machine, subs) = statements_to_symbolic_machine(
-        &block.statements,
+        &statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );
