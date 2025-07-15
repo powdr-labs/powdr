@@ -28,7 +28,7 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{SymbolicInstructionStatement, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 
 use crate::{BusMap, PrecompileImplementation};
@@ -51,6 +51,18 @@ pub struct OriginalInstruction<F> {
     pub instruction: Instruction<F>,
     /// The autoprecompile poly_ids that the instruction points to, in the same order as the corresponding original columns
     pub subs: Vec<u64>,
+}
+
+impl<F: Field, P: IntoOpenVm<Field = F>> From<&OriginalInstruction<F>>
+    for SymbolicInstructionStatement<P>
+{
+    fn from(instruction: &OriginalInstruction<F>) -> Self {
+        let operands = instruction.instruction.operands();
+        SymbolicInstructionStatement {
+            opcode: instruction.opcode().as_usize(),
+            args: operands.into_iter().map(P::from_openvm_field).collect(),
+        }
+    }
 }
 
 impl<F> OriginalInstruction<F> {
