@@ -20,6 +20,7 @@ use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::Adapter;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
@@ -59,18 +60,18 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
-    type Field = OpenVmField<BabyBearField>;
-    type InstructionMachineHandler = OriginalAirs<BabyBearField>;
-    type BusInteractionHandler = OpenVmBusInteractionHandler<BabyBearField>;
-    type Candidate = OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>;
-    type Program = Prog<'a, OpenVmField<BabyBearField>>;
-    type Instruction = Instr<OpenVmField<BabyBearField>>;
+    type Field = BabyBear;
+    type InstructionMachineHandler = OriginalAirs<Self::PowdrField>;
+    type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
+    type Candidate = OpenVmApcCandidate<Self::PowdrField, Instr<Self::Field>>;
+    type Program = Prog<'a, Self::Field>;
+    type Instruction = Instr<Self::Field>;
 
-    fn into_field(e: BabyBearField) -> Self::Field {
+    fn into_field(e: Self::PowdrField) -> Self::Field {
         e.into_openvm_field()
     }
 
-    fn from_field(e: Self::Field) -> BabyBearField {
+    fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from_openvm_field(e)
     }
 }
