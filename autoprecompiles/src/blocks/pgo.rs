@@ -137,7 +137,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::Field, A::Instruction>> {
+) -> Vec<AdapterApc<A>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -238,7 +238,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::Field, A::Instruction>> {
+) -> Vec<AdapterApc<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 

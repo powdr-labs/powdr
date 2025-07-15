@@ -1,4 +1,4 @@
-use crate::adapter::Adapter;
+use crate::adapter::{Adapter, AdapterApc};
 use crate::blocks::Instruction;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
@@ -319,7 +319,7 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<A::Field, A::Instruction>, crate::constraint_optimizer::Error> {
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let statements: Vec<_> = block
         .statements
         .clone()

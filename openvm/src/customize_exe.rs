@@ -170,6 +170,10 @@ pub fn customize(
         &opcodes_allowlist,
         &branch_opcodes_set(),
     );
+    tracing::info!(
+        "Got {} basic blocks from `collect_basic_blocks`",
+        blocks.len()
+    );
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
