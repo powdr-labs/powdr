@@ -80,7 +80,7 @@ fn convert_expression<T, U>(
 }
 
 pub fn statements_to_symbolic_machine<A: Adapter>(
-    statements: &[SymbolicInstructionStatement<A::PowdrField>],
+    statements: &[SymbolicInstructionStatement<A::Field>],
     instruction_machine_handler: &impl InstructionMachineHandler<A::Field>,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
@@ -91,11 +91,17 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
 
     for (i, instr) in statements.iter().enumerate() {
         let machine = instruction_machine_handler
-            .get_instruction_air(instr.opcode)
-            .unwrap();
+            .get_instruction_air(instr)
+            .unwrap()
+            .clone();
 
-        let machine: SymbolicMachine<A::PowdrField> =
-            convert_machine(machine.clone(), &A::from_field);
+        let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
+            convert_machine(machine, &|x| A::from_field(x));
+
+        let instr = SymbolicInstructionStatement {
+            opcode: instr.opcode,
+            args: instr.args.iter().cloned().map(A::from_field).collect(),
+        };
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;

@@ -291,8 +291,11 @@ pub struct VmConfig<'a, M, B> {
 }
 
 pub trait InstructionMachineHandler<T> {
-    /// Returns the AIR for the given opcode.
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+    /// Returns the AIR for the given instruction.
+    fn get_instruction_air(
+        &self,
+        instruction: &SymbolicInstructionStatement<T>,
+    ) -> Option<&SymbolicMachine<T>>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -325,10 +328,6 @@ pub fn build<A: Adapter>(
         .clone()
         .into_iter()
         .map(|instr| instr.into_symbolic_instruction())
-        .map(|instr| SymbolicInstructionStatement {
-            opcode: instr.opcode,
-            args: instr.args.into_iter().map(A::from_field).collect(),
-        })
         .collect();
 
     let (machine, subs) = statements_to_symbolic_machine::<A>(
