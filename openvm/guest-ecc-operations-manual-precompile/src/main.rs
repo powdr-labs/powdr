@@ -41,23 +41,22 @@ pub fn main() {
 
     // Generic add can handle equal or unequal points.
     let p3 = &p1 + &p2;
-    if p3.x() != &x3 || p3.y() != &y3 {
-        panic!();
-    }
+    assert_eq!(p3.x(), &x3);
+    assert_eq!(p3.y(), &y3);
+    
     let p4 = &p2 + &p2;
-    if p4.x() != &x4 || p4.y() != &y4 {
-        panic!();
-    }
+    assert_eq!(p4.x(), &x4);
+    assert_eq!(p4.y(), &y4);
 
     // Add assign and double assign
     p1 += &p2;
-    if p1.x() != &x3 || p1.y() != &y3 {
-        panic!();
-    }
+    assert_eq!(p1.x(), &x3);
+    assert_eq!(p1.y(), &y3);
+    
     p2.double_assign();
-    if p2.x() != &x4 || p2.y() != &y4 {
-        panic!();
-    }
+    assert_eq!(p2.x(), &x4);
+    assert_eq!(p2.y(), &y4);
+
 
     // Ec Mul
     let p1 = Secp256k1Point::from_xy(x1, y1).unwrap();
@@ -70,7 +69,7 @@ pub fn main() {
         "9E272F746DA7BED171E522610212B6AEEAAFDB2AD9F4B530B8E1B27293B19B2C"
     ));
     let result = msm(&[scalar], &[p1]);
-    if result.x() != &x5 || result.y() != &y5 {
-        panic!();
-    }
+
+    assert_eq!(result.x(), &x5);
+    assert_eq!(result.y(), &y5);
 }
