@@ -60,26 +60,19 @@ pub fn main() {
     // Generic add can handle equal or unequal points.
     let sum_projective = p1_projective + p2_projective;
     let sum_affine = sum_projective.to_affine();
-    if p3_affine != sum_affine {
-        panic!();
-    }
+    assert_eq!(sum_affine, p3_affine);
+    
 
     let p2_add_p2_projective = p2_projective + p2_projective;
     let p2_add_p2_affine = p2_add_p2_projective.to_affine();
-
-    if p4_affine != p2_add_p2_affine {
-        panic!();
-    }
+    assert_eq!(p4_affine, p2_add_p2_affine);
 
     // Add assign and double assign
     p1_projective += p2_projective;
-    if p1_projective.to_affine() != p3_affine {
-        panic!();
-    }
+    assert_eq!(p1_projective.to_affine(), p3_affine);
+
     p2_projective = p2_projective.double();
-    if p2_projective.to_affine() != p4_affine {
-        panic!();
-    }
+    assert_eq!(p2_projective.to_affine(), p4_affine);
 
     // Ec Mul
     let p1_projective = ProjectivePoint::from(p1_affine);
@@ -92,10 +85,6 @@ pub fn main() {
         "2C9BB19372B2E1B830B5F4D92ADBAFEAAEB612026122E571D1BEA76D742F279E"
     ));
     let result = p1_projective * scalar;
-    if result.to_affine()
-        != AffinePoint::from_encoded_point(&EncodedPoint::from_affine_coordinates(&x5, &y5, false))
-            .expect("invalid point 5")
-    {
-        panic!();
-    }
+    assert_eq!(result.to_affine(),  AffinePoint::from_encoded_point(&EncodedPoint::from_affine_coordinates(&x5, &y5, false))
+            .expect("invalid point 5"));
 }
