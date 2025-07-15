@@ -9,6 +9,7 @@ use crate::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
     },
+    Instr,
 };
 
 use super::{
@@ -46,7 +47,6 @@ use openvm_stark_backend::{
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
     expression::AlgebraicReference, InstructionMachineHandler, SymbolicBusInteraction,
-    SymbolicInstructionStatement,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -281,10 +281,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    .get_instruction_air(&SymbolicInstructionStatement {
-                        opcode: instruction.opcode().as_usize(),
-                        args: instruction.instruction.operands().to_vec(),
-                    })
+                    // TODO: avoid cloning the instruction
+                    .get_instruction_air(&Instr(instruction.instruction.clone()))
                     .unwrap()
                     .bus_interactions
                     .iter()

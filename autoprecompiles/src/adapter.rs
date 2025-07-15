@@ -11,7 +11,9 @@ use crate::{
 pub trait Adapter: Sized {
     type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone;
     type PowdrField: FieldElement;
-    type InstructionMachineHandler: InstructionMachineHandler<Self::Field> + Clone + Sync;
+    type InstructionMachineHandler: InstructionMachineHandler<Self::Field, Self::Instruction>
+        + Clone
+        + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>

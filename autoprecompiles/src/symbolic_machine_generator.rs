@@ -3,7 +3,7 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    adapter::Adapter, expression::AlgebraicExpression, powdr, BusMap, BusType,
+    adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BusMap, BusType,
     InstructionMachineHandler, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicInstructionStatement, SymbolicMachine,
 };
@@ -80,7 +80,7 @@ fn convert_expression<T, U>(
 }
 
 pub fn statements_to_symbolic_machine<A: Adapter>(
-    statements: &[SymbolicInstructionStatement<A::Field>],
+    statements: &[A::Instruction],
     instruction_machine_handler: &A::InstructionMachineHandler,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
@@ -98,9 +98,15 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine(machine, &|x| A::from_field(x));
 
+        let instr = instr.clone().into_symbolic_instruction();
+
         let instr = SymbolicInstructionStatement {
             opcode: instr.opcode,
-            args: instr.args.iter().cloned().map(A::from_field).collect(),
+            args: instr
+                .args
+                .iter()
+                .map(|a| A::from_field(a.clone()))
+                .collect(),
         };
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);

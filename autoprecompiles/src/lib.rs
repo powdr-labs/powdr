@@ -1,5 +1,4 @@
 use crate::adapter::{Adapter, AdapterApc};
-use crate::blocks::Instruction;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
@@ -290,12 +289,9 @@ pub struct VmConfig<'a, M, B> {
     pub bus_map: BusMap,
 }
 
-pub trait InstructionMachineHandler<T> {
-    /// Returns the AIR for the given instruction.
-    fn get_instruction_air(
-        &self,
-        instruction: &SymbolicInstructionStatement<T>,
-    ) -> Option<&SymbolicMachine<T>>;
+pub trait InstructionMachineHandler<T, I> {
+    /// Returns the AIR for the given opcode.
+    fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -323,15 +319,8 @@ pub fn build<A: Adapter>(
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    let statements: Vec<_> = block
-        .statements
-        .clone()
-        .into_iter()
-        .map(|instr| instr.into_symbolic_instruction())
-        .collect();
-
     let (machine, subs) = statements_to_symbolic_machine::<A>(
-        &statements,
+        &block.statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
     );
