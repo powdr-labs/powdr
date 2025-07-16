@@ -14,18 +14,17 @@ pub fn affine_add(
         return None;
     }
 
-    let invert = FieldElement::from_u64(1).normalize();
+    let invert = FieldElement::from_u64(1).normalize(); // invert hint should be provided here
     //let invert = dx.invert().unwrap().normalize();
 
-    let dy = (*p2_y - p1_y).normalize();
-    let lambda = (dy * invert).normalize();
+    let dy = *p2_y - p1_y;
+    let lambda = dy * invert;
 
-    if FieldElement::from_u64(1).normalize()!=invert.normalize()*dx{
-        panic!("wrong invert");
-    };
-    let x3 = (lambda.square() - p1_x - p2_x).normalize();
-    let y3 = (lambda * (*p1_x - x3) - *p1_y).normalize();
+    assert_eq!(FieldElement::from_u64(1).normalize(), (invert*dx).normalize());
+
+    let x3 = lambda.square() - p1_x - p2_x;
+    let y3 = lambda * (*p1_x + x3.negate(5)) - *p1_y;
 
 
-    Some((x3, y3))
+    Some((x3.normalize(), y3.normalize()))
 }
