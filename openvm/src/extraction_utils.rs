@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, SpecializedExecutor, APP_LOG_BLOWUP};
+use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -21,7 +21,6 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::SymbolicInstructionStatement;
 use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
@@ -43,13 +42,10 @@ pub struct OriginalAirs<F> {
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<F> InstructionMachineHandler<F> for OriginalAirs<F> {
-    fn get_instruction_air(
-        &self,
-        instruction: &SymbolicInstructionStatement<F>,
-    ) -> Option<&SymbolicMachine<F>> {
+impl<F> InstructionMachineHandler<F, Instr<F>> for OriginalAirs<F> {
+    fn get_instruction_air(&self, instruction: &Instr<F>) -> Option<&SymbolicMachine<F>> {
         self.opcode_to_air
-            .get(&VmOpcode::from_usize(instruction.opcode))
+            .get(&instruction.0.opcode)
             .and_then(|air_name| {
                 self.air_name_to_machine
                     .get(air_name)
