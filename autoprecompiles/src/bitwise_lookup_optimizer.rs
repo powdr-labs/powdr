@@ -82,7 +82,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
         })
         .unique()
         .collect_vec();
-    if to_byte_constrain.len() % 2 != 0 {
+    if !to_byte_constrain.len().is_multiple_of(2) {
         to_byte_constrain.push(Zero::zero());
     }
     for (x, y) in to_byte_constrain.into_iter().tuples() {

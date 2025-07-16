@@ -93,7 +93,7 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
 
     fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<F> {
         SymbolicInstructionStatement {
-            opcode: self.0.opcode.as_usize(),
+            opcode: self.0.opcode.to_field(),
             args: vec![
                 self.0.a, self.0.b, self.0.c, self.0.d, self.0.e, self.0.f, self.0.g,
             ],

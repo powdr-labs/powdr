@@ -100,8 +100,8 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
 
         let instr = instr.clone().into_symbolic_instruction();
 
-        let instr = SymbolicInstructionStatement {
-            opcode: instr.opcode,
+        let instr: SymbolicInstructionStatement<A::PowdrField> = SymbolicInstructionStatement {
+            opcode: A::from_field(instr.opcode),
             args: instr
                 .args
                 .iter()
@@ -139,19 +139,13 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((minus_is_valid.clone() + one).into());
 
-        // Constrain the opcode expression to equal the actual opcode.
-        let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
-        local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
-
-        assert_eq!(instr.args.len(), pc_lookup.args.len());
-        instr
-            .args
-            .iter()
-            .zip_eq(&pc_lookup.args)
-            .for_each(|(instr_arg, pc_arg)| {
-                let arg = AlgebraicExpression::Number(*instr_arg);
-                local_constraints.push((arg - pc_arg.clone()).into());
-            });
+        // Constrain the pc lookup to the current instruction.
+        local_constraints.extend(pc_lookup.instruction.iter().zip_eq(instr.iter()).map(
+            |(e, v)| {
+                let arg = AlgebraicExpression::Number(*v);
+                (e.clone() - arg).into()
+            },
+        ));
 
         constraints.extend(
             machine
