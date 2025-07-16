@@ -197,6 +197,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         GroupedExpression::one() - output
     };
 
+    // We encode "output = 1 <=> all inputs are zero":
+
     let sum_of_inputs = inputs
         .iter()
         .map(|v| GroupedExpression::from_unknown_variable(v.clone()))
@@ -206,7 +208,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     let new_constraints = vec![
         output.clone() * (GroupedExpression::one() - output.clone()),
         output.clone() * sum_of_inputs.clone(),
-        output - GroupedExpression::one() - sum_inv.clone() * sum_of_inputs,
+        output - (GroupedExpression::one() - sum_inv.clone() * sum_of_inputs),
     ];
     constraint_system.extend(ConstraintSystem {
         algebraic_constraints: new_constraints,

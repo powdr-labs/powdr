@@ -1,6 +1,6 @@
 // Bus 0 (EXECUTION_BRIDGE):
 mult=-is_valid, args=[from_state__pc_0, reads_aux__1__base__prev_timestamp_0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0]
-mult=is_valid, args=[from_state__pc_0 + 2 - 2 * new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0), reads_aux__1__base__prev_timestamp_0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
+mult=is_valid, args=[2 * new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + from_state__pc_0 + 2, reads_aux__1__base__prev_timestamp_0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
 
 // Bus 1 (MEMORY):
 mult=is_valid * -1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__1__base__prev_timestamp_0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 1)]
@@ -18,11 +18,11 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Algebraic constraints:
-(new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * (new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) = 0
-(new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * a__0_0 = 0
-(new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * a__1_0 = 0
-(new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * a__2_0 = 0
-(new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * a__3_0 = 0
--((new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * (new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0))) = 0
-(new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 1) * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
+-((1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0))) = 0
+(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__0_0 = 0
+(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__1_0 = 0
+(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__2_0 = 0
+(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__3_0 = 0
+(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) = 0
+(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
 is_valid * (is_valid - 1) = 0
