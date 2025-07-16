@@ -3,9 +3,9 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::One;
 use powdr_constraint_solver::constraint_system::{
-    BusInteractionHandler, ConstraintRef, ConstraintSystem,
+    BusInteractionHandler, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
@@ -50,17 +50,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     constraint_system
 }
 
-/// A candidate for an equal zero check, i.e.
-/// in the given system, `output = value` if and only if
-/// all `inputs` are zero.
-struct Candidate<'a, T, V, B> {
-    constraint_system: &'a IndexedConstraintSystem<T, V>,
-    bus_interaction_handler: B,
-    inputs: Vec<V>,
-    output: V,
-    value: T,
-}
-
 fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: &mut JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
@@ -72,7 +61,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     let Ok(solution) = solve_with_assignments(
         constraint_system.indexed_system(),
         bus_interaction_handler.clone(),
-        [(output.clone(), value.clone())],
+        [(output.clone(), value)],
     ) else {
         return;
     };
@@ -102,7 +91,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         bus_interaction_handler.clone(),
         inputs.iter().cloned(),
         output.clone(),
-        value.clone(),
+        value,
     );
 
     println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.", 
@@ -231,9 +220,7 @@ fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash 
         let assignments = inputs
             .iter()
             .enumerate()
-            .filter_map(|(j, val)| {
-                (j != i && !redundant_input_indices.contains(&j)).then(|| (val.clone(), T::from(0)))
-            })
+            .filter(|&(j, val)| (j != i && !redundant_input_indices.contains(&j))).map(|(j, val)| (val.clone(), T::from(0)))
             .chain([(output.clone(), T::from(1) - value)]);
         if solve_with_assignments(
             constraint_system,

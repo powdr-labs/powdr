@@ -6,7 +6,6 @@ use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::IndexedConstraintSystem,
     inliner,
     journaling_constraint_system::JournalingConstraintSystem,
     solver::solve_system,
@@ -104,7 +103,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
     let initial_variables = variables_in_stateful_bus_interactions(
-        &constraint_system.system(),
+        constraint_system.system(),
         bus_interaction_handler.clone(),
     )
     .cloned();
