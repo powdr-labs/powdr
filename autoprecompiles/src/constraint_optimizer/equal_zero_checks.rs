@@ -1,8 +1,9 @@
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::constraint_system::{BusInteractionHandler, ConstraintRef};
 use powdr_constraint_solver::grouped_expression::RangeConstraintProvider;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
@@ -16,7 +17,9 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
-    println!("Replacing equal zero checks in constraint system");
+    println!(
+        "\n----------------------------------\nReplacing equal zero checks in constraint system"
+    );
     let solver = solver::Solver::new(constraint_system.system().clone())
         .with_bus_interaction_handler(bus_interaction_handler.clone());
     let rc = solver.compute_range_constraints().unwrap();
@@ -34,6 +37,18 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         }
     }
     constraint_system
+}
+
+/// A candidate for an equal zero check, i.e.
+/// in the given system, `output = value` if and only if
+/// all `inputs` are zero.
+struct Candidate<'a, T, V, B> {
+    constraint_system: &'a IndexedConstraintSystem<T, V>,
+    bus_interaction_handler: B,
+    inputs: Vec<V>,
+    redundant_inputs: Vec<V>,
+    output: V,
+    value: T,
 }
 
 fn try_output<T: FieldElement, V: Clone + Ord + Hash + Display>(
@@ -69,46 +84,64 @@ fn try_output<T: FieldElement, V: Clone + Ord + Hash + Display>(
         return;
     }
 
-    // Some of the inputs are redundant, so try to reduce the size of the set.
-    let redundant_inputs = determine_redundant_inputs(
+    let mut candidate = Candidate {
         constraint_system,
-        bus_interaction_handler.clone(),
-        &inputs,
-        var.clone(),
+        bus_interaction_handler,
+        inputs,
+        redundant_inputs: vec![],
+        output: var.clone(),
         value,
-    );
-    let inputs = inputs
-        .into_iter()
-        .filter(|v| !redundant_inputs.contains(v))
-        .collect_vec();
+    };
 
-    println!("Found equal zero check for variable {var}:\n{var} = {value} if and only if all of {} are zero. Plus, the variables {} are also set to zero but are redundant.", 
-        inputs.iter().format(", "),
-        redundant_inputs.iter().format(", ")
+    // Some of the inputs are redundant, so try to reduce the size of the set.
+    determine_and_set_redundant_inputs(&mut candidate);
+
+    // Now check that the redundant inputs only appear in constraints
+    // whose variables are a subset of `inputs u redundant_inputs u {output}`
+    // and which are not stateful bus interactions.
+    // If this is the case, then these constraints can only disallow some
+    // values for the inputs. We assume that this is not the case, i.e.
+    // the constraint system we are working with can process all possible inputs.
+    // TODO this should best be verified.
+
+    println!("\n\nFound equal zero check for variable {var}:\n{var} = {value} if and only if all of {} are zero. Plus, the variables {} are also set to zero but are redundant.", 
+        candidate.inputs.iter().format(", "),
+        candidate.redundant_inputs.iter().format(", ")
     );
+    if !is_system_isolated(&candidate) {
+        println!("The candidate system is not isolated, so we cannot replace the equal zero check for variable {var} with a more efficient representation.");
+        return;
+    }
+
+    println!("The candidate system is isolated, so we can replace the equal zero check for variable {var} with a more efficient representation.\nWe can remove the following constraints:");
+
+    for constr in candidate
+        .constraint_system
+        .constraints_referencing_variables(candidate.redundant_inputs.iter().cloned())
+    {
+        println!("  - {constr}");
+    }
+
     //    panic!();
 }
 
-fn determine_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    inputs: &[V],
-    output: V,
-    value: T,
-) -> Vec<V> {
+fn determine_and_set_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    candidate: &mut Candidate<T, V, impl BusInteractionHandler<T> + IsBusStateful<T> + Clone>,
+) {
     // An input 'i' is redundant if setting `var = 1 - value` and `x = 0` for all `x` in `inputs \ {i}` is still inconsistent.
     let mut redundant_input_indices = vec![];
-    for (i, _) in inputs.iter().enumerate() {
-        let assignments = inputs
+    for (i, _) in candidate.inputs.iter().enumerate() {
+        let assignments = candidate
+            .inputs
             .iter()
             .enumerate()
             .filter_map(|(j, val)| {
                 (j != i && !redundant_input_indices.contains(&j)).then(|| (val.clone(), T::from(0)))
             })
-            .chain([(output.clone(), T::from(1) - value)]);
+            .chain([(candidate.output.clone(), T::from(1) - candidate.value)]);
         if solve_with_assignments(
-            constraint_system,
-            bus_interaction_handler.clone(),
+            candidate.constraint_system,
+            candidate.bus_interaction_handler.clone(),
             assignments,
         )
         .is_err()
@@ -116,10 +149,47 @@ fn determine_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash + Display>(
             redundant_input_indices.push(i);
         }
     }
-    redundant_input_indices
-        .into_iter()
-        .map(|i| inputs[i].clone())
-        .collect()
+
+    let mut irredundant_inputs = vec![];
+    for (i, input) in candidate.inputs.iter().enumerate() {
+        if redundant_input_indices.contains(&i) {
+            candidate.redundant_inputs.push(input.clone());
+        } else {
+            irredundant_inputs.push(input.clone());
+        }
+    }
+    candidate.inputs = irredundant_inputs;
+}
+
+fn is_system_isolated<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    candidate: &Candidate<T, V, impl BusInteractionHandler<T> + IsBusStateful<T> + Clone>,
+) -> bool {
+    let system_vars = candidate
+        .inputs
+        .iter()
+        .chain(&candidate.redundant_inputs)
+        .chain(std::iter::once(&candidate.output))
+        .collect::<HashSet<_>>();
+    for constr in candidate
+        .constraint_system
+        .constraints_referencing_variables(candidate.redundant_inputs.iter().cloned())
+    {
+        if !constr
+            .referenced_variables()
+            .all(|v| system_vars.contains(&v))
+        {
+            return false; // The constraint references a variable not in the system.
+        }
+        if let ConstraintRef::BusInteraction(bus) = constr {
+            let Some(bus_id) = bus.bus_id.try_to_number() else {
+                return false; // The bus interaction is not a number, so we cannot check its statefulness.
+            };
+            if candidate.bus_interaction_handler.is_stateful(bus_id) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
