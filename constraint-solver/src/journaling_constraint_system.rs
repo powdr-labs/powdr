@@ -99,6 +99,13 @@ impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystem<T, V> {
     }
 }
 
+impl<T: RuntimeConstant, V: Clone + Ord + Hash> JournalingConstraintSystem<T, V> {
+    pub fn extend(&mut self, other: ConstraintSystem<T, V>) {
+        // We do not track addition of constraints yet, but we could.
+        self.system.extend(other);
+    }
+}
+
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
     for JournalingConstraintSystem<T, V>
 {

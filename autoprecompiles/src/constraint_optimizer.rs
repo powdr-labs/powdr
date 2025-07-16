@@ -45,6 +45,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
+    new_var: &mut impl FnMut() -> V,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
@@ -55,7 +56,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     stats_logger.log("removing disconnected columns", &constraint_system);
 
     let constraint_system =
-        replace_equal_zero_checks(constraint_system, bus_interaction_handler.clone());
+        replace_equal_zero_checks(constraint_system, bus_interaction_handler.clone(), new_var);
 
     let constraint_system =
         inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
