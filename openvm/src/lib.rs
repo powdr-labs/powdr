@@ -86,7 +86,7 @@ fn format_fe<F: PrimeField32>(v: F) -> String {
     if v < F::ORDER_U32 / 2 {
         format!("{v}")
     } else {
-        format!("{}", v as i32 - F::ORDER_U32 as i32)
+        format!("-{}", F::ORDER_U32 - v)
     }
 }
 
