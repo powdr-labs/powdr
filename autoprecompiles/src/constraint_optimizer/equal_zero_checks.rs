@@ -4,9 +4,7 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 use num_traits::One;
-use powdr_constraint_solver::constraint_system::{
-    BusInteractionHandler, ConstraintSystem,
-};
+use powdr_constraint_solver::constraint_system::{BusInteractionHandler, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
@@ -84,12 +82,18 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     {
         return;
     }
+    println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.", 
+        inputs.iter().format(", ")   
+    );
 
     // Some of the inputs are redundant, so try to reduce the size of the set.
+    // TODO this is not how we find the best set of vars. Most are mutually redundant.
+    // We should sort them by distance to a stateful bus interaction and start removing
+    // those with a higher distance. or maybe distance to the output?
     let inputs = determine_and_remove_redundant_inputs(
         constraint_system.indexed_system(),
         bus_interaction_handler.clone(),
-        inputs.iter().cloned(),
+        inputs.iter().rev().cloned(), // TODO using rev as a bad heuristic.
         output.clone(),
         value,
     );
@@ -150,7 +154,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         .collect::<HashSet<_>>();
     variables_to_remove.remove(&output);
 
-    if variables_to_remove.len() < 2 {
+    if variables_to_remove.len() <= 2 {
         println!(
             "Not enough variables to remove ({}), keeping the system as it is.",
             variables_to_remove.len()
@@ -216,11 +220,12 @@ fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash 
     let inputs = inputs.into_iter().collect_vec();
     // An input 'i' is redundant if setting `var = 1 - value` and `x = 0` for all `x` in `inputs \ {i}` is still inconsistent.
     let mut redundant_input_indices = vec![];
-    for (i, _) in inputs.iter().enumerate() {
+    for (i, var) in inputs.iter().enumerate() {
         let assignments = inputs
             .iter()
             .enumerate()
-            .filter(|&(j, val)| (j != i && !redundant_input_indices.contains(&j))).map(|(j, val)| (val.clone(), T::from(0)))
+            .filter(|&(j, _)| j != i && !redundant_input_indices.contains(&j))
+            .map(|(_, var)| (var.clone(), T::from(0)))
             .chain([(output.clone(), T::from(1) - value)]);
         if solve_with_assignments(
             constraint_system,
@@ -229,6 +234,7 @@ fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash 
         )
         .is_err()
         {
+            println!("Input {var} is redundant, removing it from the set of inputs.");
             redundant_input_indices.push(i);
         }
     }
