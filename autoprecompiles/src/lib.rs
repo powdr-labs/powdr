@@ -71,10 +71,19 @@ impl PowdrConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
-    pub opcode: usize,
+    pub opcode: T,
     pub args: Vec<T>,
+}
+
+impl<T> IntoIterator for SymbolicInstructionStatement<T> {
+    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::vec::IntoIter<T>>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self.opcode).chain(self.args)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -252,8 +261,7 @@ pub enum InstructionKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct PcLookupBusInteraction<T> {
     pub from_pc: AlgebraicExpression<T>,
-    pub op: AlgebraicExpression<T>,
-    pub args: Vec<AlgebraicExpression<T>>,
+    pub instruction: SymbolicInstructionStatement<AlgebraicExpression<T>>,
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
@@ -265,12 +273,11 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
         (bus_interaction.id == pc_lookup_bus_id)
             .then(|| {
                 let from_pc = bus_interaction.args[0].clone();
-                let op = bus_interaction.args[1].clone();
+                let opcode = bus_interaction.args[1].clone();
                 let args = bus_interaction.args[2..].to_vec();
                 PcLookupBusInteraction {
                     from_pc,
-                    op,
-                    args,
+                    instruction: SymbolicInstructionStatement { opcode, args },
                     bus_interaction: bus_interaction.clone(),
                 }
             })
