@@ -347,18 +347,13 @@ pub fn build<A: Adapter>(
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
 
+    let machine = convert_machine(machine, &A::into_field);
+
     let apc = Apc {
         block,
         machine,
         subs,
         opcode,
-    };
-
-    let apc = Apc {
-        block: apc.block,
-        machine: convert_machine(apc.machine, &A::into_field),
-        subs: apc.subs,
-        opcode: apc.opcode,
     };
 
     if let Some(path) = apc_candidates_dir_path {

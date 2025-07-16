@@ -81,7 +81,7 @@ fn convert_expression<T, U>(
 
 pub fn statements_to_symbolic_machine<A: Adapter>(
     statements: &[SymbolicInstructionStatement<A::Field>],
-    instruction_machine_handler: &impl InstructionMachineHandler<A::Field>,
+    instruction_machine_handler: &A::InstructionMachineHandler,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
