@@ -4,8 +4,12 @@ use inliner::DegreeBound;
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler, grouped_expression::GroupedExpression, inliner,
-    journaling_constraint_system::JournalingConstraintSystem, solver::solve_system,
+    constraint_system::{BusInteractionHandler, ConstraintSystem},
+    grouped_expression::GroupedExpression,
+    indexed_constraint_system::IndexedConstraintSystem,
+    inliner,
+    journaling_constraint_system::JournalingConstraintSystem,
+    solver::solve_system,
 };
 use powdr_number::FieldElement;
 
@@ -98,11 +102,16 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
-    let initial_variables =
-        variables_in_stateful_bus_interactions(&constraint_system, bus_interaction_handler.clone())
-            .cloned();
-    let variables_to_keep =
-        reachable_variables(initial_variables, std::iter::empty(), &constraint_system);
+    let initial_variables = variables_in_stateful_bus_interactions(
+        &constraint_system.system(),
+        bus_interaction_handler.clone(),
+    )
+    .cloned();
+    let variables_to_keep = reachable_variables(
+        initial_variables,
+        std::iter::empty(),
+        constraint_system.system(),
+    );
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
@@ -125,11 +134,10 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
 
 /// Returns an iterator over all variables that are referenced in stateful bus interactions.
 fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + Eq + Hash>(
-    constraint_system: &'a JournalingConstraintSystem<P, V>,
+    constraint_system: &'a ConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P> + 'a,
 ) -> impl Iterator<Item = &'a V> {
     constraint_system
-        .system()
         .bus_interactions
         .iter()
         .filter(move |bus_interaction| {
