@@ -279,7 +279,6 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
-#[derive(Clone)]
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
     pub instruction_machine_handler: &'a M,
@@ -287,6 +286,17 @@ pub struct VmConfig<'a, M, B> {
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
     pub bus_map: BusMap,
+}
+
+// We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
+impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
+    fn clone(&self) -> Self {
+        VmConfig {
+            instruction_machine_handler: self.instruction_machine_handler,
+            bus_interaction_handler: self.bus_interaction_handler.clone(),
+            bus_map: self.bus_map.clone(),
+        }
+    }
 }
 
 pub trait InstructionMachineHandler<T, I> {
