@@ -100,7 +100,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
 
         let instr = instr.clone().into_symbolic_instruction();
 
-        let instr: SymbolicInstructionStatement<A::PowdrField> = SymbolicInstructionStatement {
+        let instr = SymbolicInstructionStatement {
             opcode: A::from_field(instr.opcode),
             args: instr
                 .args
