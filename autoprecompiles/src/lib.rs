@@ -1,7 +1,8 @@
-use crate::adapter::Adapter;
+use crate::adapter::{Adapter, AdapterApc};
 use crate::blocks::Instruction;
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::symbolic_machine_generator::convert_machine;
 pub use blocks::{BasicBlock, PgoConfig};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -305,7 +306,7 @@ pub struct Apc<T, I> {
     pub subs: Vec<Vec<u64>>,
 }
 
-impl<T: FieldElement, I> Apc<T, I> {
+impl<T, I> Apc<T, I> {
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
@@ -321,19 +322,15 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<A::PowdrField, A::Instruction>, crate::constraint_optimizer::Error> {
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let statements: Vec<_> = block
         .statements
         .clone()
         .into_iter()
         .map(|instr| instr.into_symbolic_instruction())
-        .map(|instr| SymbolicInstructionStatement {
-            opcode: instr.opcode,
-            args: instr.args.into_iter().map(A::from_field).collect(),
-        })
         .collect();
 
-    let (machine, subs) = statements_to_symbolic_machine(
+    let (machine, subs) = statements_to_symbolic_machine::<A>(
         &statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
@@ -349,6 +346,8 @@ pub fn build<A: Adapter>(
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
+
+    let machine = convert_machine(machine, &A::into_field);
 
     let apc = Apc {
         block,

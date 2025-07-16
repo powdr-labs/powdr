@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, IntoOpenVm, SpecializedExecutor, APP_LOG_BLOWUP};
+use crate::{AirMetrics, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -21,10 +21,8 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{
-    InstructionMachineHandler, SymbolicInstructionStatement, SymbolicMachine,
-};
-use powdr_number::BabyBearField;
+use powdr_autoprecompiles::SymbolicInstructionStatement;
+use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
@@ -40,16 +38,16 @@ use crate::utils::symbolic_to_algebraic;
 const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
-pub struct OriginalAirs<P> {
+pub struct OriginalAirs<F> {
     opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, (SymbolicMachine<P>, AirMetrics)>,
+    air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<P> InstructionMachineHandler<P> for OriginalAirs<P> {
+impl<F> InstructionMachineHandler<F> for OriginalAirs<F> {
     fn get_instruction_air(
         &self,
-        instruction: &SymbolicInstructionStatement<P>,
-    ) -> Option<&SymbolicMachine<P>> {
+        instruction: &SymbolicInstructionStatement<F>,
+    ) -> Option<&SymbolicMachine<F>> {
         self.opcode_to_air
             .get(&VmOpcode::from_usize(instruction.opcode))
             .and_then(|air_name| {
@@ -60,14 +58,14 @@ impl<P> InstructionMachineHandler<P> for OriginalAirs<P> {
     }
 }
 
-impl<P: IntoOpenVm> OriginalAirs<P> {
+impl<F> OriginalAirs<F> {
     /// Insert a new opcode, generating the air if it does not exist
     /// Panics if the opcode already exists
     pub fn insert_opcode(
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<(SymbolicMachine<P>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
@@ -181,7 +179,7 @@ impl OriginalVmConfig {
     /// - The bus map
     ///
     /// Returns an error if the conversion from the OpenVM expression type fails.
-    pub fn airs(&self) -> Result<OriginalAirs<BabyBearField>, UnsupportedOpenVmReferenceError> {
+    pub fn airs(&self) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
         let chip_complex = self.chip_complex();
 
         let instruction_allowlist = instruction_allowlist();

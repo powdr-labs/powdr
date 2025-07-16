@@ -1,4 +1,4 @@
-use crate::opcode::*;
+use crate::{format_fe, opcode::*};
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
 
@@ -35,12 +35,7 @@ pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F
             format!("{opcode_name} rd_rs2_ptr = {a}, rs1_ptr = {b}, imm = {c}, mem_as = {e}, needs_write = {f}, imm_sign = {g}")
         }
         OPCODE_BLT | OPCODE_BLTU | OPCODE_BGE | OPCODE_BGEU | OPCODE_BEQ | OPCODE_BNE => {
-            let c = c.as_canonical_u32();
-            let c = if c < F::ORDER_U32 / 2 {
-                format!("{c}")
-            } else {
-                format!("-{}", -(c as i32))
-            };
+            let c = format_fe(*c);
             format!("{opcode_name} {a} {b} {c} {d} {e}")
         }
 

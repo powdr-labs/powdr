@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     adapter::{Adapter, AdapterApc, ApcStats},
     blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
-    Apc, BasicBlock, PowdrConfig, VmConfig,
+    BasicBlock, PowdrConfig, VmConfig,
 };
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
@@ -49,7 +49,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
 
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: Apc<A::PowdrField, A::Instruction>,
+        apc: AdapterApc<A>,
         pgo_program_idx_count: &HashMap<u32, u32>,
         vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     ) -> Self;
@@ -58,7 +58,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
 
     /// Convert the candidate into an autoprecompile and its statistics.
-    fn into_apc_and_stats(self) -> (Apc<A::PowdrField, A::Instruction>, Self::ApcStats);
+    fn into_apc_and_stats(self) -> (AdapterApc<A>, Self::ApcStats);
 }
 
 // pub trait ApcStats {}
@@ -137,7 +137,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<AdapterApc<A>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -176,7 +176,7 @@ fn create_apcs_with_no_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<AdapterApc<A>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
@@ -238,7 +238,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
-) -> Vec<Apc<A::PowdrField, A::Instruction>> {
+) -> Vec<AdapterApc<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 

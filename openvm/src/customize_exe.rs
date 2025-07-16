@@ -8,10 +8,9 @@ use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::OpenVmField;
 use crate::OriginalCompiledProgram;
+use crate::PrecompileImplementation;
 use crate::{CompiledProgram, SpecializedConfig};
-use crate::{IntoOpenVm, PrecompileImplementation};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::Program as OpenVmProgram;
@@ -21,14 +20,14 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::adapter::Adapter;
+use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::{Apc, PowdrConfig, SymbolicInstructionStatement};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
 
@@ -61,18 +60,20 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
-    type InstructionMachineHandler = OriginalAirs<Self::PowdrField>;
+    type InstructionMachineHandler = OriginalAirs<Self::Field>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
-    type Candidate = OpenVmApcCandidate<Self::PowdrField, Instr<Self::Field>>;
+    type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
-        e.into_openvm_field()
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
+            e.to_integer().try_into_u32().unwrap(),
+        )
     }
 
     fn from_field(e: Self::Field) -> Self::PowdrField {
-        BabyBearField::from_openvm_field(e)
+        BabyBearField::from(e.as_canonical_u32())
     }
 }
 
@@ -222,13 +223,13 @@ pub fn customize(
 
     let noop = OpenVmInstruction {
         opcode: VmOpcode::from_usize(0xdeadaf),
-        a: OpenVmField::<BabyBearField>::ZERO,
-        b: OpenVmField::<BabyBearField>::ZERO,
-        c: OpenVmField::<BabyBearField>::ZERO,
-        d: OpenVmField::<BabyBearField>::ZERO,
-        e: OpenVmField::<BabyBearField>::ZERO,
-        f: OpenVmField::<BabyBearField>::ZERO,
-        g: OpenVmField::<BabyBearField>::ZERO,
+        a: BabyBear::ZERO,
+        b: BabyBear::ZERO,
+        c: BabyBear::ZERO,
+        d: BabyBear::ZERO,
+        e: BabyBear::ZERO,
+        f: BabyBear::ZERO,
+        g: BabyBear::ZERO,
     };
 
     tracing::info!("Adjust the program with the autoprecompiles");
@@ -247,13 +248,13 @@ pub fn customize(
             )| {
                 let new_instr = OpenVmInstruction {
                     opcode: VmOpcode::from_usize(opcode as usize),
-                    a: OpenVmField::<BabyBearField>::ZERO,
-                    b: OpenVmField::<BabyBearField>::ZERO,
-                    c: OpenVmField::<BabyBearField>::ZERO,
-                    d: OpenVmField::<BabyBearField>::ZERO,
-                    e: OpenVmField::<BabyBearField>::ZERO,
-                    f: OpenVmField::<BabyBearField>::ZERO,
-                    g: OpenVmField::<BabyBearField>::ZERO,
+                    a: BabyBear::ZERO,
+                    b: BabyBear::ZERO,
+                    c: BabyBear::ZERO,
+                    d: BabyBear::ZERO,
+                    e: BabyBear::ZERO,
+                    f: BabyBear::ZERO,
+                    g: BabyBear::ZERO,
                 };
 
                 let pc = block.start_idx;
@@ -336,10 +337,10 @@ fn add_extra_targets<F: PrimeField32>(
     labels
 }
 
-pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
+pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
     interaction: &SymbolicInteraction<F>,
     columns: &[Arc<String>],
-) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
+) -> Result<SymbolicBusInteraction<F>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
     let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
@@ -353,8 +354,8 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<P, I> {
-    apc: Apc<P, I>,
+pub struct OpenVmApcCandidate<F, I> {
+    apc: Apc<F, I>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
 }
@@ -370,19 +371,14 @@ impl OvmApcStats {
     }
 }
 
-impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
-    for OpenVmApcCandidate<BabyBearField, Instr<OpenVmField<BabyBearField>>>
-{
-    type JsonExport = OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>>;
+impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
+    type JsonExport = OpenVmApcCandidateJsonExport<Instr<BabyBear>>;
     type ApcStats = OvmApcStats;
 
     fn create(
-        apc: Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
+        apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_idx_count: &HashMap<u32, u32>,
-        vm_config: VmConfig<
-            OriginalAirs<BabyBearField>,
-            OpenVmBusInteractionHandler<BabyBearField>,
-        >,
+        vm_config: VmConfig<OriginalAirs<BabyBear>, OpenVmBusInteractionHandler<BabyBearField>>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths;
@@ -415,7 +411,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
     fn to_json_export(
         &self,
         apc_candidates_dir_path: &Path,
-    ) -> OpenVmApcCandidateJsonExport<Instr<OpenVmField<BabyBearField>>> {
+    ) -> OpenVmApcCandidateJsonExport<Instr<BabyBear>> {
         OpenVmApcCandidateJsonExport {
             opcode: self.apc.opcode,
             execution_frequency: self.execution_frequency,
@@ -429,12 +425,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>>
         }
     }
 
-    fn into_apc_and_stats(
-        self,
-    ) -> (
-        Apc<BabyBearField, Instr<OpenVmField<BabyBearField>>>,
-        Self::ApcStats,
-    ) {
+    fn into_apc_and_stats(self) -> (AdapterApc<BabyBearOpenVmApcAdapter<'a>>, Self::ApcStats) {
         (self.apc, OvmApcStats::new(self.widths))
     }
 }
