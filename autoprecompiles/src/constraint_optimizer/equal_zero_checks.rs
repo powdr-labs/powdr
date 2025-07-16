@@ -96,18 +96,28 @@ fn try_output<T: FieldElement, V: Clone + Ord + Hash + Display>(
     // Some of the inputs are redundant, so try to reduce the size of the set.
     determine_and_set_redundant_inputs(&mut candidate);
 
-    // Now check that the redundant inputs only appear in constraints
-    // whose variables are a subset of `inputs u redundant_inputs u {output}`
-    // and which are not stateful bus interactions.
-    // If this is the case, then these constraints can only disallow some
-    // values for the inputs. We assume that this is not the case, i.e.
-    // the constraint system we are working with can process all possible inputs.
-    // TODO this should best be verified.
+    // We find the system by reachability.
+    // TODO but after that we still need to do path search:
+    // we should only remove columns that lie on a simple path
+    // from input to output.
 
     println!("\n\nFound equal zero check for variable {var}:\n{var} = {value} if and only if all of {} are zero. Plus, the variables {} are also set to zero but are redundant.", 
         candidate.inputs.iter().format(", "),
         candidate.redundant_inputs.iter().format(", ")
     );
+    for constr in candidate
+        .constraint_system
+        .constraints_referencing_variables(candidate.redundant_inputs.iter().cloned())
+    {
+        println!("  - {constr}");
+    }
+
+    // Now we need to find out which columns / constraints can be removed.
+    // We do a reachability search starting from stateful bus interactions, but we stop
+    // the search as soon as we reach an input or the output variable.
+    // The variables that are not reachable in this sense can be removed, because they are only
+    // connected to a stateful bus interaction via the input or output.
+
     if !is_system_isolated(&candidate) {
         println!("The candidate system is not isolated, so we cannot replace the equal zero check for variable {var} with a more efficient representation.");
         return;
