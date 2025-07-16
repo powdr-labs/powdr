@@ -160,6 +160,12 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             variables_to_remove.len()
         );
         return;
+    } else {
+        println!(
+            "Removing {} variables: {}",
+            variables_to_remove.len(),
+            variables_to_remove.iter().format(", ")
+        );
     }
 
     for constr in constraint_system.system().iter() {
