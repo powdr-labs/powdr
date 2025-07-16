@@ -8,7 +8,7 @@ use crate::{
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
-    labels: &BTreeSet<u32>,
+    labels: &BTreeSet<u64>,
     opcode_allowlist: &BTreeSet<usize>,
     branch_opcodes: &BTreeSet<usize>,
 ) -> Vec<BasicBlock<A::Instruction>> {
@@ -18,7 +18,7 @@ pub fn collect_basic_blocks<A: Adapter>(
         statements: Vec::new(),
     };
     for (i, instr) in program.instructions().enumerate() {
-        let pc = program.base_pc() + i as u32 * program.pc_step();
+        let pc = program.base_pc() + i as u64 * program.pc_step() as u64;
         let is_target = labels.contains(&pc);
         let is_branch = branch_opcodes.contains(&instr.opcode());
 

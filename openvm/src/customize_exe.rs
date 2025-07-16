@@ -102,8 +102,8 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
 }
 
 impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
-    fn base_pc(&self) -> u32 {
-        self.0.pc_base
+    fn base_pc(&self) -> u64 {
+        self.0.pc_base as u64
     }
 
     fn pc_step(&self) -> u32 {
@@ -163,6 +163,9 @@ pub fn customize(
         }),
         PgoConfig::Instruction(_) | PgoConfig::None => None,
     };
+
+    // Convert the labels to u64 for compatibility with the `collect_basic_blocks` function.
+    let labels = labels.iter().map(|&x| x as u64).collect::<BTreeSet<_>>();
 
     let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(
         &program,
