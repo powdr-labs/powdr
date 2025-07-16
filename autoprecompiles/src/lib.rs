@@ -77,9 +77,12 @@ pub struct SymbolicInstructionStatement<T> {
     pub args: Vec<T>,
 }
 
-impl<T> SymbolicInstructionStatement<T> {
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        std::iter::once(&self.opcode).chain(self.args.iter())
+impl<T> IntoIterator for SymbolicInstructionStatement<T> {
+    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::vec::IntoIter<T>>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self.opcode).chain(self.args)
     }
 }
 

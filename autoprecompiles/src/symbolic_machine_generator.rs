@@ -140,12 +140,13 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         local_constraints.push((minus_is_valid.clone() + one).into());
 
         // Constrain the pc lookup to the current instruction.
-        local_constraints.extend(pc_lookup.instruction.iter().zip_eq(instr.iter()).map(
-            |(e, v)| {
-                let arg = AlgebraicExpression::Number(*v);
-                (e.clone() - arg).into()
-            },
-        ));
+        local_constraints.extend(
+            pc_lookup
+                .instruction
+                .into_iter()
+                .zip_eq(instr)
+                .map(|(l, r)| (l - r.into()).into()),
+        );
 
         constraints.extend(
             machine
