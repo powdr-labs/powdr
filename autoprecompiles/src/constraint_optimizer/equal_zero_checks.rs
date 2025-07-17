@@ -190,11 +190,11 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             .any(|var| variables_to_remove.contains(var))
     });
 
-    let output = GroupedExpression::from_unknown_variable(output);
-    let output = if value == T::from(1) {
-        output
+    let output_expr = GroupedExpression::from_unknown_variable(output.clone());
+    let output_expr = if value == T::from(1) {
+        output_expr
     } else {
-        GroupedExpression::one() - output
+        GroupedExpression::one() - output_expr
     };
 
     // We encode "output = 1 <=> all inputs are zero":
@@ -206,16 +206,36 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         .unwrap();
     let sum_inv = GroupedExpression::from_unknown_variable(new_var());
     let new_constraints = vec![
-        output.clone() * (GroupedExpression::one() - output.clone()),
-        output.clone() * sum_of_inputs.clone(),
-        output - (GroupedExpression::one() - sum_inv.clone() * sum_of_inputs),
+        output_expr.clone() * (GroupedExpression::one() - output_expr.clone()),
+        output_expr.clone() * sum_of_inputs.clone(),
+        output_expr - (GroupedExpression::one() - sum_inv.clone() * sum_of_inputs),
     ];
     constraint_system.extend(ConstraintSystem {
         algebraic_constraints: new_constraints,
         bus_interactions: vec![],
     });
 
-    // TODO we could check if the new system still has the property we started looking for.
+    // Verify that the modified system still has the same property (optional)
+
+    let Ok(solution) = solve_with_assignments(
+        constraint_system.indexed_system(),
+        bus_interaction_handler.clone(),
+        [(output.clone(), value)],
+    ) else {
+        return;
+    };
+    let inputs_after_modification: BTreeSet<_> = zero_assignents(&solution).collect();
+    assert!(inputs.iter().all(|v| inputs_after_modification.contains(v)));
+
+    assert!(solve_with_assignments(
+        constraint_system.indexed_system(),
+        bus_interaction_handler.clone(),
+        inputs
+            .iter()
+            .map(|v| (v.clone(), T::from(0)))
+            .chain([(output.clone(), T::from(1) - value)]),
+    )
+    .is_err());
 }
 
 fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash + Display>(
