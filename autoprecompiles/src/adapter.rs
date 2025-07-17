@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blocks::{Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
-    Apc, InstructionMachineHandler,
+    Apc, InstructionHandler,
 };
 
 pub trait Adapter: Sized {
     type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone;
     type PowdrField: FieldElement;
-    type InstructionMachineHandler: InstructionMachineHandler<Self::Field, Self::Instruction> + Sync;
+    type InstructionMachineHandler: InstructionHandler<Self::Field, Self::Instruction> + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>

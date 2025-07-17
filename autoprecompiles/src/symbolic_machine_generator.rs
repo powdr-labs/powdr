@@ -4,7 +4,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BusMap, BusType,
-    InstructionMachineHandler, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
+    InstructionHandler, PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicInstructionStatement, SymbolicMachine,
 };
 

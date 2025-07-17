@@ -306,9 +306,15 @@ impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
     }
 }
 
-pub trait InstructionMachineHandler<T, I> {
+pub trait InstructionHandler<T, I> {
     /// Returns the AIR for the given opcode.
     fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+
+    /// Returns whether the given instruction is allowed in an autoprecompile.
+    fn is_allowed(&self, instruction: &I) -> bool;
+
+    /// Returns whether the given instruction is a branching instruction.
+    fn is_branching(&self, instruction: &I) -> bool;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

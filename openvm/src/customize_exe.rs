@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
@@ -24,9 +24,9 @@ use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::SymbolicBusInteraction;
-use powdr_autoprecompiles::{Apc, PowdrConfig, SymbolicInstructionStatement};
+use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
+use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
@@ -87,10 +87,6 @@ pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn opcode(&self) -> usize {
-        self.0.opcode.as_usize()
-    }
-
     fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<F> {
         SymbolicInstructionStatement {
             opcode: self.0.opcode.to_field(),
@@ -135,8 +131,6 @@ pub fn customize(
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let opcodes_allowlist = airs.allow_list();
-
     let labels = add_extra_targets(
         &exe.program,
         labels.clone(),
@@ -167,12 +161,7 @@ pub fn customize(
     // Convert the labels to u64 for compatibility with the `collect_basic_blocks` function.
     let labels = labels.iter().map(|&x| x as u64).collect::<BTreeSet<_>>();
 
-    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(
-        &program,
-        &labels,
-        &opcodes_allowlist,
-        &branch_opcodes_set(),
-    );
+    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &labels, &airs);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -204,15 +193,6 @@ pub fn customize(
             );
         }
     }
-
-    let blocks = blocks
-        .into_iter()
-        .filter(|b| {
-            b.statements
-                .iter()
-                .all(|instr| opcodes_allowlist.contains(&instr.opcode()))
-        })
-        .collect::<Vec<_>>();
 
     let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
         blocks,
@@ -330,7 +310,7 @@ fn add_extra_targets<F: PrimeField32>(
         .filter_map(|(i, instr)| {
             let instr = instr.as_ref().unwrap().0.clone();
             let adjusted_pc = base_pc + (i as u32) * pc_step;
-            let op = instr.opcode.as_usize();
+            let op = instr.opcode;
             branch_opcodes_bigint
                 .contains(&op)
                 .then_some(adjusted_pc + instr.c.as_canonical_u32())
@@ -393,7 +373,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             .map(|instr| {
                 vm_config
                     .instruction_machine_handler
-                    .get_instruction_metrics(instr.opcode())
+                    .get_instruction_metrics(instr.0.opcode)
                     .unwrap()
                     .widths
             })
