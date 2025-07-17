@@ -1384,11 +1384,11 @@ mod tests {
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
         widths: AirWidths {
             preprocessed: 5,
-            main: 796,
+            main: 797,
             log_up: 388,
         },
         constraints: 604,
-        bus_interactions: 251,
+        bus_interactions: 252,
     };
 
     #[test]
