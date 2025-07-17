@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -91,13 +92,10 @@ pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,
 ) -> SymbolicMachine<T> {
-    // TODO: Make this generic: We don't have to assume that there are two fields (pc, ts), it can
-    // work for any number of fields.
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
-    let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
-    let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -113,30 +111,28 @@ pub fn optimize_exec_bus<T: FieldElement>(
             true
         } else if !receive {
             // Save the latest send and remove the bus interaction
-            let mut pc_expr = bus_int.args[0].clone();
-            powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
-            pc_expr = simplify_expression(pc_expr);
-
-            let mut ts_expr = bus_int.args[1].clone();
-            powdr::substitute_algebraic_algebraic(&mut ts_expr, &subs_ts);
-            ts_expr = simplify_expression(ts_expr);
-
             let mut send = bus_int.clone();
-            send.args[0] = pc_expr;
-            send.args[1] = ts_expr;
+            send.args = bus_int
+                .args
+                .iter()
+                .map(|arg| {
+                    let mut arg = arg.clone();
+                    powdr::substitute_algebraic_algebraic(&mut arg, &subs);
+                    simplify_expression(arg)
+                })
+                .collect();
 
             latest_send = Some(send);
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
-            subs_pc.insert(
-                bus_int.args[0].clone(),
-                latest_send.clone().unwrap().args[0].clone(),
-            );
-            subs_ts.insert(
-                bus_int.args[1].clone(),
-                latest_send.clone().unwrap().args[1].clone(),
-            );
+            for (bus_arg, send_arg) in bus_int
+                .args
+                .iter()
+                .zip_eq(latest_send.as_ref().unwrap().args.iter())
+            {
+                subs.insert(bus_arg.clone(), send_arg.clone());
+            }
             false
         };
 
@@ -149,17 +145,14 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.bus_interactions.push(latest_send.unwrap());
 
     for c in &mut machine.constraints {
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_ts);
+        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs);
         c.expr = simplify_expression(c.expr.clone());
     }
     for b in &mut machine.bus_interactions {
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_ts);
+        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs);
         b.mult = simplify_expression(b.mult.clone());
         for a in &mut b.args {
-            powdr::substitute_algebraic_algebraic(a, &subs_pc);
-            powdr::substitute_algebraic_algebraic(a, &subs_ts);
+            powdr::substitute_algebraic_algebraic(a, &subs);
             *a = simplify_expression(a.clone());
         }
     }
