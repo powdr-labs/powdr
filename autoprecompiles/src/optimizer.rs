@@ -19,20 +19,12 @@ use crate::{
 };
 
 pub fn optimize<T: FieldElement>(
-    machine: SymbolicMachine<T>,
+    mut machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    opcode: u32,
     degree_bound: DegreeBound,
     bus_map: &BusMap,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
-    let mut machine = if let Some(pc_lookup_bus_id) = bus_map.get_bus_id(&BusType::PcLookup) {
-        let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
-        stats_logger.log("PC lookup optimization", &machine);
-        machine
-    } else {
-        machine
-    };
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
         machine = optimize_exec_bus(machine, exec_bus_id);
@@ -93,38 +85,6 @@ fn optimization_loop_iteration<T: FieldElement>(
     };
 
     Ok(system)
-}
-
-pub fn optimize_pc_lookup<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    opcode: u32,
-    pc_lookup_bus_id: u64,
-) -> SymbolicMachine<T> {
-    let mut first_pc = None;
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id == pc_lookup_bus_id {
-            if first_pc.is_none() {
-                first_pc = Some(bus_int.clone());
-            }
-            return false;
-        }
-        true
-    });
-    let mut first_pc = first_pc.unwrap();
-    assert_eq!(first_pc.args.len(), 9);
-    // TODO: Should this be added outside the APC crate?
-    first_pc.args[1] = AlgebraicExpression::Number(T::from(opcode));
-    first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[4] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[5] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[6] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[7] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[8] = AlgebraicExpression::Number(T::from(0u32));
-
-    machine.bus_interactions.push(first_pc);
-
-    machine
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(

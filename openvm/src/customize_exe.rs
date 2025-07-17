@@ -92,7 +92,7 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         self.0.opcode.as_usize()
     }
 
-    fn pc_lookup_row(&self) -> Vec<Option<F>> {
+    fn pc_lookup_row(&self, pc: Option<usize>) -> Vec<Option<F>> {
         let args = [
             self.0.opcode.to_field(),
             self.0.a,
@@ -105,7 +105,8 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        once(None).chain(args.into_iter().map(Some)).collect()
+        let pc = pc.map(|pc| F::from_canonical_u32(pc as u32));
+        once(pc).chain(args.into_iter().map(Some)).collect()
     }
 }
 

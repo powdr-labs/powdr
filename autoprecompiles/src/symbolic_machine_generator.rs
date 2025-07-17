@@ -3,8 +3,9 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BusMap, BusType,
-    InstructionMachineHandler, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+    adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BasicBlock,
+    BusMap, BusType, InstructionMachineHandler, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicMachine,
 };
 
 pub fn convert_machine<T, U>(
@@ -79,7 +80,7 @@ fn convert_expression<T, U>(
 }
 
 pub fn statements_to_symbolic_machine<A: Adapter>(
-    statements: &[A::Instruction],
+    block: &BasicBlock<A::Instruction>,
     instruction_machine_handler: &A::InstructionMachineHandler,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
@@ -88,7 +89,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 3;
 
-    for (i, instr) in statements.iter().enumerate() {
+    for (i, instr) in block.statements.iter().enumerate() {
         let machine = instruction_machine_handler
             .get_instruction_air(instr)
             .unwrap()
@@ -97,8 +98,9 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine(machine, &|x| A::from_field(x));
 
+        let pc = (i == 0).then_some(block.start_idx);
         let pc_lookup_row = instr
-            .pc_lookup_row()
+            .pc_lookup_row(pc)
             .into_iter()
             .map(|x| x.map(|f| A::from_field(f)))
             .collect::<Vec<_>>();
@@ -125,7 +127,10 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         .mult
         .clone();
         let one = AlgebraicExpression::Number(1u64.into());
-        local_constraints.push((minus_is_valid.clone() + one).into());
+        local_constraints.push(
+            ((minus_is_valid.clone() + one.clone()) * (minus_is_valid.clone() - one.clone()))
+                .into(),
+        );
 
         // Constrain the pc lookup to the current instruction.
         // TODO: We can constrain the PC too!

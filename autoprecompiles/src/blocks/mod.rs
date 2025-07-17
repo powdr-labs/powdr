@@ -56,5 +56,5 @@ pub trait Instruction<T>: Clone {
     /// The opcode of the instruction.
     fn opcode(&self) -> usize;
 
-    fn pc_lookup_row(&self) -> Vec<Option<T>>;
+    fn pc_lookup_row(&self, pc: Option<usize>) -> Vec<Option<T>>;
 }
