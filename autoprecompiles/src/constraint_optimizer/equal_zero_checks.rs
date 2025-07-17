@@ -207,7 +207,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         .unwrap();
     let sum_inv = GroupedExpression::from_unknown_variable(new_var());
     let new_constraints = vec![
-        output_expr.clone() * (GroupedExpression::one() - output_expr.clone()),
         output_expr.clone() * sum_of_inputs.clone(),
         output_expr - (GroupedExpression::one() - sum_inv.clone() * sum_of_inputs),
     ];

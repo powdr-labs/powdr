@@ -17,6 +17,5 @@ mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 
 
 // Algebraic constraints:
 -((1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0))) = 0
-(1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) = 0
 (1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
 is_valid * (is_valid - 1) = 0

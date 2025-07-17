@@ -23,6 +23,5 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0
 (1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__1_0 = 0
 (1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__2_0 = 0
 (1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__3_0 = 0
-(1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) = 0
 (1 - new_var2 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
 is_valid * (is_valid - 1) = 0
