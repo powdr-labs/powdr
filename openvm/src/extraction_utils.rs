@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
+use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
@@ -51,6 +52,11 @@ impl<F> InstructionMachineHandler<F, Instr<F>> for OriginalAirs<F> {
                     .get(air_name)
                     .map(|(machine, _)| machine)
             })
+    }
+
+    fn branch_opcodes(&self) -> BTreeSet<usize> {
+        // Currently hardcoded, but an alternative is to grep things like "branch" in OVM and differently in SP1
+        branch_opcodes_set()
     }
 }
 

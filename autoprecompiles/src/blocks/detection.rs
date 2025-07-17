@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Instruction, Program},
+    InstructionMachineHandler,
 };
 
 /// Collects basic blocks from a program
@@ -10,7 +11,7 @@ pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     labels: &BTreeSet<u64>,
     opcode_allowlist: &BTreeSet<usize>,
-    branch_opcodes: &BTreeSet<usize>,
+    airs: &A::InstructionMachineHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -20,7 +21,7 @@ pub fn collect_basic_blocks<A: Adapter>(
     for (i, instr) in program.instructions().enumerate() {
         let pc = program.base_pc() + i as u64 * program.pc_step() as u64;
         let is_target = labels.contains(&pc);
-        let is_branch = branch_opcodes.contains(&instr.opcode());
+        let is_branch = airs.branch_opcodes().contains(&instr.opcode());
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if !opcode_allowlist.contains(&instr.opcode()) {

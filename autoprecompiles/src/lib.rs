@@ -11,6 +11,7 @@ use powdr_expression::{
     AlgebraicUnaryOperator,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -309,6 +310,9 @@ impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
 pub trait InstructionMachineHandler<T, I> {
     /// Returns the AIR for the given opcode.
     fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+
+    /// Returns the branch opcodes.
+    fn branch_opcodes(&self) -> BTreeSet<usize>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
