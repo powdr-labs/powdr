@@ -98,6 +98,9 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine(machine, &|x| A::from_field(x));
 
+        // It is sufficient to provide the initial PC, because the PC update should be
+        // deterministic within a basic block. Therefore, all future PCs can be derived
+        // by the solver.
         let pc = (i == 0).then_some(block.start_idx);
         let pc_lookup_row = instr
             .pc_lookup_row(pc)
@@ -133,7 +136,6 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         );
 
         // Constrain the pc lookup to the current instruction.
-        // TODO: We can constrain the PC too!
         local_constraints.extend(
             pc_lookup
                 .args

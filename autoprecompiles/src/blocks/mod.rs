@@ -56,5 +56,8 @@ pub trait Instruction<T>: Clone {
     /// The opcode of the instruction.
     fn opcode(&self) -> usize;
 
+    /// Returns a list of concrete values that the LHS of the PC lookup should be assigned to.
+    /// An entry can be `None` to indicate that the value is not known at compile time.
+    /// The provided PC will in practice be provided for the first instruction of the block.
     fn pc_lookup_row(&self, pc: Option<usize>) -> Vec<Option<T>>;
 }
