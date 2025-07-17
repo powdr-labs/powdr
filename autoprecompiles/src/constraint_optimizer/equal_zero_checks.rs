@@ -20,9 +20,10 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     new_var: &mut impl FnMut() -> V,
 ) -> JournalingConstraintSystem<T, V> {
-    println!(
-        "\n----------------------------------\nReplacing equal zero checks in constraint system"
-    );
+    // TODO logging
+    // println!(
+    //     "\n----------------------------------\nReplacing equal zero checks in constraint system"
+    // );
     let solver = solver::Solver::new(constraint_system.system().clone())
         .with_bus_interaction_handler(bus_interaction_handler.clone());
     let rc = solver.compute_range_constraints().unwrap();
@@ -82,9 +83,9 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     {
         return;
     }
-    println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.", 
-        inputs.iter().format(", ")   
-    );
+    // println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.",
+    //     inputs.iter().format(", ")
+    // );
 
     // Some of the inputs are redundant, so try to reduce the size of the set.
     // TODO this is not how we find the best set of vars. Most are mutually redundant.
@@ -98,9 +99,9 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         value,
     );
 
-    println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.", 
-        inputs.iter().format(", ")   
-    );
+    // println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.",
+    //     inputs.iter().format(", ")
+    // );
 
     // Check that each input is non-negative and that the sum of inputs cannot wrap.
     let min_input = inputs
@@ -155,17 +156,17 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     variables_to_remove.remove(&output);
 
     if variables_to_remove.len() <= 2 {
-        println!(
-            "Not enough variables to remove ({}), keeping the system as it is.",
-            variables_to_remove.len()
-        );
+        // println!(
+        //     "Not enough variables to remove ({}), keeping the system as it is.",
+        //     variables_to_remove.len()
+        // );
         return;
     } else {
-        println!(
-            "Removing {} variables: {}",
-            variables_to_remove.len(),
-            variables_to_remove.iter().format(", ")
-        );
+        // println!(
+        //     "Removing {} variables: {}",
+        //     variables_to_remove.len(),
+        //     variables_to_remove.iter().format(", ")
+        // );
     }
 
     for constr in constraint_system.system().iter() {
@@ -176,7 +177,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             assert!(constr.referenced_variables().all(|var| {
                 inputs.contains(var) || var == &output || variables_to_remove.contains(var)
             }));
-            println!("Can replace constraint: {constr}",);
+            // println!("Can replace constraint: {constr}",);
         }
     }
     constraint_system.retain_algebraic_constraints(|constr| {
@@ -248,7 +249,7 @@ fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash 
     let inputs = inputs.into_iter().collect_vec();
     // An input 'i' is redundant if setting `var = 1 - value` and `x = 0` for all `x` in `inputs \ {i}` is still inconsistent.
     let mut redundant_input_indices = vec![];
-    for (i, var) in inputs.iter().enumerate() {
+    for (i, _var) in inputs.iter().enumerate() {
         let assignments = inputs
             .iter()
             .enumerate()
@@ -262,7 +263,7 @@ fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash 
         )
         .is_err()
         {
-            println!("Input {var} is redundant, removing it from the set of inputs.");
+            // TODO println!("Input {var} is redundant, removing it from the set of inputs.");
             redundant_input_indices.push(i);
         }
     }

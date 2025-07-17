@@ -1,7 +1,6 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use inliner::DegreeBound;
-use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},

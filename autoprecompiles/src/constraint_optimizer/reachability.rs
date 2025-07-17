@@ -17,6 +17,8 @@ pub fn reachable_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> HashSet<V> {
     let mut reachable_variables = initial_variables.into_iter().collect::<HashSet<_>>();
     let blocking_variables = blocking_variables.into_iter().collect::<HashSet<_>>();
+    // We just remove variables, order does not matter.
+    #[allow(clippy::iter_over_hash_type)]
     for v in &blocking_variables {
         reachable_variables.remove(v);
     }
@@ -31,7 +33,9 @@ pub fn reachable_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
                 // This constraint is connected to a reachable variable.
                 // Add all variables of this constraint except the blocking ones.
                 reachable_variables.extend(
-                    expr.referenced_variables().filter(|&var| !blocking_variables.contains(var)).cloned(),
+                    expr.referenced_variables()
+                        .filter(|&var| !blocking_variables.contains(var))
+                        .cloned(),
                 );
             }
         }
