@@ -258,33 +258,6 @@ pub enum InstructionKind {
     UnconditionalBranch,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct PcLookupBusInteraction<T> {
-    pub from_pc: AlgebraicExpression<T>,
-    pub instruction: SymbolicInstructionStatement<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
-}
-
-impl<T: FieldElement> PcLookupBusInteraction<T> {
-    fn try_from_symbolic_bus_interaction(
-        bus_interaction: &SymbolicBusInteraction<T>,
-        pc_lookup_bus_id: u64,
-    ) -> Result<Self, ()> {
-        (bus_interaction.id == pc_lookup_bus_id)
-            .then(|| {
-                let from_pc = bus_interaction.args[0].clone();
-                let opcode = bus_interaction.args[1].clone();
-                let args = bus_interaction.args[2..].to_vec();
-                PcLookupBusInteraction {
-                    from_pc,
-                    instruction: SymbolicInstructionStatement { opcode, args },
-                    bus_interaction: bus_interaction.clone(),
-                }
-            })
-            .ok_or(())
-    }
-}
-
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.

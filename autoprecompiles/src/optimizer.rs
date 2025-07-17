@@ -112,6 +112,7 @@ pub fn optimize_pc_lookup<T: FieldElement>(
     });
     let mut first_pc = first_pc.unwrap();
     assert_eq!(first_pc.args.len(), 9);
+    // TODO: Should this be added outside the APC crate?
     first_pc.args[1] = AlgebraicExpression::Number(T::from(opcode));
     first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
     first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
@@ -130,6 +131,8 @@ pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,
 ) -> SymbolicMachine<T> {
+    // TODO: Make this generic: We don't have to assume that there are two fields (pc, ts), it can
+    // work for any number of fields.
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
