@@ -60,7 +60,7 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
-    type InstructionMachineHandler = OriginalAirs<Self::Field>;
+    type InstructionHandler = OriginalAirs<Self::Field>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
@@ -131,7 +131,7 @@ pub fn customize(
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let labels = add_extra_targets(
+    let jumpdest_set = add_extra_targets(
         &exe.program,
         labels.clone(),
         exe.program.pc_base,
@@ -141,7 +141,7 @@ pub fn customize(
     let program = Prog(&exe.program);
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
+        instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
@@ -158,10 +158,13 @@ pub fn customize(
         PgoConfig::Instruction(_) | PgoConfig::None => None,
     };
 
-    // Convert the labels to u64 for compatibility with the `collect_basic_blocks` function.
-    let labels = labels.iter().map(|&x| x as u64).collect::<BTreeSet<_>>();
+    // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
+    let jumpdest_set = jumpdest_set
+        .iter()
+        .map(|&x| x as u64)
+        .collect::<BTreeSet<_>>();
 
-    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &labels, &airs);
+    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -372,7 +375,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             .iter()
             .map(|instr| {
                 vm_config
-                    .instruction_machine_handler
+                    .instruction_handler
                     .get_instruction_metrics(instr.0.opcode)
                     .unwrap()
                     .widths

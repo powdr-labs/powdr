@@ -9,8 +9,8 @@ use crate::{
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
-    labels: &BTreeSet<u64>,
-    instruction_handler: &A::InstructionMachineHandler,
+    jumpdest_set: &BTreeSet<u64>,
+    instruction_handler: &A::InstructionHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -19,7 +19,7 @@ pub fn collect_basic_blocks<A: Adapter>(
     };
     for (i, instr) in program.instructions().enumerate() {
         let pc = program.base_pc() + i as u64 * program.pc_step() as u64;
-        let is_target = labels.contains(&pc);
+        let is_target = jumpdest_set.contains(&pc);
         let is_branching = instruction_handler.is_branching(&instr);
         let is_allowed = instruction_handler.is_allowed(&instr);
 
