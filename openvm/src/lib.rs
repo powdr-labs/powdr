@@ -1433,10 +1433,10 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 49,
+                    main: 46,
                     log_up: 36,
                 },
-                constraints: 22,
+                constraints: 23,
                 bus_interactions: 31,
             },
             powdr_expected_machine_count: 1,
