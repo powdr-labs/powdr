@@ -303,4 +303,17 @@ mod complex_tests {
 
         assert_machine_output(program.to_vec(), "guest_top_block");
     }
+
+    #[test]
+
+    fn memcpy_block() {
+        let program = [
+            sltu(52, 52, 1, 0),
+            sltu(56, 56, 1, 0),
+            or(52, 52, 56, 1),
+            bne(52, 0, 248),
+        ];
+
+        assert_machine_output(program.to_vec(), "memcpy_block");
+    }
 }

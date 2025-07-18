@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-mod bus_interaction_variable_wrapper;
+pub mod bus_interaction_variable_wrapper;
 mod exhaustive_search;
 mod quadratic_equivalences;
 
@@ -73,7 +73,7 @@ pub enum Error {
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
+pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -134,6 +134,13 @@ where
             assignments: self.assignments,
             bus_field_assignments: Default::default(),
         })
+    }
+
+    pub fn determine_range_constraints(
+        &mut self,
+    ) -> Result<&impl RangeConstraintProvider<T::FieldType, V>, Error> {
+        self.loop_until_no_progress()?;
+        Ok(&self.range_constraints)
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
