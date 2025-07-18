@@ -854,6 +854,11 @@ mod tests {
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
+    const GUEST_ECC_OP: &str = "guest-ecc-operations";
+    const GUEST_ECC_OP_APC_PGO: u64 = 10;
+    const GUEST_ECC_OP_APC_PGO_LARGE: u64 = 50;
+    const GUEST_ECC_OP_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1282,6 +1287,165 @@ mod tests {
         );
     }
 
+    #[test]
+    #[ignore = "Too long"]
+    fn ecc_op_prove_simple() {
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_ECC_OP,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too long"]
+    fn ecc_prove_mock() {
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_mock(
+            GUEST_ECC_OP,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_prove_many_apcs() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO_LARGE, GUEST_ECC_OP_SKIP);
+        prove_recursion(
+            GUEST_ECC_OP,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data.clone()),
+            None,
+        );
+
+        prove_recursion(
+            GUEST_ECC_OP,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_prove_large() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+        prove_recursion(
+            GUEST_ECC_OP,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_small_prove_simple() {
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_ECC_OP,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_small_prove_mock() {
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        prove_mock(
+            GUEST_ECC_OP,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_ECC_OP_APC_PGO, GUEST_ECC_OP_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_OP,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc addtion and multiplication with PgoConfig::Cell took {:?}",
+            elapsed
+        );
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_OP,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc addition and multiplication with PgoConfig::Instruction took {:?}",
+            elapsed
+        );
+    }
     // #[test]
     // #[ignore = "Too much RAM"]
     // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
@@ -1651,5 +1815,116 @@ mod tests {
             total_columns <= MAX_TOTAL_COLUMNS,
             "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
         );
+    }
+
+    #[test]
+    fn ecc_op_pgo_modes() {
+        let stdin = StdIn::default();
+        let pgo_data = execution_profile_from_guest(GUEST_ECC_OP, GuestOptions::default(), stdin);
+
+        let expected_metrics = MachineTestMetrics {
+            powdr_expected_sum: AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 24616,
+                    log_up: 19516,
+                },
+                constraints: 18687,
+                bus_interactions: 15895,
+            },
+            powdr_expected_machine_count: 10,
+            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+        };
+
+        test_machine_compilation(MachineTestParams {
+            pgo_config: PgoConfig::None,
+            guest: GUEST_ECC_OP,
+            guest_apc: GUEST_ECC_OP_APC_PGO,
+            guest_skip: GUEST_ECC_OP_SKIP,
+            expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 67597,
+                    log_up: 50200,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 8653,
+                    log_up: 7824,
+                },
+            }),
+        });
+
+        let expected_metrics_instruction = MachineTestMetrics {
+            powdr_expected_sum: AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 13935,
+                    log_up: 11848,
+                },
+                constraints: 7650,
+                bus_interactions: 9918,
+            },
+            powdr_expected_machine_count: 10,
+            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+        };
+
+        test_machine_compilation(MachineTestParams {
+            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+            guest: GUEST_ECC_OP,
+            guest_apc: GUEST_ECC_OP_APC_PGO,
+            guest_skip: GUEST_ECC_OP_SKIP,
+            expected_metrics: &expected_metrics_instruction,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 67597,
+                    log_up: 50200,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 8653,
+                    log_up: 7824,
+                },
+            }),
+        });
+
+        let expected_metrics_cell = MachineTestMetrics {
+            powdr_expected_sum: AirMetrics {
+                widths: AirWidths {
+                    preprocessed: 0,
+                    main: 8653,
+                    log_up: 7824,
+                },
+                constraints: 6356,
+                bus_interactions: 5893,
+            },
+            powdr_expected_machine_count: 10,
+            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+        };
+
+        test_machine_compilation(MachineTestParams {
+            pgo_config: PgoConfig::Cell(pgo_data, None),
+            guest: GUEST_ECC_OP,
+            guest_apc: GUEST_ECC_OP_APC_PGO,
+            guest_skip: GUEST_ECC_OP_SKIP,
+            expected_metrics: &expected_metrics_cell,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 67597,
+                    log_up: 50200,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 8653,
+                    log_up: 7824,
+                },
+            }),
+        });
     }
 }
