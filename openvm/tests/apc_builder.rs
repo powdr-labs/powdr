@@ -280,6 +280,35 @@ mod single_instruction_tests {
         let program = [sra(68, 40, 3, 1)];
         assert_machine_output(program.to_vec(), "single_sra");
     }
+
+    #[test]
+    fn single_seqz() {
+        // seqz translates to "sltu 1"
+        // SLTU rd_ptr = 116, rs1_ptr = 116, rs2 = 1, rs2_as = 0
+        let program = [sltu(116, 116, 1, 0)];
+        assert_machine_output(program.to_vec(), "single_seqz");
+    }
+    #[test]
+    fn single_beqz() {
+        // beqz translates to "beq 0"
+        let program = [beq(8, 0, 2)];
+        assert_machine_output(program.to_vec(), "single_beqz");
+    }
+
+    #[test]
+    fn memcpy_block() {
+        // SLTU rd_ptr = 52, rs1_ptr = 52, rs2 = 1, rs2_as = 0
+        // SLTU rd_ptr = 56, rs1_ptr = 56, rs2 = 1, rs2_as = 0
+        // OR rd_ptr = 52, rs1_ptr = 52, rs2 = 56, rs2_as = 1
+        // BNE 52 0 248 1 1
+        let program = [
+            sltu(52, 52, 1, 0),
+            sltu(56, 56, 1, 0),
+            or(52, 52, 56, 1),
+            bne(52, 0, 248),
+        ];
+        assert_machine_output(program.to_vec(), "memcpy_block");
+    }
 }
 
 mod complex_tests {

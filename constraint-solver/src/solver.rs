@@ -73,7 +73,7 @@ pub enum Error {
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
+pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -126,6 +126,15 @@ where
         }
     }
 
+    /// Computes the best-known range constraints for all variables.
+    /// TODO could be done in combination with solve.
+    pub fn compute_range_constraints(
+        mut self,
+    ) -> Result<impl RangeConstraintProvider<T::FieldType, V>, Error> {
+        self.loop_until_no_progress()?;
+        Ok(self.range_constraints)
+    }
+
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments and a simplified version of the algebraic constraints.
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
@@ -169,6 +178,9 @@ where
                 .solve(&self.range_constraints)
                 .map_err(Error::QseSolvingError)?
                 .effects;
+            if !effects.is_empty() {
+                log::debug!("From {}", self.constraint_system.algebraic_constraints()[i]);
+            }
             for effect in effects {
                 progress |= self.apply_effect(effect);
             }
@@ -190,6 +202,7 @@ where
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_e| Error::BusInteractionError)?;
         for effect in effects.into_iter().flatten() {
+            log::debug!("From bus interaction");
             progress |= self.apply_effect(effect);
         }
         Ok(progress)
@@ -202,6 +215,7 @@ where
             &self.range_constraints,
         );
         for (x, y) in &equivalences {
+            log::debug!("Found equivalence from quadratic equivalences: {x} = {y}");
             self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
         }
         !equivalences.is_empty()
@@ -253,7 +267,7 @@ where
                 self.apply_assignment(variable, &GroupedExpression::from_number(value));
             } else {
                 // The range constraint was updated.
-                log::trace!("({variable}: {range_constraint})");
+                log::debug!("({variable}: {range_constraint})");
             }
             true
         } else {
