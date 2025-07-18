@@ -33,8 +33,8 @@ impl PgoConfig {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(pc_index_count, _) | PgoConfig::Instruction(pc_index_count) => {
-                pc_index_count.get(&pc).copied()
+            PgoConfig::Cell(pc_count, _) | PgoConfig::Instruction(pc_count) => {
+                pc_count.get(&pc).copied()
             }
             PgoConfig::None => None,
         }

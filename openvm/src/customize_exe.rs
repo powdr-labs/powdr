@@ -236,7 +236,8 @@ pub fn customize(
                     g: BabyBear::ZERO,
                 };
 
-                let start_index = (block.start_pc - exe.program.pc_base as u64)
+                let start_index = ((block.start_pc - exe.program.pc_base as u64)
+                    / exe.program.step as u64)
                     .try_into()
                     .unwrap();
                 let n_acc = block.statements.len();
