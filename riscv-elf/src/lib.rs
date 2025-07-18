@@ -7,9 +7,9 @@ use std::{
 };
 
 use goblin::elf::{
-    header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFDATA2LSB, EM_RISCV, ET_DYN},
+    header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFCLASS64, ELFDATA2LSB, EM_RISCV, ET_DYN},
     program_header::PT_LOAD,
-    reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
+    reloc::{R_RISCV_32, R_RISCV_64, R_RISCV_HI20, R_RISCV_RELATIVE},
     Elf, ProgramHeader,
 };
 use itertools::{Either, Itertools};
@@ -34,11 +34,11 @@ pub const PT_POWDR_PROVER_DATA: u32 = 0x600000da;
 
 pub struct ElfProgram {
     dbg: DebugInfo,
-    data_map: BTreeMap<u32, Data>,
-    text_labels: BTreeSet<u32>,
+    data_map: BTreeMap<u64, Data>,
+    text_labels: BTreeSet<u64>,
     instructions: Vec<HighLevelInsn>,
-    prover_data_bounds: (u32, u32),
-    entry_point: u32,
+    prover_data_bounds: (u64, u64),
+    entry_point: u64,
 }
 
 pub fn load_elf(file_name: &Path) -> ElfProgram {
@@ -50,10 +50,10 @@ pub fn load_elf(file_name: &Path) -> ElfProgram {
 pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
     let elf = Elf::parse(file_buffer).unwrap();
 
-    // Assert the file is 32 bits.
+    // Assert the file is 64 bits.
     assert_eq!(
-        elf.header.e_ident[EI_CLASS], ELFCLASS32,
-        "Only 32-bit ELF files are supported!"
+        elf.header.e_ident[EI_CLASS], ELFCLASS64,
+        "Only 64-bit ELF files are supported!"
     );
 
     // Assert the file is little-endian.
@@ -83,15 +83,14 @@ pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
     for ph in elf.program_headers.iter() {
         match ph.p_type {
             PT_LOAD => {
-                address_map.0.insert(ph.p_vaddr as u32, ph);
+                address_map.0.insert(ph.p_vaddr, ph);
             }
             PT_POWDR_PROVER_DATA => {
                 assert_eq!(
                     prover_data_bounds, None,
                     "Only one prover data segment is supported!"
                 );
-                prover_data_bounds =
-                    Some((ph.p_vaddr as u32, ph.p_vaddr as u32 + ph.p_memsz as u32));
+                prover_data_bounds = Some((ph.p_vaddr, ph.p_vaddr + ph.p_memsz));
             }
             _ => {}
         }
@@ -102,16 +101,16 @@ pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
 
     // Set of R_RISCV_HI20 relocations, needed in non-PIE code to identify
     // loading of absolute addresses to text.
-    let text_rellocs_set: BTreeSet<u32> = elf
+    let text_rellocs_set: BTreeSet<u64> = elf
         .shdr_relocs
         .iter()
         .flat_map(|(_, r)| r.iter())
         .filter(|r| r.r_type == R_RISCV_HI20)
-        .map(|r| r.r_offset as u32)
+        .map(|r| r.r_offset)
         .collect();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
-    let mut referenced_text_addrs = BTreeSet::from([elf.entry as u32]);
+    let mut referenced_text_addrs = BTreeSet::from([elf.entry]);
 
     // Find the text addresses referenced from text sections and load the data sections.
     let mut data_map = BTreeMap::new();
@@ -202,7 +201,7 @@ pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
         data_map,
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
-        entry_point: elf.entry as u32,
+        entry_point: elf.entry,
         prover_data_bounds,
     }
 }
@@ -210,12 +209,12 @@ pub fn load_elf_from_buffer(file_buffer: &[u8]) -> ElfProgram {
 fn pie_relocate_data_sections(
     elf: &Elf,
     address_map: &AddressMap,
-    data_map: &mut BTreeMap<u32, Data>,
-    referenced_text_addrs: &mut BTreeSet<u32>,
+    data_map: &mut BTreeMap<u64, Data>,
+    referenced_text_addrs: &mut BTreeSet<u64>,
 ) {
     // In PIE files, we can read the dynamic relocation table.
     for r in elf.dynrelas.iter() {
-        let addr = r.r_offset as u32;
+        let addr = r.r_offset;
         if !address_map.is_in_data_section(addr) {
             unimplemented!("We assumed all dynamic relocations were data relocations!");
         }
@@ -223,7 +222,7 @@ fn pie_relocate_data_sections(
         // We only support the R_RISCV_RELATIVE relocation type:
         assert_eq!(r.r_type, R_RISCV_RELATIVE, "Unsupported relocation type!");
 
-        let data_value = r.r_addend.unwrap() as u32;
+        let data_value = r.r_addend.unwrap() as u64;
 
         if address_map.is_in_text_section(data_value) {
             data_map.insert(addr, Data::TextLabel(data_value));
@@ -242,21 +241,21 @@ fn pie_relocate_data_sections(
 fn static_relocate_data_sections(
     elf: &Elf,
     address_map: &AddressMap,
-    data_map: &mut BTreeMap<u32, Data>,
-    referenced_text_addrs: &mut BTreeSet<u32>,
+    data_map: &mut BTreeMap<u64, Data>,
+    referenced_text_addrs: &mut BTreeSet<u64>,
 ) {
     // In non-PIE files, we need to use the linking relocation table.
     for r in elf.shdr_relocs.iter().flat_map(|(_, relocs)| relocs.iter()) {
-        let addr = r.r_offset as u32;
+        let addr = r.r_offset;
         if !address_map.is_in_data_section(addr) {
             // Relocation of the text section has already been handled in instruction lifting.
             continue;
         }
 
-        // We only support the R_RISCV_32 relocation type for the data section:
-        assert_eq!(r.r_type, R_RISCV_32, "Unsupported relocation type!");
+        // We only support the R_RISCV_64 relocation type for the data section:
+        assert_eq!(r.r_type, R_RISCV_64, "Unsupported relocation type!");
 
-        let Entry::Occupied(mut entry) = data_map.entry(r.r_offset as u32) else {
+        let Entry::Occupied(mut entry) = data_map.entry(r.r_offset) else {
             panic!("Unexpected 0 in relocated data entry!");
         };
 
@@ -279,7 +278,7 @@ impl ElfProgram {
         &self.dbg
     }
 
-    pub fn text_labels(&self) -> &BTreeSet<u32> {
+    pub fn text_labels(&self) -> &BTreeSet<u64> {
         &self.text_labels
     }
 }
@@ -292,7 +291,7 @@ impl RiscVProgram for ElfProgram {
             .enumerate()
             .map(|(id, (dir, file))| SourceFileInfo {
                 // +1 because files are indexed from 1
-                id: id as u32 + 1,
+                id: id as u64 + 1,
                 file,
                 dir,
             })
@@ -389,7 +388,7 @@ impl RiscVProgram for ElfProgram {
             })
     }
 
-    fn prover_data_bounds(&self) -> (u32, u32) {
+    fn prover_data_bounds(&self) -> (u64, u64) {
         self.prover_data_bounds
     }
 
@@ -432,7 +431,7 @@ impl InstructionArgs for WrappedArgs<'_> {
         }
     }
 
-    fn rri(&self) -> Result<(Register, Register, u32), Self::Error> {
+    fn rri(&self) -> Result<(Register, Register, u64), Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
@@ -442,7 +441,7 @@ impl InstructionArgs for WrappedArgs<'_> {
             } => Ok((
                 Register::new(*rd as u8),
                 Register::new(*rs1 as u8),
-                *imm as u32,
+                *imm as u64,
             )),
             _ => Err(format!("Expected: rd, rs1, imm, got {:?}", self.args)),
         }
@@ -480,14 +479,14 @@ impl InstructionArgs for WrappedArgs<'_> {
         }
     }
 
-    fn ri(&self) -> Result<(Register, u32), Self::Error> {
+    fn ri(&self) -> Result<(Register, u64), Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
                 rd: Some(rd),
                 rs1: None,
                 rs2: None,
-            } => Ok((Register::new(*rd as u8), *imm as u32)),
+            } => Ok((Register::new(*rd as u8), *imm as u64)),
             _ => Err(format!("Expected: rd, imm, got {:?}", self.args)),
         }
     }
@@ -546,7 +545,7 @@ impl InstructionArgs for WrappedArgs<'_> {
         }
     }
 
-    fn rro(&self) -> Result<(Register, Register, u32), Self::Error> {
+    fn rro(&self) -> Result<(Register, Register, u64), Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
@@ -556,7 +555,7 @@ impl InstructionArgs for WrappedArgs<'_> {
             } => Ok((
                 Register::new(*rd as u8),
                 Register::new(*rs1 as u8),
-                *imm as u32,
+                *imm as u64,
             )),
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
@@ -566,7 +565,7 @@ impl InstructionArgs for WrappedArgs<'_> {
             } => Ok((
                 Register::new(*rs2 as u8),
                 Register::new(*rs1 as u8),
-                *imm as u32,
+                *imm as u64,
             )),
             _ => Err(format!(
                 "Expected: {{rd, rs1 | rs2, rs1}}, imm, got {:?}",
@@ -591,20 +590,20 @@ impl InstructionArgs for WrappedArgs<'_> {
 /// Indexes the program sections by their virtual address.
 ///
 /// Allows for querying if an address is in a data or text section.
-pub struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
+pub struct AddressMap<'a>(BTreeMap<u64, &'a ProgramHeader>);
 
 impl AddressMap<'_> {
-    fn is_in_data_section(&self, addr: u32) -> bool {
+    fn is_in_data_section(&self, addr: u64) -> bool {
         self.get_section_of_addr(addr)
             .is_some_and(|section| !section.is_executable())
     }
 
-    fn is_in_text_section(&self, addr: u32) -> bool {
+    fn is_in_text_section(&self, addr: u64) -> bool {
         self.get_section_of_addr(addr)
             .is_some_and(ProgramHeader::is_executable)
     }
 
-    fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {
+    fn get_section_of_addr(&self, addr: u64) -> Option<&ProgramHeader> {
         // Get the latest section that starts before the address.
         let section = self
             .0
@@ -612,7 +611,7 @@ impl AddressMap<'_> {
             .next_back()
             .map(|(_, &section)| section)?;
 
-        if addr > section.p_vaddr as u32 + section.p_memsz as u32 {
+        if addr > section.p_vaddr + section.p_memsz {
             // The address is after the end of the section.
             None
         } else {
@@ -623,23 +622,23 @@ impl AddressMap<'_> {
 
 #[derive(Debug)]
 enum Data {
-    TextLabel(u32),
-    Value(u32),
+    TextLabel(u64),
+    Value(u64),
 }
 
-fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Data>) {
-    for word in data.chunks(4) {
-        let mut padded = [0; 4];
+fn load_data_section(mut addr: u64, data: &[u8], data_map: &mut BTreeMap<u64, Data>) {
+    for word in data.chunks(8) {
+        let mut padded = [0; 8];
         padded[..word.len()].copy_from_slice(word);
 
-        let value = u32::from_le_bytes(padded);
+        let value = u64::from_le_bytes(padded);
         if value != 0 {
             data_map.insert(addr, Data::Value(value));
         } else {
             // We don't need to store zero values, as they are implicit.
         }
 
-        addr += 4;
+        addr += 8;
     }
 }
 
@@ -650,7 +649,7 @@ enum UnimpOrInstruction {
 }
 
 impl UnimpOrInstruction {
-    fn len(&self) -> u32 {
+    fn len(&self) -> u64 {
         match self {
             UnimpOrInstruction::Unimp16 => 2,
             UnimpOrInstruction::Unimp32 => 4,
@@ -663,22 +662,22 @@ impl UnimpOrInstruction {
 }
 
 struct MaybeInstruction {
-    address: u32,
+    address: u64,
     insn: UnimpOrInstruction,
 }
 
 #[derive(Debug)]
 enum HighLevelImmediate {
     None,
-    CodeLabel(u32),
+    CodeLabel(u64),
     Value(i32),
 }
 
 #[derive(Debug)]
 struct HighLevelArgs {
-    rd: Option<u32>,
-    rs1: Option<u32>,
-    rs2: Option<u32>,
+    rd: Option<u64>,
+    rs1: Option<u64>,
+    rs2: Option<u64>,
     imm: HighLevelImmediate,
 }
 
@@ -696,8 +695,8 @@ impl Default for HighLevelArgs {
 
 #[derive(Debug)]
 struct Location {
-    address: u32,
-    size: u32,
+    address: u64,
+    size: u64,
 }
 
 #[derive(Debug)]
@@ -713,9 +712,9 @@ enum ReadOrWrite<'a, T> {
 }
 
 struct InstructionLifter<'a> {
-    rellocs_set: &'a BTreeSet<u32>,
+    rellocs_set: &'a BTreeSet<u64>,
     address_map: &'a AddressMap<'a>,
-    referenced_text_addrs: ReadOrWrite<'a, BTreeSet<u32>>,
+    referenced_text_addrs: ReadOrWrite<'a, BTreeSet<u64>>,
 }
 
 impl InstructionLifter<'_> {
@@ -725,12 +724,12 @@ impl InstructionLifter<'_> {
         lo: i32,
         rd_ui: usize,
         rd_addi: usize,
-        insn2_addr: u32,
+        insn2_addr: u64,
         is_address: bool,
     ) -> Option<(&'static str, HighLevelArgs)> {
         let immediate = hi.wrapping_add(lo);
 
-        let is_ref_to_text = is_address && self.address_map.is_in_text_section(immediate as u32) &&
+        let is_ref_to_text = is_address && self.address_map.is_in_text_section(immediate as u64) &&
             // This is very sad: sometimes the global pointer lands in the
             // middle of the text section, so we have to make an exception when
             // setting the gp (x3).
@@ -740,7 +739,7 @@ impl InstructionLifter<'_> {
             // If rd_ui != rd_addi, we don't set rd_ui, thus our behavior is not
             // conformant, but it is probably fine for compiler generated code,
             // and it has worked so far.
-            ("la", HighLevelImmediate::CodeLabel(immediate as u32))
+            ("la", HighLevelImmediate::CodeLabel(immediate as u64))
         } else if rd_ui == rd_addi {
             if let ReadOrWrite::Read(referenced_text_addrs) = &self.referenced_text_addrs {
                 if referenced_text_addrs.contains(&insn2_addr) {
@@ -760,7 +759,7 @@ impl InstructionLifter<'_> {
         Some((
             op,
             HighLevelArgs {
-                rd: Some(rd_ui as u32),
+                rd: Some(rd_ui as u64),
                 imm,
                 ..Default::default()
             },
@@ -879,12 +878,12 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         // We don't support code introspection, so it is better
                         // to panic if this is the case:
                         let addr = hi.wrapping_add(*lo);
-                        assert!(!self.address_map.is_in_text_section(addr as u32));
+                        assert!(!self.address_map.is_in_text_section(addr as u64));
 
                         HighLevelInsn {
                             op: l_op.to_string(),
                             args: HighLevelArgs {
-                                rd: Some(*rd_l as u32),
+                                rd: Some(*rd_l as u64),
                                 rs1: Some(0), // this is x0 because the entire address is in the immediate
                                 imm: HighLevelImmediate::Value(addr),
                                 ..Default::default()
@@ -904,7 +903,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         // We don't support code modification, so it is better
                         // to panic if this is the case:
                         let addr = hi.wrapping_add(*lo);
-                        assert!(!self.address_map.is_in_text_section(addr as u32));
+                        assert!(!self.address_map.is_in_text_section(addr as u64));
 
                         // Otherwise, this is a data store instruction. To be
                         // more conformant, it is better to let two
@@ -922,8 +921,8 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if rd_auipc == hi_reg && hi_reg == link_reg => HighLevelInsn {
                         op: "jal",
                         args: HighLevelArgs {
-                            imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
-                            rd: Some(*link_reg as u32),
+                            imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u64),
+                            rd: Some(*link_reg as u64),
                             ..Default::default()
                         },
                         loc,
@@ -939,7 +938,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if *rd_auipc == 6 => HighLevelInsn {
                         op: "tail",
                         args: HighLevelArgs {
-                            imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
+                            imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u64),
                             ..Default::default()
                         },
                         loc,
@@ -982,7 +981,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         let mut imm = match insn.opc {
             // All jump instructions that have an address as immediate
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                let addr = (insn.imm.unwrap() + loc.address as i32) as u32;
+                let addr = (insn.imm.unwrap() as i64 + loc.address as i64) as u64;
                 if let ReadOrWrite::Write(refs) = &mut self.referenced_text_addrs {
                     refs.insert(addr);
                 }
@@ -1008,7 +1007,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 return HighLevelInsn {
                     op: "li",
                     args: HighLevelArgs {
-                        rd: insn.rd.map(|x| x as u32),
+                        rd: insn.rd.map(|x| x as u64),
                         imm: HighLevelImmediate::Value(
                             insn.imm.unwrap().wrapping_add(loc.address as i32),
                         ),
@@ -1038,9 +1037,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         HighLevelInsn {
             op: insn.opc.to_string(),
             args: HighLevelArgs {
-                rd: insn.rd.map(|x| x as u32),
-                rs1: insn.rs1.map(|x| x as u32),
-                rs2: insn.rs2.map(|x| x as u32),
+                rd: insn.rd.map(|x| x as u64),
+                rs1: insn.rs1.map(|x| x as u64),
+                rs2: insn.rs2.map(|x| x as u64),
                 imm,
             },
             loc,
@@ -1051,11 +1050,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 /// Find all the references to text addresses in the instructions and add them
 /// to the set.
 fn search_text_addrs(
-    base_addr: u32,
+    base_addr: u64,
     data: &[u8],
     address_map: &AddressMap,
-    rellocs_set: &BTreeSet<u32>,
-    referenced_text_addrs: &mut BTreeSet<u32>,
+    rellocs_set: &BTreeSet<u64>,
+    referenced_text_addrs: &mut BTreeSet<u64>,
 ) {
     try_map_two_by_two(
         RiscVInstructionIterator::new(base_addr, data),
@@ -1072,11 +1071,11 @@ fn search_text_addrs(
 /// Turn addresses into labels and merge instructions into
 /// pseudoinstructions.
 fn lift_instructions(
-    base_addr: u32,
+    base_addr: u64,
     data: &[u8],
     address_map: &AddressMap,
-    rellocs_set: &BTreeSet<u32>,
-    referenced_text_addrs: &BTreeSet<u32>,
+    rellocs_set: &BTreeSet<u64>,
+    referenced_text_addrs: &BTreeSet<u64>,
 ) -> Vec<HighLevelInsn> {
     try_map_two_by_two(
         RiscVInstructionIterator::new(base_addr, data),
@@ -1089,12 +1088,12 @@ fn lift_instructions(
 }
 
 struct RiscVInstructionIterator<'a> {
-    curr_address: u32,
+    curr_address: u64,
     remaining_data: &'a [u8],
 }
 
 impl RiscVInstructionIterator<'_> {
-    fn new(base_addr: u32, data: &[u8]) -> RiscVInstructionIterator {
+    fn new(base_addr: u64, data: &[u8]) -> RiscVInstructionIterator {
         RiscVInstructionIterator {
             curr_address: base_addr,
             remaining_data: data,

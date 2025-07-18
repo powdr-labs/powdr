@@ -1,7 +1,7 @@
 /// A single 32-bit data value.
 pub enum SingleDataValue {
     /// A literal value.
-    Value(u32),
+    Value(u64),
     /// The value of a pointer to a text label. Since there may be not a
     /// 1-to-1 correspondence between nativa ISAs and Powdr ASM instructions,
     /// this is passed unresolved to the code generator.

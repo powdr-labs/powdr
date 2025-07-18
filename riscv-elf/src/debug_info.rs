@@ -38,12 +38,12 @@ pub struct DebugInfo {
     /// Maps addresses to symbol names.
     pub symbols: SymbolTable,
     /// Human readable notes about an address
-    pub notes: HashMap<u32, String>,
+    pub notes: HashMap<u64, String>,
 }
 
 #[derive(Debug)]
 pub struct SourceLocationInfo {
-    pub address: u32,
+    pub address: u64,
     pub file: u64,
     pub line: u64,
     pub col: u64,
@@ -55,8 +55,8 @@ impl DebugInfo {
         elf: &Elf,
         file_buffer: &[u8],
         address_map: &AddressMap,
-        is_data_addr: &dyn Fn(u32) -> bool,
-        jump_targets: &BTreeSet<u32>,
+        is_data_addr: &dyn Fn(u64) -> bool,
+        jump_targets: &BTreeSet<u64>,
     ) -> Result<Self, Error> {
         let dwarf = load_dwarf_sections(elf, file_buffer)?;
 
@@ -160,7 +160,7 @@ fn read_source_locations(
             }
 
             source_locations.push(SourceLocationInfo {
-                address: row.address() as u32,
+                address: row.address(),
                 file: row.file_index() + file_idx_delta,
                 line: match row.line() {
                     None => 0,
@@ -183,10 +183,10 @@ fn read_unit_symbols(
     dwarf: &Dwarf<Reader>,
     unit: UnitRef<Reader>,
     file_idx_delta: u64,
-    is_data_addr: &dyn Fn(u32) -> bool,
-    jump_targets: &BTreeSet<u32>,
-    symbols: &mut Vec<(String, u32)>,
-    notes: &mut HashMap<u32, String>,
+    is_data_addr: &dyn Fn(u64) -> bool,
+    jump_targets: &BTreeSet<u64>,
+    symbols: &mut Vec<(String, u64)>,
+    notes: &mut HashMap<u64, String>,
 ) -> Result<(), Error> {
     // To simplify the algorithm, we start the name stack with a placeholder value.
     let mut full_name = vec![None];
@@ -345,7 +345,7 @@ fn as_str<'a>(
 fn get_static_var_address(
     unit: &Unit<Reader>,
     entry: &DebuggingInformationEntry<Reader>,
-) -> Result<Option<u32>, gimli::Error> {
+) -> Result<Option<u64>, gimli::Error> {
     let Some(attr) = find_attr(entry, gimli::DW_AT_location) else {
         // No location available
         return Ok(None);
@@ -365,14 +365,14 @@ fn get_static_var_address(
         return Ok(None);
     };
 
-    Ok(Some(address as u32))
+    Ok(Some(address as u64))
 }
 
 fn get_function_start(
     dwarf: &Dwarf<Reader>,
     unit: &Unit<Reader>,
     entry: &DebuggingInformationEntry<Reader>,
-) -> Result<Vec<u32>, gimli::Error> {
+) -> Result<Vec<u64>, gimli::Error> {
     let mut ret = Vec::new();
 
     if let Some(low_pc) = find_attr(entry, gimli::DW_AT_low_pc)
@@ -380,7 +380,7 @@ fn get_function_start(
         .transpose()?
         .flatten()
     {
-        ret.push(low_pc as u32);
+        ret.push(low_pc);
     }
 
     if let Some(ranges) = find_attr(entry, gimli::DW_AT_ranges)
@@ -390,7 +390,7 @@ fn get_function_start(
     {
         let mut iter = dwarf.ranges(unit, ranges)?;
         while let Some(range) = iter.next()? {
-            ret.push(range.begin as u32);
+            ret.push(range.begin);
         }
     }
 
@@ -408,12 +408,12 @@ fn filter_locations_in_text(locations: &mut Vec<SourceLocationInfo>, address_map
         locations.drain(done_idx..start_idx);
 
         // The end address is one past the last byte of the section.
-        let end_addr = start_addr + header.p_memsz as u32;
+        let end_addr = start_addr + header.p_memsz;
         done_idx += find_first_idx(&locations[done_idx..], end_addr);
     }
 }
 
-fn find_first_idx(slice: &[SourceLocationInfo], addr: u32) -> usize {
+fn find_first_idx(slice: &[SourceLocationInfo], addr: u64) -> usize {
     match slice.binary_search_by_key(&addr, |loc| loc.address) {
         Ok(mut idx) => {
             while idx > 0 && slice[idx - 1].address == addr {
@@ -427,7 +427,7 @@ fn find_first_idx(slice: &[SourceLocationInfo], addr: u32) -> usize {
 
 /// Index the symbols by their addresses.
 #[derive(Default)]
-pub struct SymbolTable(BTreeMap<u32, Vec<String>>);
+pub struct SymbolTable(BTreeMap<u64, Vec<String>>);
 
 impl SymbolTable {
     pub fn new(elf: &Elf) -> SymbolTable {
@@ -445,19 +445,19 @@ impl SymbolTable {
         )
     }
 
-    fn default_label(addr: u32) -> Cow<'static, str> {
+    fn default_label(addr: u64) -> Cow<'static, str> {
         Cow::Owned(format!("__.L{addr:08x}"))
     }
 
     /// Get a symbol, if the address has one.
-    pub fn try_get_one(&self, addr: u32) -> Option<&str> {
+    pub fn try_get_one(&self, addr: u64) -> Option<&str> {
         self.0
             .get(&addr)
             .and_then(|v| v.first().map(|s| s.as_str()))
     }
 
     /// Get a symbol, or a default label formed from the address value.
-    pub fn get_one(&self, addr: u32) -> Cow<str> {
+    pub fn get_one(&self, addr: u64) -> Cow<str> {
         match self.try_get_one(addr) {
             Some(s) => Cow::Borrowed(s),
             None => Self::default_label(addr),
@@ -465,7 +465,7 @@ impl SymbolTable {
     }
 
     /// Get all symbol, or a default label formed from the address value.
-    pub fn get_all(&self, addr: u32) -> impl Iterator<Item = Cow<str>> {
+    pub fn get_all(&self, addr: u64) -> impl Iterator<Item = Cow<str>> {
         static EMPTY: Vec<String> = Vec::new();
         let elems = self.0.get(&addr).unwrap_or(&EMPTY);
         let default = if elems.is_empty() {
@@ -481,7 +481,7 @@ impl SymbolTable {
 
     /// Returns a symbol at the address or at the first address before this one that has a symbol.
     /// Also returns the offset of the provided address relative to that symbol.
-    pub fn try_get_one_or_preceding(&self, addr: u32) -> Option<(&str, u32)> {
+    pub fn try_get_one_or_preceding(&self, addr: u64) -> Option<(&str, u64)> {
         self.0
             .range(..=addr)
             .last()
@@ -489,14 +489,14 @@ impl SymbolTable {
     }
 }
 
-fn read_symbol_table(elf: &Elf) -> Vec<(String, u32)> {
+fn read_symbol_table(elf: &Elf) -> Vec<(String, u64)> {
     elf.syms
         .iter()
         .filter_map(|sym| {
             // We only care about global symbols that have string names, and are
             // either functions or variables.
             if sym.st_name != 0 && (sym.st_type() == STT_OBJECT || sym.st_type() == STT_FUNC) {
-                Some((elf.strtab[sym.st_name].to_owned(), sym.st_value as u32))
+                Some((elf.strtab[sym.st_name].to_owned(), sym.st_value))
             } else {
                 None
             }
@@ -506,7 +506,7 @@ fn read_symbol_table(elf: &Elf) -> Vec<(String, u32)> {
 
 /// Deduplicates by removing identical entries and appending the address to
 /// repeated names. The vector ends up sorted.
-fn dedup_names(symbols: &mut Vec<(String, u32)>) {
+fn dedup_names(symbols: &mut Vec<(String, u64)>) {
     while dedup_names_pass(symbols) {}
 }
 
@@ -514,7 +514,7 @@ fn dedup_names(symbols: &mut Vec<(String, u32)>) {
 /// the name.
 ///
 /// Returns `true` if the names were deduplicated.
-fn dedup_names_pass(symbols: &mut Vec<(String, u32)>) -> bool {
+fn dedup_names_pass(symbols: &mut Vec<(String, u64)>) -> bool {
     symbols.sort_unstable();
     symbols.dedup();
 
