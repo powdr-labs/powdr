@@ -42,7 +42,7 @@ fn compile(program: Vec<Instruction<BabyBear>>) -> String {
     build::<BabyBearOpenVmApcAdapter>(
         BasicBlock {
             statements: program.into_iter().map(Instr).collect(),
-            start_idx: 0,
+            start_pc: 0,
         },
         vm_config,
         degree_bound,

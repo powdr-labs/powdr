@@ -481,7 +481,8 @@ impl SymbolTable {
 
     /// Returns a symbol at the address or at the first address before this one that has a symbol.
     /// Also returns the offset of the provided address relative to that symbol.
-    pub fn try_get_one_or_preceding(&self, addr: u32) -> Option<(&str, u32)> {
+    pub fn try_get_one_or_preceding(&self, addr: u64) -> Option<(&str, u32)> {
+        let addr = u32::try_from(addr).unwrap();
         self.0
             .range(..=addr)
             .last()

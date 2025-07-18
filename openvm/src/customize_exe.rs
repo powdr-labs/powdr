@@ -173,21 +173,14 @@ pub fn customize(
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .filter_map(|block| {
-                Some((
-                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
-                    block,
-                ))
-            })
+            .filter_map(|block| Some((pgo_config.pc_execution_count(block.start_pc)?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = debug_info
                 .symbols
-                .try_get_one_or_preceding(
-                    block.start_address(exe.program.pc_base, exe.program.step),
-                )
+                .try_get_one_or_preceding(block.start_pc)
                 .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
                 .unwrap_or_default();
             tracing::debug!(
@@ -243,9 +236,11 @@ pub fn customize(
                     g: BabyBear::ZERO,
                 };
 
-                let pc = block.start_idx;
+                let start_index = (block.start_pc - exe.program.pc_base as u64)
+                    .try_into()
+                    .unwrap();
                 let n_acc = block.statements.len();
-                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[pc..pc + n_acc]
+                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[start_index..start_index + n_acc]
                     .iter()
                     .enumerate()
                     .map(|(i, x)| {
@@ -262,7 +257,7 @@ pub fn customize(
                 let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
 
                 let len_before = program.len();
-                program.splice(pc..pc + n_acc, new_instrs);
+                program.splice(start_index..start_index + n_acc, new_instrs);
                 assert_eq!(program.len(), len_before);
 
                 let is_valid_column = machine
@@ -363,7 +358,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
     fn create(
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
-        pgo_program_idx_count: &HashMap<u32, u32>,
+        pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: VmConfig<OriginalAirs<BabyBear>, OpenVmBusInteractionHandler<BabyBearField>>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
@@ -382,9 +377,8 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             })
             .sum();
 
-        let execution_frequency = *pgo_program_idx_count
-            .get(&(apc.block.start_idx as u32))
-            .unwrap_or(&0) as usize;
+        let execution_frequency =
+            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
 
         Self {
             apc,
