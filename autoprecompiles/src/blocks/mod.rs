@@ -55,9 +55,6 @@ pub trait Program<I> {
 }
 
 pub trait Instruction<T>: Clone {
-    /// The opcode of the instruction.
-    fn opcode(&self) -> usize;
-
     /// Turns the instruction into a symbolic representation.
     fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<T>;
 }
