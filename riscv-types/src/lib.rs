@@ -89,12 +89,12 @@ pub enum Statement<'a, L: AsRef<str>, A: InstructionArgs> {
 
 pub struct MemEntry {
     pub label: Option<String>,
-    pub addr: u32,
+    pub addr: u64,
     pub value: SingleDataValue,
 }
 
 pub struct SourceFileInfo<'a> {
-    pub id: u32,
+    pub id: u64,
     pub dir: &'a str,
     pub file: &'a str,
 }
@@ -113,7 +113,7 @@ pub trait RiscVProgram {
     ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>>;
 
     /// Returns the addresses of the start and end of prover data.
-    fn prover_data_bounds(&self) -> (u32, u32);
+    fn prover_data_bounds(&self) -> (u64, u64);
 
     /// The name of the function that should be called to start the program.
     fn start_function(&self) -> impl AsRef<str>;
@@ -124,15 +124,15 @@ pub trait InstructionArgs {
 
     fn l(&self) -> Result<impl AsRef<str>, Self::Error>;
     fn r(&self) -> Result<Register, Self::Error>;
-    fn rri(&self) -> Result<(Register, Register, u32), Self::Error>;
+    fn rri(&self) -> Result<(Register, Register, u64), Self::Error>;
     /// Returns the usual rd, rs1, rs2
     fn rrr(&self) -> Result<(Register, Register, Register), Self::Error>;
     /// Special case used in amo* instructions, returning rd, rs2, rs1
     fn rrr2(&self) -> Result<(Register, Register, Register), Self::Error>;
-    fn ri(&self) -> Result<(Register, u32), Self::Error>;
+    fn ri(&self) -> Result<(Register, u64), Self::Error>;
     fn rr(&self) -> Result<(Register, Register), Self::Error>;
     fn rrl(&self) -> Result<(Register, Register, impl AsRef<str>), Self::Error>;
     fn rl(&self) -> Result<(Register, impl AsRef<str>), Self::Error>;
-    fn rro(&self) -> Result<(Register, Register, u32), Self::Error>;
+    fn rro(&self) -> Result<(Register, Register, u64), Self::Error>;
     fn empty(&self) -> Result<(), Self::Error>;
 }
