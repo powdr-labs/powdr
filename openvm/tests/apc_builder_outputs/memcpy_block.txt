@@ -1,0 +1,34 @@
+// Bus 0 (EXECUTION_BRIDGE):
+mult=-is_valid, args=[from_state__pc_0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - 9]
+mult=is_valid, args=[244 * new_var4 * a__0_3 + from_state__pc_0 + 16, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 + 2]
+
+// Bus 1 (MEMORY):
+mult=is_valid * -1, args=[1, 52, b__0_0, b__1_0, b__2_0, b__3_0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 10)]
+mult=is_valid * -1, args=[1, 56, b__0_1, b__1_1, b__2_1, b__3_1, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_1 + 7)]
+mult=is_valid * 1, args=[1, 56, 1 - new_var3 * (b__0_1 + b__1_1 + b__2_1 + b__3_1), 0, 0, 0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 - 2]
+mult=is_valid * 1, args=[1, 52, a__0_3, 0, 0, 0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3]
+mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__1__base__prev_timestamp_3]
+mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3 + 1]
+
+// Bus 2 (PC_LOOKUP):
+mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0]
+
+// Bus 3 (VARIABLE_RANGE_CHECKER):
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1, 17]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_1, 12]
+mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3, 17]
+mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3, 12]
+
+// Bus 6 (BITWISE_LOOKUP):
+mult=is_valid * 1, args=[1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0), 1 - new_var3 * (b__0_1 + b__1_1 + b__2_1 + b__3_1), new_var3 * (b__0_1 + b__1_1 + b__2_1 + b__3_1) + new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0) + 2 * a__0_3 - 2, 1]
+
+// Algebraic constraints:
+-((1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0))) = 0
+-((1 - new_var3 * (b__0_1 + b__1_1 + b__2_1 + b__3_1)) * (new_var3 * (b__0_1 + b__1_1 + b__2_1 + b__3_1))) = 0
+new_var4 * a__0_3 * (new_var4 * a__0_3 - 1) = 0
+(1 - new_var4 * a__0_3) * a__0_3 = 0
+(1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
+(1 - new_var3 * (b__0_1 + b__1_1 + b__2_1 + b__3_1)) * (b__0_1 + b__1_1 + b__2_1 + b__3_1) = 0
+is_valid * (is_valid - 1) = 0
