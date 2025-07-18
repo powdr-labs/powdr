@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
+use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
@@ -21,7 +22,7 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
+use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
@@ -42,7 +43,7 @@ pub struct OriginalAirs<F> {
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<F> InstructionMachineHandler<F, Instr<F>> for OriginalAirs<F> {
+impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
     fn get_instruction_air(&self, instruction: &Instr<F>) -> Option<&SymbolicMachine<F>> {
         self.opcode_to_air
             .get(&instruction.0.opcode)
@@ -51,6 +52,14 @@ impl<F> InstructionMachineHandler<F, Instr<F>> for OriginalAirs<F> {
                     .get(air_name)
                     .map(|(machine, _)| machine)
             })
+    }
+
+    fn is_allowed(&self, instruction: &Instr<F>) -> bool {
+        self.opcode_to_air.contains_key(&instruction.0.opcode)
+    }
+
+    fn is_branching(&self, instruction: &Instr<F>) -> bool {
+        branch_opcodes_set().contains(&instruction.0.opcode)
     }
 }
 
@@ -77,21 +86,16 @@ impl<F> OriginalAirs<F> {
         Ok(())
     }
 
-    pub fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics> {
-        self.opcode_to_air
-            .get(&VmOpcode::from_usize(opcode))
-            .and_then(|air_name| {
-                self.air_name_to_machine
-                    .get(air_name)
-                    .map(|(_, metrics)| metrics)
-            })
+    pub fn get_instruction_metrics(&self, opcode: VmOpcode) -> Option<&AirMetrics> {
+        self.opcode_to_air.get(&opcode).and_then(|air_name| {
+            self.air_name_to_machine
+                .get(air_name)
+                .map(|(_, metrics)| metrics)
+        })
     }
 
-    pub fn allow_list(&self) -> BTreeSet<usize> {
-        self.opcode_to_air
-            .keys()
-            .map(|opcode| opcode.as_usize())
-            .collect()
+    pub fn allow_list(&self) -> Vec<VmOpcode> {
+        self.opcode_to_air.keys().cloned().collect()
     }
 }
 
@@ -185,7 +189,7 @@ impl OriginalVmConfig {
             .available_opcodes()
             .filter(|op| {
                 // Filter out the opcode that we are not interested in
-                instruction_allowlist.contains(&op.as_usize())
+                instruction_allowlist.contains(op)
             })
             .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {

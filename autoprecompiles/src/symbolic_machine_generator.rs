@@ -4,7 +4,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BasicBlock,
-    BusMap, BusType, InstructionMachineHandler, SymbolicBusInteraction, SymbolicConstraint,
+    BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicMachine,
 };
 
@@ -81,7 +81,7 @@ fn convert_expression<T, U>(
 
 pub fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
-    instruction_machine_handler: &A::InstructionMachineHandler,
+    instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
@@ -90,7 +90,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     let mut global_idx: u64 = 3;
 
     for (i, instr) in block.statements.iter().enumerate() {
-        let machine = instruction_machine_handler
+        let machine = instruction_handler
             .get_instruction_air(instr)
             .unwrap()
             .clone();

@@ -260,7 +260,7 @@ pub enum InstructionKind {
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
-    pub instruction_machine_handler: &'a M,
+    pub instruction_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
@@ -271,16 +271,22 @@ pub struct VmConfig<'a, M, B> {
 impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
     fn clone(&self) -> Self {
         VmConfig {
-            instruction_machine_handler: self.instruction_machine_handler,
+            instruction_handler: self.instruction_handler,
             bus_interaction_handler: self.bus_interaction_handler.clone(),
             bus_map: self.bus_map.clone(),
         }
     }
 }
 
-pub trait InstructionMachineHandler<T, I> {
+pub trait InstructionHandler<T, I> {
     /// Returns the AIR for the given opcode.
     fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+
+    /// Returns whether the given instruction is allowed in an autoprecompile.
+    fn is_allowed(&self, instruction: &I) -> bool;
+
+    /// Returns whether the given instruction is a branching instruction.
+    fn is_branching(&self, instruction: &I) -> bool;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -303,14 +309,14 @@ impl<T, I> Apc<T, I> {
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
-    vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine::<A>(
         &block,
-        vm_config.instruction_machine_handler,
+        vm_config.instruction_handler,
         &vm_config.bus_map,
     );
 

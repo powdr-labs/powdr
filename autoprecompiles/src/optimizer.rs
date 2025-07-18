@@ -47,11 +47,9 @@ pub fn optimize<T: FieldElement>(
             // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
             let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
             assert!(
-                constraint_system
+                !constraint_system
                     .bus_interactions
-                    .iter()
-                    .find(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id)))
-                    .is_none(),
+                    .iter().any(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id))),
                 "Expected all PC lookups to be removed."
             );
 
