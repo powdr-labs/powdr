@@ -275,3 +275,14 @@ impl<'a, T: ReferencedSymbols<V>, V> ConstraintRef<'a, T, V> {
         }
     }
 }
+
+impl<'a, T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
+    for ConstraintRef<'a, T, V>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstraintRef::AlgebraicConstraint(expr) => write!(f, "{expr} = 0"),
+            ConstraintRef::BusInteraction(bus_interaction) => write!(f, "{bus_interaction}"),
+        }
+    }
+}
