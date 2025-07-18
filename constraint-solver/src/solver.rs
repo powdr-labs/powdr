@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-mod bus_interaction_variable_wrapper;
+pub mod bus_interaction_variable_wrapper;
 mod exhaustive_search;
 mod quadratic_equivalences;
 
@@ -143,6 +143,13 @@ where
             assignments: self.assignments,
             bus_field_assignments: Default::default(),
         })
+    }
+
+    pub fn determine_range_constraints(
+        &mut self,
+    ) -> Result<&impl RangeConstraintProvider<T::FieldType, V>, Error> {
+        self.loop_until_no_progress()?;
+        Ok(&self.range_constraints)
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {

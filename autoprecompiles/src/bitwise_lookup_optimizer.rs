@@ -4,21 +4,40 @@ use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::constraint_system::{
+    BusInteraction, BusInteractionHandler, ConstraintSystem,
+};
+use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::solver::bus_interaction_variable_wrapper::{
+    BusInteractionVariableWrapper, Variable,
+};
+use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 
-/// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
-/// byte-range constraints.
+/// Optimize interactions with the bitwise lookup bus.
+/// It optimizes bitwise lookups of boolean-constrained inputs and optimizes (re-groups)
+/// the use of byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
     mut system: ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> ConstraintSystem<T, V> {
+    let (_, constraint_system) =
+        BusInteractionVariableWrapper::replace_bus_interaction_expressions(system.clone());
+
+    let mut solver = Solver::new(constraint_system.clone())
+        .with_bus_interaction_handler(bus_interaction_handler);
+    let range_constraints = solver.determine_range_constraints().unwrap();
+
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
     let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
+    let mut next_index = 0usize;
     system.bus_interactions.retain(|bus_int| {
+        next_index += 1;
+        let index = next_index - 1;
         if !is_simple_multiplicity_bitwise_bus_interaction(bus_int, bitwise_lookup_bus_id) {
             return true;
         }
@@ -46,6 +65,12 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
         } else if op == 1.into() {
             // The bus interaction is equivalent to "x, y and z are bytes and z = x ^ y".
 
+            // TODO check range constraints here.
+            // TODO it could be that we stil need the byte constraint by the way.
+            // so we should just add it to "to byte constrain"
+            // and then maye re-run the range constraint solver
+            // and use that to compute "already_byte_constrained" below.
+
             // If any argument is zero, the other two have to be equal.
             let mut args = vec![x, y, z];
             if let Some(zero_pos) = args.iter().position(|e| e.is_zero()) {
@@ -54,6 +79,23 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 let [a, b] = args.try_into().unwrap();
                 new_constraints.push(a.clone() - b.clone());
                 to_byte_constrain.push(a.clone());
+                false
+            } else if (0..3).all(|i| {
+                // TODO make the interface easier to use, the index-based bus interaction variable
+                // is not a good idea.
+
+                let rc = range_constraints.get(&Variable::BusInteractionField(index, i));
+                // TODO it would also work with any other bit.
+                rc.conjunction(&RangeConstraint::from_mask(1)) == rc
+            }) {
+                // All three expressions are either zero or one, we can replace the bus
+                // interaction by a constraint.
+
+                // TODO we could be a bit more clever about which variables to use in the
+                // quadratic term
+                new_constraints.push(x.clone() + y.clone() - z.clone() - x.clone() * y.clone());
+                // Byte-constrain them to be sure we are not missing anything.
+                to_byte_constrain.extend([x, y, z].into_iter().cloned());
                 false
             } else {
                 true
@@ -66,6 +108,8 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
+
+    // TODO re-compute the range constraits from the modified system and use them here.
     let already_byte_constrained = all_byte_constrained_expressions(&system, bitwise_lookup_bus_id)
         .cloned()
         .collect::<HashSet<_>>();

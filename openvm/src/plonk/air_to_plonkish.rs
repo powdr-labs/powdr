@@ -3,22 +3,19 @@ use std::collections::BTreeMap;
 use super::{Gate, PlonkCircuit, Variable};
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
+use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
 };
-use powdr_number::FieldElement;
 
-pub fn build_circuit<T>(
-    machine: &SymbolicMachine<T>,
+pub fn build_circuit<F: PrimeField32>(
+    machine: &SymbolicMachine<F>,
     bus_map: &BusMap,
-) -> PlonkCircuit<T, AlgebraicReference>
-where
-    T: FieldElement,
-{
-    let mut circuit_builder = CircuitBuilder::<T>::new();
+) -> PlonkCircuit<F, AlgebraicReference> {
+    let mut circuit_builder = CircuitBuilder::<F>::new();
     for constraint in &machine.constraints {
         circuit_builder.evaluate_expression(&constraint.expr, true);
     }
@@ -30,16 +27,13 @@ where
     circuit_builder.build()
 }
 
-pub struct CircuitBuilder<T> {
-    plonk_circuit: PlonkCircuit<T, AlgebraicReference>,
+pub struct CircuitBuilder<F> {
+    plonk_circuit: PlonkCircuit<F, AlgebraicReference>,
     temp_id_offset: usize,
-    cache: BTreeMap<AlgebraicExpression<T>, Variable<AlgebraicReference>>,
+    cache: BTreeMap<AlgebraicExpression<F>, Variable<AlgebraicReference>>,
 }
 
-impl<T> CircuitBuilder<T>
-where
-    T: FieldElement,
-{
+impl<F: PrimeField32> CircuitBuilder<F> {
     pub fn new() -> Self {
         Self {
             plonk_circuit: PlonkCircuit::new(),
@@ -51,18 +45,18 @@ where
     /// Returns (q_o, c), where:
     /// - If `assert_zero` is true, `q_o` is always zero and `c` is unused.
     /// - If `assert_zero` is false, `q_o` is -1 and `c` is a new temporary variable.
-    fn make_output(&mut self, assert_zero: bool) -> (T, Variable<AlgebraicReference>) {
+    fn make_output(&mut self, assert_zero: bool) -> (F, Variable<AlgebraicReference>) {
         if assert_zero {
-            (T::ZERO, Variable::Unused)
+            (F::ZERO, Variable::Unused)
         } else {
             let c = Variable::Tmp(self.temp_id_offset);
             self.temp_id_offset += 1;
-            (-T::ONE, c)
+            (-F::ONE, c)
         }
     }
 
     /// Adds a gate to the PlonK circuit.
-    pub fn add_gate(&mut self, gate: Gate<T, AlgebraicReference>) {
+    pub fn add_gate(&mut self, gate: Gate<F, AlgebraicReference>) {
         self.plonk_circuit.add_gate(gate);
     }
 
@@ -73,7 +67,7 @@ where
     /// (otherwise, it returns `Variable::Unused`).
     pub fn evaluate_expression(
         &mut self,
-        algebraic_expr: &AlgebraicExpression<T>,
+        algebraic_expr: &AlgebraicExpression<F>,
         assert_zero: bool,
     ) -> Variable<AlgebraicReference> {
         if let Some(var) = self.cache.get(algebraic_expr) {
@@ -85,7 +79,7 @@ where
                 if assert_zero {
                     // Constraint of the form `w = 0`
                     self.plonk_circuit.add_gate(Gate {
-                        q_l: T::ONE,
+                        q_l: F::ONE,
 
                         a: Variable::Witness(r.clone()),
                         ..Default::default()
@@ -111,10 +105,10 @@ where
                 c
             }
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let mut q_l = T::ZERO;
-                let mut q_r = T::ZERO;
-                let mut q_mul = T::ZERO;
-                let mut q_const = T::ZERO;
+                let mut q_l = F::ZERO;
+                let mut q_r = F::ZERO;
+                let mut q_mul = F::ZERO;
+                let mut q_const = F::ZERO;
                 let mut a = Variable::Unused;
                 let mut b = Variable::Unused;
                 let (q_o, c) = self.make_output(assert_zero);
@@ -123,14 +117,14 @@ where
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            q_l = T::ONE;
+                            q_l = F::ONE;
                             a = self.evaluate_expression(left, false);
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
                             q_const += *n;
                         } else {
-                            q_r = T::ONE;
+                            q_r = F::ONE;
                             b = self.evaluate_expression(right, false);
                         }
                     }
@@ -138,14 +132,14 @@ where
                         if let AlgebraicExpression::Number(n) = left.as_ref() {
                             q_const += *n;
                         } else {
-                            q_l = T::ONE;
+                            q_l = F::ONE;
                             a = self.evaluate_expression(left, false);
                         }
 
                         if let AlgebraicExpression::Number(n) = right.as_ref() {
                             q_const -= *n;
                         } else {
-                            q_r = -T::ONE;
+                            q_r = -F::ONE;
                             b = self.evaluate_expression(right, false);
                         }
                     }
@@ -159,7 +153,7 @@ where
                             a = self.evaluate_expression(non_constant, false);
                         }
                         _ => {
-                            q_mul = T::ONE;
+                            q_mul = F::ONE;
                             a = self.evaluate_expression(left, false);
                             b = self.evaluate_expression(right, false);
                         }
@@ -184,7 +178,7 @@ where
                     let (q_o, c) = self.make_output(assert_zero);
                     let a = self.evaluate_expression(expr, false);
                     self.plonk_circuit.add_gate(Gate {
-                        q_l: -T::ONE,
+                        q_l: -F::ONE,
                         q_o,
                         a,
                         c: c.clone(),
@@ -199,7 +193,7 @@ where
         result
     }
 
-    pub fn build(self) -> PlonkCircuit<T, AlgebraicReference> {
+    pub fn build(self) -> PlonkCircuit<F, AlgebraicReference> {
         self.plonk_circuit
     }
 }

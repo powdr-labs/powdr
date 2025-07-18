@@ -1,11 +1,11 @@
+use crate::adapter::{Adapter, AdapterApc};
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::symbolic_machine_generator::convert_machine;
 pub use blocks::{BasicBlock, PgoConfig};
-use constraint_optimizer::IsBusStateful;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
@@ -20,6 +20,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+pub mod adapter;
 mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
@@ -70,10 +71,19 @@ impl PowdrConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
-    pub opcode: usize,
+    pub opcode: T,
     pub args: Vec<T>,
+}
+
+impl<T> IntoIterator for SymbolicInstructionStatement<T> {
+    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::vec::IntoIter<T>>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self.opcode).chain(self.args)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,8 +261,7 @@ pub enum InstructionKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct PcLookupBusInteraction<T> {
     pub from_pc: AlgebraicExpression<T>,
-    pub op: AlgebraicExpression<T>,
-    pub args: Vec<AlgebraicExpression<T>>,
+    pub instruction: SymbolicInstructionStatement<AlgebraicExpression<T>>,
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
@@ -264,12 +273,11 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
         (bus_interaction.id == pc_lookup_bus_id)
             .then(|| {
                 let from_pc = bus_interaction.args[0].clone();
-                let op = bus_interaction.args[1].clone();
+                let opcode = bus_interaction.args[1].clone();
                 let args = bus_interaction.args[2..].to_vec();
                 PcLookupBusInteraction {
                     from_pc,
-                    op,
-                    args,
+                    instruction: SymbolicInstructionStatement { opcode, args },
                     bus_interaction: bus_interaction.clone(),
                 }
             })
@@ -278,7 +286,6 @@ impl<T: FieldElement> PcLookupBusInteraction<T> {
 }
 
 /// A configuration of a VM in which execution is happening.
-#[derive(Clone)]
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
     pub instruction_machine_handler: &'a M,
@@ -288,20 +295,31 @@ pub struct VmConfig<'a, M, B> {
     pub bus_map: BusMap,
 }
 
-pub trait InstructionMachineHandler<T> {
+// We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
+impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
+    fn clone(&self) -> Self {
+        VmConfig {
+            instruction_machine_handler: self.instruction_machine_handler,
+            bus_interaction_handler: self.bus_interaction_handler.clone(),
+            bus_map: self.bus_map.clone(),
+        }
+    }
+}
+
+pub trait InstructionMachineHandler<T, I> {
     /// Returns the AIR for the given opcode.
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+    fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T> {
-    pub block: BasicBlock<T>,
+pub struct Apc<T, I> {
+    pub block: BasicBlock<I>,
     pub opcode: u32,
     pub machine: SymbolicMachine<T>,
     pub subs: Vec<Vec<u64>>,
 }
 
-impl<T: FieldElement> Apc<T> {
+impl<T, I> Apc<T, I> {
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
@@ -309,24 +327,16 @@ impl<T: FieldElement> Apc<T> {
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
-
-    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        (self.machine, self.subs)
-    }
 }
 
-pub fn build<
-    T: FieldElement,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    M: InstructionMachineHandler<T>,
->(
-    block: BasicBlock<T>,
-    vm_config: VmConfig<M, B>,
+pub fn build<A: Adapter>(
+    block: BasicBlock<A::Instruction>,
+    vm_config: VmConfig<A::InstructionMachineHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
-) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
-    let (machine, subs) = statements_to_symbolic_machine(
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let (machine, subs) = statements_to_symbolic_machine::<A>(
         &block.statements,
         vm_config.instruction_machine_handler,
         &vm_config.bus_map,
@@ -342,6 +352,8 @@ pub fn build<
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine, vm_config.bus_map);
+
+    let machine = convert_machine(machine, &A::into_field);
 
     let apc = Apc {
         block,
