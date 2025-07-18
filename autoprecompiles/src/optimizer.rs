@@ -49,7 +49,8 @@ pub fn optimize<T: FieldElement>(
             assert!(
                 !constraint_system
                     .bus_interactions
-                    .iter().any(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id))),
+                    .iter()
+                    .any(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id))),
                 "Expected all PC lookups to be removed."
             );
 
