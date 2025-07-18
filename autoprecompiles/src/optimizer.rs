@@ -44,6 +44,17 @@ pub fn optimize<T: FieldElement>(
             bus_map,
         )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
+            // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
+            let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
+            assert!(
+                constraint_system
+                    .bus_interactions
+                    .iter()
+                    .find(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id)))
+                    .is_none(),
+                "Expected all PC lookups to be removed."
+            );
+
             return Ok(constraint_system_to_symbolic_machine(constraint_system));
         }
     }
