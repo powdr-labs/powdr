@@ -55,6 +55,8 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
 /// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
 pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
+    base_pc: u64,
+    pc_step: u32,
 }
 
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
@@ -75,11 +77,27 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
     }
+
+    fn base_pc(&self) -> u64 {
+        self.base_pc
+    }
+
+    fn pc_step(&self) -> u32 {
+        self.pc_step
+    }
+
+    fn new(program: &Self::Program) -> Self {
+        Self {
+            _marker: std::marker::PhantomData,
+            base_pc: program.0.pc_base as u64,
+            pc_step: program.0.step,
+        }
+    }
 }
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
-pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
+pub struct Prog<'a, F>(pub &'a OpenVmProgram<F>);
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
@@ -98,14 +116,6 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
 }
 
 impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
-    fn base_pc(&self) -> u64 {
-        self.0.pc_base as u64
-    }
-
-    fn pc_step(&self) -> u32 {
-        self.0.step
-    }
-
     fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
         Box::new(
             self.0
@@ -164,7 +174,9 @@ pub fn customize(
         .map(|&x| x as u64)
         .collect::<BTreeSet<_>>();
 
-    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
+    let adapter = BabyBearOpenVmApcAdapter::new(&program);
+
+    let blocks = collect_basic_blocks(&adapter, &program, &jumpdest_set, &airs);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -197,7 +209,8 @@ pub fn customize(
         }
     }
 
-    let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
+    let apcs = generate_apcs_with_pgo(
+        &adapter,
         blocks,
         &config,
         max_total_apc_columns,

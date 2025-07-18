@@ -1,19 +1,21 @@
 use openvm_instructions::instruction::Instruction;
+use openvm_instructions::program::Program;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::adapter::Adapter;
+use powdr_autoprecompiles::blocks::Program as _;
 use powdr_autoprecompiles::{build, BasicBlock, DegreeBound, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
-use powdr_openvm::BabyBearOpenVmApcAdapter;
-use powdr_openvm::Instr;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use powdr_openvm::{BabyBearOpenVmApcAdapter, Prog};
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
 
 // A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(program: Vec<Instruction<BabyBear>>) -> String {
+fn compile(instructions: Vec<Instruction<BabyBear>>) -> String {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -39,9 +41,15 @@ fn compile(program: Vec<Instruction<BabyBear>>) -> String {
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build::<BabyBearOpenVmApcAdapter>(
+    let program = Program::from_instructions(&instructions);
+    let program = Prog(&program);
+
+    let adapter = BabyBearOpenVmApcAdapter::new(&program);
+
+    build(
+        &adapter,
         BasicBlock {
-            statements: program.into_iter().map(Instr).collect(),
+            statements: program.instructions().collect(),
             start_idx: 0,
         },
         vm_config,

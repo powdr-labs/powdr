@@ -44,12 +44,6 @@ impl<I> BasicBlock<I> {
 }
 
 pub trait Program<I> {
-    /// Returns the base program counter.
-    fn base_pc(&self) -> u64;
-
-    /// Returns the step size of the program counter.
-    fn pc_step(&self) -> u32;
-
     /// Returns an iterator over the instructions in the program.
     fn instructions(&self) -> Box<dyn Iterator<Item = I> + '_>;
 }

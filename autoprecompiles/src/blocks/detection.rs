@@ -8,6 +8,7 @@ use crate::{
 
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
+    adapter: &A,
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
     instruction_handler: &A::InstructionHandler,
@@ -18,7 +19,7 @@ pub fn collect_basic_blocks<A: Adapter>(
         statements: Vec::new(),
     };
     for (i, instr) in program.instructions().enumerate() {
-        let pc = program.base_pc() + i as u64 * program.pc_step() as u64;
+        let pc = adapter.base_pc() + i as u64 * adapter.pc_step() as u64;
         let is_target = jumpdest_set.contains(&pc);
         let is_branching = instruction_handler.is_branching(&instr);
         let is_allowed = instruction_handler.is_allowed(&instr);

@@ -96,7 +96,7 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
+pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, Prog, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;

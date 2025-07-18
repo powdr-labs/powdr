@@ -65,6 +65,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<A: Adapter>(
+    adapter: &A,
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
@@ -97,7 +98,8 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     let res = parallel_fractional_knapsack(
         blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            let apc = crate::build::<A>(
+            let apc = crate::build(
+                adapter,
                 block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
@@ -133,6 +135,7 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
 }
 
 fn create_apcs_with_instruction_pgo<A: Adapter>(
+    adapter: &A,
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_idx_count: HashMap<u32, u32>,
     config: &PowdrConfig,
@@ -169,10 +172,11 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
         );
     }
 
-    create_apcs_for_all_blocks::<A>(blocks, config, vm_config)
+    create_apcs_for_all_blocks(adapter, blocks, config, vm_config)
 }
 
 fn create_apcs_with_no_pgo<A: Adapter>(
+    adapter: &A,
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
@@ -190,10 +194,11 @@ fn create_apcs_with_no_pgo<A: Adapter>(
         );
     }
 
-    create_apcs_for_all_blocks::<A>(blocks, config, vm_config)
+    create_apcs_for_all_blocks(adapter, blocks, config, vm_config)
 }
 
 pub fn generate_apcs_with_pgo<A: Adapter>(
+    adapter: &A,
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
@@ -205,7 +210,8 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res: Vec<_> = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo::<A>(
+        PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo(
+            adapter,
             blocks,
             pgo_program_idx_count,
             config,
@@ -215,13 +221,17 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
         .into_iter()
         .map(|(apc, apc_stats)| (apc, Some(apc_stats)))
         .collect(),
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo::<A>(blocks, pgo_program_idx_count, config, vm_config)
-                .into_iter()
-                .map(|apc| (apc, None))
-                .collect()
-        }
-        PgoConfig::None => create_apcs_with_no_pgo::<A>(blocks, config, vm_config)
+        PgoConfig::Instruction(pgo_program_idx_count) => create_apcs_with_instruction_pgo(
+            adapter,
+            blocks,
+            pgo_program_idx_count,
+            config,
+            vm_config,
+        )
+        .into_iter()
+        .map(|apc| (apc, None))
+        .collect(),
+        PgoConfig::None => create_apcs_with_no_pgo(adapter, blocks, config, vm_config)
             .into_iter()
             .map(|apc| (apc, None))
             .collect(),
@@ -235,6 +245,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<A: Adapter>(
+    adapter: &A,
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
@@ -256,7 +267,8 @@ fn create_apcs_for_all_blocks<A: Adapter>(
 
             let apc_opcode = config.first_apc_opcode + index;
 
-            crate::build::<A>(
+            crate::build(
+                adapter,
                 block,
                 vm_config.clone(),
                 config.degree_bound,

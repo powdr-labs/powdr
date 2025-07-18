@@ -336,6 +336,7 @@ impl<T, I> Apc<T, I> {
 }
 
 pub fn build<A: Adapter>(
+    _adapter: &A,
     block: BasicBlock<A::Instruction>,
     vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
