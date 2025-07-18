@@ -17,6 +17,8 @@ pub use selection::KnapsackItem;
 pub struct BasicBlock<I> {
     /// The index of the first instruction in this block in the original program.
     pub start_idx: usize,
+    /// The PC of the first instruction in this block.
+    pub start_pc: u64,
     pub statements: Vec<I>,
 }
 
@@ -59,5 +61,5 @@ pub trait Instruction<T>: Clone {
     /// Returns a list of concrete values that the LHS of the PC lookup should be assigned to.
     /// An entry can be `None` to indicate that the value is not known at compile time.
     /// The provided PC will in practice be provided for the first instruction of the block.
-    fn pc_lookup_row(&self, pc: Option<usize>) -> Vec<Option<T>>;
+    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<T>>;
 }
