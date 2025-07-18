@@ -13,13 +13,12 @@ pub fn collect_basic_blocks<A: Adapter>(
     instruction_handler: &A::InstructionHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
-    let idx_to_pc = |idx: usize| program.base_pc() + idx as u64 * program.pc_step() as u64;
     let mut curr_block = BasicBlock {
-        start_pc: idx_to_pc(0),
+        start_pc: program.instruction_index_to_pc(0),
         statements: Vec::new(),
     };
     for (i, instr) in program.instructions().enumerate() {
-        let is_target = jumpdest_set.contains(&idx_to_pc(i));
+        let is_target = jumpdest_set.contains(&program.instruction_index_to_pc(i));
         let is_branching = instruction_handler.is_branching(&instr);
         let is_allowed = instruction_handler.is_allowed(&instr);
 
@@ -31,12 +30,12 @@ pub fn collect_basic_blocks<A: Adapter>(
             }
             // Push the instruction itself
             blocks.push(BasicBlock {
-                start_pc: idx_to_pc(i),
+                start_pc: program.instruction_index_to_pc(i),
                 statements: vec![instr.clone()],
             });
             // Skip the instruction and start a new block from the next instruction.
             curr_block = BasicBlock {
-                start_pc: idx_to_pc(i + 1),
+                start_pc: program.instruction_index_to_pc(i + 1),
                 statements: Vec::new(),
             };
         } else {
@@ -47,7 +46,7 @@ pub fn collect_basic_blocks<A: Adapter>(
                     blocks.push(curr_block);
                 }
                 curr_block = BasicBlock {
-                    start_pc: idx_to_pc(i),
+                    start_pc: program.instruction_index_to_pc(i),
                     statements: Vec::new(),
                 };
             }
@@ -57,7 +56,7 @@ pub fn collect_basic_blocks<A: Adapter>(
             if is_branching {
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
                 curr_block = BasicBlock {
-                    start_pc: idx_to_pc(i + 1),
+                    start_pc: program.instruction_index_to_pc(i + 1),
                     statements: Vec::new(),
                 };
             }
