@@ -17,14 +17,14 @@ use crate::SymbolicInstructionStatement;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<I> {
-    /// The index of the first instruction in this block in the original program.
-    pub start_idx: usize,
+    /// The program counter of the first instruction in this block.
+    pub start_pc: u64,
     pub statements: Vec<I>,
 }
 
 impl<I> BasicBlock<I> {
     pub fn pretty_print(&self, instr_formatter: impl Fn(&I) -> String) -> String {
-        format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
+        format!("BasicBlock(start_pc: {}, statements: [\n", self.start_pc)
             + &self
                 .statements
                 .iter()
@@ -34,13 +34,6 @@ impl<I> BasicBlock<I> {
                 .to_string()
             + "\n])"
     }
-
-    /// Returns the address of the first instruction of this block given
-    /// the address of the first instruction of the whole program and the
-    /// size of one instruction.
-    pub fn start_address(&self, base_pc: u32, pc_step: u32) -> u32 {
-        base_pc + self.start_idx as u32 * pc_step
-    }
 }
 
 pub trait Program<I> {
@@ -49,6 +42,11 @@ pub trait Program<I> {
 
     /// Returns the step size of the program counter.
     fn pc_step(&self) -> u32;
+
+    /// Converts an instruction index to a program counter.
+    fn instruction_index_to_pc(&self, idx: usize) -> u64 {
+        self.base_pc() + (idx as u64 * self.pc_step() as u64)
+    }
 
     /// Returns an iterator over the instructions in the program.
     fn instructions(&self) -> Box<dyn Iterator<Item = I> + '_>;
