@@ -1,4 +1,4 @@
-//! Builds SymbolicInstructionStatement to create input program for testing powdr_autoprecompile::build
+//! Builds Instruction to create input program for testing powdr_autoprecompile::build
 use crate::opcode::*;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;

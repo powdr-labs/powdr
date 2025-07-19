@@ -289,10 +289,10 @@ mod complex_tests {
     #[test]
     fn guest_top_block() {
         // Top block from `guest` with `--pgo cell`, with 4 instructions:
-        // SymbolicInstructionStatement { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
-        // SymbolicInstructionStatement { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
+        // Instruction { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
+        // Instruction { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
+        // Instruction { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
+        // Instruction { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
 
         let program = [
             add(8, 8, 16777200, 0),

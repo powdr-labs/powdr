@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -24,9 +25,9 @@ use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
-use powdr_autoprecompiles::{SymbolicBusInteraction, SymbolicInstructionStatement};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
@@ -87,13 +88,21 @@ pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<F> {
-        SymbolicInstructionStatement {
-            opcode: self.0.opcode.to_field(),
-            args: vec![
-                self.0.a, self.0.b, self.0.c, self.0.d, self.0.e, self.0.f, self.0.g,
-            ],
-        }
+    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+        let args = [
+            self.0.opcode.to_field(),
+            self.0.a,
+            self.0.b,
+            self.0.c,
+            self.0.d,
+            self.0.e,
+            self.0.f,
+            self.0.g,
+        ];
+        // The PC lookup row has the format:
+        // [pc, opcode, a, b, c, d, e, f, g]
+        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
+        once(pc).chain(args.into_iter().map(Some)).collect()
     }
 }
 

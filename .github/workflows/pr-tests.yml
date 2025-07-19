@@ -162,13 +162,13 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev d730a36 cargo-openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev acbd2ba cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: main
+          ref: update-openvm
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr

@@ -8,7 +8,6 @@ use itertools::Itertools;
 use powdr::UniqueReferences;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
-    AlgebraicUnaryOperator,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -258,33 +257,6 @@ pub enum InstructionKind {
     UnconditionalBranch,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct PcLookupBusInteraction<T> {
-    pub from_pc: AlgebraicExpression<T>,
-    pub instruction: SymbolicInstructionStatement<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
-}
-
-impl<T: FieldElement> PcLookupBusInteraction<T> {
-    fn try_from_symbolic_bus_interaction(
-        bus_interaction: &SymbolicBusInteraction<T>,
-        pc_lookup_bus_id: u64,
-    ) -> Result<Self, ()> {
-        (bus_interaction.id == pc_lookup_bus_id)
-            .then(|| {
-                let from_pc = bus_interaction.args[0].clone();
-                let opcode = bus_interaction.args[1].clone();
-                let args = bus_interaction.args[2..].to_vec();
-                PcLookupBusInteraction {
-                    from_pc,
-                    instruction: SymbolicInstructionStatement { opcode, args },
-                    bus_interaction: bus_interaction.clone(),
-                }
-            })
-            .ok_or(())
-    }
-}
-
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
@@ -343,7 +315,7 @@ pub fn build<A: Adapter>(
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine::<A>(
-        &block.statements,
+        &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
@@ -351,13 +323,12 @@ pub fn build<A: Adapter>(
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
-        opcode,
         degree_bound,
         &vm_config.bus_map,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine, vm_config.bus_map);
+    let machine = add_guards(machine);
 
     let machine = convert_machine(machine, &A::into_field);
 
@@ -422,17 +393,9 @@ fn add_guards_constraint<T: FieldElement>(
     }
 }
 
-/// Adds an `is_valid` guard to all constraints and bus interactions.
-/// Assumptions:
-/// - There are exactly one execution bus receive and one execution bus send, in this order.
-/// - There is exactly one program bus send.
-fn add_guards<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    bus_map: BusMap,
-) -> SymbolicMachine<T> {
+/// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
+fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
-    let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
-    let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
     let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
 
@@ -447,42 +410,18 @@ fn add_guards<T: FieldElement>(
         .map(|c| add_guards_constraint(c.expr, &is_valid).into())
         .collect();
 
-    let [execution_bus_receive, execution_bus_send] = machine
-        .bus_interactions
-        .iter_mut()
-        .filter(|bus_int| bus_int.id == exec_bus_id)
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-
-    execution_bus_receive.mult =
-        AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
-    execution_bus_send.mult = is_valid.clone();
-
-    let [program_bus_send] = machine
-        .bus_interactions
-        .iter_mut()
-        .filter(|bus_int| bus_int.id == pc_lookup_bus_id)
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    program_bus_send.mult = is_valid.clone();
-
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        // already handled exec and pc lookup bus types
-        if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
-            if !satisfies_zero_witness(&b.mult) {
-                // guard the multiplicity by `is_valid`
-                b.mult = is_valid.clone() * b.mult.clone();
-                // TODO this would not have to be cloned if we had *=
-                //c.expr *= guard.clone();
-            } else {
-                // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-                let one = AlgebraicExpression::Number(1u64.into());
-                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                is_valid_mults.push(e);
-            }
+        if !satisfies_zero_witness(&b.mult) {
+            // guard the multiplicity by `is_valid`
+            b.mult = is_valid.clone() * b.mult.clone();
+            // TODO this would not have to be cloned if we had *=
+            //c.expr *= guard.clone();
+        } else {
+            // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+            let one = AlgebraicExpression::Number(1u64.into());
+            let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+            is_valid_mults.push(e);
         }
     }
 

@@ -13,8 +13,6 @@ pub use pgo::PgoConfig;
 pub use pgo::{generate_apcs_with_pgo, Candidate};
 pub use selection::KnapsackItem;
 
-use crate::SymbolicInstructionStatement;
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
@@ -53,6 +51,8 @@ pub trait Program<I> {
 }
 
 pub trait Instruction<T>: Clone {
-    /// Turns the instruction into a symbolic representation.
-    fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<T>;
+    /// Returns a list of concrete values that the LHS of the PC lookup should be assigned to.
+    /// An entry can be `None` to indicate that the value is not known at compile time.
+    /// The provided PC will in practice be provided for the first instruction of the block.
+    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<T>>;
 }
