@@ -123,20 +123,14 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         // To simplify constraint solving, we constrain `is_valid` to be 1, which effectively
         // removes the column. The optimized precompile will then have to be guarded by a new
         // `is_valid` column.
-        let first_exec_mult = first_exec_interaction(
+        let minus_is_valid: AlgebraicExpression<_> = exec_receive(
             &machine,
             bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap(),
         )
         .mult
         .clone();
-        // We don't know whether the first execution bus interaction is a send or receive
-        // (this might depend on the zkVM), but we know its multiplicity should be either 1 or -1.
-        // Because we expect `is_valid` to also be bit-constrained, the solver will be able to
-        // determine the correct value.
         let one = AlgebraicExpression::Number(1u64.into());
-        local_constraints.push(
-            ((first_exec_mult.clone() + one.clone()) * (first_exec_mult - one.clone())).into(),
-        );
+        local_constraints.push((minus_is_valid.clone() + one).into());
 
         // Constrain the pc lookup to the current instruction.
         local_constraints.extend(
@@ -170,16 +164,17 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     )
 }
 
-fn first_exec_interaction<T: FieldElement>(
+fn exec_receive<T: FieldElement>(
     machine: &SymbolicMachine<T>,
     exec_bus_id: u64,
 ) -> SymbolicBusInteraction<T> {
-    let [first, _second] = machine
+    let [r, _s] = machine
         .bus_interactions
         .iter()
         .filter(|bus_int| bus_int.id == exec_bus_id)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
-    first.clone()
+    // TODO assert that r.mult matches -expr
+    r.clone()
 }
