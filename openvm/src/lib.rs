@@ -1616,16 +1616,16 @@ mod tests {
         let powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 4823,
+                main: 4831,
                 log_up: 3968,
             },
-            constraints: 935,
-            bus_interactions: 3825,
+            constraints: 958,
+            bus_interactions: 3821,
         };
 
         let expected_metrics = MachineTestMetrics {
             powdr_expected_sum: powdr_metrics_sum.clone(),
-            powdr_expected_machine_count: 18,
+            powdr_expected_machine_count: 19,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
             non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
         };
@@ -1639,12 +1639,12 @@ mod tests {
             expected_columns_saved: Some(AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
-                    main: 38846,
-                    log_up: 26832,
+                    main: 38950,
+                    log_up: 26908,
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 4823,
+                    main: 4831,
                     log_up: 3968,
                 },
             }),
