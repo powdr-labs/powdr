@@ -92,7 +92,7 @@ pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
     fn to_vec(&self) -> Vec<F> {
-        let args = [
+        vec![
             self.0.opcode.to_field(),
             self.0.a,
             self.0.b,
@@ -101,10 +101,7 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
             self.0.e,
             self.0.f,
             self.0.g,
-        ];
-        // The PC lookup row has the format:
-        // [pc, opcode, a, b, c, d, e, f, g]
-        args.to_vec()
+        ]
     }
 }
 
