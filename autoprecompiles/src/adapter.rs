@@ -23,6 +23,9 @@ pub trait Adapter: Sized {
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
+
+    /// For a concrete pc, returns its representation as field elements in the program lookup.
+    fn pc(pc: u64) -> Vec<Self::Field>;
 }
 
 pub type ApcStats<A> = <<A as Adapter>::Candidate as Candidate<A>>::ApcStats;

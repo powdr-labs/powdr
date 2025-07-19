@@ -1,3 +1,5 @@
+use std::iter::{once, repeat};
+
 use itertools::Itertools;
 use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
@@ -89,7 +91,14 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 3;
 
-    for (i, instr) in block.statements.iter().enumerate() {
+    // It is sufficient to provide the initial PC, because the PC update should be
+    // deterministic within a basic block. Therefore, all future PCs can be derived
+    // by the solver.
+    let first_pc = A::pc(block.start_pc).into_iter().map(Some).collect_vec();
+    let other_pcs = vec![None; first_pc.len()];
+    let pcs = once(&first_pc).chain(repeat(&other_pcs));
+
+    for (i, (instr, pc)) in block.statements.iter().zip(pcs).enumerate() {
         let machine = instruction_handler
             .get_instruction_air(instr)
             .unwrap()
@@ -98,14 +107,11 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine(machine, &|x| A::from_field(x));
 
-        // It is sufficient to provide the initial PC, because the PC update should be
-        // deterministic within a basic block. Therefore, all future PCs can be derived
-        // by the solver.
-        let pc = (i == 0).then_some(block.start_pc);
-        let pc_lookup_row = instr
-            .pc_lookup_row(pc)
-            .into_iter()
-            .map(|x| x.map(|f| A::from_field(f)))
+        let pc_lookup_row = pc
+            .iter()
+            .cloned()
+            .chain(instr.to_vec().into_iter().map(Option::Some))
+            .map(|x| x.map(A::from_field))
             .collect::<Vec<_>>();
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);

@@ -1,6 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
 
-use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -76,6 +75,10 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
     }
+
+    fn pc(pc: u64) -> Vec<Self::Field> {
+        vec![Self::Field::from_canonical_u32(pc as u32)]
+    }
 }
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
@@ -88,7 +91,7 @@ pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+    fn to_vec(&self) -> Vec<F> {
         let args = [
             self.0.opcode.to_field(),
             self.0.a,
@@ -101,8 +104,7 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
-        once(pc).chain(args.into_iter().map(Some)).collect()
+        args.to_vec()
     }
 }
 
