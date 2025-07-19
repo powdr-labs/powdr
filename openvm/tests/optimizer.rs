@@ -22,7 +22,7 @@ fn load_machine_cbor() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [23838, 13167, 22998]
+        [27194, 13167, 27689]
     );
 }
 
