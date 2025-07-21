@@ -76,8 +76,10 @@ pub struct MemoryBusInteractionConversionError;
 
 /// A bus interaction that corresponds to half of a memory operation,
 /// i.e. either a "get previous" or a "set new" operation.
+/// Note that the order of memory bus interactions as they appear in the constraint system
+/// is assumed to be chronological.
 pub trait MemoryBusInteraction<T, V>: Sized {
-    /// The address type of the memory bus interaction. We assume that it is a tuple of expressions.
+    /// The address type of the memory bus interaction. We assume that it is a slice of expressions.
     type Address: Eq + Hash + Clone + IntoIterator<Item = GroupedExpression<T, V>>;
 
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
@@ -94,7 +96,7 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     /// Returns the address of the memory bus interaction.
     fn addr(&self) -> Self::Address;
 
-    /// Returns the data of the memory bus interaction, represented as a list of limbs.
+    /// Returns the data part of the memory bus interaction.
     fn data(&self) -> &[GroupedExpression<T, V>];
 
     /// Returns the operation of the memory bus interaction.
@@ -264,7 +266,7 @@ impl<A: Adapter> MemoryAddressComparator<A> {
             .any(|(a_expr, b_expr)| {
                 // Compare all pairs of limbs. We know the addresses are different
                 // if at least one pair of limbs is known to be different.
-                a_expr.iter().zip_eq(b_expr.iter()).any(|(a_expr, b_expr)| {
+                a_expr.iter().zip_eq(b_expr).any(|(a_expr, b_expr)| {
                     is_known_to_be_nonzero(&(a_expr - b_expr), &range_constraints)
                 })
             })

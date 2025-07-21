@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use std::hash::Hash;
+use std::{array::IntoIter, fmt::Display};
 
 use powdr_autoprecompiles::memory_optimizer::{
     MemoryBusInteraction, MemoryBusInteractionConversionError, MemoryOp,
@@ -15,20 +15,28 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 #[derive(Clone, Debug)]
 pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
     op: MemoryOp,
-    address_space: T,
-    addr: GroupedExpression<T, V>,
+    address: OpenVmAddress<T, V>,
     data: Vec<GroupedExpression<T, V>>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
-pub struct OpenVmAddress<T, V>(T, GroupedExpression<T, V>);
+pub struct OpenVmAddress<T, V> {
+    /// The address space (e.g. register, memory, native, etc.), always a concrete number.
+    address_space: T,
+    /// The address expression.
+    local_address: GroupedExpression<T, V>,
+}
 
 impl<T: FieldElement, V> IntoIterator for OpenVmAddress<T, V> {
     type Item = GroupedExpression<T, V>;
-    type IntoIter = std::vec::IntoIter<GroupedExpression<T, V>>;
+    type IntoIter = IntoIter<GroupedExpression<T, V>, 2>;
 
     fn into_iter(self) -> Self::IntoIter {
-        vec![GroupedExpression::from_number(self.0), self.1].into_iter()
+        [
+            GroupedExpression::from_number(self.address_space),
+            self.local_address,
+        ]
+        .into_iter()
     }
 }
 
@@ -59,16 +67,19 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
         let Some(address_space) = address_space.try_to_number() else {
             panic!("Address space must be known!");
         };
+        let address = OpenVmAddress {
+            address_space,
+            local_address: addr.clone(),
+        };
         Ok(Some(OpenVmMemoryBusInteraction {
             op,
-            address_space,
-            addr: addr.clone(),
+            address,
             data: data.to_vec(),
         }))
     }
 
     fn addr(&self) -> Self::Address {
-        OpenVmAddress(self.address_space, self.addr.clone())
+        self.address.clone()
     }
 
     fn data(&self) -> &[GroupedExpression<T, V>] {
@@ -80,10 +91,12 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
     }
 
     fn register_address(&self) -> Option<usize> {
-        if self.address_space == REGISTER_ADDRESS_SPACE.into() {
+        if self.address.address_space == REGISTER_ADDRESS_SPACE.into() {
             // We assume that the address is a concrete number.
             Some(
-                self.addr
+                self.address
+                    .local_address
+                    .clone()
                     .try_to_number()
                     .expect("Register address must be a concrete number")
                     .to_degree()
