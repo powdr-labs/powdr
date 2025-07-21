@@ -27,7 +27,7 @@ fn compile(program: Vec<Instruction<BabyBear>>) -> String {
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
+        instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
@@ -42,7 +42,7 @@ fn compile(program: Vec<Instruction<BabyBear>>) -> String {
     build::<BabyBearOpenVmApcAdapter>(
         BasicBlock {
             statements: program.into_iter().map(Instr).collect(),
-            start_idx: 0,
+            start_pc: 0,
         },
         vm_config,
         degree_bound,
@@ -289,10 +289,10 @@ mod complex_tests {
     #[test]
     fn guest_top_block() {
         // Top block from `guest` with `--pgo cell`, with 4 instructions:
-        // SymbolicInstructionStatement { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
-        // SymbolicInstructionStatement { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
+        // Instruction { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
+        // Instruction { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
+        // Instruction { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
+        // Instruction { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
 
         let program = [
             add(8, 8, 16777200, 0),
@@ -302,5 +302,24 @@ mod complex_tests {
         ];
 
         assert_machine_output(program.to_vec(), "guest_top_block");
+    }
+
+    #[test]
+    fn memcpy_block() {
+        // AND rd_ptr = 52, rs1_ptr = 44, rs2 = 3, rs2_as = 0
+        // SLTU rd_ptr = 52, rs1_ptr = 52, rs2 = 1, rs2_as = 0
+        // SLTU rd_ptr = 56, rs1_ptr = 56, rs2 = 1, rs2_as = 0
+        // OR rd_ptr = 52, rs1_ptr = 52, rs2 = 56, rs2_as = 1
+        // BNE 52 0 248 1 1
+
+        let program = [
+            and(52, 44, 3, 0),
+            sltu(52, 52, 1, 0),
+            sltu(56, 56, 1, 0),
+            or(52, 52, 56, 1),
+            bne(52, 0, 248),
+        ];
+
+        assert_machine_output(program.to_vec(), "memcpy_block");
     }
 }

@@ -47,7 +47,9 @@ impl BusMap {
 
     /// Lookup the `BusType` for a given ID.
     pub fn bus_type(&self, bus_id: u64) -> BusType {
-        self.bus_ids[&bus_id]
+        self.bus_ids.get(&bus_id).cloned().unwrap_or_else(|| {
+            panic!("No bus type found for ID: {bus_id}");
+        })
     }
 
     /// Insert a new bus type under the given ID, ensuring no other ID

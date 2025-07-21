@@ -1,11 +1,12 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
+use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
@@ -25,7 +26,7 @@ use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicBusInteraction;
-use powdr_autoprecompiles::{Apc, PowdrConfig, SymbolicInstructionStatement};
+use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
@@ -60,7 +61,7 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
-    type InstructionMachineHandler = OriginalAirs<Self::Field>;
+    type InstructionHandler = OriginalAirs<Self::Field>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
@@ -87,17 +88,21 @@ pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn opcode(&self) -> usize {
-        self.0.opcode.as_usize()
-    }
-
-    fn into_symbolic_instruction(self) -> SymbolicInstructionStatement<F> {
-        SymbolicInstructionStatement {
-            opcode: self.0.opcode.as_usize(),
-            args: vec![
-                self.0.a, self.0.b, self.0.c, self.0.d, self.0.e, self.0.f, self.0.g,
-            ],
-        }
+    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+        let args = [
+            self.0.opcode.to_field(),
+            self.0.a,
+            self.0.b,
+            self.0.c,
+            self.0.d,
+            self.0.e,
+            self.0.f,
+            self.0.g,
+        ];
+        // The PC lookup row has the format:
+        // [pc, opcode, a, b, c, d, e, f, g]
+        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
+        once(pc).chain(args.into_iter().map(Some)).collect()
     }
 }
 
@@ -135,9 +140,7 @@ pub fn customize(
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let opcodes_allowlist = airs.allow_list();
-
-    let labels = add_extra_targets(
+    let jumpdest_set = add_extra_targets(
         &exe.program,
         labels.clone(),
         exe.program.pc_base,
@@ -147,7 +150,7 @@ pub fn customize(
     let program = Prog(&exe.program);
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
+        instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
@@ -164,15 +167,13 @@ pub fn customize(
         PgoConfig::Instruction(_) | PgoConfig::None => None,
     };
 
-    // Convert the labels to u64 for compatibility with the `collect_basic_blocks` function.
-    let labels = labels.iter().map(|&x| x as u64).collect::<BTreeSet<_>>();
+    // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
+    let jumpdest_set = jumpdest_set
+        .iter()
+        .map(|&x| x as u64)
+        .collect::<BTreeSet<_>>();
 
-    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(
-        &program,
-        &labels,
-        &opcodes_allowlist,
-        &branch_opcodes_set(),
-    );
+    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -181,21 +182,14 @@ pub fn customize(
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .filter_map(|block| {
-                Some((
-                    pgo_config.pc_offset_execution_count(block.start_idx as u32)?,
-                    block,
-                ))
-            })
+            .filter_map(|block| Some((pgo_config.pc_execution_count(block.start_pc)?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = debug_info
                 .symbols
-                .try_get_one_or_preceding(
-                    block.start_address(exe.program.pc_base, exe.program.step),
-                )
+                .try_get_one_or_preceding(block.start_pc)
                 .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
                 .unwrap_or_default();
             tracing::debug!(
@@ -204,15 +198,6 @@ pub fn customize(
             );
         }
     }
-
-    let blocks = blocks
-        .into_iter()
-        .filter(|b| {
-            b.statements
-                .iter()
-                .all(|instr| opcodes_allowlist.contains(&instr.opcode()))
-        })
-        .collect::<Vec<_>>();
 
     let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
         blocks,
@@ -260,9 +245,12 @@ pub fn customize(
                     g: BabyBear::ZERO,
                 };
 
-                let pc = block.start_idx;
+                let start_index = ((block.start_pc - exe.program.pc_base as u64)
+                    / exe.program.step as u64)
+                    .try_into()
+                    .unwrap();
                 let n_acc = block.statements.len();
-                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[pc..pc + n_acc]
+                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[start_index..start_index + n_acc]
                     .iter()
                     .enumerate()
                     .map(|(i, x)| {
@@ -279,7 +267,7 @@ pub fn customize(
                 let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
 
                 let len_before = program.len();
-                program.splice(pc..pc + n_acc, new_instrs);
+                program.splice(start_index..start_index + n_acc, new_instrs);
                 assert_eq!(program.len(), len_before);
 
                 let is_valid_column = machine
@@ -330,7 +318,7 @@ fn add_extra_targets<F: PrimeField32>(
         .filter_map(|(i, instr)| {
             let instr = instr.as_ref().unwrap().0.clone();
             let adjusted_pc = base_pc + (i as u32) * pc_step;
-            let op = instr.opcode.as_usize();
+            let op = instr.opcode;
             branch_opcodes_bigint
                 .contains(&op)
                 .then_some(adjusted_pc + instr.c.as_canonical_u32())
@@ -380,7 +368,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
     fn create(
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
-        pgo_program_idx_count: &HashMap<u32, u32>,
+        pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: VmConfig<OriginalAirs<BabyBear>, OpenVmBusInteractionHandler<BabyBearField>>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
@@ -392,16 +380,15 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             .iter()
             .map(|instr| {
                 vm_config
-                    .instruction_machine_handler
-                    .get_instruction_metrics(instr.opcode())
+                    .instruction_handler
+                    .get_instruction_metrics(instr.0.opcode)
                     .unwrap()
                     .widths
             })
             .sum();
 
-        let execution_frequency = *pgo_program_idx_count
-            .get(&(apc.block.start_idx as u32))
-            .unwrap_or(&0) as usize;
+        let execution_frequency =
+            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
 
         Self {
             apc,

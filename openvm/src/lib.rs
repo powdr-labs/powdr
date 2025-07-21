@@ -330,20 +330,23 @@ pub fn compile_guest(
     )
 }
 
+fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
+    (program.pc_base + (idx as u32 * program.step)) as u64
+}
+
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
-    let pgo_program_idx_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _)
-        | PgoConfig::Instruction(pgo_program_idx_count) => {
+    let pgo_program_pc_count = match pgo_config {
+        PgoConfig::Cell(pgo_program_pc_count, _) | PgoConfig::Instruction(pgo_program_pc_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
-            pgo_program_idx_count
+            pgo_program_pc_count
         }
         PgoConfig::None => {
             // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
             tracing::debug!("Opcode frequency in program:");
             // Create a dummy HashMap that returns 1 for each pc
             &(0..exe.program.instructions_and_debug_infos.len())
-                .map(|i| (i as u32, 1))
+                .map(|i| (instruction_index_to_pc(&exe.program, i), 1))
                 .collect::<HashMap<_, _>>()
         }
     };
@@ -354,7 +357,8 @@ fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
         .enumerate()
         .fold(HashMap::new(), |mut acc, (i, instr)| {
             let opcode = instr.as_ref().unwrap().0.opcode;
-            if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
+            if let Some(count) = pgo_program_pc_count.get(&instruction_index_to_pc(&exe.program, i))
+            {
                 *acc.entry(opcode).or_insert(0) += count;
             }
             acc
@@ -696,7 +700,7 @@ pub fn execution_profile_from_guest(
     guest: &str,
     guest_opts: GuestOptions,
     inputs: StdIn,
-) -> HashMap<u32, u32> {
+) -> HashMap<u64, u32> {
     let inverse_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(InverseTranspilerExtension{});
     let extensions = vec![
         inverse_transpiler,
@@ -705,9 +709,9 @@ pub fn execution_profile_from_guest(
     execution_profile(program, inputs)
 }
 
-// Produces execution count by pc_index
+// Produces execution count by pc
 // Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
+pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u64, u32> {
     let OriginalCompiledProgram { exe, vm_config } = program;
 
     // in memory collector storage
@@ -787,7 +791,7 @@ impl PgoCollector {
         }
     }
 
-    fn into_hashmap(self) -> HashMap<u32, u32> {
+    fn into_hashmap(self) -> HashMap<u64, u32> {
         // Turn the map into a HashMap of (pc_index, count)
         self.pc_index_map
             .iter()
@@ -799,8 +803,9 @@ impl PgoCollector {
                 if count == 0 {
                     return None;
                 }
+                let pc = self.pc_base + (pc_index * self.step);
 
-                Some((pc_index as u32, count))
+                Some((pc as u64, count))
             })
             .collect()
     }
@@ -1487,11 +1492,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 49,
+                    main: 48,
                     log_up: 36,
                 },
                 constraints: 22,
-                bus_interactions: 31,
+                bus_interactions: 30,
             },
             powdr_expected_machine_count: 1,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1521,7 +1526,7 @@ mod tests {
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 49,
+                    main: 48,
                     log_up: 36,
                 },
             }),
@@ -1538,11 +1543,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 14695,
-                    log_up: 12144,
+                    main: 14676,
+                    log_up: 12128,
                 },
                 constraints: 4143,
-                bus_interactions: 11692,
+                bus_interactions: 11673,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1562,11 +1567,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 14675,
-                    log_up: 12124,
+                    main: 14656,
+                    log_up: 12108,
                 },
                 constraints: 4127,
-                bus_interactions: 11682,
+                bus_interactions: 11663,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1587,8 +1592,8 @@ mod tests {
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 14675,
-                    log_up: 12124,
+                    main: 14656,
+                    log_up: 12108,
                 },
             }),
         });
@@ -1636,11 +1641,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 2011,
+                    main: 2010,
                     log_up: 1788,
                 },
                 constraints: 166,
-                bus_interactions: 1783,
+                bus_interactions: 1782,
             },
             powdr_expected_machine_count: 1,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1679,7 +1684,7 @@ mod tests {
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 2011,
+                    main: 2010,
                     log_up: 1788,
                 },
             }),
@@ -1697,16 +1702,16 @@ mod tests {
         let powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 4824,
+                main: 4831,
                 log_up: 3968,
             },
-            constraints: 935,
-            bus_interactions: 3826,
+            constraints: 958,
+            bus_interactions: 3821,
         };
 
         let expected_metrics = MachineTestMetrics {
             powdr_expected_sum: powdr_metrics_sum.clone(),
-            powdr_expected_machine_count: 18,
+            powdr_expected_machine_count: 19,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
             non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
         };
@@ -1720,12 +1725,12 @@ mod tests {
             expected_columns_saved: Some(AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
-                    main: 38846,
-                    log_up: 26832,
+                    main: 38950,
+                    log_up: 26908,
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 4824,
+                    main: 4831,
                     log_up: 3968,
                 },
             }),

@@ -89,6 +89,10 @@ impl<F: PrimeField32> PlonkChip<F> {
 }
 
 impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
+    fn receives_from_program_chip(&self) -> bool {
+        false
+    }
+
     fn execute(
         &mut self,
         memory: &mut MemoryController<F>,

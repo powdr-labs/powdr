@@ -84,6 +84,10 @@ impl<F: PrimeField32> PowdrChip<F> {
 }
 
 impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
+    fn receives_from_program_chip(&self) -> bool {
+        false
+    }
+
     fn execute(
         &mut self,
         memory: &mut MemoryController<F>,

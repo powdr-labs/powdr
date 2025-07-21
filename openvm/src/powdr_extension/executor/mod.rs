@@ -43,7 +43,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionMachineHandler, SymbolicBusInteraction,
+    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
