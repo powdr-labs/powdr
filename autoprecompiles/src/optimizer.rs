@@ -14,14 +14,14 @@ use crate::{
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
     memory_optimizer::{
-        check_register_operation_consistency, optimize_memory, OpenVmMemoryBusInteraction,
+        check_register_operation_consistency, optimize_memory, MemoryBusInteraction,
     },
     powdr::{self},
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
-pub fn optimize<T: FieldElement>(
+pub fn optimize<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>(
     mut machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
@@ -38,7 +38,7 @@ pub fn optimize<T: FieldElement>(
 
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration(
+        constraint_system = optimization_loop_iteration::<_, M>(
             constraint_system,
             bus_interaction_handler.clone(),
             degree_bound,
@@ -61,7 +61,7 @@ pub fn optimize<T: FieldElement>(
     }
 }
 
-fn optimization_loop_iteration<T: FieldElement>(
+fn optimization_loop_iteration<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>(
     constraint_system: ConstraintSystem<T, AlgebraicReference>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     degree_bound: DegreeBound,
@@ -77,16 +77,12 @@ fn optimization_loop_iteration<T: FieldElement>(
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system = optimize_memory::<_, _, OpenVmMemoryBusInteraction<_, _>>(
-            constraint_system,
-            memory_bus_id,
-            NoRangeConstraints,
-        );
-        assert!(check_register_operation_consistency::<
-            _,
-            _,
-            OpenVmMemoryBusInteraction<_, _>,
-        >(&constraint_system, memory_bus_id));
+        let constraint_system =
+            optimize_memory::<_, _, M>(constraint_system, memory_bus_id, NoRangeConstraints);
+        assert!(check_register_operation_consistency::<_, _, M>(
+            &constraint_system,
+            memory_bus_id
+        ));
         stats_logger.log("memory optimization", &constraint_system);
         constraint_system
     } else {

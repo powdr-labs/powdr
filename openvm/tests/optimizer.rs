@@ -1,3 +1,4 @@
+use powdr_autoprecompiles::memory_optimizer::OpenVmMemoryBusInteraction;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
@@ -32,7 +33,7 @@ fn test_optimize() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize(
+    let machine = optimize::<_, OpenVmMemoryBusInteraction<_, _>>(
         machine,
         OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
         DegreeBound {

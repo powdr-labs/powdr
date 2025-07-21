@@ -84,6 +84,7 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     /// Returns `Err(_)` if the bus interaction is a memory bus interaction but could not be converted properly
     /// (usually because the multiplicity is not -1 or 1).
     /// Otherwise returns `Ok(Some(memory_bus_interaction))`
+    #[allow(clippy::result_unit_err)]
     fn try_from_bus_interaction(
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
         memory_bus_id: u64,
@@ -271,6 +272,7 @@ type BooleanExtractedExpression<T, V> = GroupedExpression<T, boolean_extractor::
 struct MemoryAddressComparator<T: FieldElement, V, M> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
+    #[allow(clippy::type_complexity)]
     memory_addresses:
         HashMap<Vec<BooleanExtractedExpression<T, V>>, Vec<Vec<BooleanExtractedExpression<T, V>>>>,
     _marker: PhantomData<M>,
