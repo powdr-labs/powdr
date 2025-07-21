@@ -80,7 +80,9 @@ pub struct MemoryBusInteractionConversionError;
 /// Note that the order of memory bus interactions as they appear in the constraint system
 /// is assumed to be chronological.
 pub trait MemoryBusInteraction<T, V>: Sized {
-    /// The address type of the memory bus interaction. We assume that it is a slice of expressions.
+    /// The address type of the memory bus interaction. We assume that it is a list of expressions.
+    /// If there are different memories (e.g. register memory and heap memory), this type can be
+    /// a composite address.
     type Address: Eq + Hash + Clone + IntoIterator<Item = GroupedExpression<T, V>>;
 
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
@@ -218,7 +220,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Display, M: MemoryBusInteraction<T
 
         let memory_addresses = addresses
             .map(|addr| {
-                // Represent an address as a list of expressions, one for each limb.
+                // Represent an address as a list of expressions.
                 let addr = Self::boolean_extracted_address(addr);
                 let equivalent_expressions = addr
                     .iter()
@@ -261,8 +263,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Display, M: MemoryBusInteraction<T
             .iter()
             .cartesian_product(b_exprs)
             .any(|(a_expr, b_expr)| {
-                // Compare all pairs of limbs. We know the addresses are different
-                // if at least one pair of limbs is known to be different.
+                // Compare all pairs of address fields. We know the addresses are different
+                // if at least one pair of fields is known to be different.
                 a_expr.iter().zip_eq(b_expr).any(|(a_expr, b_expr)| {
                     is_known_to_be_nonzero(&(a_expr - b_expr), &range_constraints)
                 })

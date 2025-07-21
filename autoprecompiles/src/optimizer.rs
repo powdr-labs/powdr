@@ -75,14 +75,14 @@ fn optimization_loop_iteration<A: Adapter>(
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system = optimize_memory::<
-            A::PowdrField,
-            AlgebraicReference,
-            A::MemoryBusInteraction,
-        >(constraint_system, memory_bus_id, NoRangeConstraints);
+        let constraint_system = optimize_memory::<_, _, A::MemoryBusInteraction>(
+            constraint_system,
+            memory_bus_id,
+            NoRangeConstraints,
+        );
         assert!(check_register_operation_consistency::<
-            A::PowdrField,
-            AlgebraicReference,
+            _,
+            _,
             A::MemoryBusInteraction,
         >(&constraint_system, memory_bus_id));
         stats_logger.log("memory optimization", &constraint_system);
