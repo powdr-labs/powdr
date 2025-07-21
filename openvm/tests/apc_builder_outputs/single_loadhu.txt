@@ -1,4 +1,4 @@
-// Symbolic machine using 20 unique columns
+// Symbolic machine using 20 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, read_data_aux__base__prev_timestamp_0 + read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0]
