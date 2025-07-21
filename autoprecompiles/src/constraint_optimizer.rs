@@ -3,12 +3,19 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 use inliner::DegreeBound;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::BusInteractionHandler, grouped_expression::GroupedExpression, inliner,
-    journaling_constraint_system::JournalingConstraintSystem, solver::solve_system,
+    constraint_system::{BusInteractionHandler, ConstraintSystem},
+    grouped_expression::GroupedExpression,
+    inliner,
+    journaling_constraint_system::JournalingConstraintSystem,
+    solver::solve_system,
 };
 use powdr_number::FieldElement;
 
 use crate::stats_logger::StatsLogger;
+
+mod reachability;
+
+use reachability::reachable_variables;
 
 #[derive(Debug)]
 pub enum Error {
@@ -84,36 +91,14 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
-    bus_interaction_handler: impl IsBusStateful<T>,
+    bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
-    // Initialize variables_to_keep with any variables that appear in stateful bus interactions.
-    let mut variables_to_keep = constraint_system
-        .system()
-        .bus_interactions
-        .iter()
-        .filter(|bus_interaction| {
-            let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
-            bus_interaction_handler.is_stateful(bus_id)
-        })
-        .flat_map(|bus_interaction| bus_interaction.referenced_variables())
-        .cloned()
-        .collect::<HashSet<_>>();
-
-    // Any variable that is connected to a variable in variables_to_keep must also be kept.
-    loop {
-        let size_before = variables_to_keep.len();
-        for expr in constraint_system.system().iter() {
-            if expr
-                .referenced_variables()
-                .any(|var| variables_to_keep.contains(var))
-            {
-                variables_to_keep.extend(expr.referenced_variables().cloned());
-            }
-        }
-        if variables_to_keep.len() == size_before {
-            break;
-        }
-    }
+    let initial_variables = variables_in_stateful_bus_interactions(
+        constraint_system.system(),
+        bus_interaction_handler.clone(),
+    )
+    .cloned();
+    let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
@@ -132,6 +117,21 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     });
 
     constraint_system
+}
+
+/// Returns an iterator over all variables that are referenced in stateful bus interactions.
+fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + Eq + Hash>(
+    constraint_system: &'a ConstraintSystem<P, V>,
+    bus_interaction_handler: impl IsBusStateful<P> + 'a,
+) -> impl Iterator<Item = &'a V> {
+    constraint_system
+        .bus_interactions
+        .iter()
+        .filter(move |bus_interaction| {
+            let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+            bus_interaction_handler.is_stateful(bus_id)
+        })
+        .flat_map(|bus_interaction| bus_interaction.referenced_variables())
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
