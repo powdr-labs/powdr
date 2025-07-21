@@ -29,7 +29,7 @@ pub fn solve_system<T, V>(
 ) -> Result<SolveResult<T, V>, Error>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
-    T::Transformed: RuntimeConstant
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
         + Substitutable<Variable<V>>
@@ -43,7 +43,7 @@ where
     let result = Solver::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result.assignments))
+    Ok(bus_interaction_variable_wrapper.finalize(result))
 }
 
 /// The result of the solving process.
@@ -52,6 +52,9 @@ pub struct SolveResult<T: RuntimeConstant, V> {
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
     pub assignments: Vec<VariableAssignment<T, V>>,
+    /// The range constraints the solver was able to determine
+    /// for the variables.
+    pub range_constraints: RangeConstraints<T::FieldType, V>,
     /// Maps a (bus interaction index, field index) to a concrete value.
     pub bus_field_assignments: BTreeMap<(usize, usize), T::FieldType>,
 }
@@ -136,11 +139,12 @@ where
     }
 
     /// Solves the constraints as far as possible, returning concrete variable
-    /// assignments and a simplified version of the algebraic constraints.
+    /// assignments and determined range constraints.
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
         Ok(SolveResult {
             assignments: self.assignments,
+            range_constraints: self.range_constraints,
             bus_field_assignments: Default::default(),
         })
     }
@@ -294,8 +298,8 @@ impl<T: RuntimeConstant, V: Clone + Hash + Eq, B> RangeConstraintProvider<T::Fie
 }
 
 /// The currently known range constraints for the variables.
-struct RangeConstraints<T: FieldElement, V> {
-    range_constraints: HashMap<V, RangeConstraint<T>>,
+pub struct RangeConstraints<T: FieldElement, V> {
+    pub range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
 // Manual implementation so that we don't have to require `V: Default`.
