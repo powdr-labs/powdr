@@ -46,23 +46,6 @@ where
     Ok(bus_interaction_variable_wrapper.finalize(result))
 }
 
-pub fn determine_range_constraints<T, V>(
-    constraint_system: ConstraintSystemGeneric<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
-) -> Result<HashMap<V, RangeConstraint<T::FieldType>>, Error>
-where
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Substitutable<V>
-        + Display
-        + ExpressionConvertible<T::FieldType, V>,
-    V: Ord + Clone + Hash + Eq + Display,
-{
-    Solver::new(constraint_system)
-        .with_bus_interaction_handler(bus_interaction_handler)
-        .determine_range_constraints()
-}
-
 /// The result of the solving process.
 pub struct SolveResult<T: RuntimeConstant, V> {
     /// The concrete variable assignments that were derived.
@@ -155,13 +138,6 @@ where
             range_constraints: self.range_constraints,
             bus_field_assignments: Default::default(),
         })
-    }
-
-    pub fn determine_range_constraints(
-        mut self,
-    ) -> Result<HashMap<V, RangeConstraint<T::FieldType>>, Error> {
-        self.loop_until_no_progress()?;
-        Ok(self.range_constraints.range_constraints)
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {

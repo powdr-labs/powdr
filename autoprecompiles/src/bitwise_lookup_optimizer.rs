@@ -7,13 +7,9 @@ use num_traits::{One, Zero};
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
-use powdr_constraint_solver::effect::EffectImpl;
-use powdr_constraint_solver::grouped_expression::{
-    GroupedExpression, NoRangeConstraints, QuadraticSymbolicExpression, RangeConstraintProvider,
-};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::runtime_constant::RuntimeConstant;
-use powdr_constraint_solver::solver::{self, bus_interaction_variable_wrapper};
+use powdr_constraint_solver::solver::{self, bus_interaction_variable_wrapper, Solver};
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
@@ -116,60 +112,20 @@ fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Ha
         && bus_int.multiplicity.is_one()
 }
 
-struct RangeConstraints<T: FieldElement, V> {
-    range_constraints: HashMap<V, RangeConstraint<T>>,
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
-    for RangeConstraints<T, V>
-{
-    fn get(&self, var: &V) -> RangeConstraint<T> {
-        self.range_constraints.get(var).cloned().unwrap_or_default()
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Ord + Display> RangeConstraints<T, V> {
-    /// Computes range constraints for variables in the machine.
-    /// This is a very basic way to do it, it does not do it iteratively
-    /// and only considers bus interactions.
-    /// We could get better results using the solver.
-    fn new(
-        machine: &ConstraintSystem<T, V>,
-        bus_interaction_handler: &impl BusInteractionHandler<T>,
-    ) -> Self {
-        let range_constraints = machine
-            .bus_interactions
-            .iter()
-            .flat_map(move |bus_interaction| {
-                bus_interaction
-                    .solve(bus_interaction_handler, &NoRangeConstraints)
-                    .unwrap()
-            })
-            .flat_map(|effect| match effect {
-                EffectImpl::Assignment(v, value) => Some((v, value.range_constraint())),
-                EffectImpl::RangeConstraint(v, range_constraint) => Some((v, range_constraint)),
-                EffectImpl::BitDecomposition(..)
-                | EffectImpl::Assertion(..)
-                | EffectImpl::ConditionalAssignment { .. } => {
-                    None /* ignore */
-                }
-            })
-            .into_grouping_map()
-            .reduce(|acc, _key, new_rc| acc.conjunction(&new_rc));
-        Self { range_constraints }
-    }
-}
-
 fn determine_range_constraints_using_solver<
     T: FieldElement,
     V: Clone + Hash + Eq + Ord + Debug + Display,
 >(
     system: &ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
-) -> HashMap<QuadraticSymbolicExpression<T, V>, RangeConstraint<T>> {
+) -> HashMap<GroupedExpression<T, V>, RangeConstraint<T>> {
     let (wrapper, transformed_system) = solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper::replace_bus_interaction_expressions(system.clone());
-    solver::determine_range_constraints(transformed_system, bus_interaction_handler)
+    Solver::new(transformed_system)
+        .with_bus_interaction_handler(bus_interaction_handler)
+        .solve()
         .unwrap()
+        .range_constraints
+        .range_constraints
         .into_iter()
         .map(|(var, range_constraint)| {
             let expr = match var {
