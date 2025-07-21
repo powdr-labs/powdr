@@ -76,7 +76,9 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 // interaction by an algebraic constraint.
                 // TODO we could be a bit more clever about which variables to use in the
                 // quadratic term
-                new_constraints.push(x.clone() + y.clone() - z.clone() - x.clone() * y.clone());
+                let two = GroupedExpression::from_number(T::from(2));
+                new_constraints
+                    .push(x.clone() + y.clone() - z.clone() - two * x.clone() * y.clone());
                 // Byte-constrain them to be sure we are not missing anything.
                 to_byte_constrain.extend([x, y, z].into_iter().cloned());
                 false
