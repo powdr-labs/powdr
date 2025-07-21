@@ -43,10 +43,10 @@ fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
 
     let mut error = false;
     for (variable, value) in &expected_final_state {
-        if final_state.get(&variable) != Some(&value) {
+        if final_state.get(variable) != Some(value) {
             log::error!("Mismatch for variable {variable}:");
             log::error!("  Expected: {value}");
-            if let Some(final_value) = final_state.get(&variable) {
+            if let Some(final_value) = final_state.get(variable) {
                 log::error!("  Actual:   {final_value}");
             } else {
                 log::error!("  Actual:   (not found)");
@@ -54,6 +54,7 @@ fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
             error = true;
         }
     }
+    #[allow(clippy::iter_over_hash_type)]
     for (variable, value) in &final_state {
         if !expected_final_state.contains_key(variable) {
             log::error!("Unexpected variable {variable}: {value}");
