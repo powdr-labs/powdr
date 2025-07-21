@@ -9,10 +9,10 @@ use powdr_ast::analyzed::{
 };
 use powdr_constraint_solver::constraint_system::{ConstraintSystem, DefaultBusInteractionHandler};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
+use powdr_constraint_solver::indexed_constraint_system::apply_expression_substitutions;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
-    solver::{self, SolveResult},
+    solver::{self},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
 use powdr_number::FieldElement;
@@ -57,8 +57,9 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
         }
-        Ok(SolveResult { assignments, .. }) => {
-            let constraint_system = apply_substitutions(constraint_system, assignments.clone());
+        Ok(assignments) => {
+            let constraint_system =
+                apply_expression_substitutions(constraint_system, assignments.clone());
             pil_file
                 .identities
                 .iter_mut()
@@ -81,6 +82,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             // We add all assignments because we did not send all references to witnesses to the solver.
             // It might have removed some variable that are hard-constrained to some value.
             for (var, value) in assignments {
+                let var = var.try_to_simple_unknown().unwrap();
                 pil_file.append_polynomial_identity(
                     variable_to_algebraic_expression(var)
                         - quadratic_symbolic_expression_to_algebraic(&value),

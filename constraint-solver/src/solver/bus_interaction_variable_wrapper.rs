@@ -7,7 +7,7 @@ use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable, VarTransformable},
-    solver::{SolveResult, VariableAssignment},
+    solver::{Substitution, VariableAssignment},
 };
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.
@@ -28,110 +28,104 @@ impl<V: Display> Display for Variable<V> {
     }
 }
 
-pub struct BusInteractionVariableWrapper<T, V> {
-    pub bus_interaction_vars: BTreeMap<Variable<V>, GroupedExpression<T, V>>,
+#[allow(clippy::type_complexity)]
+pub fn replace_bus_interaction_expressions<T, V>(
+    constraint_system: ConstraintSystem<T, V>,
+) -> (
+    BTreeMap<Variable<V>, GroupedExpression<T, V>>,
+    ConstraintSystem<T::Transformed, Variable<V>>,
+)
+where
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T::Transformed: RuntimeConstant,
+    V: Ord + Clone + Hash + Eq,
+{
+    let mut new_constraints = Vec::new();
+    let mut bus_interaction_vars = BTreeMap::new();
+    let bus_interactions = constraint_system
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .map(|(bus_interaction_index, bus_interaction)| {
+            BusInteraction::from_iter(bus_interaction.fields().enumerate().map(
+                |(field_index, expr)| {
+                    let transformed_expr =
+                        expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
+                    let v = Variable::BusInteractionField(bus_interaction_index, field_index);
+                    new_constraints.push(
+                        transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
+                    );
+                    bus_interaction_vars.insert(v.clone(), expr.clone());
+                    GroupedExpression::from_unknown_variable(v)
+                },
+            ))
+        })
+        .collect();
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints: constraint_system
+            .algebraic_constraints
+            .iter()
+            .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
+            .chain(new_constraints)
+            .collect(),
+        bus_interactions,
+    };
+    (bus_interaction_vars, constraint_system)
 }
 
-impl<T, V: Ord + Clone + Hash + Eq + Display> BusInteractionVariableWrapper<T, V>
+/// Takes a map with the original definitions of bus interaction variables plus
+/// a list of substitutions and returns a list of equivalent substitutions not mentioning
+/// bus interaction fields.s
+pub fn untransform_assignments<T, V: Ord + Clone + Hash + Eq>(
+    mut bus_interaction_vars: BTreeMap<Variable<V>, GroupedExpression<T, V>>,
+    assignments: Vec<VariableAssignment<T::Transformed, Variable<V>>>,
+) -> Vec<Substitution<T, V>>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant
         + VarTransformable<Variable<V>, V, Transformed = T>
         + Substitutable<Variable<V>>,
 {
-    pub fn replace_bus_interaction_expressions(
-        constraint_system: ConstraintSystem<T, V>,
-    ) -> (Self, ConstraintSystem<T::Transformed, Variable<V>>) {
-        let mut new_constraints = Vec::new();
-        let mut bus_interaction_vars = BTreeMap::new();
-        let bus_interactions = constraint_system
-            .bus_interactions
-            .iter()
-            .enumerate()
-            .map(|(bus_interaction_index, bus_interaction)| {
-                BusInteraction::from_iter(bus_interaction.fields().enumerate().map(
-                    |(field_index, expr)| {
-                        let transformed_expr =
-                            expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
-                        let v = Variable::BusInteractionField(bus_interaction_index, field_index);
-                        new_constraints.push(
-                            transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
-                        );
-                        bus_interaction_vars.insert(v.clone(), expr.clone());
-                        GroupedExpression::from_unknown_variable(v)
-                    },
-                ))
-            })
-            .collect();
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: constraint_system
-                .algebraic_constraints
-                .iter()
-                .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
-                .chain(new_constraints)
-                .collect(),
-            bus_interactions,
-        };
-        (
-            Self {
-                bus_interaction_vars,
-            },
-            constraint_system,
-        )
-    }
-
-    pub fn finalize(
-        mut self,
-        assignments: Vec<VariableAssignment<T::Transformed, Variable<V>>>,
-    ) -> SolveResult<T, V> {
-        for (variable, expr) in &assignments {
-            // Apply any assignments to the bus interaction field definitions.
-            if let Variable::BusInteractionField(..) = variable {
-                // Non-concrete assignments are only generated by the `quadratic_equivalences` module,
-                // and bus interaction fields should only appear in bus interactions and constraints
-                // of the form <bus interaction field> = <expression>, which would not lead to a
-                // quadratic equivalence.
-                // So we only expect concrete values here, but we need to do some trickery
-                // to translate types which we expect to be equal anyway.
-                let value: T::FieldType = expr
-                    .try_to_known()
-                    .unwrap()
-                    .transform_var_type(&mut |_| unreachable!())
-                    .try_to_number()
-                    .unwrap();
-                self.bus_interaction_vars
-                    .insert(variable.clone(), GroupedExpression::from_number(value));
-            }
-        }
-
-        // Unwrap assignments. Note that this uses the updated bus interaction field definitions.
-        let assignments = assignments
-            .into_iter()
-            .filter_map(|(v, expr)| match v {
-                Variable::Variable(v) => {
-                    Some((v, unwrap_expression(&self.bus_interaction_vars, expr)))
-                }
-                Variable::BusInteractionField(..) => None,
-            })
-            .collect();
-
-        // If a bus interaction field can be assigned a concrete value, report this to the caller.
-        let bus_field_assignments = self
-            .bus_interaction_vars
-            .into_iter()
-            .filter_map(|(v, expr)| match (v, expr.try_to_number()) {
-                (Variable::BusInteractionField(bus_index, field_index), Some(value)) => {
-                    Some(((bus_index, field_index), value))
-                }
-                _ => None,
-            })
-            .collect();
-
-        SolveResult {
-            assignments,
-            bus_field_assignments,
+    let mut result = Vec::<(GroupedExpression<T, V>, GroupedExpression<T, V>)>::new();
+    for (variable, expr) in &assignments {
+        // Apply any assignments to the bus interaction field definitions.
+        if let Variable::BusInteractionField(..) = variable {
+            // Non-concrete assignments are only generated by the `quadratic_equivalences` module,
+            // and bus interaction fields should only appear in bus interactions and constraints
+            // of the form <bus interaction field> = <expression>, which would not lead to a
+            // quadratic equivalence.
+            // So we only expect concrete values here, but we need to do some trickery
+            // to translate types which we expect to be equal anyway.
+            let value: T::FieldType = expr
+                .try_to_known()
+                .unwrap()
+                .transform_var_type(&mut |_| unreachable!())
+                .try_to_number()
+                .unwrap();
+            // Replace the original definition of the bus interaction variable
+            // by the assigned concrete value and store the association
+            // in the result.
+            let original_definition = bus_interaction_vars
+                .insert(variable.clone(), GroupedExpression::from_number(value))
+                .unwrap();
+            // We already push these to the start of the result, i.e. we violate the order
+            // of replacement. But this is fine since we use the original definitions here,
+            // i.e. expressions in the form before any other substitutions have taken place.
+            result.push((original_definition, GroupedExpression::from_number(value)));
         }
     }
+
+    // Unwrap assignments. Note that this uses the updated bus interaction field definitions.
+    result.extend(assignments.into_iter().filter_map(|(v, expr)| match v {
+        Variable::Variable(v) => Some((
+            GroupedExpression::from_unknown_variable(v),
+            unwrap_expression(&bus_interaction_vars, expr),
+        )),
+
+        Variable::BusInteractionField(..) => None,
+    }));
+
+    result
 }
 
 fn unwrap_expression<T, V>(

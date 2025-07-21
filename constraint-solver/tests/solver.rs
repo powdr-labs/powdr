@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use num_traits::identities::{One, Zero};
@@ -7,7 +7,7 @@ use powdr_constraint_solver::{
         BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
     },
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions,
+    indexed_constraint_system::{apply_expression_substitutions, apply_substitutions},
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},
     symbolic_expression::SymbolicExpression,
@@ -18,25 +18,28 @@ use test_log::test;
 
 use pretty_assertions::assert_eq;
 
-pub type Var = &'static str;
+type Var = &'static str;
 
-pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
+type QuadraticSymbolicExpression<V> = GroupedExpression<SymbolicExpression<GoldilocksField, V>, V>;
 
-pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
+fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
     system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
     bus_interaction_handler: B,
     expected_assignments: Vec<(Var, GoldilocksField)>,
 ) {
-    let final_state = solve_system(system, bus_interaction_handler).unwrap();
-    let expected_final_state = expected_assignments.into_iter().collect();
-    assert_expected_state(final_state.assignments, expected_final_state);
-}
-
-fn assert_expected_state(
-    final_state: impl IntoIterator<Item = (Var, QuadraticSymbolicExpression<GoldilocksField, Var>)>,
-    expected_final_state: BTreeMap<Var, GoldilocksField>,
-) {
-    let final_state = final_state.into_iter().collect::<BTreeMap<_, _>>();
+    let final_state = solve_system(system, bus_interaction_handler)
+        .unwrap()
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+    let expected_final_state = expected_assignments
+        .into_iter()
+        .map(|(v, val)| {
+            (
+                QuadraticSymbolicExpression::from_unknown_variable(v),
+                QuadraticSymbolicExpression::from_number(val),
+            )
+        })
+        .collect::<HashMap<_, _>>();
     assert_eq!(
         final_state.keys().collect::<Vec<_>>(),
         expected_final_state.keys().collect::<Vec<_>>(),
@@ -46,10 +49,10 @@ fn assert_expected_state(
     let mut error = false;
     for (variable, value) in expected_final_state {
         // Compare string representation, so that range constraints are ignored.
-        if final_state[variable].to_string() != value.to_string() {
+        if final_state[&variable].to_string() != value.to_string() {
             log::error!("Mismatch for variable {variable}:");
             log::error!("  Expected: {value}");
-            log::error!("  Actual:   {}", final_state[variable]);
+            log::error!("  Actual:   {}", final_state[&variable]);
             error = true;
         }
     }
@@ -181,8 +184,8 @@ impl BusInteractionHandler<GoldilocksField> for TestBusInteractionHandler {
 
 fn send(
     bus_id: u64,
-    payload: Vec<QuadraticSymbolicExpression<GoldilocksField, Var>>,
-) -> BusInteraction<QuadraticSymbolicExpression<GoldilocksField, Var>> {
+    payload: Vec<QuadraticSymbolicExpression<Var>>,
+) -> BusInteraction<QuadraticSymbolicExpression<Var>> {
     BusInteraction {
         multiplicity: constant(1),
         bus_id: constant(bus_id),
@@ -281,7 +284,7 @@ fn add_with_carry() {
     };
 
     let final_state = solve_system(constraint_system.clone(), TestBusInteractionHandler).unwrap();
-    let final_state = apply_substitutions(constraint_system, final_state.assignments)
+    let final_state = apply_expression_substitutions(constraint_system, final_state)
         .algebraic_constraints
         .iter()
         .format("\n")

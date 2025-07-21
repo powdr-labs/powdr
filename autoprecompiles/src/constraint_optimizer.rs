@@ -64,13 +64,10 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
     let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
     log::trace!("Solver figured out the following assignments:");
-    for (var, value) in result.assignments.iter() {
+    for (var, value) in &result {
         log::trace!("  {var} = {value}");
     }
-    constraint_system.apply_substitutions(result.assignments);
-    // TODO could we somehow get rid of this special case by keeping
-    // bus interaction field variables in the system for longer?
-    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
+    constraint_system.apply_expression_substitutions(result);
     Ok(constraint_system)
 }
 

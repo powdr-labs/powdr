@@ -10,15 +10,15 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
-use crate::solver::bus_interaction_variable_wrapper::{BusInteractionVariableWrapper, Variable};
+use crate::solver::bus_interaction_variable_wrapper::Variable;
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-mod bus_interaction_variable_wrapper;
+pub mod bus_interaction_variable_wrapper;
 mod exhaustive_search;
 mod quadratic_equivalences;
 
@@ -26,7 +26,7 @@ mod quadratic_equivalences;
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
-) -> Result<SolveResult<T, V>, Error>
+) -> Result<Vec<Substitution<T, V>>, Error>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant
@@ -37,13 +37,18 @@ where
         + Display,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let (bus_interaction_variable_wrapper, constraint_system) =
-        BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
+    let (bus_interaction_variable_definitions, constraint_system) =
+        bus_interaction_variable_wrapper::replace_bus_interaction_expressions(constraint_system);
 
-    let result = Solver::new(constraint_system)
+    let assignments = Solver::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result.assignments))
+        .solve()?
+        .assignments;
+
+    Ok(bus_interaction_variable_wrapper::untransform_assignments(
+        bus_interaction_variable_definitions,
+        assignments,
+    ))
 }
 
 /// The result of the solving process.
@@ -52,8 +57,6 @@ pub struct SolveResult<T: RuntimeConstant, V> {
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
     pub assignments: Vec<VariableAssignment<T, V>>,
-    /// Maps a (bus interaction index, field index) to a concrete value.
-    pub bus_field_assignments: BTreeMap<(usize, usize), T::FieldType>,
 }
 
 /// An error occurred while solving the constraint system.
@@ -71,6 +74,8 @@ pub enum Error {
 
 /// An assignment of a variable.
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
+
+pub type Substitution<T, V> = (GroupedExpression<T, V>, GroupedExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
@@ -132,7 +137,6 @@ where
         self.loop_until_no_progress()?;
         Ok(SolveResult {
             assignments: self.assignments,
-            bus_field_assignments: Default::default(),
         })
     }
 
