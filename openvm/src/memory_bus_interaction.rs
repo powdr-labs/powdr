@@ -48,8 +48,8 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
         }
 
         let op = match bus_interaction.multiplicity.try_to_number() {
-            Some(n) if n == 1.into() => MemoryOp::SendNew,
-            Some(n) if n == (-1).into() => MemoryOp::ReceivePrevious,
+            Some(n) if n == 1.into() => MemoryOp::SetNew,
+            Some(n) if n == (-1).into() => MemoryOp::GetPrevious,
             _ => return Err(MemoryBusInteractionConversionError),
         };
 

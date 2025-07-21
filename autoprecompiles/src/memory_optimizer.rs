@@ -62,14 +62,22 @@ pub fn check_register_operation_consistency<A: Adapter>(
 }
 
 #[derive(Clone, Debug)]
+/// The type of the memory bus interaction.
 pub enum MemoryOp {
-    ReceivePrevious,
-    SendNew,
+    /// Get the previous value from memory.
+    GetPrevious,
+    /// Set the new value in memory.
+    SetNew,
 }
 
+/// A recoverable error when trying to convert a bus interaction to a memory bus interaction.
+/// For example, it might be that we don't know the bus ID or multiplicity yet.
 pub struct MemoryBusInteractionConversionError;
 
+/// A bus interaction that corresponds to half of a memory operation,
+/// i.e. either a "get previous" or a "set new" operation.
 pub trait MemoryBusInteraction<T, V>: Sized {
+    /// The address type of the memory bus interaction.
     type Address: Eq + Hash + Clone + IntoIterator<Item = GroupedExpression<T, V>>;
 
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
@@ -86,7 +94,7 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     /// Returns the address of the memory bus interaction.
     fn addr(&self) -> Self::Address;
 
-    /// Returns the data of the memory bus interaction.
+    /// Returns the data of the memory bus interaction, represented as a list of limbs.
     fn data(&self) -> &[GroupedExpression<T, V>];
 
     /// Returns the operation of the memory bus interaction.
@@ -137,7 +145,7 @@ fn redundant_memory_interactions_indices<A: Adapter>(
         let addr = mem_int.addr();
 
         match mem_int.op() {
-            MemoryOp::ReceivePrevious => {
+            MemoryOp::GetPrevious => {
                 // If there is an unconsumed send to this address, consume it.
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
@@ -148,7 +156,7 @@ fn redundant_memory_interactions_indices<A: Adapter>(
                     to_remove.extend([index, previous_send]);
                 }
             }
-            MemoryOp::SendNew => {
+            MemoryOp::SetNew => {
                 // We can only retain knowledge about addresses where we can prove
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
