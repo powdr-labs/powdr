@@ -11,15 +11,13 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-use crate::{
-    constraint_optimizer::{
-        equal_zero_checks::replace_equal_zero_checks, reachability::reachable_variables,
-    },
-    stats_logger::StatsLogger,
-};
+use crate::stats_logger::StatsLogger;
 
-mod equal_zero_checks;
+mod equals_zero_checks;
 mod reachability;
+
+use equals_zero_checks::replace_equal_zero_checks;
+use reachability::reachable_variables;
 
 #[derive(Debug)]
 pub enum Error {
@@ -106,11 +104,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
         bus_interaction_handler.clone(),
     )
     .cloned();
-    let variables_to_keep = reachable_variables(
-        initial_variables,
-        std::iter::empty(),
-        constraint_system.system(),
-    );
+    let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
