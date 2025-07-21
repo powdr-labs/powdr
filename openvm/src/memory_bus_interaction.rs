@@ -96,7 +96,6 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             Some(
                 self.address
                     .local_address
-                    .clone()
                     .try_to_number()
                     .expect("Register address must be a concrete number")
                     .to_degree()
