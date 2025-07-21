@@ -80,10 +80,12 @@ pub struct MemoryBusInteractionConversionError;
 /// Note that the order of memory bus interactions as they appear in the constraint system
 /// is assumed to be chronological.
 pub trait MemoryBusInteraction<T, V>: Sized {
-    /// The address type of the memory bus interaction. We assume that it is a list of expressions.
+    /// The address type of the memory bus interaction.
+    /// We assume that it can be represented as a list of expressions of a *static* size, i.e.,
+    /// `addr.into_iter().count()` should always return the same value.
     /// If there are different memories (e.g. register memory and heap memory), this type can be
     /// a composite address.
-    type Address: Eq + Hash + Clone + IntoIterator<Item = GroupedExpression<T, V>>;
+    type Address: IntoIterator<Item = GroupedExpression<T, V>>;
 
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
     ///
@@ -109,6 +111,22 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     fn register_address(&self) -> Option<usize>;
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+/// A memory address, represented as a list of expressions.
+/// By converting from `MemoryBusInteraction::Address` to `Address<T, V>`,
+/// we can make sure that its `Eq` implementation is the expected one: Two addresses
+/// are equal if all their parts are equal.
+struct Address<T, V>(Vec<GroupedExpression<T, V>>);
+
+impl<I, T, V> From<I> for Address<T, V>
+where
+    I: IntoIterator<Item = GroupedExpression<T, V>>,
+{
+    fn from(exprs: I) -> Self {
+        Self(exprs.into_iter().collect())
+    }
+}
+
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<
@@ -127,7 +145,7 @@ fn redundant_memory_interactions_indices<
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
     type Data<T, V> = Vec<GroupedExpression<T, V>>;
-    let mut memory_contents: HashMap<M::Address, (usize, Data<T, V>)> = Default::default();
+    let mut memory_contents: HashMap<Address<T, V>, (usize, Data<T, V>)> = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -145,7 +163,7 @@ fn redundant_memory_interactions_indices<
             }
         };
 
-        let addr = mem_int.addr();
+        let addr = mem_int.addr().into();
 
         match mem_int.op() {
             MemoryOp::GetPrevious => {
@@ -208,7 +226,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Display, M: MemoryBusInteraction<T
                     .ok()
                     .flatten()
             })
-            .map(|bus| bus.addr());
+            .map(|bus| bus.addr().into());
 
         let constraints =
             boolean_extractor::to_boolean_extracted_system(&system.algebraic_constraints);
@@ -238,8 +256,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Display, M: MemoryBusInteraction<T
         }
     }
 
-    fn boolean_extracted_address(address: M::Address) -> BooleanExtractedAddress<T, V> {
+    fn boolean_extracted_address(address: Address<T, V>) -> BooleanExtractedAddress<T, V> {
         address
+            .0
             .into_iter()
             .map(|v| v.transform_var_type(&mut |v| v.into()))
             .collect()
@@ -249,8 +268,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Display, M: MemoryBusInteraction<T
     /// `a - b` cannot be 0.
     pub fn are_addrs_known_to_be_different(
         &self,
-        a: &M::Address,
-        b: &M::Address,
+        a: &Address<T, V>,
+        b: &Address<T, V>,
         rc: impl RangeConstraintProvider<T, V> + Clone,
     ) -> bool {
         let a = Self::boolean_extracted_address(a.clone());
