@@ -4,10 +4,11 @@ use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::InitFileGenerator;
 use openvm_circuit::arch::{
-    instructions::exe::VmExe, segment::DefaultSegmentationStrategy, InstructionExecutor, Streams,
-    SystemConfig, VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
+    instructions::exe::VmExe, segment::DefaultSegmentationStrategy, Streams, SystemConfig,
+    VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
 };
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
+use openvm_circuit_derive::InstructionExecutor;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_instructions::program::Program;
 use openvm_sdk::{
@@ -16,16 +17,16 @@ use openvm_sdk::{
     prover::AggStarkProver,
     Sdk, StdIn,
 };
-use openvm_stark_backend::{config::StarkGenericConfig, engine::StarkEngine, rap::AnyRap, Chip};
+use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
 };
 use openvm_stark_sdk::engine::StarkFriEngine;
-use openvm_stark_sdk::openvm_stark_backend::{config::Val, p3_field::PrimeField32};
+use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -50,10 +51,11 @@ use tracing_subscriber::{
     Layer,
 };
 
+#[cfg(test)]
+use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::traits::OpenVmField;
 
 mod air_builder;
 pub mod bus_map;
@@ -64,10 +66,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
-pub use traits::IntoOpenVm;
 
 type BabyBearSC = BabyBearPoseidon2Config;
-type PowdrBB = powdr_number::BabyBearField;
 
 // TODO: These constants should be related
 const APP_LOG_BLOWUP: usize = 2;
@@ -81,20 +81,12 @@ pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
 }
 
-impl IntoOpenVm for PowdrBB {
-    type Field = openvm_stark_sdk::p3_baby_bear::BabyBear;
-
-    fn into_openvm_field(self) -> Self::Field {
-        use openvm_stark_backend::p3_field::FieldAlgebra;
-        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
-            self.to_integer().try_into_u32().unwrap(),
-        )
-    }
-
-    fn from_openvm_field(field: Self::Field) -> Self {
-        BabyBearField::from(
-            <Self::Field as openvm_stark_backend::p3_field::PrimeField32>::as_canonical_u32(&field),
-        )
+fn format_fe<F: PrimeField32>(v: F) -> String {
+    let v = v.as_canonical_u32();
+    if v < F::ORDER_U32 / 2 {
+        format!("{v}")
+    } else {
+        format!("-{}", F::ORDER_U32 - v)
     }
 }
 
@@ -104,14 +96,13 @@ pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::{customize, POWDR_OPCODE};
+pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 
 // A module for our extension
 mod powdr_extension;
 
 pub mod bus_interaction_handler;
 mod instruction_formatter;
-mod traits;
 
 mod plonk;
 
@@ -137,7 +128,7 @@ impl Default for PgoType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
-    powdr: PowdrExtension<BabyBearField>,
+    pub powdr: PowdrExtension<BabyBear>,
 }
 
 // For generation of the init file, we delegate to the underlying SdkVmConfig.
@@ -158,58 +149,12 @@ impl InitFileGenerator for SpecializedConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(ChipUsageGetter, From, AnyEnum)]
-pub enum SpecializedExecutor<P: IntoOpenVm> {
+#[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
+pub enum SpecializedExecutor<F: PrimeField32> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<OpenVmField<P>>),
+    SdkExecutor(SdkVmConfigExecutor<F>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor<P>),
-}
-
-// These implementations could normally be derived by the `InstructionExecutorDerive` and `Chip` macros,
-// but they don't work with the field types above.
-impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for SpecializedExecutor<P>
-where
-    Val<SC>: PrimeField32,
-{
-    fn generate_air_proof_input(self) -> openvm_stark_backend::prover::types::AirProofInput<SC> {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => executor.generate_air_proof_input(),
-            SpecializedExecutor::PowdrExecutor(executor) => executor.generate_air_proof_input(),
-        }
-    }
-
-    fn air(&self) -> std::sync::Arc<dyn AnyRap<SC>> {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => executor.air(),
-            SpecializedExecutor::PowdrExecutor(executor) => executor.air(),
-        }
-    }
-}
-
-impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for SpecializedExecutor<P> {
-    fn execute(
-        &mut self,
-        memory: &mut openvm_circuit::system::memory::MemoryController<OpenVmField<P>>,
-        instruction: &openvm_instructions::instruction::Instruction<OpenVmField<P>>,
-        from_state: openvm_circuit::arch::ExecutionState<u32>,
-    ) -> openvm_circuit::arch::Result<openvm_circuit::arch::ExecutionState<u32>> {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => {
-                executor.execute(memory, instruction, from_state)
-            }
-            SpecializedExecutor::PowdrExecutor(executor) => {
-                executor.execute(memory, instruction, from_state)
-            }
-        }
-    }
-
-    fn get_opcode_name(&self, opcode: usize) -> String {
-        match self {
-            SpecializedExecutor::SdkExecutor(executor) => executor.get_opcode_name(opcode),
-            SpecializedExecutor::PowdrExecutor(executor) => executor.get_opcode_name(opcode),
-        }
-    }
+    PowdrExecutor(PowdrExecutor<F>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -220,24 +165,21 @@ pub enum MyPeriphery<F: PrimeField32> {
     PowdrPeriphery(PowdrPeriphery<F>),
 }
 
-impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
-    type Executor = SpecializedExecutor<BabyBearField>;
-    type Periphery = MyPeriphery<OpenVmField<BabyBearField>>;
+impl VmConfig<BabyBear> for SpecializedConfig {
+    type Executor = SpecializedExecutor<BabyBear>;
+    type Periphery = MyPeriphery<BabyBear>;
 
     fn system(&self) -> &SystemConfig {
-        VmConfig::<OpenVmField<BabyBearField>>::system(self.sdk_config.config())
+        VmConfig::<BabyBear>::system(self.sdk_config.config())
     }
 
     fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<OpenVmField<BabyBearField>>::system_mut(self.sdk_config.config_mut())
+        VmConfig::<BabyBear>::system_mut(self.sdk_config.config_mut())
     }
 
     fn create_chip_complex(
         &self,
-    ) -> Result<
-        VmChipComplex<OpenVmField<BabyBearField>, Self::Executor, Self::Periphery>,
-        VmInventoryError,
-    > {
+    ) -> Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
         let chip = self.sdk_config.create_chip_complex()?;
         let chip = chip.extend(&self.powdr)?;
 
@@ -248,7 +190,7 @@ impl VmConfig<OpenVmField<BabyBearField>> for SpecializedConfig {
 impl SpecializedConfig {
     fn new(
         base_config: OriginalVmConfig,
-        precompiles: Vec<PowdrPrecompile<BabyBearField>>,
+        precompiles: Vec<PowdrPrecompile<BabyBear>>,
         implementation: PrecompileImplementation,
     ) -> Self {
         let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -369,20 +311,23 @@ pub fn compile_guest(
     )
 }
 
-fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBearField>>) {
-    let pgo_program_idx_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _)
-        | PgoConfig::Instruction(pgo_program_idx_count) => {
+fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
+    (program.pc_base + (idx as u32 * program.step)) as u64
+}
+
+fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
+    let pgo_program_pc_count = match pgo_config {
+        PgoConfig::Cell(pgo_program_pc_count, _) | PgoConfig::Instruction(pgo_program_pc_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
-            pgo_program_idx_count
+            pgo_program_pc_count
         }
         PgoConfig::None => {
             // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
             tracing::debug!("Opcode frequency in program:");
             // Create a dummy HashMap that returns 1 for each pc
             &(0..exe.program.instructions_and_debug_infos.len())
-                .map(|i| (i as u32, 1))
+                .map(|i| (instruction_index_to_pc(&exe.program, i), 1))
                 .collect::<HashMap<_, _>>()
         }
     };
@@ -393,7 +338,8 @@ fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<OpenVmField<BabyBe
         .enumerate()
         .fold(HashMap::new(), |mut acc, (i, instr)| {
             let opcode = instr.as_ref().unwrap().0.opcode;
-            if let Some(count) = pgo_program_idx_count.get(&(i as u32)) {
+            if let Some(count) = pgo_program_pc_count.get(&instruction_index_to_pc(&exe.program, i))
+            {
                 *acc.entry(opcode).or_insert(0) += count;
             }
             acc
@@ -461,14 +407,14 @@ pub fn compile_exe_with_elf(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CompiledProgram {
-    pub exe: VmExe<OpenVmField<BabyBearField>>,
+    pub exe: VmExe<BabyBear>,
     pub vm_config: SpecializedConfig,
 }
 
 // the original openvm program and config without powdr extension
 #[derive(Clone)]
 pub struct OriginalCompiledProgram {
-    pub exe: VmExe<OpenVmField<BabyBearField>>,
+    pub exe: VmExe<BabyBear>,
     pub sdk_vm_config: SdkVmConfig,
 }
 
@@ -506,10 +452,20 @@ impl AirMetrics {
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(&self) -> (Vec<AirMetrics>, Vec<AirMetrics>) {
+    fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+        use openvm_stark_backend::Chip;
+
         use crate::extraction_utils::get_air_metrics;
 
         let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
+
+        // Order of precompile is the same as that of Powdr executors in chip inventory
+        let mut apc_stats = self
+            .vm_config
+            .powdr
+            .precompiles
+            .iter()
+            .map(|precompile| precompile.apc_stats.clone());
 
         inventory
             .executors()
@@ -530,7 +486,10 @@ impl CompiledProgram {
                     // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                     // TODO this is hacky but not sure how to do it better rn.
                     if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                        powdr_air_metrics.push(get_air_metrics(air));
+                        powdr_air_metrics.push((
+                            get_air_metrics(air),
+                            apc_stats.next().unwrap().map(|stats| stats.widths),
+                        ));
                     } else {
                         non_powdr_air_metrics.push(get_air_metrics(air));
                     }
@@ -659,14 +618,14 @@ pub fn execution_profile_from_guest(
     guest: &str,
     guest_opts: GuestOptions,
     inputs: StdIn,
-) -> HashMap<u32, u32> {
+) -> HashMap<u64, u32> {
     let program = compile_openvm(guest, guest_opts).unwrap();
     execution_profile(program, inputs)
 }
 
-// Produces execution count by pc_index
+// Produces execution count by pc
 // Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
+pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u64, u32> {
     let OriginalCompiledProgram { exe, sdk_vm_config } = program;
 
     // in memory collector storage
@@ -746,7 +705,7 @@ impl PgoCollector {
         }
     }
 
-    fn into_hashmap(self) -> HashMap<u32, u32> {
+    fn into_hashmap(self) -> HashMap<u64, u32> {
         // Turn the map into a HashMap of (pc_index, count)
         self.pc_index_map
             .iter()
@@ -758,8 +717,9 @@ impl PgoCollector {
                 if count == 0 {
                     return None;
                 }
+                let pc = self.pc_base + (pc_index * self.step);
 
-                Some((pc_index as u32, count))
+                Some((pc as u64, count))
             })
             .collect()
     }
@@ -1345,6 +1305,7 @@ mod tests {
         guest_apc: u64,
         guest_skip: u64,
         expected_metrics: &'a MachineTestMetrics,
+        expected_columns_saved: Option<AirWidthsDiff>, // only available in Pgo::Cell
     }
 
     struct MachineTestMetrics {
@@ -1359,7 +1320,7 @@ mod tests {
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = default_powdr_openvm_config(params.guest_apc, params.guest_skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let should_have_exported_json_summary = matches!(params.pgo_config, PgoConfig::Cell(_, _));
+        let is_cell_pgo = matches!(params.pgo_config, PgoConfig::Cell(_, _));
         let compiled_program = compile_guest(
             params.guest,
             GuestOptions::default(),
@@ -1379,13 +1340,25 @@ mod tests {
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
         let powdr_machine_count = powdr_air_metrics.len();
         let non_powdr_machine_count = non_powdr_air_metrics.len();
-        let powdr_sum = powdr_air_metrics.into_iter().sum::<AirMetrics>();
+        let powdr_sum = powdr_air_metrics
+            .iter()
+            .map(|(metrics, _)| metrics.clone())
+            .sum::<AirMetrics>();
         let non_powdr_sum = non_powdr_air_metrics.into_iter().sum::<AirMetrics>();
 
         assert_eq!(powdr_machine_count, *powdr_expected_machine_count);
         assert_eq!(non_powdr_machine_count, *non_powdr_expected_machine_count);
         assert_eq!(powdr_sum, *powdr_expected_sum);
         assert_eq!(non_powdr_sum, *non_powdr_expected_sum);
+
+        // Test cells saved in Pgo::Cell
+        if is_cell_pgo {
+            let columns_saved = powdr_air_metrics
+                .into_iter()
+                .map(|(_, columns_saved)| columns_saved.unwrap())
+                .sum::<AirWidthsDiff>();
+            assert_eq!(columns_saved, params.expected_columns_saved.unwrap());
+        }
 
         // In Cell PGO, check that the apc candidates were persisted to disk
         let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
@@ -1399,7 +1372,7 @@ mod tests {
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
             .count();
         assert!(cbor_files_count > 0, "No APC candidate files found");
-        if should_have_exported_json_summary {
+        if is_cell_pgo {
             assert_eq!(
                 json_files_count, 1,
                 "Expected exactly one APC candidate JSON file"
@@ -1437,7 +1410,7 @@ mod tests {
                     log_up: 36,
                 },
                 constraints: 23,
-                bus_interactions: 31,
+                bus_interactions: 30,
             },
             powdr_expected_machine_count: 1,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1450,6 +1423,7 @@ mod tests {
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: None, // not tested in instruction mode
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1458,6 +1432,18 @@ mod tests {
             guest_apc: GUEST_APC,
             guest_skip: GUEST_SKIP_PGO,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 170,
+                    log_up: 128,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 48,
+                    log_up: 36,
+                },
+            }),
         });
     }
 
@@ -1471,11 +1457,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 14695,
-                    log_up: 12144,
+                    main: 14676,
+                    log_up: 12128,
                 },
                 constraints: 4143,
-                bus_interactions: 11692,
+                bus_interactions: 11673,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1488,17 +1474,18 @@ mod tests {
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
             expected_metrics: &expected_metrics_instruction,
+            expected_columns_saved: None, // not tested in instruction mode
         });
 
         let expected_metrics_cell = MachineTestMetrics {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 14675,
-                    log_up: 12124,
+                    main: 14656,
+                    log_up: 12108,
                 },
                 constraints: 4127,
-                bus_interactions: 11682,
+                bus_interactions: 11663,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1511,6 +1498,18 @@ mod tests {
             guest_apc: GUEST_SHA256_APC_PGO,
             guest_skip: GUEST_SHA256_SKIP,
             expected_metrics: &expected_metrics_cell,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 176212,
+                    log_up: 117468,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 14656,
+                    log_up: 12108,
+                },
+            }),
         });
     }
 
@@ -1527,7 +1526,10 @@ mod tests {
         .unwrap()
         .air_metrics();
         assert_eq!(powdr_metrics.len(), 1);
-        let powdr_metrics_sum = powdr_metrics.into_iter().sum::<AirMetrics>();
+        let powdr_metrics_sum = powdr_metrics
+            .into_iter()
+            .map(|(metrics, _)| metrics)
+            .sum::<AirMetrics>();
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {
@@ -1553,11 +1555,11 @@ mod tests {
             powdr_expected_sum: AirMetrics {
                 widths: AirWidths {
                     preprocessed: 0,
-                    main: 2011,
+                    main: 2010,
                     log_up: 1788,
                 },
                 constraints: 166,
-                bus_interactions: 1783,
+                bus_interactions: 1782,
             },
             powdr_expected_machine_count: 1,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1570,6 +1572,7 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: None, // not tested in none mode
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1578,6 +1581,7 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: None, // not tested in instruction mode
         });
 
         test_machine_compilation(MachineTestParams {
@@ -1586,6 +1590,18 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 27194,
+                    log_up: 18736,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 2010,
+                    log_up: 1788,
+                },
+            }),
         });
     }
 
@@ -1600,16 +1616,16 @@ mod tests {
         let powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 4824,
+                main: 4831,
                 log_up: 3968,
             },
-            constraints: 935,
-            bus_interactions: 3826,
+            constraints: 958,
+            bus_interactions: 3821,
         };
 
         let expected_metrics = MachineTestMetrics {
             powdr_expected_sum: powdr_metrics_sum.clone(),
-            powdr_expected_machine_count: 18,
+            powdr_expected_machine_count: 19,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
             non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
         };
@@ -1620,6 +1636,18 @@ mod tests {
             guest_apc: GUEST_KECCAK_APC_PGO_LARGE,
             guest_skip: GUEST_KECCAK_SKIP,
             expected_metrics: &expected_metrics,
+            expected_columns_saved: Some(AirWidthsDiff {
+                before: AirWidths {
+                    preprocessed: 0,
+                    main: 38950,
+                    log_up: 26908,
+                },
+                after: AirWidths {
+                    preprocessed: 0,
+                    main: 4831,
+                    log_up: 3968,
+                },
+            }),
         });
 
         // Assert that total columns don't exceed the initial limit set

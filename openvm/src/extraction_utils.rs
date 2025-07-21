@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
+use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, IntoOpenVm, SpecializedExecutor, APP_LOG_BLOWUP};
+use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -21,12 +22,11 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{InstructionMachineHandler, SymbolicMachine};
-use powdr_number::BabyBearField;
+use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
-use std::ops::Add;
 use std::ops::Deref;
+use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
 use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
@@ -38,31 +38,39 @@ use crate::utils::symbolic_to_algebraic;
 const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
-pub struct OriginalAirs<P> {
+pub struct OriginalAirs<F> {
     opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, (SymbolicMachine<P>, AirMetrics)>,
+    air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<P> InstructionMachineHandler<P> for OriginalAirs<P> {
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<P>> {
+impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
+    fn get_instruction_air(&self, instruction: &Instr<F>) -> Option<&SymbolicMachine<F>> {
         self.opcode_to_air
-            .get(&VmOpcode::from_usize(opcode))
+            .get(&instruction.0.opcode)
             .and_then(|air_name| {
                 self.air_name_to_machine
                     .get(air_name)
                     .map(|(machine, _)| machine)
             })
     }
+
+    fn is_allowed(&self, instruction: &Instr<F>) -> bool {
+        self.opcode_to_air.contains_key(&instruction.0.opcode)
+    }
+
+    fn is_branching(&self, instruction: &Instr<F>) -> bool {
+        branch_opcodes_set().contains(&instruction.0.opcode)
+    }
 }
 
-impl<P: IntoOpenVm> OriginalAirs<P> {
+impl<F> OriginalAirs<F> {
     /// Insert a new opcode, generating the air if it does not exist
     /// Panics if the opcode already exists
     pub fn insert_opcode(
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<(SymbolicMachine<P>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
@@ -78,21 +86,16 @@ impl<P: IntoOpenVm> OriginalAirs<P> {
         Ok(())
     }
 
-    pub fn get_instruction_metrics(&self, opcode: usize) -> Option<&AirMetrics> {
-        self.opcode_to_air
-            .get(&VmOpcode::from_usize(opcode))
-            .and_then(|air_name| {
-                self.air_name_to_machine
-                    .get(air_name)
-                    .map(|(_, metrics)| metrics)
-            })
+    pub fn get_instruction_metrics(&self, opcode: VmOpcode) -> Option<&AirMetrics> {
+        self.opcode_to_air.get(&opcode).and_then(|air_name| {
+            self.air_name_to_machine
+                .get(air_name)
+                .map(|(_, metrics)| metrics)
+        })
     }
 
-    pub fn allow_list(&self) -> BTreeSet<usize> {
-        self.opcode_to_air
-            .keys()
-            .map(|opcode| opcode.as_usize())
-            .collect()
+    pub fn allow_list(&self) -> Vec<VmOpcode> {
+        self.opcode_to_air.keys().cloned().collect()
     }
 }
 
@@ -176,7 +179,7 @@ impl OriginalVmConfig {
     /// - The bus map
     ///
     /// Returns an error if the conversion from the OpenVM expression type fails.
-    pub fn airs(&self) -> Result<OriginalAirs<BabyBearField>, UnsupportedOpenVmReferenceError> {
+    pub fn airs(&self) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
         let chip_complex = self.chip_complex();
 
         let instruction_allowlist = instruction_allowlist();
@@ -186,7 +189,7 @@ impl OriginalVmConfig {
             .available_opcodes()
             .filter(|op| {
                 // Filter out the opcode that we are not interested in
-                instruction_allowlist.contains(&op.as_usize())
+                instruction_allowlist.contains(op)
             })
             .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
@@ -386,7 +389,7 @@ pub fn symbolic_builder_with_degree(
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
 pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
@@ -400,6 +403,17 @@ impl Add for AirWidths {
             preprocessed: self.preprocessed + rhs.preprocessed,
             main: self.main + rhs.main,
             log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+impl Sub for AirWidths {
+    type Output = AirWidths;
+    fn sub(self, rhs: AirWidths) -> AirWidths {
+        AirWidths {
+            preprocessed: self.preprocessed - rhs.preprocessed,
+            main: self.main - rhs.main,
+            log_up: self.log_up - rhs.log_up,
         }
     }
 }
@@ -426,6 +440,40 @@ impl std::fmt::Display for AirWidths {
             self.main,
             self.log_up
         )
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+pub struct AirWidthsDiff {
+    pub before: AirWidths,
+    pub after: AirWidths,
+}
+
+impl AirWidthsDiff {
+    pub fn new(before: AirWidths, after: AirWidths) -> Self {
+        Self { before, after }
+    }
+
+    pub fn columns_saved(&self) -> AirWidths {
+        self.before - self.after
+    }
+}
+
+impl Add for AirWidthsDiff {
+    type Output = AirWidthsDiff;
+
+    fn add(self, rhs: AirWidthsDiff) -> AirWidthsDiff {
+        AirWidthsDiff {
+            before: self.before + rhs.before,
+            after: self.after + rhs.after,
+        }
+    }
+}
+
+impl Sum<AirWidthsDiff> for AirWidthsDiff {
+    fn sum<I: Iterator<Item = AirWidthsDiff>>(iter: I) -> AirWidthsDiff {
+        let zero = AirWidthsDiff::new(AirWidths::default(), AirWidths::default());
+        iter.fold(zero, Add::add)
     }
 }
 

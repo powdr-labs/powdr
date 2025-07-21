@@ -1,22 +1,28 @@
-use crate::opcode::*;
-use openvm_instructions::VmOpcode;
-use powdr_autoprecompiles::SymbolicInstructionStatement;
-use powdr_number::FieldElement;
+use crate::{format_fe, opcode::*};
+use openvm_instructions::{instruction::Instruction, VmOpcode};
+use openvm_stark_backend::p3_field::PrimeField32;
 
-pub fn openvm_instruction_formatter<P: FieldElement>(
-    instruction: &SymbolicInstructionStatement<P>,
-) -> String {
-    let SymbolicInstructionStatement { opcode, args } = instruction;
-    let [a, b, c, d, e, f, g] = args.as_slice().try_into().unwrap();
-    let opcode_name = openvm_opcode_formatter(&VmOpcode::from_usize(*opcode));
+pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F>) -> String {
+    let Instruction {
+        opcode,
+        a,
+        b,
+        c,
+        d,
+        e,
+        f,
+        g,
+    } = instruction;
+    let opcode_number = opcode.as_usize();
+    let opcode_name = openvm_opcode_formatter(opcode);
 
-    match *opcode {
+    match opcode_number {
         // Alu instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/alu.rs#L197-L201
         512..=521 => {
-            assert_eq!(d, P::ONE);
-            assert_eq!(f, P::ZERO);
-            assert_eq!(g, P::ZERO);
+            assert_eq!(d, &F::ONE);
+            assert_eq!(f, &F::ZERO);
+            assert_eq!(g, &F::ZERO);
 
             format!("{opcode_name} rd_ptr = {a}, rs1_ptr = {b}, rs2 = {c}, rs2_as = {e}")
         }
@@ -24,16 +30,12 @@ pub fn openvm_instruction_formatter<P: FieldElement>(
         // Load/Store instructions, see:
         // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/adapters/loadstore.rs#L340-L346
         528..=535 => {
-            assert_eq!(d, P::ONE);
+            assert_eq!(d, &F::ONE);
 
             format!("{opcode_name} rd_rs2_ptr = {a}, rs1_ptr = {b}, imm = {c}, mem_as = {e}, needs_write = {f}, imm_sign = {g}")
         }
         OPCODE_BLT | OPCODE_BLTU | OPCODE_BGE | OPCODE_BGEU | OPCODE_BEQ | OPCODE_BNE => {
-            let c = if c.is_in_lower_half() {
-                format!("{c}")
-            } else {
-                format!("-{}", -c)
-            };
+            let c = format_fe(*c);
             format!("{opcode_name} {a} {b} {c} {d} {e}")
         }
 

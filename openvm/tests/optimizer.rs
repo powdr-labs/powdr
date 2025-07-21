@@ -22,7 +22,7 @@ fn load_machine_cbor() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [23838, 13167, 22998]
+        [27194, 13167, 27689]
     );
 }
 
@@ -35,7 +35,6 @@ fn test_optimize() {
     let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
-        0x10ff,
         DegreeBound {
             identities: 5,
             bus_interactions: 5,
@@ -59,6 +58,6 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [2010, 1783, 165]
+        [2009, 1782, 165]
     );
 }
