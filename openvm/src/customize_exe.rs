@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -25,7 +26,6 @@ use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::expression::{try_convert, AlgebraicReference};
-use powdr_autoprecompiles::memory_optimizer::OpenVmMemoryBusInteraction;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
