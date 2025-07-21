@@ -184,9 +184,12 @@ impl<T: Display> Display for SymbolicMachine<T> {
     }
 }
 
-impl<T: Display> SymbolicMachine<T> {
+impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     pub fn render(&self, bus_map: &BusMap) -> String {
-        let mut output = String::new();
+        let mut output = format!(
+            "// Symbolic machine using {} unique columns\n",
+            self.main_columns().count()
+        );
         let bus_interactions_by_bus = self
             .bus_interactions
             .iter()

@@ -1,3 +1,5 @@
+// Symbolic machine using 10 unique columns
+
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1]
 mult=is_valid * 1, args=[4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
