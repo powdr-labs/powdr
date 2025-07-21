@@ -77,7 +77,7 @@ pub struct MemoryBusInteractionConversionError;
 /// A bus interaction that corresponds to half of a memory operation,
 /// i.e. either a "get previous" or a "set new" operation.
 pub trait MemoryBusInteraction<T, V>: Sized {
-    /// The address type of the memory bus interaction.
+    /// The address type of the memory bus interaction. We assume that it is a tuple of expressions.
     type Address: Eq + Hash + Clone + IntoIterator<Item = GroupedExpression<T, V>>;
 
     /// Tries to convert a `BusInteraction` to a `MemoryBusInteraction`.
@@ -182,6 +182,8 @@ fn redundant_memory_interactions_indices<A: Adapter>(
 }
 
 type BooleanExtractedExpression<T, V> = GroupedExpression<T, boolean_extractor::Variable<V>>;
+
+/// An address, represented as a list of boolean-extracted expressions.
 type BooleanExtractedAddress<A> =
     Vec<BooleanExtractedExpression<<A as Adapter>::PowdrField, AlgebraicReference>>;
 
@@ -217,16 +219,13 @@ impl<A: Adapter> MemoryAddressComparator<A> {
 
         let memory_addresses = addresses
             .map(|addr| {
-                let addr = addr
-                    .into_iter()
-                    .map(|v| v.transform_var_type(&mut |v| v.into()))
-                    .collect::<Vec<_>>();
+                // Represent an address as a list of expressions, one for each limb.
+                let addr = Self::boolean_extracted_address(addr);
                 let equivalent_expressions = addr
                     .iter()
-                    .map(|addr| {
-                        // TODO: Shortcut for constant expressions?
-                        find_equivalent_expressions(addr, &constraint_system)
-                    })
+                    // Note that `find_equivalent_expressions` returns the input expression for constants,
+                    // which is a common case.
+                    .map(|addr| find_equivalent_expressions(addr, &constraint_system))
                     .multi_cartesian_product()
                     .collect::<Vec<_>>();
                 (addr, equivalent_expressions)
@@ -238,6 +237,13 @@ impl<A: Adapter> MemoryAddressComparator<A> {
         }
     }
 
+    fn boolean_extracted_address(address: Address<A>) -> BooleanExtractedAddress<A> {
+        address
+            .into_iter()
+            .map(|v| v.transform_var_type(&mut |v| v.into()))
+            .collect()
+    }
+
     /// Returns true if we can prove that for two addresses `a` and `b`,
     /// `a - b` cannot be 0.
     pub fn are_addrs_known_to_be_different(
@@ -246,16 +252,8 @@ impl<A: Adapter> MemoryAddressComparator<A> {
         b: &Address<A>,
         rc: impl RangeConstraintProvider<A::PowdrField, AlgebraicReference> + Clone,
     ) -> bool {
-        let a = a
-            .clone()
-            .into_iter()
-            .map(|v| v.transform_var_type(&mut |v| v.into()))
-            .collect::<Vec<_>>();
-        let b = b
-            .clone()
-            .into_iter()
-            .map(|v| v.transform_var_type(&mut |v| v.into()))
-            .collect::<Vec<_>>();
+        let a = Self::boolean_extracted_address(a.clone());
+        let b = Self::boolean_extracted_address(b.clone());
 
         let a_exprs = &self.memory_addresses[&a];
         let b_exprs = &self.memory_addresses[&b];
@@ -264,6 +262,8 @@ impl<A: Adapter> MemoryAddressComparator<A> {
             .iter()
             .cartesian_product(b_exprs)
             .any(|(a_expr, b_expr)| {
+                // Compare all pairs of limbs. We know the addresses are different
+                // if at least one pair of limbs is known to be different.
                 a_expr.iter().zip_eq(b_expr.iter()).any(|(a_expr, b_expr)| {
                     is_known_to_be_nonzero(&(a_expr - b_expr), &range_constraints)
                 })
