@@ -2,31 +2,30 @@ use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
     journaling_constraint_system::JournalingConstraintSystem,
 };
 use powdr_number::FieldElement;
 
 use crate::{
+    adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
-    constraint_optimizer::{optimize_constraints, IsBusStateful},
+    constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
-    memory_optimizer::{
-        check_register_operation_consistency, optimize_memory, MemoryBusInteraction,
-    },
+    memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
 
-pub fn optimize<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>(
-    mut machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+pub fn optimize<A: Adapter>(
+    mut machine: SymbolicMachine<A::PowdrField>,
+    bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap,
-) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
+) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
@@ -38,7 +37,7 @@ pub fn optimize<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>
 
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, M>(
+        constraint_system = optimization_loop_iteration::<A>(
             constraint_system,
             bus_interaction_handler.clone(),
             degree_bound,
@@ -49,10 +48,8 @@ pub fn optimize<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>
             // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
             let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
             assert!(
-                !constraint_system
-                    .bus_interactions
-                    .iter()
-                    .any(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id))),
+                !constraint_system.bus_interactions.iter().any(|b| b.bus_id
+                    == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
                 "Expected all PC lookups to be removed."
             );
 
@@ -61,13 +58,14 @@ pub fn optimize<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>
     }
 }
 
-fn optimization_loop_iteration<T: FieldElement, M: MemoryBusInteraction<T, AlgebraicReference>>(
-    constraint_system: ConstraintSystem<T, AlgebraicReference>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+fn optimization_loop_iteration<A: Adapter>(
+    constraint_system: ConstraintSystem<A::PowdrField, AlgebraicReference>,
+    bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
-) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
+) -> Result<ConstraintSystem<A::PowdrField, AlgebraicReference>, crate::constraint_optimizer::Error>
+{
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
@@ -78,8 +76,8 @@ fn optimization_loop_iteration<T: FieldElement, M: MemoryBusInteraction<T, Algeb
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
         let constraint_system =
-            optimize_memory::<_, _, M>(constraint_system, memory_bus_id, NoRangeConstraints);
-        assert!(check_register_operation_consistency::<_, _, M>(
+            optimize_memory::<A>(constraint_system, memory_bus_id, NoRangeConstraints);
+        assert!(check_register_operation_consistency::<A>(
             &constraint_system,
             memory_bus_id
         ));

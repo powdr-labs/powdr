@@ -320,7 +320,7 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
-    let machine = optimizer::optimize::<_, A::MemoryBusInteraction>(
+    let machine = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,

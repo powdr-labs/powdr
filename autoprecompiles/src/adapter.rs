@@ -1,4 +1,6 @@
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::{
+    constraint_system::BusInteractionHandler, grouped_expression::GroupedExpression,
+};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
@@ -30,3 +32,5 @@ pub trait Adapter: Sized {
 
 pub type ApcStats<A> = <<A as Adapter>::Candidate as Candidate<A>>::ApcStats;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
+pub type GroupedExpressionPowdr<A> =
+    GroupedExpression<<A as Adapter>::PowdrField, AlgebraicReference>;
