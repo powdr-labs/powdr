@@ -55,7 +55,7 @@ impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>
 }
 
 impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
-    pub fn variables(&self) -> impl Iterator<Item = &V> {
+    pub fn unknown_variables(&self) -> impl Iterator<Item = &V> {
         self.variable_occurrences.keys()
     }
 }

@@ -1,13 +1,12 @@
+// Symbolic machine using 11 unique main columns
+
 // Bus 0 (EXECUTION_BRIDGE):
-mult=-is_valid, args=[from_state__pc_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1]
-mult=is_valid, args=[from_state__pc_0 + 4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
+mult=is_valid * -1, args=[0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1]
+mult=is_valid * 1, args=[4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
 
 // Bus 1 (MEMORY):
 mult=is_valid * -1, args=[1, 116, b__0_0, b__1_0, b__2_0, b__3_0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 2)]
-mult=is_valid * 1, args=[1, 116, 1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0), 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1]
-
-// Bus 2 (PC_LOOKUP):
-mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0]
+mult=is_valid * 1, args=[1, 116, 1 - new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0), 0, 0, 0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 1]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
@@ -16,6 +15,6 @@ mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Algebraic constraints:
--((1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0))) = 0
-(1 - new_var2 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
+-((1 - new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0))) = 0
+(1 - new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
 is_valid * (is_valid - 1) = 0

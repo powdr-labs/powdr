@@ -32,7 +32,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     let binary_range_constraint = RangeConstraint::from_mask(1);
     let binary_variables = constraint_system
         .indexed_system()
-        .variables()
+        .unknown_variables()
         .filter(|v| rc.get(v) == binary_range_constraint)
         .cloned()
         .collect::<BTreeSet<_>>();

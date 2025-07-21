@@ -77,6 +77,13 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         )
     }
 
+    pub fn unknown_variables(&self) -> impl Iterator<Item = &V> {
+        Box::new(
+            self.expressions()
+                .flat_map(|expr| expr.referenced_unknown_variables()),
+        )
+    }
+
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {

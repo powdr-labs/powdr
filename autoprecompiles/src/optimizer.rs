@@ -66,21 +66,15 @@ fn optimization_loop_iteration<T: FieldElement>(
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap,
 ) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let mut var_counter = 1;
+    let mut variable_dispenser =
+        VariableDispenser::new(constraint_system.unknown_variables().cloned());
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
         stats_logger,
-        &mut || {
-            // TODO improve this.
-            var_counter += 1;
-            AlgebraicReference {
-                name: Arc::new(format!("new_var{var_counter}")),
-                id: 20000 + var_counter,
-            }
-        },
+        &mut || variable_dispenser.next(),
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
@@ -254,4 +248,26 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
     grouped_expression_to_algebraic(&algebraic_to_grouped_expression(&e))
+}
+
+struct VariableDispenser {
+    next_id: u64,
+}
+
+impl VariableDispenser {
+    fn new(existing_variables: impl Iterator<Item = AlgebraicReference>) -> Self {
+        Self {
+            next_id: existing_variables.map(|v| v.id).max().unwrap_or(0) + 1,
+        }
+    }
+
+    fn next(&mut self) -> AlgebraicReference {
+        // TODO do we care that the names are actually unique?
+        let var = AlgebraicReference {
+            name: Arc::new(format!("new_var_{}", self.next_id)),
+            id: self.next_id,
+        };
+        self.next_id += 1;
+        var
+    }
 }
