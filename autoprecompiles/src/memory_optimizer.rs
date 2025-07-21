@@ -12,19 +12,20 @@ use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformabl
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
-use crate::adapter::{Adapter, GroupedExpressionPowdr};
-use crate::expression::AlgebraicReference;
-
 /// Optimizes bus sends that correspond to general-purpose memory read and write operations.
 /// It works best if all read-write-operation addresses are fixed offsets relative to some
 /// symbolic base address. If stack and heap access operations are mixed, this is usually violated.
-pub fn optimize_memory<A: Adapter>(
-    mut system: ConstraintSystem<A::PowdrField, AlgebraicReference>,
+pub fn optimize_memory<
+    T: FieldElement,
+    V: Hash + Eq + Clone + Ord + Display,
+    M: MemoryBusInteraction<T, V>,
+>(
+    mut system: ConstraintSystem<T, V>,
     memory_bus_id: u64,
-    range_constraints: impl RangeConstraintProvider<A::PowdrField, AlgebraicReference> + Clone,
-) -> ConstraintSystem<A::PowdrField, AlgebraicReference> {
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
+) -> ConstraintSystem<T, V> {
     let (to_remove, new_constraints) =
-        redundant_memory_interactions_indices::<A>(&system, memory_bus_id, range_constraints);
+        redundant_memory_interactions_indices::<T, V, M>(&system, memory_bus_id, range_constraints);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     system.bus_interactions = system
         .bus_interactions
@@ -39,15 +40,15 @@ pub fn optimize_memory<A: Adapter>(
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<A: Adapter>(
-    system: &ConstraintSystem<A::PowdrField, AlgebraicReference>,
+pub fn check_register_operation_consistency<T, V, M: MemoryBusInteraction<T, V>>(
+    system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
 ) -> bool {
     let count_per_addr = system
         .bus_interactions
         .iter()
         .filter_map(|bus_int| {
-            A::MemoryBusInteraction::try_from_bus_interaction(bus_int, memory_bus_id)
+            M::try_from_bus_interaction(bus_int, memory_bus_id)
                 .ok()
                 // We ignore conversion failures here, since we also did that in a previous version.
                 .flatten()
@@ -106,43 +107,41 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     fn register_address(&self) -> Option<usize>;
 }
 
-pub type Address<A> = <<A as Adapter>::MemoryBusInteraction as MemoryBusInteraction<
-    <A as Adapter>::PowdrField,
-    AlgebraicReference,
->>::Address;
-
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
-fn redundant_memory_interactions_indices<A: Adapter>(
-    system: &ConstraintSystem<A::PowdrField, AlgebraicReference>,
+fn redundant_memory_interactions_indices<
+    T: FieldElement,
+    V: Ord + Clone + Hash + Display,
+    M: MemoryBusInteraction<T, V>,
+>(
+    system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
-    range_constraints: impl RangeConstraintProvider<A::PowdrField, AlgebraicReference> + Clone,
-) -> (Vec<usize>, Vec<GroupedExpressionPowdr<A>>) {
-    let address_comparator = MemoryAddressComparator::<A>::new(system, memory_bus_id);
-    let mut new_constraints: Vec<GroupedExpressionPowdr<A>> = Vec::new();
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
+) -> (Vec<usize>, Vec<GroupedExpression<T, V>>) {
+    let address_comparator = MemoryAddressComparator::<T, V, M>::new(system, memory_bus_id);
+    let mut new_constraints: Vec<GroupedExpression<T, V>> = Vec::new();
 
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
     // data currently stored there.
-    let mut memory_contents: HashMap<Address<A>, (usize, Vec<GroupedExpressionPowdr<A>>)> =
-        Default::default();
+    type Data<T, V> = Vec<GroupedExpression<T, V>>;
+    let mut memory_contents: HashMap<M::Address, (usize, Data<T, V>)> = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in system.bus_interactions.iter().enumerate() {
-        let mem_int =
-            match A::MemoryBusInteraction::try_from_bus_interaction(bus_int, memory_bus_id) {
-                Ok(Some(mem_int)) => mem_int,
-                Ok(None) => continue,
-                Err(_) => {
-                    // This interaction might be going to memory, but we do not know
-                    // the multiplicity. Delete all knowledge.
-                    // TODO If we can still clearly determine the memory type, we could
-                    // only clear the knowledge for that memory type.
-                    memory_contents.clear();
-                    continue;
-                }
-            };
+        let mem_int = match M::try_from_bus_interaction(bus_int, memory_bus_id) {
+            Ok(Some(mem_int)) => mem_int,
+            Ok(None) => continue,
+            Err(_) => {
+                // This interaction might be going to memory, but we do not know
+                // the multiplicity. Delete all knowledge.
+                // TODO If we can still clearly determine the memory type, we could
+                // only clear the knowledge for that memory type.
+                memory_contents.clear();
+                continue;
+            }
+        };
 
         let addr = mem_int.addr();
 
@@ -186,26 +185,24 @@ fn redundant_memory_interactions_indices<A: Adapter>(
 type BooleanExtractedExpression<T, V> = GroupedExpression<T, boolean_extractor::Variable<V>>;
 
 /// An address, represented as a list of boolean-extracted expressions.
-type BooleanExtractedAddress<A> =
-    Vec<BooleanExtractedExpression<<A as Adapter>::PowdrField, AlgebraicReference>>;
+type BooleanExtractedAddress<T, V> = Vec<BooleanExtractedExpression<T, V>>;
 
-struct MemoryAddressComparator<A: Adapter> {
+struct MemoryAddressComparator<T, V, M> {
     /// For each address `a` contains a list of expressions `v` such that
     /// `a = v` is true in the constraint system.
-    memory_addresses: HashMap<BooleanExtractedAddress<A>, Vec<BooleanExtractedAddress<A>>>,
-    _marker: PhantomData<A>,
+    memory_addresses: HashMap<BooleanExtractedAddress<T, V>, Vec<BooleanExtractedAddress<T, V>>>,
+    _marker: PhantomData<M>,
 }
 
-impl<A: Adapter> MemoryAddressComparator<A> {
-    fn new(
-        system: &ConstraintSystem<A::PowdrField, AlgebraicReference>,
-        memory_bus_id: u64,
-    ) -> Self {
+impl<T: FieldElement, V: Ord + Clone + Hash + Display, M: MemoryBusInteraction<T, V>>
+    MemoryAddressComparator<T, V, M>
+{
+    fn new(system: &ConstraintSystem<T, V>, memory_bus_id: u64) -> Self {
         let addresses = system
             .bus_interactions
             .iter()
             .flat_map(|bus| {
-                A::MemoryBusInteraction::try_from_bus_interaction(bus, memory_bus_id)
+                M::try_from_bus_interaction(bus, memory_bus_id)
                     .ok()
                     .flatten()
             })
@@ -239,7 +236,7 @@ impl<A: Adapter> MemoryAddressComparator<A> {
         }
     }
 
-    fn boolean_extracted_address(address: Address<A>) -> BooleanExtractedAddress<A> {
+    fn boolean_extracted_address(address: M::Address) -> BooleanExtractedAddress<T, V> {
         address
             .into_iter()
             .map(|v| v.transform_var_type(&mut |v| v.into()))
@@ -250,9 +247,9 @@ impl<A: Adapter> MemoryAddressComparator<A> {
     /// `a - b` cannot be 0.
     pub fn are_addrs_known_to_be_different(
         &self,
-        a: &Address<A>,
-        b: &Address<A>,
-        rc: impl RangeConstraintProvider<A::PowdrField, AlgebraicReference> + Clone,
+        a: &M::Address,
+        b: &M::Address,
+        rc: impl RangeConstraintProvider<T, V> + Clone,
     ) -> bool {
         let a = Self::boolean_extracted_address(a.clone());
         let b = Self::boolean_extracted_address(b.clone());
