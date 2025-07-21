@@ -1,10 +1,11 @@
-use crate::plonk::{Gate, NUMBER_OF_WITNESS_COLS};
+use crate::{
+    bus_map::OpenVmBusType,
+    plonk::{Gate, NUMBER_OF_WITNESS_COLS},
+};
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::bus_map::{
     BusMap,
-    BusType::{
-        BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
-    },
+    BusType::{ExecutionBridge, Memory, OpenVmBitwiseLookup, Other, PcLookup},
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
@@ -22,7 +23,7 @@ use super::air_to_plonkish::CircuitBuilder;
 pub fn add_bus_to_plonk_circuit<F: PrimeField32>(
     bus_interaction: SymbolicBusInteraction<F>,
     circuit_builder: &mut CircuitBuilder<F>,
-    bus_map: &BusMap,
+    bus_map: &BusMap<OpenVmBusType>,
 ) {
     let number_of_gates =
         (bus_interaction.args.len() as u32).div_ceil(NUMBER_OF_WITNESS_COLS as u32) as usize;
@@ -32,7 +33,7 @@ pub fn add_bus_to_plonk_circuit<F: PrimeField32>(
         Memory => {
             gates[0].q_memory = F::ONE;
         }
-        BitwiseLookup => {
+        OpenVmBitwiseLookup => {
             gates[0].q_bitwise = F::ONE;
         }
         ExecutionBridge => {
@@ -41,10 +42,10 @@ pub fn add_bus_to_plonk_circuit<F: PrimeField32>(
         PcLookup => {
             gates[0].q_pc = F::ONE;
         }
-        VariableRangeChecker => {
+        Other(OpenVmBusType::VariableRangeChecker) => {
             gates[0].q_range_check = F::ONE;
         }
-        TupleRangeChecker => {
+        Other(OpenVmBusType::TupleRangeChecker) => {
             gates[0].q_range_tuple = F::ONE;
         }
     }

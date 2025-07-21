@@ -2,6 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::OriginalAirs;
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
@@ -42,7 +43,7 @@ pub struct PlonkChip<F: PrimeField32> {
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
     machine: SymbolicMachine<F>,
-    bus_map: BusMap,
+    bus_map: BusMap<OpenVmBusType>,
 }
 
 impl<F: PrimeField32> PlonkChip<F> {
@@ -53,7 +54,7 @@ impl<F: PrimeField32> PlonkChip<F> {
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
-        bus_map: BusMap,
+        bus_map: BusMap<OpenVmBusType>,
         copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {

@@ -1,4 +1,4 @@
-use crate::{BusMap, BusType};
+use crate::{bus_map::OpenVmBusType, BusMap, BusType};
 use itertools::Itertools;
 use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::{
@@ -49,7 +49,7 @@ pub struct PlonkColumns<T> {
 
 pub struct PlonkAir<F> {
     pub copy_constraint_bus_id: u16,
-    pub bus_map: BusMap,
+    pub bus_map: BusMap<OpenVmBusType>,
     pub _marker: std::marker::PhantomData<F>,
 }
 
@@ -127,7 +127,7 @@ where
 
         builder.push_interaction(
             self.bus_map
-                .get_bus_id(&BusType::VariableRangeChecker)
+                .get_bus_id(&BusType::Other(OpenVmBusType::VariableRangeChecker))
                 .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_range_check,
@@ -136,8 +136,8 @@ where
 
         builder.push_interaction(
             self.bus_map
-                .get_bus_id(&BusType::TupleRangeChecker)
-                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
+                .get_bus_id(&BusType::Other(OpenVmBusType::TupleRangeChecker))
+                .expect("BusType::TupleRangeChecker not found in bus_map") as u16,
             vec![*a, *b],
             *c * *q_range_tuple,
             1,
@@ -145,7 +145,7 @@ where
 
         builder.push_interaction(
             self.bus_map
-                .get_bus_id(&BusType::BitwiseLookup)
+                .get_bus_id(&BusType::OpenVmBitwiseLookup)
                 .expect("BusType::BitwiseLookup not found in bus_map") as u16,
             vec![*a, *b, *c, *d],
             *e * *q_bitwise,

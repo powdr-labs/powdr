@@ -12,6 +12,8 @@ use powdr_number::{FieldElement, LargeInt};
 use tuple_range_checker::handle_tuple_range_checker;
 use variable_range_checker::handle_variable_range_checker;
 
+use crate::bus_map::OpenVmBusType;
+
 mod bitwise_lookup;
 mod memory;
 mod tuple_range_checker;
@@ -19,12 +21,12 @@ mod variable_range_checker;
 
 #[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
-    bus_map: BusMap,
+    bus_map: BusMap<OpenVmBusType>,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
-    pub fn new(bus_map: BusMap) -> Self {
+    pub fn new(bus_map: BusMap<OpenVmBusType>) -> Self {
         Self {
             bus_map,
             _phantom: std::marker::PhantomData,
@@ -58,12 +60,14 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             // of the args here, but for auto-precompiles, only the PC will be unknown, which could
             // have any value.
             BusType::PcLookup => bus_interaction.payload,
-            BusType::BitwiseLookup => handle_bitwise_lookup(&bus_interaction.payload),
+            BusType::OpenVmBitwiseLookup => handle_bitwise_lookup(&bus_interaction.payload),
             BusType::Memory => handle_memory(&bus_interaction.payload, multiplicity),
-            BusType::VariableRangeChecker => {
+            BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 handle_variable_range_checker(&bus_interaction.payload)
             }
-            BusType::TupleRangeChecker => handle_tuple_range_checker(&bus_interaction.payload),
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => {
+                handle_tuple_range_checker(&bus_interaction.payload)
+            }
         };
         BusInteraction {
             payload: payload_constraints,
@@ -83,9 +87,9 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::ExecutionBridge => true,
             BusType::Memory => true,
             BusType::PcLookup => false,
-            BusType::VariableRangeChecker => false,
-            BusType::BitwiseLookup => false,
-            BusType::TupleRangeChecker => false,
+            BusType::OpenVmBitwiseLookup => false,
+            BusType::Other(OpenVmBusType::VariableRangeChecker) => false,
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => false,
         }
     }
 }

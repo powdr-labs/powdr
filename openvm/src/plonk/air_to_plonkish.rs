@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::{Gate, PlonkCircuit, Variable};
+use crate::bus_map::OpenVmBusType;
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
 use crate::BusMap;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -13,7 +14,7 @@ use powdr_expression::{
 
 pub fn build_circuit<F: PrimeField32>(
     machine: &SymbolicMachine<F>,
-    bus_map: &BusMap,
+    bus_map: &BusMap<OpenVmBusType>,
 ) -> PlonkCircuit<F, AlgebraicReference> {
     let mut circuit_builder = CircuitBuilder::<F>::new();
     for constraint in &machine.constraints {

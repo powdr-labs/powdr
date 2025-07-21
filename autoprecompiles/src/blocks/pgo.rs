@@ -51,7 +51,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     fn create(
         apc: AdapterApc<A>,
         pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+        vm_config: VmConfig<A>,
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
@@ -69,7 +69,7 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     pgo_program_pc_count: HashMap<u64, u32>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A>,
 ) -> Vec<(AdapterApc<A>, ApcStats<A>)> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -134,7 +134,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_pc_count: HashMap<u64, u32>,
     config: &PowdrConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -171,7 +171,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
 fn create_apcs_with_no_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
@@ -193,7 +193,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A>,
 ) -> Vec<(AdapterApc<A>, Option<ApcStats<A>>)> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
@@ -232,7 +232,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
 fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");

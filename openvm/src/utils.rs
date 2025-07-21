@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::BusMap;
+use crate::{bus_map::OpenVmBusType, BusMap};
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -165,7 +165,7 @@ pub fn get_pil<F: PrimeField32>(
     constraints: &SymbolicConstraints<F>,
     columns: &Vec<Arc<String>>,
     public_values: Vec<String>,
-    bus_map: &BusMap,
+    bus_map: &BusMap<OpenVmBusType>,
 ) -> String {
     let mut pil = format!(
         "

@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
+use crate::bus_map::OpenVmBusType;
 use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
@@ -226,7 +227,7 @@ impl OriginalVmConfig {
         res
     }
 
-    pub fn bus_map(&self) -> BusMap {
+    pub fn bus_map(&self) -> BusMap<OpenVmBusType> {
         let chip_complex = self.chip_complex();
         let builder = chip_complex.inventory_builder();
 
@@ -244,7 +245,7 @@ impl OriginalVmConfig {
                     (base.program_bus().inner.index, BusType::PcLookup),
                     (
                         base.range_checker_bus().inner.index,
-                        BusType::VariableRangeChecker,
+                        BusType::Other(OpenVmBusType::VariableRangeChecker),
                     ),
                 ]
                 .into_iter()
@@ -252,13 +253,14 @@ impl OriginalVmConfig {
             .chain(
                 shared_bitwise_lookup
                     .into_iter()
-                    .map(|chip| (chip.bus().inner.index, BusType::BitwiseLookup)),
+                    .map(|chip| (chip.bus().inner.index, BusType::OpenVmBitwiseLookup)),
             )
-            .chain(
-                shared_range_tuple_checker
-                    .into_iter()
-                    .map(|chip| (chip.bus().inner.index, BusType::TupleRangeChecker)),
-            )
+            .chain(shared_range_tuple_checker.into_iter().map(|chip| {
+                (
+                    chip.bus().inner.index,
+                    BusType::Other(OpenVmBusType::TupleRangeChecker),
+                )
+            }))
             .map(|(id, bus_type)| (id as u64, bus_type)),
         )
     }

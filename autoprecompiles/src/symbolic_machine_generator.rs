@@ -82,7 +82,7 @@ fn convert_expression<T, U>(
 pub fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
-    bus_map: &BusMap,
+    bus_map: &BusMap<A::BusType>,
 ) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();

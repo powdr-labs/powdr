@@ -1,4 +1,6 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use std::fmt::Display;
+
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +24,7 @@ pub trait Adapter: Sized {
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
     type MemoryBusInteraction: MemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
+    type BusType: Clone + Display + Sync + Eq + PartialEq;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 

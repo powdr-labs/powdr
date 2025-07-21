@@ -185,7 +185,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
 }
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
-    pub fn render(&self, bus_map: &BusMap) -> String {
+    pub fn render<B: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<B>) -> String {
         let mut output = format!(
             "// Symbolic machine using {} unique main columns\n",
             self.main_columns().count()
@@ -261,17 +261,17 @@ pub enum InstructionKind {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, M, B> {
+pub struct VmConfig<'a, A: Adapter> {
     /// Maps an opcode to its AIR.
-    pub instruction_handler: &'a M,
+    pub instruction_handler: &'a A::InstructionHandler,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
-    pub bus_interaction_handler: B,
+    pub bus_interaction_handler: A::BusInteractionHandler,
     /// The bus map that maps bus id to bus type
-    pub bus_map: BusMap,
+    pub bus_map: BusMap<A::BusType>,
 }
 
 // We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
-impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
+impl<'a, A: Adapter> Clone for VmConfig<'a, A> {
     fn clone(&self) -> Self {
         VmConfig {
             instruction_handler: self.instruction_handler,
@@ -312,7 +312,7 @@ impl<T, I> Apc<T, I> {
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: VmConfig<A>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,

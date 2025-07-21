@@ -4,6 +4,7 @@ use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
@@ -68,6 +69,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
     type MemoryBusInteraction = OpenVmMemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
+    type BusType = OpenVmBusType;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -371,7 +373,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     fn create(
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: VmConfig<OriginalAirs<BabyBear>, OpenVmBusInteractionHandler<BabyBearField>>,
+        vm_config: VmConfig<BabyBearOpenVmApcAdapter>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths;
