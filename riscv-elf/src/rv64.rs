@@ -125,6 +125,7 @@ fn scan_for_jump_targets(
 ) {
     let mut addr = base_addr;
     let mut remaining = data;
+    let mut last_was_auipc = false;
 
     while remaining.len() >= 4 {
         // Assert that we have a 32-bit instruction.
@@ -219,8 +220,40 @@ fn scan_for_jump_targets(
                         }
                     }
                 }
+                Op::JALR => {
+                    // Only process if this JALR is not part of an AUIPC+JALR pair
+                    if !last_was_auipc {
+                        // Standalone JALR without preceding AUIPC
+                        // These are dynamic jumps we can't resolve statically:
+                        // - Return instructions (jalr x0, x1, 0)
+                        // - Indirect calls through function pointers
+                        // - Computed jumps (switch statements, vtables)
+                        // We just note their existence for completeness
+
+                        let rs1_str = insn
+                            .rs1
+                            .map(|r| format!("x{r}"))
+                            .unwrap_or_else(|| "?".to_string());
+                        let rd_str = insn
+                            .rd
+                            .map(|r| format!("x{r}"))
+                            .unwrap_or_else(|| "?".to_string());
+                        let imm = insn.imm.unwrap_or(0);
+
+                        // Only log if it's not a standard return (jalr x0, x1, 0)
+                        if !(insn.rd == Some(0) && insn.rs1 == Some(1) && imm == 0) {
+                            eprintln!(
+                                "Note: Dynamic jump at 0x{addr:x}: jalr {rd_str}, {rs1_str}, {imm}",
+                            );
+                        }
+                    }
+                }
                 _ => {}
             }
+            // Update for next iteration
+            last_was_auipc = matches!(insn.opc, Op::AUIPC);
+        } else {
+            panic!("Could not decode instruction")
         }
 
         addr += 4;
