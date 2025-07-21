@@ -20,24 +20,24 @@ pub struct JumpDest {
 /// Minimal RV64 ELF program representation for label/jumpdest collection
 pub struct Rv64Labels {
     /// All text labels and jump destinations
-    pub text_labels: BTreeSet<u64>,
+    pub jumpdests: BTreeSet<u64>,
     /// Entry point address
     pub entry_point: u64,
     /// Symbol table for debugging
     pub symbols: Vec<(u64, String)>,
     /// Jump destinations that are not symbols (address -> source instructions)
-    pub jumpdests: BTreeMap<u64, Vec<JumpDest>>,
+    pub jumpdests_with_debug_info: BTreeMap<u64, Vec<JumpDest>>,
     /// PC base (lowest executable address)
     pub pc_base: u64,
 }
 
-pub fn load_elf_rv64(file_name: &Path) -> Rv64Labels {
+pub fn compute_jumpdests(file_name: &Path) -> Rv64Labels {
     log::info!("Loading RV64 ELF file: {}", file_name.display());
     let file_buffer = fs::read(file_name).unwrap();
-    load_elf_from_buffer_rv64(&file_buffer)
+    compute_jumpdests_from_buffer(&file_buffer)
 }
 
-pub fn load_elf_from_buffer_rv64(file_buffer: &[u8]) -> Rv64Labels {
+pub fn compute_jumpdests_from_buffer(file_buffer: &[u8]) -> Rv64Labels {
     let elf = Elf::parse(file_buffer).unwrap();
 
     // Verify it's a 64-bit RISC-V ELF
@@ -54,11 +54,11 @@ pub fn load_elf_from_buffer_rv64(file_buffer: &[u8]) -> Rv64Labels {
         "Only RISC-V ELF files are supported!"
     );
 
-    let mut text_labels = BTreeSet::new();
-    let mut jumpdests = BTreeMap::new();
+    let mut jumpdests = BTreeSet::new();
+    let mut jumpdests_with_debug_info = BTreeMap::new();
 
     // Add entry point
-    text_labels.insert(elf.entry);
+    jumpdests.insert(elf.entry);
 
     // Find PC base (lowest executable address)
     let pc_base = elf
@@ -82,7 +82,7 @@ pub fn load_elf_from_buffer_rv64(file_buffer: &[u8]) -> Rv64Labels {
             });
 
             if in_text {
-                text_labels.insert(sym.st_value);
+                jumpdests.insert(sym.st_value);
                 symbol_addrs.insert(sym.st_value);
                 if let Some(name) = elf.strtab.get_at(sym.st_name) {
                     symbols.push((sym.st_value, name.to_string()));
@@ -98,18 +98,18 @@ pub fn load_elf_from_buffer_rv64(file_buffer: &[u8]) -> Rv64Labels {
             scan_for_jump_targets(
                 ph.p_vaddr,
                 seg,
-                &mut text_labels,
                 &mut jumpdests,
+                &mut jumpdests_with_debug_info,
                 &symbol_addrs,
             );
         }
     }
 
     Rv64Labels {
-        text_labels,
+        jumpdests,
         entry_point: elf.entry,
         symbols,
-        jumpdests,
+        jumpdests_with_debug_info,
         pc_base,
     }
 }
@@ -119,162 +119,111 @@ use std::collections::BTreeMap;
 fn scan_for_jump_targets(
     base_addr: u64,
     data: &[u8],
-    text_labels: &mut BTreeSet<u64>,
-    jumpdests: &mut BTreeMap<u64, Vec<JumpDest>>,
-    symbol_addrs: &BTreeSet<u64>,
+    jumpdests: &mut BTreeSet<u64>,
+    jumpdests_with_debug_info: &mut BTreeMap<u64, Vec<JumpDest>>,
+    label_addrs: &BTreeSet<u64>,
 ) {
     let mut addr = base_addr;
     let mut remaining = data;
 
-    while remaining.len() >= 2 {
-        // Check if it's a 32-bit or 16-bit instruction
-        if remaining[0] & 0b11 == 0b11 && remaining.len() >= 4 {
-            // 32-bit instruction
-            let insn_bytes = u32::from_le_bytes(remaining[0..4].try_into().unwrap());
+    while remaining.len() >= 4 {
+        // Assert that we have a 32-bit instruction.
+        assert!(remaining[0] & 0b11 == 0b11);
+        let insn_bytes = u32::from_le_bytes(remaining[0..4].try_into().unwrap());
 
-            if let Ok(insn) = insn_bytes.decode(Isa::Rv64) {
-                // Check for jump/branch instructions
-                match insn.opc {
-                    Op::JAL => {
-                        // JAL has a PC-relative immediate
-                        if let Some(imm) = insn.imm {
-                            let target = (addr as i64 + imm as i64) as u64;
-                            text_labels.insert(target);
+        if let Ok(insn) = insn_bytes.decode(Isa::Rv64) {
+            // Check for jump/branch instructions
+            match insn.opc {
+                Op::JAL => {
+                    // JAL has a PC-relative immediate
+                    if let Some(imm) = insn.imm {
+                        let target = (addr as i64 + imm as i64) as u64;
+                        jumpdests.insert(target);
 
-                            // Track non-symbol jumpdests
-                            if !symbol_addrs.contains(&target) {
-                                let jump_info = JumpDest {
-                                    from_addr: addr,
-                                    instruction: format!(
-                                        "jal {}, 0x{:x}",
-                                        insn.rd
-                                            .map(|r| format!("x{r}"))
-                                            .unwrap_or_else(|| "?".to_string()),
-                                        target
-                                    ),
-                                };
-                                jumpdests.entry(target).or_default().push(jump_info);
-                            }
+                        // Track non-symbol jumpdests
+                        if !label_addrs.contains(&target) {
+                            let jump_info = JumpDest {
+                                from_addr: addr,
+                                instruction: format!(
+                                    "jal {}, 0x{:x}",
+                                    insn.rd
+                                        .map(|r| format!("x{r}"))
+                                        .unwrap_or_else(|| "?".to_string()),
+                                    target
+                                ),
+                            };
+                            jumpdests_with_debug_info
+                                .entry(target)
+                                .or_default()
+                                .push(jump_info);
                         }
                     }
-                    Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                        // Conditional branches have PC-relative immediates
-                        if let Some(imm) = insn.imm {
-                            let target = (addr as i64 + imm as i64) as u64;
-                            text_labels.insert(target);
+                }
+                Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
+                    // Conditional branches have PC-relative immediates
+                    if let Some(imm) = insn.imm {
+                        let target = (addr as i64 + imm as i64) as u64;
+                        jumpdests.insert(target);
 
-                            // Track non-symbol jumpdests
-                            if !symbol_addrs.contains(&target) {
-                                let jump_info = JumpDest {
-                                    from_addr: addr,
-                                    instruction: format!(
-                                        "{} {}, {}, 0x{:x}",
-                                        format!("{:?}", insn.opc).to_lowercase(),
-                                        insn.rs1
-                                            .map(|r| format!("x{r}"))
-                                            .unwrap_or_else(|| "?".to_string()),
-                                        insn.rs2
-                                            .map(|r| format!("x{r}"))
-                                            .unwrap_or_else(|| "?".to_string()),
-                                        target
-                                    ),
-                                };
-                                jumpdests.entry(target).or_default().push(jump_info);
-                            }
+                        // Track non-symbol jumpdests
+                        if !label_addrs.contains(&target) {
+                            let jump_info = JumpDest {
+                                from_addr: addr,
+                                instruction: format!(
+                                    "{} {}, {}, 0x{:x}",
+                                    format!("{:?}", insn.opc).to_lowercase(),
+                                    insn.rs1
+                                        .map(|r| format!("x{r}"))
+                                        .unwrap_or_else(|| "?".to_string()),
+                                    insn.rs2
+                                        .map(|r| format!("x{r}"))
+                                        .unwrap_or_else(|| "?".to_string()),
+                                    target
+                                ),
+                            };
+                            jumpdests_with_debug_info
+                                .entry(target)
+                                .or_default()
+                                .push(jump_info);
                         }
                     }
-                    Op::AUIPC => {
-                        // AUIPC is often followed by JALR for function calls and long jumps
-                        // In statically linked binaries, these usually target known symbols
-                        if remaining.len() >= 8 {
-                            let next_insn_bytes =
-                                u32::from_le_bytes(remaining[4..8].try_into().unwrap());
-                            if let Ok(next_insn) = next_insn_bytes.decode(Isa::Rv64) {
-                                if matches!(next_insn.opc, Op::JALR) && insn.rd == next_insn.rs1 {
-                                    // This is an AUIPC+JALR pair
-                                    if let (Some(auipc_imm), Some(jalr_imm)) =
-                                        (insn.imm, next_insn.imm)
-                                    {
-                                        let target =
-                                            (addr as i64 + auipc_imm as i64 + jalr_imm as i64)
-                                                as u64;
-                                        text_labels.insert(target);
+                }
+                Op::AUIPC => {
+                    // AUIPC is often followed by JALR for function calls and long jumps
+                    // In statically linked binaries, these usually target known symbols
+                    if remaining.len() >= 8 {
+                        let next_insn_bytes =
+                            u32::from_le_bytes(remaining[4..8].try_into().unwrap());
+                        if let Ok(next_insn) = next_insn_bytes.decode(Isa::Rv64) {
+                            if matches!(next_insn.opc, Op::JALR) && insn.rd == next_insn.rs1 {
+                                // This is an AUIPC+JALR pair
+                                if let (Some(auipc_imm), Some(jalr_imm)) = (insn.imm, next_insn.imm)
+                                {
+                                    let target =
+                                        (addr as i64 + auipc_imm as i64 + jalr_imm as i64) as u64;
+                                    jumpdests.insert(target);
 
-                                        // Track non-symbol jumpdests
-                                        if !symbol_addrs.contains(&target) {
-                                            let jump_info = JumpDest {
-                                                from_addr: addr,
-                                                instruction: format!("auipc+jalr -> 0x{target:x}"),
-                                            };
-                                            jumpdests.entry(target).or_default().push(jump_info);
-                                        }
+                                    // Track non-symbol jumpdests
+                                    if !label_addrs.contains(&target) {
+                                        let jump_info = JumpDest {
+                                            from_addr: addr,
+                                            instruction: format!("auipc+jalr -> 0x{target:x}"),
+                                        };
+                                        jumpdests_with_debug_info
+                                            .entry(target)
+                                            .or_default()
+                                            .push(jump_info);
                                     }
                                 }
                             }
                         }
                     }
-                    _ => {}
                 }
+                _ => {}
             }
-
-            addr += 4;
-            remaining = &remaining[4..];
-        } else {
-            // 16-bit compressed instruction
-            let insn_bytes = u16::from_le_bytes(remaining[0..2].try_into().unwrap());
-
-            if let Ok(insn) = insn_bytes.decode(Isa::Rv64) {
-                // Check for compressed jump/branch instructions
-                match insn.opc {
-                    Op::C_J | Op::C_JAL => {
-                        // Compressed jumps
-                        if let Some(imm) = insn.imm {
-                            let target = (addr as i64 + imm as i64) as u64;
-                            text_labels.insert(target);
-
-                            // Track non-symbol jumpdests
-                            if !symbol_addrs.contains(&target) {
-                                let jump_info = JumpDest {
-                                    from_addr: addr,
-                                    instruction: format!(
-                                        "{} 0x{:x}",
-                                        format!("{:?}", insn.opc).to_lowercase(),
-                                        target
-                                    ),
-                                };
-                                jumpdests.entry(target).or_default().push(jump_info);
-                            }
-                        }
-                    }
-                    Op::C_BEQZ | Op::C_BNEZ => {
-                        // Compressed branches
-                        if let Some(imm) = insn.imm {
-                            let target = (addr as i64 + imm as i64) as u64;
-                            text_labels.insert(target);
-
-                            // Track non-symbol jumpdests
-                            if !symbol_addrs.contains(&target) {
-                                let jump_info = JumpDest {
-                                    from_addr: addr,
-                                    instruction: format!(
-                                        "{} {}, 0x{:x}",
-                                        format!("{:?}", insn.opc).to_lowercase(),
-                                        insn.rs1
-                                            .map(|r| format!("x{r}"))
-                                            .unwrap_or_else(|| "?".to_string()),
-                                        target
-                                    ),
-                                };
-                                jumpdests.entry(target).or_default().push(jump_info);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            addr += 2;
-            remaining = &remaining[2..];
         }
+
+        addr += 4;
+        remaining = &remaining[4..];
     }
 }

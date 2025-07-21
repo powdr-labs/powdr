@@ -50,7 +50,10 @@ fn main() {
 
             match result {
                 Ok(program) => {
-                    println!("RV32 ELF file loaded successfully: {}", elf_path.display());
+                    println!(
+                        "RV32 ELF file analyzed successfully: {}",
+                        elf_path.display()
+                    );
                     println!();
                     print_elf_info_32(&program);
                 }
@@ -62,11 +65,14 @@ fn main() {
         }
         ELFCLASS64 => {
             // The load_elf_rv64 function panics on errors, so we catch it
-            let result = panic::catch_unwind(|| rv64::load_elf_rv64(elf_path));
+            let result = panic::catch_unwind(|| rv64::compute_jumpdests(elf_path));
 
             match result {
                 Ok(labels) => {
-                    println!("RV64 ELF file loaded successfully: {}", elf_path.display());
+                    println!(
+                        "RV64 ELF file analyzed successfully: {}",
+                        elf_path.display()
+                    );
                     println!();
                     print_elf_info_64(&labels);
                 }
@@ -153,12 +159,12 @@ fn print_elf_info_64(labels: &rv64::Rv64Labels) {
     println!("PC base: 0x{:016x}", labels.pc_base);
     println!();
 
-    if labels.text_labels.is_empty() {
+    if labels.jumpdests.is_empty() {
         println!("No text labels or jump destinations found.");
     } else {
         println!(
             "Text labels and jump destinations found: {}",
-            labels.text_labels.len()
+            labels.jumpdests.len()
         );
         println!();
 
@@ -166,7 +172,7 @@ fn print_elf_info_64(labels: &rv64::Rv64Labels) {
         println!("{:<20} {:<40}", "Address", "Symbol (if available)");
         println!("{}", "-".repeat(60));
 
-        for &addr in &labels.text_labels {
+        for &addr in &labels.jumpdests {
             // Find symbol name if available
             let symbol = labels
                 .symbols
@@ -181,9 +187,12 @@ fn print_elf_info_64(labels: &rv64::Rv64Labels) {
         // Summary of symbols
         println!();
         println!("Summary:");
-        println!("  Total labels/jumpdests: {}", labels.text_labels.len());
+        println!("  Total labels/jumpdests: {}", labels.jumpdests.len());
         println!("  Named symbols: {}", labels.symbols.len());
-        println!("  Jumpdests without symbols: {}", labels.jumpdests.len());
+        println!(
+            "  Jumpdests without symbols: {}",
+            labels.jumpdests_with_debug_info.len()
+        );
 
         // Show function-like symbols separately
         let function_symbols: Vec<_> = labels
@@ -218,7 +227,7 @@ fn print_elf_info_64(labels: &rv64::Rv64Labels) {
         );
         println!("{}", "-".repeat(80));
 
-        let mut sorted_jumpdests: Vec<_> = labels.jumpdests.iter().collect();
+        let mut sorted_jumpdests: Vec<_> = labels.jumpdests_with_debug_info.iter().collect();
         sorted_jumpdests.sort_by_key(|(addr, _)| *addr);
 
         for (target_addr, sources) in sorted_jumpdests {
