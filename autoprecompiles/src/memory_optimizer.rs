@@ -82,10 +82,6 @@ struct MemoryBusInteraction<T: FieldElement, V> {
     address_space: T,
     addr: GroupedExpression<T, V>,
     data: Vec<GroupedExpression<T, V>>,
-    #[allow(dead_code)]
-    // TODO: The timestamp is currently ignored. At some point, we should use it
-    // to assert that the bus interactions are in the right order.
-    timestamp: GroupedExpression<T, V>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V> {
@@ -111,7 +107,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             _ => return Err(()),
         };
 
-        let [address_space, addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
+        let [address_space, addr, data @ .., _timestamp] = &bus_interaction.payload[..] else {
             panic!();
         };
         let Some(address_space) = address_space.try_to_number() else {
@@ -122,7 +118,6 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             address_space,
             addr: addr.clone(),
             data: data.to_vec(),
-            timestamp: timestamp.clone(),
         }))
     }
 }
