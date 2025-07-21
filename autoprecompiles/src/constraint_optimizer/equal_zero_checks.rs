@@ -12,7 +12,7 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver;
 use powdr_number::FieldElement;
 
-use crate::constraint_optimizer::reachability::reachable_variables;
+use crate::constraint_optimizer::reachability::reachable_variables_except_blocked;
 use crate::constraint_optimizer::{variables_in_stateful_bus_interactions, IsBusStateful};
 
 pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Display>(
@@ -24,9 +24,11 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     // println!(
     //     "\n----------------------------------\nReplacing equal zero checks in constraint system"
     // );
-    let solver = solver::Solver::new(constraint_system.system().clone())
-        .with_bus_interaction_handler(bus_interaction_handler.clone());
-    let rc = solver.compute_range_constraints().unwrap();
+    let rc = solver::Solver::new(constraint_system.system().clone())
+        .with_bus_interaction_handler(bus_interaction_handler.clone())
+        .solve()
+        .unwrap()
+        .range_constraints;
     let binary_range_constraint = RangeConstraint::from_mask(1);
     let binary_variables = constraint_system
         .indexed_system()
@@ -130,7 +132,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // The variables that are not reachable in this sense can be removed, because they are only
     // connected to a stateful bus interaction via the input or output.
     let blocking_variables = inputs.iter().chain([&output]).cloned();
-    let outside_variables = reachable_variables(
+    let outside_variables = reachable_variables_except_blocked(
         variables_in_stateful_bus_interactions(
             constraint_system.system(),
             bus_interaction_handler.clone(),
@@ -144,7 +146,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // the inputs.
     // Those we should keep, so we again do a reachability search from the output.
 
-    let output_reachable_variables = reachable_variables(
+    let output_reachable_variables = reachable_variables_except_blocked(
         std::iter::once(output.clone()),
         inputs.iter().cloned(),
         constraint_system.system(),
