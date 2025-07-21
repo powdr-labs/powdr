@@ -1,23 +1,27 @@
+use crate::adapter::{Adapter, AdapterApc};
 use crate::bus_map::{BusMap, BusType};
-use crate::expression_conversion::algebraic_to_quadratic_symbolic_expression;
-use constraint_optimizer::IsBusStateful;
+use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::symbolic_machine_generator::convert_machine;
+pub use blocks::{BasicBlock, PgoConfig};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
-    AlgebraicUnaryOperator,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::io::BufWriter;
 use std::iter::once;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
+pub mod adapter;
 mod bitwise_lookup_optimizer;
+pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
 pub mod expression;
@@ -29,10 +33,56 @@ mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone)]
+pub struct PowdrConfig {
+    /// Number of autoprecompiles to generate.
+    pub autoprecompiles: u64,
+    /// Number of basic blocks to skip for autoprecompiles.
+    /// This is either the largest N if no PGO, or the costliest N with PGO.
+    pub skip_autoprecompiles: u64,
+    /// Max degree of constraints.
+    pub degree_bound: DegreeBound,
+    /// The path to the APC candidates dir, if any.
+    pub apc_candidates_dir_path: Option<PathBuf>,
+    /// The opcode id of the first APC instruction. Other APC instructions will have consecutive ids.
+    pub first_apc_opcode: usize,
+}
+
+impl PowdrConfig {
+    pub fn new(
+        autoprecompiles: u64,
+        skip_autoprecompiles: u64,
+        degree_bound: DegreeBound,
+        first_apc_opcode: usize,
+    ) -> Self {
+        Self {
+            autoprecompiles,
+            skip_autoprecompiles,
+            degree_bound,
+            apc_candidates_dir_path: None,
+            first_apc_opcode,
+        }
+    }
+
+    pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
-    pub opcode: usize,
+    pub opcode: T,
     pub args: Vec<T>,
+}
+
+impl<T> IntoIterator for SymbolicInstructionStatement<T> {
+    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::vec::IntoIter<T>>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self.opcode).chain(self.args)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,9 +184,12 @@ impl<T: Display> Display for SymbolicMachine<T> {
     }
 }
 
-impl<T: Display> SymbolicMachine<T> {
+impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     pub fn render(&self, bus_map: &BusMap) -> String {
-        let mut output = String::new();
+        let mut output = format!(
+            "// Symbolic machine using {} unique main columns\n",
+            self.main_columns().count()
+        );
         let bus_interactions_by_bus = self
             .bus_interactions
             .iter()
@@ -207,56 +260,47 @@ pub enum InstructionKind {
     UnconditionalBranch,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct PcLookupBusInteraction<T> {
-    pub from_pc: AlgebraicExpression<T>,
-    pub op: AlgebraicExpression<T>,
-    pub args: Vec<AlgebraicExpression<T>>,
-    pub bus_interaction: SymbolicBusInteraction<T>,
-}
-
-impl<T: FieldElement> PcLookupBusInteraction<T> {
-    fn try_from_symbolic_bus_interaction(
-        bus_interaction: &SymbolicBusInteraction<T>,
-        pc_lookup_bus_id: u64,
-    ) -> Result<Self, ()> {
-        (bus_interaction.id == pc_lookup_bus_id)
-            .then(|| {
-                let from_pc = bus_interaction.args[0].clone();
-                let op = bus_interaction.args[1].clone();
-                let args = bus_interaction.args[2..].to_vec();
-                PcLookupBusInteraction {
-                    from_pc,
-                    op,
-                    args,
-                    bus_interaction: bus_interaction.clone(),
-                }
-            })
-            .ok_or(())
-    }
-}
-
 /// A configuration of a VM in which execution is happening.
 pub struct VmConfig<'a, M, B> {
     /// Maps an opcode to its AIR.
-    pub instruction_machine_handler: &'a M,
+    pub instruction_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
     pub bus_map: BusMap,
 }
 
-pub trait InstructionMachineHandler<T> {
+// We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
+impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
+    fn clone(&self) -> Self {
+        VmConfig {
+            instruction_handler: self.instruction_handler,
+            bus_interaction_handler: self.bus_interaction_handler.clone(),
+            bus_map: self.bus_map.clone(),
+        }
+    }
+}
+
+pub trait InstructionHandler<T, I> {
     /// Returns the AIR for the given opcode.
-    fn get_instruction_air(&self, opcode: usize) -> Option<&SymbolicMachine<T>>;
+    fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+
+    /// Returns whether the given instruction is allowed in an autoprecompile.
+    fn is_allowed(&self, instruction: &I) -> bool;
+
+    /// Returns whether the given instruction is a branching instruction.
+    fn is_branching(&self, instruction: &I) -> bool;
 }
 
-pub struct Apc<T> {
-    machine: SymbolicMachine<T>,
-    subs: Vec<Vec<u64>>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Apc<T, I> {
+    pub block: BasicBlock<I>,
+    pub opcode: u32,
+    pub machine: SymbolicMachine<T>,
+    pub subs: Vec<Vec<u64>>,
 }
 
-impl<T: FieldElement> Apc<T> {
+impl<T, I> Apc<T, I> {
     pub fn subs(&self) -> &[Vec<u64>] {
         &self.subs
     }
@@ -264,46 +308,58 @@ impl<T: FieldElement> Apc<T> {
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
-
-    pub fn into_parts(self) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-        (self.machine, self.subs)
-    }
 }
 
-pub fn build<
-    T: FieldElement,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    M: InstructionMachineHandler<T>,
->(
-    program: Vec<SymbolicInstructionStatement<T>>,
-    vm_config: VmConfig<M, B>,
+pub fn build<A: Adapter>(
+    block: BasicBlock<A::Instruction>,
+    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
     degree_bound: DegreeBound,
     opcode: u32,
-) -> Result<Apc<T>, crate::constraint_optimizer::Error> {
-    let (machine, subs) = statements_to_symbolic_machine(
-        &program,
-        vm_config.instruction_machine_handler,
+    apc_candidates_dir_path: Option<&Path>,
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let (machine, subs) = statements_to_symbolic_machine::<A>(
+        &block,
+        vm_config.instruction_handler,
         &vm_config.bus_map,
     );
 
     let machine = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
-        opcode,
         degree_bound,
         &vm_config.bus_map,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine, vm_config.bus_map);
+    let machine = add_guards(machine);
 
-    Ok(Apc { machine, subs })
+    let machine = convert_machine(machine, &A::into_field);
+
+    let apc = Apc {
+        block,
+        machine,
+        subs,
+        opcode,
+    };
+
+    if let Some(path) = apc_candidates_dir_path {
+        let ser_path = path
+            .join(format!("apc_candidate_{opcode}"))
+            .with_extension("cbor");
+        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+        let file =
+            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
+        let writer = BufWriter::new(file);
+        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+    }
+
+    Ok(apc)
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     let mut zeroed_expr = expr.clone();
     powdr::make_refs_zero(&mut zeroed_expr);
-    let zeroed_expr = algebraic_to_quadratic_symbolic_expression(&zeroed_expr);
+    let zeroed_expr = algebraic_to_grouped_expression(&zeroed_expr);
     zeroed_expr.try_to_number().unwrap().is_zero()
 }
 
@@ -340,17 +396,9 @@ fn add_guards_constraint<T: FieldElement>(
     }
 }
 
-/// Adds an `is_valid` guard to all constraints and bus interactions.
-/// Assumptions:
-/// - There are exactly one execution bus receive and one execution bus send, in this order.
-/// - There is exactly one program bus send.
-fn add_guards<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    bus_map: BusMap,
-) -> SymbolicMachine<T> {
+/// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
+fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
-    let exec_bus_id = bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap();
-    let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
 
     let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
 
@@ -365,42 +413,18 @@ fn add_guards<T: FieldElement>(
         .map(|c| add_guards_constraint(c.expr, &is_valid).into())
         .collect();
 
-    let [execution_bus_receive, execution_bus_send] = machine
-        .bus_interactions
-        .iter_mut()
-        .filter(|bus_int| bus_int.id == exec_bus_id)
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-
-    execution_bus_receive.mult =
-        AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
-    execution_bus_send.mult = is_valid.clone();
-
-    let [program_bus_send] = machine
-        .bus_interactions
-        .iter_mut()
-        .filter(|bus_int| bus_int.id == pc_lookup_bus_id)
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    program_bus_send.mult = is_valid.clone();
-
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        // already handled exec and pc lookup bus types
-        if b.id != exec_bus_id && b.id != pc_lookup_bus_id {
-            if !satisfies_zero_witness(&b.mult) {
-                // guard the multiplicity by `is_valid`
-                b.mult = is_valid.clone() * b.mult.clone();
-                // TODO this would not have to be cloned if we had *=
-                //c.expr *= guard.clone();
-            } else {
-                // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
-                let one = AlgebraicExpression::Number(1u64.into());
-                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                is_valid_mults.push(e);
-            }
+        if !satisfies_zero_witness(&b.mult) {
+            // guard the multiplicity by `is_valid`
+            b.mult = is_valid.clone() * b.mult.clone();
+            // TODO this would not have to be cloned if we had *=
+            //c.expr *= guard.clone();
+        } else {
+            // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+            let one = AlgebraicExpression::Number(1u64.into());
+            let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+            is_valid_mults.push(e);
         }
     }
 

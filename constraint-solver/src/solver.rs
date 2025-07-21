@@ -1,11 +1,11 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
-    BusInteractionHandler, ConstraintSystemGeneric, DefaultBusInteractionHandler,
+    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
 };
-use crate::effect::EffectImpl;
+use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
-use crate::indexed_constraint_system::IndexedConstraintSystemGeneric;
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
@@ -24,12 +24,12 @@ mod quadratic_equivalences;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
-    constraint_system: ConstraintSystemGeneric<T, V>,
+    constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
 ) -> Result<SolveResult<T, V>, Error>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
-    T::Transformed: RuntimeConstant
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
         + Substitutable<Variable<V>>
@@ -43,7 +43,7 @@ where
     let result = Solver::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result.assignments))
+    Ok(bus_interaction_variable_wrapper.finalize(result))
 }
 
 pub fn determine_range_constraints<T, V>(
@@ -69,6 +69,9 @@ pub struct SolveResult<T: RuntimeConstant, V> {
     /// Values might contain variables that are replaced as well,
     /// and because of that, assignments should be applied in order.
     pub assignments: Vec<VariableAssignment<T, V>>,
+    /// The range constraints the solver was able to determine
+    /// for the variables.
+    pub range_constraints: RangeConstraints<T::FieldType, V>,
     /// Maps a (bus interaction index, field index) to a concrete value.
     pub bus_field_assignments: BTreeMap<(usize, usize), T::FieldType>,
 }
@@ -90,10 +93,10 @@ pub enum Error {
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
+pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: IndexedConstraintSystemGeneric<T, V>,
+    constraint_system: IndexedConstraintSystem<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: BusInterHandler,
     /// The currently known range constraints of the variables.
@@ -106,14 +109,14 @@ struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
     Solver<T, V, DefaultBusInteractionHandler<T::FieldType>>
 {
-    pub fn new(constraint_system: ConstraintSystemGeneric<T, V>) -> Self {
+    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
 
         Solver {
-            constraint_system: IndexedConstraintSystemGeneric::from(constraint_system),
+            constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Default::default(),
             assignments: Default::default(),
@@ -144,11 +147,12 @@ where
     }
 
     /// Solves the constraints as far as possible, returning concrete variable
-    /// assignments and a simplified version of the algebraic constraints.
+    /// assignments and determined range constraints.
     pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
         self.loop_until_no_progress()?;
         Ok(SolveResult {
             assignments: self.assignments,
+            range_constraints: self.range_constraints,
             bus_field_assignments: Default::default(),
         })
     }
@@ -250,19 +254,19 @@ where
         Ok(progress)
     }
 
-    fn apply_effect(&mut self, effect: EffectImpl<T, V>) -> bool {
+    fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            EffectImpl::Assignment(v, expr) => {
+            Effect::Assignment(v, expr) => {
                 self.apply_assignment(&v, &GroupedExpression::from_runtime_constant(expr))
             }
-            EffectImpl::RangeConstraint(v, range_constraint) => {
+            Effect::RangeConstraint(v, range_constraint) => {
                 self.apply_range_constraint_update(&v, range_constraint)
             }
-            EffectImpl::BitDecomposition(..) => unreachable!(),
-            EffectImpl::Assertion(..) => unreachable!(),
+            Effect::BitDecomposition(..) => unreachable!(),
+            Effect::Assertion(..) => unreachable!(),
             // There are no known-but-not-concrete variables, so we should never
             // encounter a conditional assignment.
-            EffectImpl::ConditionalAssignment { .. } => unreachable!(),
+            Effect::ConditionalAssignment { .. } => unreachable!(),
         }
     }
 
@@ -304,8 +308,8 @@ impl<T: RuntimeConstant, V: Clone + Hash + Eq, B> RangeConstraintProvider<T::Fie
 }
 
 /// The currently known range constraints for the variables.
-struct RangeConstraints<T: FieldElement, V> {
-    range_constraints: HashMap<V, RangeConstraint<T>>,
+pub struct RangeConstraints<T: FieldElement, V> {
+    pub range_constraints: HashMap<V, RangeConstraint<T>>,
 }
 
 // Manual implementation so that we don't have to require `V: Default`.

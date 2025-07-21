@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
+    grouped_expression::{GroupedExpression, NoRangeConstraints},
     journaling_constraint_system::JournalingConstraintSystem,
 };
 use powdr_number::FieldElement;
@@ -11,9 +12,7 @@ use crate::{
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     expression::{AlgebraicExpression, AlgebraicReference},
-    expression_conversion::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-    },
+    expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
@@ -21,20 +20,12 @@ use crate::{
 };
 
 pub fn optimize<T: FieldElement>(
-    machine: SymbolicMachine<T>,
+    mut machine: SymbolicMachine<T>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    opcode: u32,
     degree_bound: DegreeBound,
     bus_map: &BusMap,
 ) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
-    let mut machine = if let Some(pc_lookup_bus_id) = bus_map.get_bus_id(&BusType::PcLookup) {
-        let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
-        stats_logger.log("PC lookup optimization", &machine);
-        machine
-    } else {
-        machine
-    };
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
         machine = optimize_exec_bus(machine, exec_bus_id);
@@ -53,6 +44,16 @@ pub fn optimize<T: FieldElement>(
             bus_map,
         )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
+            // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
+            let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
+            assert!(
+                !constraint_system
+                    .bus_interactions
+                    .iter()
+                    .any(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id))),
+                "Expected all PC lookups to be removed."
+            );
+
             return Ok(constraint_system_to_symbolic_machine(constraint_system));
         }
     }
@@ -101,37 +102,6 @@ fn optimization_loop_iteration<T: FieldElement>(
     Ok(system)
 }
 
-pub fn optimize_pc_lookup<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    opcode: u32,
-    pc_lookup_bus_id: u64,
-) -> SymbolicMachine<T> {
-    let mut first_pc = None;
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id == pc_lookup_bus_id {
-            if first_pc.is_none() {
-                first_pc = Some(bus_int.clone());
-            }
-            return false;
-        }
-        true
-    });
-    let mut first_pc = first_pc.unwrap();
-    assert_eq!(first_pc.args.len(), 9);
-    first_pc.args[1] = AlgebraicExpression::Number(T::from(opcode));
-    first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[4] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[5] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[6] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[7] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[8] = AlgebraicExpression::Number(T::from(0u32));
-
-    machine.bus_interactions.push(first_pc);
-
-    machine
-}
-
 pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,
@@ -139,8 +109,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
-    let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
-    let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -156,30 +125,28 @@ pub fn optimize_exec_bus<T: FieldElement>(
             true
         } else if !receive {
             // Save the latest send and remove the bus interaction
-            let mut pc_expr = bus_int.args[0].clone();
-            powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
-            pc_expr = simplify_expression(pc_expr);
-
-            let mut ts_expr = bus_int.args[1].clone();
-            powdr::substitute_algebraic_algebraic(&mut ts_expr, &subs_ts);
-            ts_expr = simplify_expression(ts_expr);
-
             let mut send = bus_int.clone();
-            send.args[0] = pc_expr;
-            send.args[1] = ts_expr;
+            send.args = bus_int
+                .args
+                .iter()
+                .map(|arg| {
+                    let mut arg = arg.clone();
+                    powdr::substitute_algebraic_algebraic(&mut arg, &subs);
+                    simplify_expression(arg)
+                })
+                .collect();
 
             latest_send = Some(send);
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
-            subs_pc.insert(
-                bus_int.args[0].clone(),
-                latest_send.clone().unwrap().args[0].clone(),
-            );
-            subs_ts.insert(
-                bus_int.args[1].clone(),
-                latest_send.clone().unwrap().args[1].clone(),
-            );
+            for (bus_arg, send_arg) in bus_int
+                .args
+                .iter()
+                .zip_eq(latest_send.as_ref().unwrap().args.iter())
+            {
+                subs.insert(bus_arg.clone(), send_arg.clone());
+            }
             false
         };
 
@@ -192,17 +159,14 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.bus_interactions.push(latest_send.unwrap());
 
     for c in &mut machine.constraints {
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_ts);
+        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs);
         c.expr = simplify_expression(c.expr.clone());
     }
     for b in &mut machine.bus_interactions {
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_ts);
+        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs);
         b.mult = simplify_expression(b.mult.clone());
         for a in &mut b.args {
-            powdr::substitute_algebraic_algebraic(a, &subs_pc);
-            powdr::substitute_algebraic_algebraic(a, &subs_ts);
+            powdr::substitute_algebraic_algebraic(a, &subs);
             *a = simplify_expression(a.clone());
         }
     }
@@ -217,7 +181,7 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
-            .map(|constraint| algebraic_to_quadratic_symbolic_expression(&constraint.expr))
+            .map(|constraint| algebraic_to_grouped_expression(&constraint.expr))
             .collect(),
         bus_interactions: symbolic_machine
             .bus_interactions
@@ -235,7 +199,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .algebraic_constraints
             .iter()
             .map(|constraint| SymbolicConstraint {
-                expr: quadratic_symbolic_expression_to_algebraic(constraint),
+                expr: grouped_expression_to_algebraic(constraint),
             })
             .collect(),
         bus_interactions: constraint_system
@@ -248,20 +212,20 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
-) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
+) -> BusInteraction<GroupedExpression<P, AlgebraicReference>> {
     BusInteraction {
-        bus_id: QuadraticSymbolicExpression::from_number(P::from(bus_interaction.id)),
+        bus_id: GroupedExpression::from_number(P::from(bus_interaction.id)),
         payload: bus_interaction
             .args
             .iter()
-            .map(|arg| algebraic_to_quadratic_symbolic_expression(arg))
+            .map(|arg| algebraic_to_grouped_expression(arg))
             .collect(),
-        multiplicity: algebraic_to_quadratic_symbolic_expression(&bus_interaction.mult),
+        multiplicity: algebraic_to_grouped_expression(&bus_interaction.mult),
     }
 }
 
 fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
-    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>>,
+    bus_interaction: BusInteraction<GroupedExpression<P, AlgebraicReference>>,
 ) -> SymbolicBusInteraction<P> {
     // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
     // so this should always succeed.
@@ -277,12 +241,12 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         args: bus_interaction
             .payload
             .into_iter()
-            .map(|arg| quadratic_symbolic_expression_to_algebraic(&arg))
+            .map(|arg| grouped_expression_to_algebraic(&arg))
             .collect(),
-        mult: quadratic_symbolic_expression_to_algebraic(&bus_interaction.multiplicity),
+        mult: grouped_expression_to_algebraic(&bus_interaction.multiplicity),
     }
 }
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
+    grouped_expression_to_algebraic(&algebraic_to_grouped_expression(&e))
 }

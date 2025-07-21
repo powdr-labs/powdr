@@ -1,15 +1,19 @@
+use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfig;
-use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::{build, BasicBlock, DegreeBound, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
+use powdr_openvm::BabyBearOpenVmApcAdapter;
+use powdr_openvm::Instr;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
 
 // A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String {
+fn compile(program: Vec<Instruction<BabyBear>>) -> String {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -23,7 +27,7 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
+        instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
             default_openvm_bus_map(),
         ),
@@ -35,18 +39,24 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
-        .unwrap()
-        .machine()
-        .render(&bus_map)
+    build::<BabyBearOpenVmApcAdapter>(
+        BasicBlock {
+            statements: program.into_iter().map(Instr).collect(),
+            start_pc: 0,
+        },
+        vm_config,
+        degree_bound,
+        POWDR_OPCODE as u32,
+        None,
+    )
+    .unwrap()
+    .machine()
+    .render(&bus_map)
 }
 
 /// Compare `actual` against the contents of the file at `path`.
 /// If they differ, write `actual` to the file and fail the test.
-fn assert_machine_output(
-    program: Vec<SymbolicInstructionStatement<BabyBearField>>,
-    test_name: &str,
-) {
+fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let actual = compile(program.to_vec());
     let base = Path::new("tests/apc_builder_outputs");
     let file_path = base.join(format!("{test_name}.txt"));
@@ -279,10 +289,10 @@ mod complex_tests {
     #[test]
     fn guest_top_block() {
         // Top block from `guest` with `--pgo cell`, with 4 instructions:
-        // SymbolicInstructionStatement { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
-        // SymbolicInstructionStatement { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
+        // Instruction { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
+        // Instruction { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
+        // Instruction { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
+        // Instruction { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
 
         let program = [
             add(8, 8, 16777200, 0),

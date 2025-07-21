@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
-pub fn generate_permutation_columns<F, P>(
+pub fn generate_permutation_columns<F>(
     values: &mut [F],
-    plonk_circuit: &PlonkCircuit<P, AlgebraicReference>,
+    plonk_circuit: &PlonkCircuit<F, AlgebraicReference>,
     number_of_calls: usize,
     width: usize,
 ) where
@@ -95,7 +95,6 @@ mod tests {
     use crate::powdr_extension::plonk::copy_constraint::PrimeField32;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::{SymbolicConstraint, SymbolicMachine};
-    use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -103,7 +102,6 @@ mod tests {
     where
         BabyBear: PrimeField32 + FieldAlgebra,
     {
-        type P = BabyBearField;
         type F = BabyBear;
         let x = var("x", 0);
         let y = var("y", 1);
@@ -124,7 +122,7 @@ mod tests {
 
         println!("circuit: {}", build_circuit(&machine, &bus_map));
 
-        generate_permutation_columns::<F, P>(&mut values, &plonk_circuit, number_of_calls, width);
+        generate_permutation_columns::<F>(&mut values, &plonk_circuit, number_of_calls, width);
 
         let expected: Vec<Vec<i32>> = vec![
             // First call
