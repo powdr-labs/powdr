@@ -40,19 +40,23 @@ fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
             )
         })
         .collect::<HashMap<_, _>>();
-    assert_eq!(
-        final_state.keys().collect::<Vec<_>>(),
-        expected_final_state.keys().collect::<Vec<_>>(),
-        "Different set of variables"
-    );
 
     let mut error = false;
-    for (variable, value) in expected_final_state {
-        // Compare string representation, so that range constraints are ignored.
-        if final_state[&variable].to_string() != value.to_string() {
+    for (variable, value) in &expected_final_state {
+        if final_state.get(&variable) != Some(&value) {
             log::error!("Mismatch for variable {variable}:");
             log::error!("  Expected: {value}");
-            log::error!("  Actual:   {}", final_state[&variable]);
+            if let Some(final_value) = final_state.get(&variable) {
+                log::error!("  Actual:   {final_value}");
+            } else {
+                log::error!("  Actual:   (not found)");
+            }
+            error = true;
+        }
+    }
+    for (variable, value) in &final_state {
+        if !expected_final_state.contains_key(variable) {
+            log::error!("Unexpected variable {variable}: {value}");
             error = true;
         }
     }

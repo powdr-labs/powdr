@@ -96,22 +96,25 @@ where
             // quadratic equivalence.
             // So we only expect concrete values here, but we need to do some trickery
             // to translate types which we expect to be equal anyway.
-            let value: T::FieldType = expr
-                .try_to_known()
-                .unwrap()
-                .transform_var_type(&mut |_| unreachable!())
-                .try_to_number()
-                .unwrap();
+            let value = GroupedExpression::from_number(
+                expr.try_to_known()
+                    .unwrap()
+                    .transform_var_type(&mut |_| unreachable!())
+                    .try_to_number()
+                    .unwrap(),
+            );
             // Replace the original definition of the bus interaction variable
             // by the assigned concrete value and store the association
             // in the result.
             let original_definition = bus_interaction_vars
-                .insert(variable.clone(), GroupedExpression::from_number(value))
+                .insert(variable.clone(), value.clone())
                 .unwrap();
-            // We already push these to the start of the result, i.e. we violate the order
-            // of replacement. But this is fine since we use the original definitions here,
-            // i.e. expressions in the form before any other substitutions have taken place.
-            result.push((original_definition, GroupedExpression::from_number(value)));
+            if original_definition != value {
+                // We already push these to the start of the result, i.e. we violate the order
+                // of replacement. But this is fine since we use the original definitions here,
+                // i.e. expressions in the form before any other substitutions have taken place.
+                result.push((original_definition, value));
+            }
         }
     }
 
