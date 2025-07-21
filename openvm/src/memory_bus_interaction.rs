@@ -76,7 +76,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
     }
 
     fn op(&self) -> MemoryOp {
-        self.op.clone()
+        self.op
     }
 
     fn register_address(&self) -> Option<usize> {

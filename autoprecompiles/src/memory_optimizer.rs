@@ -61,7 +61,7 @@ pub fn check_register_operation_consistency<A: Adapter>(
     count_per_addr.values().all(|&v| v == 2)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Copy, Clone)]
 /// The type of the memory bus interaction.
 pub enum MemoryOp {
     /// Get the previous value from memory.
