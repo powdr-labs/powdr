@@ -4,7 +4,6 @@ use openvm_circuit::derive::{AnyEnum, InstructionExecutor};
 use openvm_circuit::system::memory::MemoryController;
 use openvm_circuit::system::phantom::PhantomChip;
 use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_instructions::riscv::RV32_MEMORY_AS;
 use openvm_rv32im_circuit::adapters::unsafe_read_rv32_register;
@@ -23,13 +22,13 @@ pub enum InversePeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl VmExtension<BabyBear> for InverseExtension {
-    type Executor = InverseExecutor<BabyBear>;
-    type Periphery = InversePeriphery<BabyBear>;
+impl<F: PrimeField32> VmExtension<F> for InverseExtension {
+    type Executor = InverseExecutor<F>;
+    type Periphery = InversePeriphery<F>;
 
     fn build(
         &self,
-        builder: &mut openvm_circuit::arch::VmInventoryBuilder<BabyBear>,
+        builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
     ) -> Result<openvm_circuit::arch::VmInventory<Self::Executor, Self::Periphery>, openvm_circuit::arch::VmInventoryError> {
         let inventory = VmInventory::new();
         builder.add_phantom_sub_executor(InverseSubEx, PhantomDiscriminant(InversePhantom::HintInverse as u16))?;
