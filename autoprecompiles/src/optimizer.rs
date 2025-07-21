@@ -13,7 +13,9 @@ use crate::{
     constraint_optimizer::{optimize_constraints, IsBusStateful},
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
-    memory_optimizer::{check_register_operation_consistency, optimize_memory},
+    memory_optimizer::{
+        check_register_operation_consistency, optimize_memory, OpenVmMemoryBusInteraction,
+    },
     powdr::{self},
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
@@ -75,12 +77,16 @@ fn optimization_loop_iteration<T: FieldElement>(
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system =
-            optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
-        assert!(check_register_operation_consistency(
-            &constraint_system,
-            memory_bus_id
-        ));
+        let constraint_system = optimize_memory::<_, _, OpenVmMemoryBusInteraction<_, _>>(
+            constraint_system,
+            memory_bus_id,
+            NoRangeConstraints,
+        );
+        assert!(check_register_operation_consistency::<
+            _,
+            _,
+            OpenVmMemoryBusInteraction<_, _>,
+        >(&constraint_system, memory_bus_id));
         stats_logger.log("memory optimization", &constraint_system);
         constraint_system
     } else {
