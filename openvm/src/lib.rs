@@ -25,8 +25,11 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use openvm_transpiler::TranspilerExtension;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use powdr_openvm_inverse_circuit::{InverseExecutor, InverseExtension, InversePeriphery};
+use powdr_openvm_inverse_transpiler::InverseTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -39,6 +42,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use std::rc::Rc;
 use strum::{Display, EnumString};
 
 use tracing::dispatcher::Dispatch;
@@ -152,7 +156,7 @@ impl InitFileGenerator for SpecializedConfig {
 #[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
 pub enum SpecializedExecutor<F: PrimeField32> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<F>),
+    SdkExecutor(ExtendedVmConfigExecutor<F>),
     #[any_enum]
     PowdrExecutor(PowdrExecutor<F>),
 }
@@ -160,7 +164,7 @@ pub enum SpecializedExecutor<F: PrimeField32> {
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
 pub enum MyPeriphery<F: PrimeField32> {
     #[any_enum]
-    SdkPeriphery(SdkVmConfigPeriphery<F>),
+    SdkPeriphery(ExtendedVmConfigPeriphery<F>),
     #[any_enum]
     PowdrPeriphery(PowdrPeriphery<F>),
 }
@@ -234,6 +238,8 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
+    // TODO: pass some other kind of config and instantiate extensions inside
+    extensions: Vec<Rc<dyn TranspilerExtension<BabyBear>>>,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
     let sdk = Sdk::default();
 
@@ -271,9 +277,18 @@ pub fn compile_openvm(
     )?;
 
     // Transpile the ELF into a VmExe. Note that this happens using the sdk transpiler only, our extension does not use a transpiler.
-    let exe = sdk.transpile(elf, sdk_vm_config.transpiler())?;
+    let mut transpiler = sdk_vm_config.transpiler();
+    for ext in extensions {
+        transpiler = transpiler.with_processor(ext);
+    }
+    let exe = sdk.transpile(elf, transpiler)?;
 
-    Ok(OriginalCompiledProgram { exe, sdk_vm_config })
+    let vm_config = ExtendedVmConfig {
+        sdk_vm_config,
+        inverse_extension: true, // TODO: pass some kind of config here
+    };
+
+    Ok(OriginalCompiledProgram { exe, vm_config })
 }
 
 /// Determines how the precompile (a circuit with algebraic gates and bus interactions)
@@ -294,7 +309,11 @@ pub fn compile_guest(
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let original_program = compile_openvm(guest, guest_opts.clone())?;
+    let inverse_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(InverseTranspilerExtension{});
+    let extensions = vec![
+        inverse_transpiler,
+    ];
+    let original_program = compile_openvm(guest, guest_opts.clone(), extensions)?;
 
     // Optional tally of opcode freqency (only enabled for debug level logs)
     if tracing::enabled!(Level::DEBUG) {
@@ -411,7 +430,69 @@ pub struct CompiledProgram {
 #[derive(Clone)]
 pub struct OriginalCompiledProgram {
     pub exe: VmExe<BabyBear>,
+    pub vm_config: ExtendedVmConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// SdkVmConfig plus custom openvm extensions, before autoprecompile transformations
+pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
+    pub inverse_extension: bool,
+}
+
+impl VmConfig<BabyBear> for ExtendedVmConfig {
+    type Executor = ExtendedVmConfigExecutor<BabyBear>;
+    type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
+
+    fn system(&self) -> &SystemConfig {
+        &self.sdk_vm_config.system.config
+    }
+
+    fn system_mut(&mut self) -> &mut SystemConfig {
+        &mut self.sdk_vm_config.system.config
+    }
+
+    fn create_chip_complex(
+        &self,
+    ) -> std::result::Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
+        let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
+        if self.inverse_extension {
+            complex = complex.extend(&InverseExtension)?;
+        }
+        Ok(complex)
+    }
+}
+
+impl InitFileGenerator for ExtendedVmConfig {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.sdk_vm_config
+            .generate_init_file_contents()
+    }
+
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> eyre::Result<()> {
+        self.sdk_vm_config
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
+}
+
+#[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
+    #[any_enum]
+    Sdk(SdkVmConfigExecutor<F>),
+    #[any_enum]
+    Inverse(InverseExecutor<F>),
+}
+
+#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
+pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
+    #[any_enum]
+    Sdk(SdkVmConfigPeriphery<F>),
+    #[any_enum]
+    Inverse(InversePeriphery<F>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -522,6 +603,7 @@ pub fn prove(
         vm_config
             .sdk_config
             .config_mut()
+            .sdk_vm_config
             .system
             .config
             .segmentation_strategy = Arc::new(
@@ -615,14 +697,18 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u32, u32> {
-    let program = compile_openvm(guest, guest_opts).unwrap();
+    let inverse_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(InverseTranspilerExtension{});
+    let extensions = vec![
+        inverse_transpiler,
+    ];
+    let program = compile_openvm(guest, guest_opts, extensions).unwrap();
     execution_profile(program, inputs)
 }
 
 // Produces execution count by pc_index
 // Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
 pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u32, u32> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = program;
+    let OriginalCompiledProgram { exe, vm_config } = program;
 
     // in memory collector storage
     let collector = PgoCollector::new(&exe.program);
@@ -636,7 +722,7 @@ pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> Has
     // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
     let dispatch = Dispatch::new(subscriber);
     tracing::dispatcher::with_default(&dispatch, || {
-        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
+        sdk.execute(exe.clone(), vm_config.clone(), inputs)
             .unwrap();
     });
 

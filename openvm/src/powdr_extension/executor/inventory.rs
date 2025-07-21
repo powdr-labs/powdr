@@ -8,8 +8,9 @@ use openvm_circuit_primitives::{
     bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
     var_range::SharedVariableRangeCheckerChip, Chip, ChipUsageGetter,
 };
-use openvm_sdk::config::{SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::p3_field::PrimeField32;
+
+use crate::{ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery};
 
 /// A dummy inventory used for execution of autoprecompiles
 /// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
@@ -20,7 +21,7 @@ pub type DummyChipComplex<F> = VmChipComplex<F, DummyExecutor<F>, DummyPeriphery
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, AnyEnum, From)]
 pub enum DummyExecutor<F: PrimeField32> {
     #[any_enum]
-    Sdk(SdkVmConfigExecutor<F>),
+    Sdk(ExtendedVmConfigExecutor<F>),
     #[any_enum]
     Shared(SharedExecutor<F>),
     #[any_enum]
@@ -32,7 +33,7 @@ pub enum DummyExecutor<F: PrimeField32> {
 #[derive(ChipUsageGetter, Chip, AnyEnum, From)]
 pub enum DummyPeriphery<F: PrimeField32> {
     #[any_enum]
-    Sdk(SdkVmConfigPeriphery<F>),
+    Sdk(ExtendedVmConfigPeriphery<F>),
     #[any_enum]
     Shared(SharedPeriphery<F>),
     #[any_enum]
@@ -76,6 +77,9 @@ mod from_implementations {
     };
     use openvm_sha256_circuit::{Sha256Executor, Sha256Periphery};
 
+    use crate::ExtendedVmConfigExecutor;
+    use crate::ExtendedVmConfigPeriphery;
+
     /// Defines `From<T> for DummyExecutor` and `From<T> for DummyPeriphery`
     /// by mapping to the appropriate `SdkVmConfigExecutor` and `SdkVmConfigPeriphery` variant.
     /// This cannot be derived because we have a custom implementation of this conversion for the `SystemExecutor`, avoiding this wrapping.
@@ -84,13 +88,13 @@ mod from_implementations {
             $(
                 impl<F: PrimeField32> From<$executor_ty> for DummyExecutor<F> {
                     fn from(executor: $executor_ty) -> Self {
-                        DummyExecutor::Sdk(SdkVmConfigExecutor::$variant(executor))
+                        DummyExecutor::Sdk(ExtendedVmConfigExecutor::Sdk(SdkVmConfigExecutor::$variant(executor)))
                     }
                 }
 
                 impl<F: PrimeField32> From<$periphery_ty> for DummyPeriphery<F> {
                     fn from(periphery: $periphery_ty) -> Self {
-                        DummyPeriphery::Sdk(SdkVmConfigPeriphery::$variant(periphery))
+                        DummyPeriphery::Sdk(ExtendedVmConfigPeriphery::Sdk(SdkVmConfigPeriphery::$variant(periphery)))
                     }
                 }
             )*

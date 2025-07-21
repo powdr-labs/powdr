@@ -21,7 +21,6 @@ use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
-use openvm_sdk::config::{SdkVmConfig, SdkVmConfigPeriphery};
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     ChipUsageGetter,
@@ -29,7 +28,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
-use crate::{BusMap, PrecompileImplementation};
+use crate::{BusMap, ExtendedVmConfig, ExtendedVmConfigPeriphery, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
@@ -38,7 +37,7 @@ use super::{chip::PowdrChip, PowdrOpcode};
 #[serde(bound = "F: Field")]
 pub struct PowdrExtension<F> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
-    pub base_config: SdkVmConfig,
+    pub base_config: ExtendedVmConfig,
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
@@ -101,7 +100,7 @@ impl<F> PowdrPrecompile<F> {
 impl<F> PowdrExtension<F> {
     pub fn new(
         precompiles: Vec<PowdrPrecompile<F>>,
-        base_config: SdkVmConfig,
+        base_config: ExtendedVmConfig,
         implementation: PrecompileImplementation,
         bus_map: BusMap,
         airs: OriginalAirs<F>,
@@ -134,7 +133,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
 pub enum PowdrPeriphery<F: PrimeField32> {
-    Sdk(SdkVmConfigPeriphery<F>),
+    Sdk(ExtendedVmConfigPeriphery<F>),
     Phantom(PhantomChip<F>),
 }
 

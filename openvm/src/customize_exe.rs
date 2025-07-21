@@ -123,7 +123,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 pub fn customize(
     OriginalCompiledProgram {
         mut exe,
-        sdk_vm_config,
+        vm_config,
     }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
@@ -131,7 +131,7 @@ pub fn customize(
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
-    let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
+    let original_config = OriginalVmConfig::new(vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 

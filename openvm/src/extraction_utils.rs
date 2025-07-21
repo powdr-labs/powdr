@@ -3,12 +3,11 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
+use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
-use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
@@ -105,7 +104,7 @@ fn to_option<T>(mut v: Vec<T>) -> Option<T> {
 
 /// A lazy chip complex that is initialized on the first access
 type LazyChipComplex =
-    Option<VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>>;
+    Option<VmChipComplex<BabyBear, ExtendedVmConfigExecutor<BabyBear>, ExtendedVmConfigPeriphery<BabyBear>>>;
 
 /// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
@@ -117,7 +116,7 @@ pub struct ChipComplexGuard<'a> {
 
 impl<'a> Deref for ChipComplexGuard<'a> {
     type Target =
-        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>;
+        VmChipComplex<BabyBear, ExtendedVmConfigExecutor<BabyBear>, ExtendedVmConfigPeriphery<BabyBear>>;
 
     fn deref(&self) -> &Self::Target {
         // Unwrap is safe here because we ensure that the chip complex is initialized
@@ -127,27 +126,27 @@ impl<'a> Deref for ChipComplexGuard<'a> {
     }
 }
 
-/// A wrapper around the `SdkVmConfig` that caches a chip complex.
+/// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OriginalVmConfig {
-    sdk_config: SdkVmConfig,
+    sdk_config: ExtendedVmConfig,
     #[serde(skip)]
     chip_complex: CachedChipComplex,
 }
 
 impl OriginalVmConfig {
-    pub fn new(sdk_config: SdkVmConfig) -> Self {
+    pub fn new(sdk_config: ExtendedVmConfig) -> Self {
         Self {
             sdk_config,
             chip_complex: Default::default(),
         }
     }
 
-    pub fn config(&self) -> &SdkVmConfig {
+    pub fn config(&self) -> &ExtendedVmConfig {
         &self.sdk_config
     }
 
-    pub fn config_mut(&mut self) -> &mut SdkVmConfig {
+    pub fn config_mut(&mut self) -> &mut ExtendedVmConfig {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
         *guard = None; // Invalidate cache
         &mut self.sdk_config
@@ -262,7 +261,7 @@ impl OriginalVmConfig {
     pub fn create_chip_complex(
         &self,
     ) -> Result<
-        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>,
+        VmChipComplex<BabyBear, ExtendedVmConfigExecutor<BabyBear>, ExtendedVmConfigPeriphery<BabyBear>>,
         VmInventoryError,
     > {
         // Clear the cache

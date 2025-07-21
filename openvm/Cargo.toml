@@ -44,6 +44,9 @@ powdr-riscv-elf.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true
 
+powdr-openvm-inverse-transpiler.workspace = true
+powdr-openvm-inverse-circuit.workspace = true
+
 eyre = "0.6.12"
 serde = "1.0.217"
 derive_more = { version = "2.0.1", default-features = false, features = [

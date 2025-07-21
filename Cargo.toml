@@ -37,6 +37,9 @@ members = [
   "autoprecompiles",
   "openvm",
   "cli-openvm",
+  "openvm/extensions/inverse-guest",
+  "openvm/extensions/inverse-transpiler",
+  "openvm/extensions/inverse-circuit",
 ]
 
 exclude = ["riscv-runtime"]
@@ -82,12 +85,18 @@ powdr-schemas = { path = "./schemas", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }
 
+powdr-openvm-inverse-guest = { path = "./openvm/extensions/inverse-guest", version = "0.1.4" }
+powdr-openvm-inverse-transpiler = { path = "./openvm/extensions/inverse-transpiler", version = "0.1.4" }
+powdr-openvm-inverse-circuit = { path = "./openvm/extensions/inverse-circuit", version = "0.1.4" }
+
 # openvm
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36", default-features = false }
+openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }
 openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "d730a36" }

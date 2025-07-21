@@ -1,0 +1,12 @@
+[package]
+name = "powdr-openvm-inverse-guest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+openvm-platform = { workspace = true, features = ["rust-runtime"] }
+openvm-rv32im-guest.workspace = true
+openvm-custom-insn.workspace = true
