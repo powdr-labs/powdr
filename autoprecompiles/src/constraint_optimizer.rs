@@ -13,10 +13,10 @@ use powdr_number::FieldElement;
 
 use crate::stats_logger::StatsLogger;
 
-mod equals_zero_checks;
+mod equal_zero_checks;
 mod reachability;
 
-use equals_zero_checks::replace_equal_zero_checks;
+use equal_zero_checks::replace_equal_zero_checks;
 use reachability::reachable_variables;
 
 #[derive(Debug)]
