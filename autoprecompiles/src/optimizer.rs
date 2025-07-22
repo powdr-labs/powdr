@@ -92,7 +92,11 @@ fn optimization_loop_iteration<A: Adapter>(
     };
 
     let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
-        let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
+        let system = optimize_bitwise_lookup(
+            constraint_system,
+            bitwise_bus_id,
+            bus_interaction_handler.clone(),
+        );
         stats_logger.log("optimizing bitwise lookup", &system);
         system
     } else {
