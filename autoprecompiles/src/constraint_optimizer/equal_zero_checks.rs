@@ -66,13 +66,12 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     ) else {
         return;
     };
-    let inputs: BTreeSet<_> = zero_assignents(&solution).collect();
+    let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
     if inputs.is_empty() {
         return;
     }
     // We know: if `var = value`, then `inputs` are all zero.
-    // Now check that `var == 1 - value` is inconsisten with `inputs` all being zero.
-
+    // Now check that `var == 1 - value` is inconsistent with `inputs` all being zero.
     if solve_with_assignments(
         constraint_system.indexed_system(),
         bus_interaction_handler.clone(),
@@ -85,9 +84,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     {
         return;
     }
-    // println!("\n\nFound equal zero check for variable {output}:\n{output} = {value} if and only if all of {} are zero.",
-    //     inputs.iter().format(", ")
-    // );
 
     // Some of the inputs are redundant, so try to reduce the size of the set.
     // TODO this is not how we find the best set of vars. Most are mutually redundant.
@@ -226,7 +222,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     ) else {
         return;
     };
-    let inputs_after_modification: BTreeSet<_> = zero_assignents(&solution).collect();
+    let inputs_after_modification: BTreeSet<_> = zero_assigments(&solution).collect();
     assert!(inputs.iter().all(|v| inputs_after_modification.contains(v)));
 
     assert!(solve_with_assignments(
@@ -277,6 +273,7 @@ fn determine_and_remove_redundant_inputs<T: FieldElement, V: Clone + Ord + Hash 
         .collect()
 }
 
+/// Runs the solver given a list of variable assignments.
 fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
@@ -289,7 +286,8 @@ fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
     solver::solve_system(system.system().clone(), bus_interaction_handler)
 }
 
-fn zero_assignents<T: FieldElement, V: Clone + Ord + Hash + Display>(
+/// Returns all variables that are assigned zero in the solution.
+fn zero_assigments<T: FieldElement, V: Clone + Ord + Hash + Display>(
     solution: &solver::SolveResult<T, V>,
 ) -> impl Iterator<Item = V> + '_ {
     solution
