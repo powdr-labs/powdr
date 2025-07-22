@@ -209,18 +209,9 @@ pub fn customize(
         vm_config,
     );
 
-    let program = &mut exe.program.instructions_and_debug_infos;
-
-    let noop = OpenVmInstruction {
-        opcode: VmOpcode::from_usize(0xdeadaf),
-        a: BabyBear::ZERO,
-        b: BabyBear::ZERO,
-        c: BabyBear::ZERO,
-        d: BabyBear::ZERO,
-        e: BabyBear::ZERO,
-        f: BabyBear::ZERO,
-        g: BabyBear::ZERO,
-    };
+    let pc_base = exe.program.pc_base;
+    let pc_step = exe.program.step;
+    let program = &mut exe.program;
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -236,41 +227,14 @@ pub fn customize(
                 },
                 apc_stats,
             )| {
-                let new_instr = OpenVmInstruction {
-                    opcode: VmOpcode::from_usize(opcode as usize),
-                    a: BabyBear::ZERO,
-                    b: BabyBear::ZERO,
-                    c: BabyBear::ZERO,
-                    d: BabyBear::ZERO,
-                    e: BabyBear::ZERO,
-                    f: BabyBear::ZERO,
-                    g: BabyBear::ZERO,
-                };
-
-                let start_index = ((block.start_pc - exe.program.pc_base as u64)
-                    / exe.program.step as u64)
+                let start_index = ((block.start_pc - pc_base as u64) / pc_step as u64)
                     .try_into()
                     .unwrap();
-                let n_acc = block.statements.len();
-                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[start_index..start_index + n_acc]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, x)| {
-                        let instr = x.as_ref().unwrap();
-                        let instr = instr.0.clone();
-                        if i == 0 {
-                            (instr, new_instr.clone())
-                        } else {
-                            (instr, noop.clone())
-                        }
-                    })
-                    .collect();
 
-                let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
-
-                let len_before = program.len();
-                program.splice(start_index..start_index + n_acc, new_instrs);
-                assert_eq!(program.len(), len_before);
+                program.add_apc_instruction_at_pc_index(
+                    start_index,
+                    VmOpcode::from_usize(opcode as usize),
+                );
 
                 let is_valid_column = machine
                     .main_columns()
@@ -283,9 +247,11 @@ pub fn customize(
                         class_offset: opcode as usize,
                     },
                     machine,
-                    acc.into_iter()
+                    block
+                        .statements
+                        .into_iter()
                         .zip_eq(subs)
-                        .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
+                        .map(|(instruction, subs)| OriginalInstruction::new(instruction.0, subs))
                         .collect(),
                     is_valid_column,
                     apc_stats,
