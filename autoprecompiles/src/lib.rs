@@ -10,6 +10,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -17,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 pub mod adapter;
 mod bitwise_lookup_optimizer;
@@ -32,6 +33,7 @@ pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
+mod smt;
 
 #[derive(Clone)]
 pub struct PowdrConfig {
@@ -90,6 +92,34 @@ pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
 
+// Baby bear prime.
+const P: u32 = (1 << 31) - (1 << 27) + 1;
+
+impl<T: FieldElement> SymbolicConstraint<T> {
+    pub fn to_smt(&self) -> String {
+        let expr = algebraic_to_smt(&self.expr);
+        format!("(assert (= (mod {expr} {P}) 0))")
+    }
+}
+
+pub fn algebraic_to_smt<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String {
+    match expr {
+        AlgebraicExpression::Number(x) => format!("{x}"),
+        AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => (**name).clone(),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = algebraic_to_smt(left);
+            let right = algebraic_to_smt(right);
+            let op_str = match op {
+                AlgebraicBinaryOperator::Add => "+",
+                AlgebraicBinaryOperator::Sub => "-",
+                AlgebraicBinaryOperator::Mul => "*",
+            };
+            format!("({op_str} {left} {right})")
+        }
+        _ => todo!(),
+    }
+}
+
 impl<T: Display> Display for SymbolicConstraint<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.expr)
@@ -119,6 +149,72 @@ pub struct SymbolicBusInteraction<T> {
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+}
+
+pub fn try_algebraic_number<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<T> {
+    match expr {
+        AlgebraicExpression::Number(n) => Some(*n),
+        _ => None,
+    }
+}
+
+impl<T: FieldElement> SymbolicBusInteraction<T> {
+    pub fn to_smt(&self) -> String {
+        if self.id == 3 {
+            self.range_check_to_smt()
+        } else if self.id == 5 {
+            self.byte_check_to_smt()
+        } else if self.id == 6 {
+            self.range_check_2_to_smt()
+        } else {
+            String::new()
+        }
+    }
+
+    fn range_check_to_smt(&self) -> String {
+        assert_eq!(self.id, 3);
+        assert_eq!(self.args.len(), 2);
+        let v = algebraic_to_smt(&self.args[0]);
+        let bits = try_algebraic_number(&self.args[1])
+            .unwrap()
+            .to_integer()
+            .try_into_u32()
+            .unwrap();
+        let max_range = 1 << bits;
+        range_check_to_smt(v, max_range)
+    }
+
+    fn range_check_2_to_smt(&self) -> String {
+        assert_eq!(self.id, 6);
+        assert_eq!(self.args.len(), 2);
+        let v1 = algebraic_to_smt(&self.args[0]);
+        let v2 = algebraic_to_smt(&self.args[1]);
+        byte_check_to_smt(v1) + "\n" + &byte_check_to_smt(v2)
+    }
+
+    fn byte_check_to_smt(&self) -> String {
+        assert_eq!(self.id, 5);
+        assert_eq!(self.args.len(), 4);
+        let v1 = algebraic_to_smt(&self.args[0]);
+        let v2 = algebraic_to_smt(&self.args[1]);
+        let v3 = algebraic_to_smt(&self.args[2]);
+        let v4 = algebraic_to_smt(&self.args[3]);
+        byte_check_to_smt(v1)
+            + "\n"
+            + &byte_check_to_smt(v2)
+            + "\n"
+            + &byte_check_to_smt(v3)
+            + "\n"
+            + &byte_check_to_smt(v4)
+    }
+}
+
+fn range_check_to_smt(v: String, max_range: u64) -> String {
+    format!("(assert (and (>= {v} 0) (< {v} {max_range})))")
+}
+
+fn byte_check_to_smt(v: String) -> String {
+    range_check_to_smt(v, 256)
 }
 
 impl<T: Display> Display for SymbolicBusInteraction<T> {
@@ -164,6 +260,34 @@ pub enum BusInteractionKind {
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+}
+
+impl<T: FieldElement> SymbolicMachine<T> {
+    pub fn to_smt(&self) -> String {
+        let (decls, ranges) = self
+            .main_columns()
+            .map(|c| {
+                (
+                    format!("(declare-fun {c} () Int)"),
+                    range_check_to_smt((*(c.name)).clone(), P.into()),
+                )
+            })
+            .collect::<(Vec<String>, Vec<String>)>();
+        let mut smt = decls.join("\n");
+        let type_ranges = ranges.join("\n");
+        smt.push('\n');
+        smt.push_str(&type_ranges);
+        smt.push('\n');
+        for c in &self.constraints {
+            smt.push_str(&c.to_smt());
+            smt.push('\n');
+        }
+        for b in &self.bus_interactions {
+            smt.push_str(&b.to_smt());
+            smt.push('\n');
+        }
+        smt
+    }
 }
 
 impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
@@ -332,6 +456,13 @@ pub fn build<A: Adapter>(
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
+
+    let var_names = machine
+        .main_columns()
+        .map(|c| (*c.name).clone())
+        .collect::<BTreeSet<_>>();
+
+    let var_subs = smt::get_unique_vars(&machine.to_smt(), &var_names);
 
     let machine = convert_machine(machine, &A::into_field);
 
