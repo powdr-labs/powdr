@@ -478,7 +478,7 @@ mod pseudo_instruction_tests {
 
     #[test]
     fn jr() {
-        // jr offset expands to: jal x1, offset  
+        // jr offset expands to: jal x1, offset
         let program = [
             // pc = pc + 8, [x1] = pc + 4
             jal(1, 0, 8, 1, 0),
