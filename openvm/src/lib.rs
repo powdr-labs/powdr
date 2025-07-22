@@ -103,6 +103,7 @@ mod powdr_extension;
 
 pub mod bus_interaction_handler;
 mod instruction_formatter;
+pub mod memory_bus_interaction;
 
 mod plonk;
 
