@@ -19,10 +19,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     new_var: &mut impl FnMut() -> V,
 ) -> JournalingConstraintSystem<T, V> {
-    // TODO logging
-    // println!(
-    //     "\n----------------------------------\nReplacing equal zero checks in constraint system"
-    // );
     let rc = solver::Solver::new(constraint_system.system().clone())
         .with_bus_interaction_handler(bus_interaction_handler.clone())
         .solve()
