@@ -3,10 +3,18 @@ use std::{collections::BTreeMap, fmt::Display};
 
 #[derive(Copy, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BusType<T> {
+    /// In a no-CPU architecture, instruction AIRs receive the current state and send the next state.
+    /// Typically the state would include the current time stamp and program counter, but powdr does
+    /// not make any assumptions about the state.
     ExecutionBridge,
+    /// Memory bus for reading and writing memory.
     Memory,
+    /// A lookup to fetch the instruction arguments for a given PC.
     PcLookup,
+    /// A "bitwise lookup" bus (specific to OpenVM), used in `autoprecompiles/src/bitwise_lookup_optimizer.rs`.
+    // TODO: Generalize this to a more generic bus type.
     OpenVmBitwiseLookup,
+    /// Other types, specific to the VM integration. Powdr largely ignores these.
     Other(T),
 }
 
@@ -48,24 +56,6 @@ impl<T: PartialEq + Eq + Clone + Display> BusMap<T> {
         self.bus_ids.get(&bus_id).cloned().unwrap_or_else(|| {
             panic!("No bus type found for ID: {bus_id}");
         })
-    }
-
-    /// Insert a new bus type under the given ID, ensuring no other ID
-    /// already maps to the same `BusType` value.
-    pub fn with_bus_type(mut self, id: u64, bus_type: BusType<T>) -> Self {
-        if let Some(existing) = self.get_bus_id(&bus_type) {
-            panic!("BusType `{bus_type}` already exists under ID `{existing}`");
-        }
-        self.bus_ids.insert(id, bus_type);
-        self
-    }
-
-    /// Extend with another `BusMap`, ensuring no duplicate `BusType`s between them.
-    pub fn with_bus_map(mut self, other: BusMap<T>) -> Self {
-        for (id, bus_type) in other.bus_ids.into_iter() {
-            self = self.with_bus_type(id, bus_type);
-        }
-        self
     }
 
     /// View the entire map.
