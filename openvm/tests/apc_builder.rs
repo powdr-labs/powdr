@@ -2,7 +2,7 @@ use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{build, BasicBlock, DegreeBound, VmConfig};
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
@@ -327,7 +327,6 @@ mod complex_tests {
 mod pseudo_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
-    use powdr_number::{BabyBearField, FieldElement};
 
     // Arithmetic pseudo instructions
     #[test]
@@ -343,11 +342,8 @@ mod pseudo_instruction_tests {
     #[test]
     fn not() {
         // not rd, rs1 expands to: xori rd, rs1, -1
-        // Calculate -1 in BabyBear field
-        let minus_one: u32 = (-BabyBearField::from(1))
-            .to_arbitrary_integer()
-            .try_into()
-            .unwrap();
+        // -1 in 24-bit 2's complement is 0xFFFFFF
+        let minus_one: u32 = 0xFFFFFF;
         let program = [
             // [x8] = ~[x5]
             xor(8, 5, minus_one, 0),
