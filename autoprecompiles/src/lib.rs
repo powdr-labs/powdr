@@ -11,6 +11,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -35,6 +36,7 @@ pub mod powdr;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
+mod smt;
 
 #[derive(Clone)]
 pub struct PowdrConfig {
@@ -330,6 +332,15 @@ pub fn build<A: Adapter>(
         degree_bound,
         &vm_config.bus_map,
     )?;
+
+    let var_names = machine
+        .main_columns()
+        .map(|c| (*c.name).clone())
+        .collect::<BTreeSet<_>>();
+
+    let _var_subs = smt::get_unique_vars(&machine, &var_names);
+    let redundant_sets = smt::detect_redundant_constraints(&machine);
+    println!("redundant sets: {redundant_sets:#?}");
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
