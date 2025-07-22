@@ -7,39 +7,39 @@ use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_instructions::riscv::RV32_MEMORY_AS;
 use openvm_rv32im_circuit::adapters::unsafe_read_rv32_register;
-use powdr_openvm_inverse_transpiler::InversePhantom;
+use powdr_openvm_hints_transpiler::HintsPhantom;
 
-pub struct InverseExtension;
+pub struct HintsExtension;
 
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, AnyEnum)]
-pub enum InverseExecutor<F: PrimeField32> {
+pub enum HintsExecutor<F: PrimeField32> {
     // TODO: not sure what to do when there's no "real" instruction in the extension
     Phantom(PhantomChip<F>),
 }
 
 #[derive(ChipUsageGetter, Chip, AnyEnum)]
-pub enum InversePeriphery<F: PrimeField32> {
+pub enum HintsPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl<F: PrimeField32> VmExtension<F> for InverseExtension {
-    type Executor = InverseExecutor<F>;
-    type Periphery = InversePeriphery<F>;
+impl<F: PrimeField32> VmExtension<F> for HintsExtension {
+    type Executor = HintsExecutor<F>;
+    type Periphery = HintsPeriphery<F>;
 
     fn build(
         &self,
         builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
     ) -> Result<openvm_circuit::arch::VmInventory<Self::Executor, Self::Periphery>, openvm_circuit::arch::VmInventoryError> {
         let inventory = VmInventory::new();
-        builder.add_phantom_sub_executor(InverseSubEx, PhantomDiscriminant(InversePhantom::HintInverse as u16))?;
+        builder.add_phantom_sub_executor(HintsSubEx, PhantomDiscriminant(HintsPhantom::HintFoo as u16))?;
         Ok(inventory)
     }
 }
 
 
-pub struct InverseSubEx;
+pub struct HintsSubEx;
 
-impl<F: PrimeField32> PhantomSubExecutor<F> for InverseSubEx {
+impl<F: PrimeField32> PhantomSubExecutor<F> for HintsSubEx {
     fn phantom_execute(
         &mut self,
         memory: &MemoryController<F>,
@@ -57,7 +57,6 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for InverseSubEx {
             F::from_canonical_u32(RV32_MEMORY_AS),
             F::from_canonical_u32(rs1),
         );
-        println!("InverseSubEx: read bytes: {:?}", bytes);
         // write hint as bytes in reverse
         let hint_bytes = bytes
             .into_iter()

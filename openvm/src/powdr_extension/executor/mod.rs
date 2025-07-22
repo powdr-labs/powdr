@@ -52,7 +52,7 @@ mod inventory;
 mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
-use powdr_openvm_inverse_circuit::InverseExtension;
+use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
@@ -457,8 +457,8 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         complex = complex.extend(ecc)?;
     }
 
-    if this.inverse_extension {
-        complex = complex.extend(&InverseExtension)?;
+    if this.hints_extension {
+        complex = complex.extend(&HintsExtension)?;
     }
 
     Ok(complex)

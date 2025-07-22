@@ -1,4 +1,4 @@
-use powdr_openvm_inverse_guest::{OPCODE, INVERSE_FUNCT3, INVERSE_FUNCT7};
+use powdr_openvm_hints_guest::{OPCODE, HINTS_FUNCT3, HINTS_FUNCT7};
 use openvm_instructions::{instruction::Instruction, riscv::RV32_REGISTER_NUM_LIMBS, LocalOpcode, PhantomDiscriminant};
 use openvm_instructions_derive::LocalOpcode;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -11,23 +11,23 @@ use strum::{EnumCount, EnumIter, FromRepr};
 )]
 #[opcode_offset = 0x800]
 #[repr(usize)]
-pub enum InverseOpcode {
-    INVERSE,
+pub enum HintsOpcode {
+    HINTS,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
-pub enum InversePhantom {
+pub enum HintsPhantom {
     // idk if there is a "proper" way for avoiding conflicts in this number,
     // just looked at ovm code and picked the next range that didn't seem to be
     // used
-    HintInverse = 0x60
+    HintFoo = 0x60
 }
 
 #[derive(Default)]
-pub struct InverseTranspilerExtension;
+pub struct HintsTranspilerExtension;
 
-impl<F: PrimeField32> TranspilerExtension<F> for InverseTranspilerExtension {
+impl<F: PrimeField32> TranspilerExtension<F> for HintsTranspilerExtension {
     fn process_custom(&self, instruction_stream: &[u32]) -> Option<TranspilerOutput<F>> {
         if instruction_stream.is_empty() {
             return None;
@@ -39,12 +39,12 @@ impl<F: PrimeField32> TranspilerExtension<F> for InverseTranspilerExtension {
         }
 
         let insn = RType::new(instruction_u32);
-        if (insn.funct3 as u8, insn.funct7 as u8) != (INVERSE_FUNCT3, INVERSE_FUNCT7) {
+        if (insn.funct3 as u8, insn.funct7 as u8) != (HINTS_FUNCT3, HINTS_FUNCT7) {
             return None;
         }
 
         let instruction = Instruction::phantom(
-            PhantomDiscriminant(InversePhantom::HintInverse as u16),
+            PhantomDiscriminant(HintsPhantom::HintFoo as u16),
             F::from_canonical_usize(RV32_REGISTER_NUM_LIMBS * insn.rs1),
             F::ZERO,
             0);

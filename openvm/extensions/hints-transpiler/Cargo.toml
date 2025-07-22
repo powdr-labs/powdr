@@ -1,5 +1,5 @@
 [package]
-name = "powdr-openvm-inverse-transpiler"
+name = "powdr-openvm-hints-transpiler"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,4 +14,4 @@ openvm-instructions-derive = { workspace = true }
 rrs-lib = "0.1.0"
 strum = { version = "0.27", features = ["derive"] }
 
-powdr-openvm-inverse-guest = { workspace = true }
+powdr-openvm-hints-guest = { workspace = true }

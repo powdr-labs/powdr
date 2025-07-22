@@ -1,5 +1,5 @@
 [package]
-name = "powdr-openvm-inverse-guest"
+name = "powdr-openvm-hints-guest"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

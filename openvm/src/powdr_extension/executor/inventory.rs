@@ -76,8 +76,8 @@ mod from_implementations {
         Rv32MPeriphery,
     };
     use openvm_sha256_circuit::{Sha256Executor, Sha256Periphery};
-    use powdr_openvm_inverse_circuit::InverseExecutor;
-    use powdr_openvm_inverse_circuit::InversePeriphery;
+    use powdr_openvm_hints_circuit::HintsExecutor;
+    use powdr_openvm_hints_circuit::HintsPeriphery;
 
     use crate::ExtendedVmConfigExecutor;
     use crate::ExtendedVmConfigPeriphery;
@@ -103,15 +103,15 @@ mod from_implementations {
         };
     }
 
-    impl<F: PrimeField32> From<InverseExecutor<F>> for DummyExecutor<F> {
-        fn from(executor: InverseExecutor<F>) -> Self {
-            DummyExecutor::Sdk(ExtendedVmConfigExecutor::Inverse(executor))
+    impl<F: PrimeField32> From<HintsExecutor<F>> for DummyExecutor<F> {
+        fn from(executor: HintsExecutor<F>) -> Self {
+            DummyExecutor::Sdk(ExtendedVmConfigExecutor::Hints(executor))
         }
     }
 
-    impl<F: PrimeField32> From<InversePeriphery<F>> for DummyPeriphery<F> {
-        fn from(executor: InversePeriphery<F>) -> Self {
-            DummyPeriphery::Sdk(ExtendedVmConfigPeriphery::Inverse(executor))
+    impl<F: PrimeField32> From<HintsPeriphery<F>> for DummyPeriphery<F> {
+        fn from(executor: HintsPeriphery<F>) -> Self {
+            DummyPeriphery::Sdk(ExtendedVmConfigPeriphery::Hints(executor))
         }
     }
 

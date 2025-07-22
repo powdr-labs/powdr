@@ -37,9 +37,9 @@ members = [
   "autoprecompiles",
   "openvm",
   "cli-openvm",
-  "openvm/extensions/inverse-guest",
-  "openvm/extensions/inverse-transpiler",
-  "openvm/extensions/inverse-circuit",
+  "openvm/extensions/hints-guest",
+  "openvm/extensions/hints-transpiler",
+  "openvm/extensions/hints-circuit",
 ]
 
 exclude = ["riscv-runtime"]
@@ -85,9 +85,9 @@ powdr-schemas = { path = "./schemas", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }
 
-powdr-openvm-inverse-guest = { path = "./openvm/extensions/inverse-guest", version = "0.1.4" }
-powdr-openvm-inverse-transpiler = { path = "./openvm/extensions/inverse-transpiler", version = "0.1.4" }
-powdr-openvm-inverse-circuit = { path = "./openvm/extensions/inverse-circuit", version = "0.1.4" }
+powdr-openvm-hints-guest = { path = "./openvm/extensions/hints-guest", version = "0.1.4" }
+powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler", version = "0.1.4" }
+powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
 
 # openvm
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "acbd2ba" }

@@ -1,5 +1,5 @@
 [package]
-name = "powdr-openvm-inverse-circuit"
+name = "powdr-openvm-hints-circuit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,5 +12,5 @@ openvm-instructions = { workspace = true }
 openvm-rv32im-circuit = { workspace = true }
 openvm-stark-backend = { workspace = true }
 openvm-stark-sdk = { workspace = true }
-powdr-openvm-inverse-transpiler = { workspace = true }
+powdr-openvm-hints-transpiler = { workspace = true }
 eyre = "0.6.12"

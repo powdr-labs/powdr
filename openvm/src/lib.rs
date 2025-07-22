@@ -28,8 +28,8 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::TranspilerExtension;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
-use powdr_openvm_inverse_circuit::{InverseExecutor, InverseExtension, InversePeriphery};
-use powdr_openvm_inverse_transpiler::InverseTranspilerExtension;
+use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
+use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -285,7 +285,7 @@ pub fn compile_openvm(
 
     let vm_config = ExtendedVmConfig {
         sdk_vm_config,
-        inverse_extension: true, // TODO: pass some kind of config here
+        hints_extension: true, // TODO: pass some kind of config here
     };
 
     Ok(OriginalCompiledProgram { exe, vm_config })
@@ -309,9 +309,9 @@ pub fn compile_guest(
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let inverse_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(InverseTranspilerExtension{});
+    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(HintsTranspilerExtension{});
     let extensions = vec![
-        inverse_transpiler,
+        hints_transpiler,
     ];
     let original_program = compile_openvm(guest, guest_opts.clone(), extensions)?;
 
@@ -441,7 +441,7 @@ pub struct OriginalCompiledProgram {
 // SdkVmConfig plus custom openvm extensions, before autoprecompile transformations
 pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
-    pub inverse_extension: bool,
+    pub hints_extension: bool,
 }
 
 impl VmConfig<BabyBear> for ExtendedVmConfig {
@@ -460,8 +460,8 @@ impl VmConfig<BabyBear> for ExtendedVmConfig {
         &self,
     ) -> std::result::Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
         let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
-        if self.inverse_extension {
-            complex = complex.extend(&InverseExtension)?;
+        if self.hints_extension {
+            complex = complex.extend(&HintsExtension)?;
         }
         Ok(complex)
     }
@@ -488,7 +488,7 @@ pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigExecutor<F>),
     #[any_enum]
-    Inverse(InverseExecutor<F>),
+    Hints(HintsExecutor<F>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -496,7 +496,7 @@ pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigPeriphery<F>),
     #[any_enum]
-    Inverse(InversePeriphery<F>),
+    Hints(HintsPeriphery<F>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -701,9 +701,9 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let inverse_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(InverseTranspilerExtension{});
+    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(HintsTranspilerExtension{});
     let extensions = vec![
-        inverse_transpiler,
+        hints_transpiler,
     ];
     let program = compile_openvm(guest, guest_opts, extensions).unwrap();
     execution_profile(program, inputs)
