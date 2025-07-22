@@ -123,8 +123,6 @@ fn scan_for_jump_targets(
     jumpdests_with_debug_info: &mut BTreeMap<u64, Vec<JumpDest>>,
     label_addrs: &BTreeSet<u64>,
 ) {
-    let addr = (0..).map(|index| base_addr + index * 4);
-
     data.chunks(4)
         // Cast to [u8; 4]
         .map(|data| data.try_into().unwrap())
@@ -146,8 +144,10 @@ fn scan_for_jump_targets(
             );
             Some((insn, previous_auipc_rs1))
         })
-        .zip(addr)
-        .for_each(|((insn, previous_if_auipc), addr)| {
+        .enumerate()
+        .for_each(|(instruction_index, (insn, previous_if_auipc))| {
+            let addr = base_addr + (instruction_index * 4) as u64;
+
             // Check for jump/branch instructions
             match insn.opc {
                 Op::JAL => {
