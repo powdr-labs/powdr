@@ -40,11 +40,10 @@ jobs:
           toolchain: nightly
           override: true
 
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
       - name: Run cargo-udeps
-        uses: aig787/cargo-udeps-action@v1
-        with:
-          version: "latest"
-          args: "--all-targets"
+        run: cargo udeps --all-targets
 
   test_release:
     runs-on: ubuntu-24.04
