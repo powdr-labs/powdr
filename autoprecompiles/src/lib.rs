@@ -12,6 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -39,6 +40,7 @@ mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
+mod smt;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -364,6 +366,16 @@ pub fn build<A: Adapter>(
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
+
+    let machine = optimizer::optimize::<A>(
+        machine,
+        vm_config.bus_interaction_handler.clone(),
+        degree_bound,
+        &vm_config.bus_map,
+    )?;
+
+    let machine = smt::detect_equalities(machine);
+    // let machine = smt::detect_redundant_constraints_ff(machine);
 
     let machine = optimizer::optimize::<A>(
         machine,
