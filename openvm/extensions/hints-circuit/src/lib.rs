@@ -31,15 +31,15 @@ impl<F: PrimeField32> VmExtension<F> for HintsExtension {
         builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
     ) -> Result<openvm_circuit::arch::VmInventory<Self::Executor, Self::Periphery>, openvm_circuit::arch::VmInventoryError> {
         let inventory = VmInventory::new();
-        builder.add_phantom_sub_executor(HintsSubEx, PhantomDiscriminant(HintsPhantom::HintFoo as u16))?;
+        builder.add_phantom_sub_executor(ReverseBytesSubEx, PhantomDiscriminant(HintsPhantom::HintReverseBytes as u16))?;
         Ok(inventory)
     }
 }
 
 
-pub struct HintsSubEx;
+pub struct ReverseBytesSubEx;
 
-impl<F: PrimeField32> PhantomSubExecutor<F> for HintsSubEx {
+impl<F: PrimeField32> PhantomSubExecutor<F> for ReverseBytesSubEx {
     fn phantom_execute(
         &mut self,
         memory: &MemoryController<F>,

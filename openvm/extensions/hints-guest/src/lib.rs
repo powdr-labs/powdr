@@ -10,7 +10,7 @@ pub const HINTS_FUNCT7: u8 = 0x0;
 #[cfg(target_os = "zkvm")]
 #[inline(always)]
 #[no_mangle]
-extern "C" fn hint_foo(bytes: *const u8) {
+extern "C" fn hint_reverse_bytes(bytes: *const u8) {
     openvm_platform::custom_insn_r!(
         opcode = OPCODE,
         funct3 = HINTS_FUNCT3,
@@ -21,12 +21,12 @@ extern "C" fn hint_foo(bytes: *const u8) {
     );
 }
 
-// TODO: remove and add proper hints later, this just for checking it works
-pub fn foo(val: u32) -> u32 {
+// TODO: useless placeholder hint function
+pub fn reverse_bytes(val: u32) -> u32 {
     #[cfg(target_os = "zkvm")]
     {
         let mut result = 0;
-        hint_foo(&val as *const u32 as *const u8);
+        hint_reverse_bytes(&val as *const u32 as *const u8);
         openvm_rv32im_guest::hint_store_u32!(&mut result);
         // TODO: zk assertion for hint result goes here
         return result;

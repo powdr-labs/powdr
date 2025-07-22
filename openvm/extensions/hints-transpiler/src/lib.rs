@@ -21,7 +21,7 @@ pub enum HintsPhantom {
     // idk if there is a "proper" way for avoiding conflicts in this number,
     // just looked at ovm code and picked the next range that didn't seem to be
     // used
-    HintFoo = 0x60
+    HintReverseBytes = 0x60
 }
 
 #[derive(Default)]
@@ -44,7 +44,7 @@ impl<F: PrimeField32> TranspilerExtension<F> for HintsTranspilerExtension {
         }
 
         let instruction = Instruction::phantom(
-            PhantomDiscriminant(HintsPhantom::HintFoo as u16),
+            PhantomDiscriminant(HintsPhantom::HintReverseBytes as u16),
             F::from_canonical_usize(RV32_REGISTER_NUM_LIMBS * insn.rs1),
             F::ZERO,
             0);
