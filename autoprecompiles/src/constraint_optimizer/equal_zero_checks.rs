@@ -14,6 +14,8 @@ use powdr_number::FieldElement;
 use crate::constraint_optimizer::reachability::reachable_variables_except_blocked;
 use crate::constraint_optimizer::{variables_in_stateful_bus_interactions, IsBusStateful};
 
+/// Tries to find variables that represent a zero check on a conjunction of other variables
+/// and replaces the involved constraints by a more efficient version.
 pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
