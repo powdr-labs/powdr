@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blocks::{Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
+    expression::AlgebraicReference,
+    memory_optimizer::MemoryBusInteraction,
     Apc, InstructionHandler,
 };
 
@@ -19,6 +21,7 @@ pub trait Adapter: Sized {
     type Candidate: Candidate<Self> + Send;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
+    type MemoryBusInteraction: MemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 

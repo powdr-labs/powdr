@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -24,7 +25,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
-use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::expression::{try_convert, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
@@ -66,6 +67,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
+    type MemoryBusInteraction = OpenVmMemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
