@@ -21,7 +21,6 @@ mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_
 // Algebraic constraints:
 flags__1_0 * ((flags__1_0 - 1) * (flags__1_0 - 2)) = 0
 flags__2_0 * ((flags__2_0 - 1) * (flags__2_0 - 2)) = 0
-(flags__1_0 + flags__2_0) * ((flags__1_0 + flags__2_0 - 1) * (flags__1_0 + flags__2_0 - 2)) = 0
 (flags__1_0 + flags__2_0 - 1 * is_valid) * (flags__1_0 + flags__2_0 - 2) = 0
 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__1_0 + flags__2_0 - 2) + flags__2_0 * (flags__1_0 + flags__2_0 - 2) + 1 * is_valid = 0
 -(flags__1_0 * flags__2_0 * prev_data__2_0) = 0

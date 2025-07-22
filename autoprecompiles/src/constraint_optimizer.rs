@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use inliner::DegreeBound;
+use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
@@ -61,6 +62,11 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system =
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
+
+    // TODO maybe we should keep learnt range constraints stored somewhere because
+    // we might not be able to re-derive them if some constraints are missing.
+    let constraint_system = remove_redundant_constraints(constraint_system);
+    stats_logger.log("removing redundant constraints", &constraint_system);
 
     Ok(constraint_system)
 }
@@ -174,4 +180,26 @@ pub trait IsBusStateful<T: FieldElement> {
     /// interaction with the rest of the zkVM. Examples of stateful buses are memory and
     /// execution bridge. Examples of non-stateful buses are fixed lookups.
     fn is_stateful(&self, bus_id: T) -> bool;
+}
+
+/// Removes constraints that are factors of other constraints.
+fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
+    let mut redandant_constraints = HashSet::new();
+    let constraints_as_factors = constraint_system
+        .algebraic_constraints()
+        .map(|c| (c, c.to_factors().into_iter().collect::<HashSet<_>>()))
+        .collect_vec();
+    for ((c1, f1), (c2, f2)) in constraints_as_factors.iter().tuple_combinations() {
+        if f1.is_subset(&f2) {
+            // c1 is a factor of c2, so any satisfying assignment of c1 also satisfies c2.
+            // This means we can remove c2.
+            redandant_constraints.insert((*c2).clone());
+        } else if f2.is_subset(&f1) {
+            redandant_constraints.insert((*c1).clone());
+        }
+    }
+    constraint_system.retain_algebraic_constraints(|c| !redandant_constraints.contains(c));
+    constraint_system
 }
