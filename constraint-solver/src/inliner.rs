@@ -26,7 +26,7 @@ pub fn replace_constrained_witness_columns<
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: JournalingConstraintSystem<T, V>,
-    degree_bound: DegreeBound,
+    shall_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
 ) -> JournalingConstraintSystem<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
@@ -38,12 +38,7 @@ pub fn replace_constrained_witness_columns<
         let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(
-                &var,
-                &expr,
-                constraint_system.indexed_system(),
-                degree_bound,
-            ) {
+            if shall_inline(&var, &expr, constraint_system.indexed_system()) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
@@ -73,6 +68,45 @@ pub fn replace_constrained_witness_columns<
     constraint_system
 }
 
+/// Returns an inlining discriminator that allows everything to be inlined as long as
+/// the given degree bound is not violated.
+pub fn inline_everything_below_degree_bound<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+    degree_bound: DegreeBound,
+) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
+    move |var, expr, constraint_system| {
+        substitution_would_not_violate_degree_bound(var, expr, constraint_system, degree_bound)
+    }
+}
+
+/// Returns true if substituting `var` by `expr` inside `constraint_system` would
+/// not create new constraints with a degree larger than `degree_bound`
+pub fn substitution_would_not_violate_degree_bound<
+    T: RuntimeConstant,
+    V: Ord + Clone + Hash + Eq,
+>(
+    var: &V,
+    expr: &GroupedExpression<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
+    degree_bound: DegreeBound,
+) -> bool {
+    let replacement_deg = expr.degree();
+
+    constraint_system
+        .constraints_referencing_variables(std::iter::once(var.clone()))
+        .all(|cref| match cref {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                let degree =
+                    expression_degree_with_virtual_substitution(identity, var, replacement_deg);
+                degree <= degree_bound.identities
+            }
+            ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
+                let degree =
+                    expression_degree_with_virtual_substitution(expr, var, replacement_deg);
+                degree <= degree_bound.bus_interactions
+            }),
+        })
+}
+
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
 fn find_inlinable_variables<
     T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
@@ -95,31 +129,6 @@ fn find_inlinable_variables<
     }
 
     substitutions
-}
-
-/// Checks whether a substitution is valid under `max_degree` constraint.
-fn is_valid_substitution<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
-    var: &V,
-    expr: &GroupedExpression<T, V>,
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    degree_bound: DegreeBound,
-) -> bool {
-    let replacement_deg = expr.degree();
-
-    constraint_system
-        .constraints_referencing_variables(std::iter::once(var.clone()))
-        .all(|cref| match cref {
-            ConstraintRef::AlgebraicConstraint(identity) => {
-                let degree =
-                    expression_degree_with_virtual_substitution(identity, var, replacement_deg);
-                degree <= degree_bound.identities
-            }
-            ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
-                let degree =
-                    expression_degree_with_virtual_substitution(expr, var, replacement_deg);
-                degree <= degree_bound.bus_interactions
-            }),
-        })
 }
 
 /// Calculate the degree of a GroupedExpression assuming a variable is
@@ -153,11 +162,14 @@ mod test {
 
     use test_log::test;
 
-    fn bounds(identities: usize, bus_interactions: usize) -> DegreeBound {
-        DegreeBound {
+    fn bounds<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+        identities: usize,
+        bus_interactions: usize,
+    ) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
+        inline_everything_below_degree_bound(DegreeBound {
             identities,
             bus_interactions,
-        }
+        })
     }
 
     #[test]

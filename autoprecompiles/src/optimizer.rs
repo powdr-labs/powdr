@@ -3,6 +3,9 @@ use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
+use powdr_constraint_solver::inliner::{
+    inline_everything_below_degree_bound, substitution_would_not_violate_degree_bound,
+};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -82,7 +85,10 @@ fn optimization_loop_iteration<A: Adapter>(
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
-        degree_bound,
+        |var, expr, system| {
+            !matches!(var, Variable::BusInteractionField(_, _))
+                && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound)
+        },
         stats_logger,
     )?;
     let constraint_system = constraint_system.system().clone();
