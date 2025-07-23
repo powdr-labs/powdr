@@ -185,7 +185,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
 }
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
-    pub fn render<B: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<B>) -> String {
+    pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
         let mut output = format!(
             "// Symbolic machine using {} unique main columns\n",
             self.main_columns().count()
