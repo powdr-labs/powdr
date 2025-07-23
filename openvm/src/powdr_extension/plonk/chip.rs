@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use crate::bus_map::OpenVmBusType;
+use crate::bus_map::BusMap;
 use crate::extraction_utils::OriginalAirs;
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
@@ -11,7 +11,6 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::BusMap;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -43,7 +42,7 @@ pub struct PlonkChip<F: PrimeField32> {
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
     machine: SymbolicMachine<F>,
-    bus_map: BusMap<OpenVmBusType>,
+    bus_map: BusMap,
 }
 
 impl<F: PrimeField32> PlonkChip<F> {
@@ -54,7 +53,7 @@ impl<F: PrimeField32> PlonkChip<F> {
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: SdkVmConfig,
         periphery: PowdrPeripheryInstances,
-        bus_map: BusMap<OpenVmBusType>,
+        bus_map: BusMap,
         copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {

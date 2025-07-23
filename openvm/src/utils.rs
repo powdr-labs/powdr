@@ -1,7 +1,6 @@
 use core::fmt;
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::{bus_map::OpenVmBusType, BusMap};
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
@@ -18,6 +17,8 @@ use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
     AlgebraicUnaryOperator,
 };
+
+use crate::bus_map::BusMap;
 
 pub enum OpenVmReference {
     /// Reference to a witness column. The boolean indicates if the reference is to the next row.
@@ -165,7 +166,7 @@ pub fn get_pil<F: PrimeField32>(
     constraints: &SymbolicConstraints<F>,
     columns: &Vec<Arc<String>>,
     public_values: Vec<String>,
-    bus_map: &BusMap<OpenVmBusType>,
+    bus_map: &BusMap,
 ) -> String {
     let mut pil = format!(
         "

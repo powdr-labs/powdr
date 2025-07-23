@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::bus_map::OpenVmBusType;
+use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
@@ -21,7 +21,7 @@ use openvm_stark_sdk::config::{
     fri_params::SecurityParameters,
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
-use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
@@ -227,7 +227,7 @@ impl OriginalVmConfig {
         res
     }
 
-    pub fn bus_map(&self) -> BusMap<OpenVmBusType> {
+    pub fn bus_map(&self) -> BusMap {
         let chip_complex = self.chip_complex();
         let builder = chip_complex.inventory_builder();
 

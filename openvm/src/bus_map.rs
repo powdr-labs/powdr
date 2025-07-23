@@ -1,7 +1,7 @@
 //! To support an abstracted autoprecompile layer, this module stores type implementations specific to OpenVM
 use std::fmt::Display;
 
-use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+use powdr_autoprecompiles::bus_map::BusType;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
@@ -17,6 +17,8 @@ pub enum OpenVmBusType {
     TupleRangeChecker,
 }
 
+pub type BusMap = powdr_autoprecompiles::bus_map::BusMap<OpenVmBusType>;
+
 impl Display for OpenVmBusType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -26,7 +28,7 @@ impl Display for OpenVmBusType {
     }
 }
 
-pub fn default_openvm_bus_map() -> BusMap<OpenVmBusType> {
+pub fn default_openvm_bus_map() -> BusMap {
     let bus_ids = [
         (DEFAULT_EXECUTION_BRIDGE, BusType::ExecutionBridge),
         (DEFAULT_MEMORY, BusType::Memory),

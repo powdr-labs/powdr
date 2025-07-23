@@ -1,9 +1,6 @@
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
-use powdr_autoprecompiles::{
-    bus_map::{BusMap, BusType},
-    constraint_optimizer::IsBusStateful,
-};
+use powdr_autoprecompiles::{bus_map::BusType, constraint_optimizer::IsBusStateful};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     range_constraint::RangeConstraint,
@@ -12,7 +9,7 @@ use powdr_number::{FieldElement, LargeInt};
 use tuple_range_checker::handle_tuple_range_checker;
 use variable_range_checker::handle_variable_range_checker;
 
-use crate::bus_map::OpenVmBusType;
+use crate::bus_map::{BusMap, OpenVmBusType};
 
 mod bitwise_lookup;
 mod memory;
@@ -21,12 +18,12 @@ mod variable_range_checker;
 
 #[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
-    bus_map: BusMap<OpenVmBusType>,
+    bus_map: BusMap,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
-    pub fn new(bus_map: BusMap<OpenVmBusType>) -> Self {
+    pub fn new(bus_map: BusMap) -> Self {
         Self {
             bus_map,
             _phantom: std::marker::PhantomData,

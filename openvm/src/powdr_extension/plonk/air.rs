@@ -1,4 +1,7 @@
-use crate::{bus_map::OpenVmBusType, BusMap, BusType};
+use crate::{
+    bus_map::{BusMap, OpenVmBusType},
+    BusType,
+};
 use itertools::Itertools;
 use openvm_circuit_primitives::AlignedBorrow;
 use openvm_stark_backend::{
@@ -49,7 +52,7 @@ pub struct PlonkColumns<T> {
 
 pub struct PlonkAir<F> {
     pub copy_constraint_bus_id: u16,
-    pub bus_map: BusMap<OpenVmBusType>,
+    pub bus_map: BusMap,
     pub _marker: std::marker::PhantomData<F>,
 }
 
