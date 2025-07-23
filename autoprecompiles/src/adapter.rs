@@ -9,7 +9,7 @@ use crate::{
     constraint_optimizer::IsBusStateful,
     expression::AlgebraicReference,
     memory_optimizer::MemoryBusInteraction,
-    Apc, InstructionHandler,
+    Apc, InstructionHandler, VmConfig,
 };
 
 pub trait Adapter: Sized {
@@ -33,3 +33,9 @@ pub trait Adapter: Sized {
 
 pub type ApcStats<A> = <<A as Adapter>::Candidate as Candidate<A>>::ApcStats;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
+pub type AdapterVmConfig<'a, A> = VmConfig<
+    'a,
+    <A as Adapter>::InstructionHandler,
+    <A as Adapter>::BusInteractionHandler,
+    <A as Adapter>::CustomBusTypes,
+>;

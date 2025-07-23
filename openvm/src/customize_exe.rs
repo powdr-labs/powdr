@@ -23,7 +23,7 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
+use powdr_autoprecompiles::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
 use powdr_autoprecompiles::expression::{try_convert, AlgebraicReference};
@@ -373,7 +373,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     fn create(
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: VmConfig<BabyBearOpenVmApcAdapter>,
+        vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
     ) -> Self {
         let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
         let width_after = apc_metrics.widths;

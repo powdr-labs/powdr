@@ -1,4 +1,4 @@
-use crate::adapter::{Adapter, AdapterApc};
+use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
@@ -261,17 +261,17 @@ pub enum InstructionKind {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, A: Adapter> {
+pub struct VmConfig<'a, M, B, C> {
     /// Maps an opcode to its AIR.
-    pub instruction_handler: &'a A::InstructionHandler,
+    pub instruction_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
-    pub bus_interaction_handler: A::BusInteractionHandler,
+    pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
-    pub bus_map: BusMap<A::CustomBusTypes>,
+    pub bus_map: BusMap<C>,
 }
 
 // We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
-impl<'a, A: Adapter> Clone for VmConfig<'a, A> {
+impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
     fn clone(&self) -> Self {
         VmConfig {
             instruction_handler: self.instruction_handler,
@@ -312,7 +312,7 @@ impl<T, I> Apc<T, I> {
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
-    vm_config: VmConfig<A>,
+    vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
