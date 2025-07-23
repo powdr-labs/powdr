@@ -316,13 +316,12 @@ impl<T: RuntimeConstant + Hash, V: Clone + Hash + Ord + Eq> IndexedConstraintSys
             .into_iter()
             .cloned()
             .collect_vec();
-        let lhs_hash = hash(lhs);
         for item in &items {
             if let ConstraintSystemItem::BusInteraction(i) = item {
                 // We only substitute in bus interactions, as the lhs is a bus interaction.
                 let bus_interaction = &mut self.constraint_system.bus_interactions[*i];
                 for expr in bus_interaction.fields_mut() {
-                    if hash(expr) == lhs_hash && expr == lhs {
+                    if expr == lhs {
                         *expr = substitution.clone();
                         for var in &substitution_vars {
                             self.variable_occurrences
@@ -335,12 +334,6 @@ impl<T: RuntimeConstant + Hash, V: Clone + Hash + Ord + Eq> IndexedConstraintSys
             }
         }
     }
-}
-
-fn hash<X: Hash>(x: &X) -> u64 {
-    let mut hasher = std::hash::DefaultHasher::new();
-    x.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// The provided assignments lead to a contradiction in the constraint system.
