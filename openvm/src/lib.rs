@@ -91,7 +91,7 @@ fn format_fe<F: PrimeField32>(v: F) -> String {
 }
 
 pub use openvm_build::GuestOptions;
-pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+pub use powdr_autoprecompiles::bus_map::BusType;
 
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
@@ -103,6 +103,7 @@ mod powdr_extension;
 
 pub mod bus_interaction_handler;
 mod instruction_formatter;
+pub mod memory_bus_interaction;
 
 mod plonk;
 
@@ -1458,10 +1459,10 @@ mod tests {
                 widths: AirWidths {
                     preprocessed: 0,
                     main: 14676,
-                    log_up: 12128,
+                    log_up: 12112,
                 },
                 constraints: 4143,
-                bus_interactions: 11673,
+                bus_interactions: 11668,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1482,10 +1483,10 @@ mod tests {
                 widths: AirWidths {
                     preprocessed: 0,
                     main: 14656,
-                    log_up: 12108,
+                    log_up: 12092,
                 },
                 constraints: 4127,
-                bus_interactions: 11663,
+                bus_interactions: 11658,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1507,7 +1508,7 @@ mod tests {
                 after: AirWidths {
                     preprocessed: 0,
                     main: 14656,
-                    log_up: 12108,
+                    log_up: 12092,
                 },
             }),
         });
@@ -1616,11 +1617,11 @@ mod tests {
         let powdr_metrics_sum = AirMetrics {
             widths: AirWidths {
                 preprocessed: 0,
-                main: 4831,
-                log_up: 3968,
+                main: 4843,
+                log_up: 3952,
             },
-            constraints: 958,
-            bus_interactions: 3821,
+            constraints: 962,
+            bus_interactions: 3818,
         };
 
         let expected_metrics = MachineTestMetrics {
@@ -1639,13 +1640,13 @@ mod tests {
             expected_columns_saved: Some(AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
-                    main: 38950,
-                    log_up: 26908,
+                    main: 38986,
+                    log_up: 26936,
                 },
                 after: AirWidths {
                     preprocessed: 0,
-                    main: 4831,
-                    log_up: 3968,
+                    main: 4843,
+                    log_up: 3952,
                 },
             }),
         });

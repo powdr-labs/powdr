@@ -303,4 +303,23 @@ mod complex_tests {
 
         assert_machine_output(program.to_vec(), "guest_top_block");
     }
+
+    #[test]
+    fn memcpy_block() {
+        // AND rd_ptr = 52, rs1_ptr = 44, rs2 = 3, rs2_as = 0
+        // SLTU rd_ptr = 52, rs1_ptr = 52, rs2 = 1, rs2_as = 0
+        // SLTU rd_ptr = 56, rs1_ptr = 56, rs2 = 1, rs2_as = 0
+        // OR rd_ptr = 52, rs1_ptr = 52, rs2 = 56, rs2_as = 1
+        // BNE 52 0 248 1 1
+
+        let program = [
+            and(52, 44, 3, 0),
+            sltu(52, 52, 1, 0),
+            sltu(56, 56, 1, 0),
+            or(52, 52, 56, 1),
+            bne(52, 0, 248),
+        ];
+
+        assert_machine_output(program.to_vec(), "memcpy_block");
+    }
 }

@@ -26,6 +26,7 @@ use powdr_riscv_types::{
 };
 
 pub mod debug_info;
+pub mod rv64;
 
 use self::debug_info::{DebugInfo, SymbolTable};
 

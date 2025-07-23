@@ -1,3 +1,5 @@
+// Symbolic machine using 18 unique main columns
+
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 - 1]
 mult=is_valid * 1, args=[4, writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 2]
@@ -18,7 +20,7 @@ mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
-// Bus 6 (BITWISE_LOOKUP):
+// Bus 6 (OPENVM_BITWISE_LOOKUP):
 mult=is_valid * 1, args=[8 * b__0_0 - 256 * bit_shift_carry__0_0, 8 * b__1_0 + bit_shift_carry__0_0 - 256 * bit_shift_carry__1_0, 0, 0]
 mult=is_valid * 1, args=[8 * b__2_0 + bit_shift_carry__1_0 - 256 * bit_shift_carry__2_0, 8 * b__3_0 + bit_shift_carry__2_0 - 256 * bit_shift_carry__3_0, 0, 0]
 

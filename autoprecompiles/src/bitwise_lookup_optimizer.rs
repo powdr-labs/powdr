@@ -1,11 +1,15 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::{fmt::Debug, fmt::Display};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
+use powdr_constraint_solver::constraint_system::{
+    BusInteraction, BusInteractionHandler, ConstraintSystem,
+};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::solver::{self, bus_interaction_variable_wrapper, Solver};
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
@@ -13,6 +17,7 @@ use powdr_number::FieldElement;
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
     mut system: ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> ConstraintSystem<T, V> {
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
@@ -50,7 +55,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
             let mut args = vec![x, y, z];
             if let Some(zero_pos) = args.iter().position(|e| e.is_zero()) {
                 args.remove(zero_pos);
-                // The two remaning expressions in args are equal and bytes.
+                // The two remaining expressions in args are equal and bytes.
                 let [a, b] = args.try_into().unwrap();
                 new_constraints.push(a.clone() - b.clone());
                 to_byte_constrain.push(a.clone());
@@ -66,9 +71,10 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // After we have removed the bus interactions, we check which of the
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
-    let already_byte_constrained = all_byte_constrained_expressions(&system, bitwise_lookup_bus_id)
-        .cloned()
-        .collect::<HashSet<_>>();
+    let byte_range_constraint = RangeConstraint::from_mask(0xffu64);
+    let range_constraints =
+        determine_range_constraints_using_solver(&system, bus_interaction_handler);
+
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
         .filter(|expr| {
@@ -76,8 +82,10 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 assert!(n >= T::from(0) && n < T::from(256));
                 // No need to byte-constrain numbers.
                 false
+            } else if let Some(rc) = range_constraints.get(expr) {
+                *rc != rc.conjunction(&byte_range_constraint)
             } else {
-                !already_byte_constrained.contains(expr)
+                true
             }
         })
         .unique()
@@ -104,32 +112,31 @@ fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Ha
         && bus_int.multiplicity.is_one()
 }
 
-/// Returns all expressions that are byte-constrained in the machine.
-/// The list does not have to be exhaustive.
-fn all_byte_constrained_expressions<T: FieldElement, V: Clone + Ord + Hash>(
-    machine: &ConstraintSystem<T, V>,
-    bitwise_lookup_bus_id: u64,
-) -> impl Iterator<Item = &GroupedExpression<T, V>> {
-    machine
-        .bus_interactions
-        .iter()
-        .filter(move |bus_int| {
-            is_simple_multiplicity_bitwise_bus_interaction(bus_int, bitwise_lookup_bus_id)
-        })
-        .flat_map(|bus_int| {
-            let [x, y, z, op] = &bus_int.payload[..] else {
-                panic!();
-            };
-            if let Some(op) = op.try_to_number() {
-                if op == T::from(0) {
-                    vec![x, y]
-                } else if op == T::from(1) {
-                    vec![x, y, z]
-                } else {
-                    vec![]
+fn determine_range_constraints_using_solver<
+    T: FieldElement,
+    V: Clone + Hash + Eq + Ord + Debug + Display,
+>(
+    system: &ConstraintSystem<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
+) -> HashMap<GroupedExpression<T, V>, RangeConstraint<T>> {
+    let (wrapper, transformed_system) = solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper::replace_bus_interaction_expressions(system.clone());
+    Solver::new(transformed_system)
+        .with_bus_interaction_handler(bus_interaction_handler)
+        .solve()
+        .unwrap()
+        .range_constraints
+        .range_constraints
+        .into_iter()
+        .map(|(var, range_constraint)| {
+            let expr = match var {
+                bus_interaction_variable_wrapper::Variable::BusInteractionField(..) => {
+                    wrapper.bus_interaction_vars[&var].clone()
                 }
-            } else {
-                vec![]
-            }
+                bus_interaction_variable_wrapper::Variable::Variable(v) => {
+                    GroupedExpression::from_unknown_variable(v)
+                }
+            };
+            (expr, range_constraint)
         })
+        .collect()
 }
