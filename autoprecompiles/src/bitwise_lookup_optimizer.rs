@@ -119,7 +119,10 @@ fn determine_range_constraints_using_solver<
     system: &ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> HashMap<GroupedExpression<T, V>, RangeConstraint<T>> {
-    let (wrapper, transformed_system) = solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper::replace_bus_interaction_expressions(system.clone());
+    let (bus_interaction_vars, transformed_system) =
+        solver::bus_interaction_variable_wrapper::replace_bus_interaction_expressions(
+            system.clone(),
+        );
     Solver::new(transformed_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()
@@ -130,7 +133,7 @@ fn determine_range_constraints_using_solver<
         .map(|(var, range_constraint)| {
             let expr = match var {
                 bus_interaction_variable_wrapper::Variable::BusInteractionField(..) => {
-                    wrapper.bus_interaction_vars[&var].clone()
+                    bus_interaction_vars[&var].clone()
                 }
                 bus_interaction_variable_wrapper::Variable::Variable(v) => {
                     GroupedExpression::from_unknown_variable(v)

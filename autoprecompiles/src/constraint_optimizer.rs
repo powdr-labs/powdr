@@ -69,7 +69,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
-    let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
+    let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?.0;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in &result {
         log::trace!("  {var} = {value}");

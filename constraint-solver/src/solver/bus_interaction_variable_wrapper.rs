@@ -7,7 +7,7 @@ use crate::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable, VarTransformable},
-    solver::{RangeConstraints, Substitution},
+    solver::{RangeConstraints, SolveResult, Substitution},
 };
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.
@@ -73,20 +73,19 @@ where
     (bus_interaction_vars, constraint_system)
 }
 
-/// Takes a map with the original definitions of bus interaction variables plus
-/// a list of substitutions and returns a list of equivalent substitutions not mentioning
-/// bus interaction fields.s
-pub fn untransform_assignments<T, V: Ord + Clone + Hash + Eq>(
+/// Takes a map with the original definitions of bus interaction variables and a solve result
+/// and returns an equivalent result mentioning bus interaction fields.
+pub fn untransform_solve_result<T, V: Ord + Clone + Hash + Eq>(
     mut bus_interaction_vars: BTreeMap<Variable<V>, GroupedExpression<T, V>>,
     solve_result: SolveResult<T::Transformed, Variable<V>>,
-) -> Vec<Substitution<T, V>>
+) -> (Vec<Substitution<T, V>>, RangeConstraints<T::FieldType, V>)
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
-    T::Transformed: RuntimeConstant
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + Substitutable<Variable<V>>,
 {
-    let mut result = Vec::<(GroupedExpression<T, V>, GroupedExpression<T, V>)>::new();
+    let mut assignments = Vec::<Substitution<T, V>>::new();
     for (variable, expr) in &solve_result.assignments {
         // Apply any assignments to the bus interaction field definitions.
         if let Variable::BusInteractionField(..) = variable {
@@ -113,54 +112,42 @@ where
                 // We already push these to the start of the result, i.e. we violate the order
                 // of replacement. But this is fine since we use the original definitions here,
                 // i.e. expressions in the form before any other substitutions have taken place.
-                result.push((original_definition, value));
+                assignments.push((original_definition, value));
             }
         }
     }
 
     // Unwrap assignments. Note that this uses the updated bus interaction field definitions.
-    result.extend(solve_result
-            .assignments.into_iter().filter_map(|(v, expr)| match v {
-        Variable::Variable(v) => Some((
-            GroupedExpression::from_unknown_variable(v),
-            unwrap_expression(&bus_interaction_vars, expr),
-        )),
-
-        Variable::BusInteractionField(..) => None,
-    }));
-
-        // If a bus interaction field can be assigned a concrete value, report this to the caller.
-        let bus_field_assignments = self
-            .bus_interaction_vars
+    assignments.extend(
+        solve_result
+            .assignments
             .into_iter()
-            .filter_map(|(v, expr)| match (v, expr.try_to_number()) {
-                (Variable::BusInteractionField(bus_index, field_index), Some(value)) => {
-                    Some(((bus_index, field_index), value))
+            .filter_map(|(v, expr)| match v {
+                Variable::Variable(v) => Some((
+                    GroupedExpression::from_unknown_variable(v),
+                    unwrap_expression(&bus_interaction_vars, expr),
+                )),
+
+                Variable::BusInteractionField(..) => None,
+            }),
+    );
+
+    // Filter range constraints by regular variables.
+    let range_constraints = solve_result
+        .range_constraints
+        .range_constraints
+        .into_iter()
+        .fold(
+            RangeConstraints::<T::FieldType, V>::default(),
+            |mut range_constraints, (v, rc)| {
+                if let Variable::Variable(v) = v {
+                    range_constraints.update(&v, &rc);
                 }
-                _ => None,
-            })
-            .collect();
+                range_constraints
+            },
+        );
 
-        let range_constraints = solve_result
-            .range_constraints
-            .range_constraints
-            .into_iter()
-            .fold(
-                RangeConstraints::<T::FieldType, V>::default(),
-                |mut range_constraints, (v, rc)| {
-                    if let Variable::Variable(v) = v {
-                        range_constraints.update(&v, &rc);
-                    }
-                    range_constraints
-                },
-            );
-
-        SolveResult {
-            assignments,
-            range_constraints,
-            bus_field_assignments,
-        }
-    }
+    (assignments, range_constraints)
 }
 
 fn unwrap_expression<T, V>(
