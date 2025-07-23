@@ -96,10 +96,12 @@ pub struct SymbolicConstraint<T> {
 // Baby bear prime.
 const P: u32 = (1 << 31) - (1 << 27) + 1;
 
+use smt::SmtConstraints;
+
 impl<T: FieldElement> SymbolicConstraint<T> {
-    pub fn to_smt(&self) -> String {
+    pub fn to_smt(&self) -> SmtConstraints {
         let expr = algebraic_to_smt(&self.expr);
-        format!("(assert (= (mod {expr} {P}) 0))")
+        SmtConstraints::from_poly_constraints(vec![format!("(assert (= (mod {expr} {P}) 0))")])
     }
 }
 
@@ -166,16 +168,16 @@ pub fn try_algebraic_number<T: FieldElement>(expr: &AlgebraicExpression<T>) -> O
 }
 
 impl<T: FieldElement> SymbolicBusInteraction<T> {
-    pub fn to_smt(&self) -> String {
-        if self.id == 3 {
-            self.range_check_to_smt()
+    pub fn to_smt(&self) -> SmtConstraints {
+        SmtConstraints::from_range_constraints(if self.id == 3 {
+            vec![self.range_check_to_smt()]
         } else if self.id == 6 {
             self.byte_check_to_smt()
         } else if self.id == 7 {
             self.range_check_2_to_smt()
         } else {
-            String::new()
-        }
+            vec![]
+        })
     }
 
     fn range_check_to_smt(&self) -> String {
@@ -191,28 +193,27 @@ impl<T: FieldElement> SymbolicBusInteraction<T> {
         range_check_to_smt(v, max_range)
     }
 
-    fn range_check_2_to_smt(&self) -> String {
+    fn range_check_2_to_smt(&self) -> Vec<String> {
         assert_eq!(self.id, 7);
         assert_eq!(self.args.len(), 2);
         let v1 = algebraic_to_smt(&self.args[0]);
         let v2 = algebraic_to_smt(&self.args[1]);
-        byte_check_to_smt(v1) + "\n" + &byte_check_to_smt(v2)
+        vec![byte_check_to_smt(v1), byte_check_to_smt(v2)]
     }
 
-    fn byte_check_to_smt(&self) -> String {
+    fn byte_check_to_smt(&self) -> Vec<String> {
         assert_eq!(self.id, 6);
         assert_eq!(self.args.len(), 4);
         let v1 = algebraic_to_smt(&self.args[0]);
         let v2 = algebraic_to_smt(&self.args[1]);
         let v3 = algebraic_to_smt(&self.args[2]);
         let v4 = algebraic_to_smt(&self.args[3]);
-        byte_check_to_smt(v1)
-            + "\n"
-            + &byte_check_to_smt(v2)
-            + "\n"
-            + &byte_check_to_smt(v3)
-            + "\n"
-            + &byte_check_to_smt(v4)
+        vec![
+            byte_check_to_smt(v1),
+            byte_check_to_smt(v2),
+            byte_check_to_smt(v3),
+            byte_check_to_smt(v4),
+        ]
     }
 }
 
@@ -270,7 +271,7 @@ pub struct SymbolicMachine<T> {
 }
 
 impl<T: FieldElement> SymbolicMachine<T> {
-    pub fn to_smt(&self) -> String {
+    pub fn to_smt(&self) -> SmtConstraints {
         let (decls, ranges) = self
             .main_columns()
             .map(|c| {
@@ -280,18 +281,13 @@ impl<T: FieldElement> SymbolicMachine<T> {
                 )
             })
             .collect::<(Vec<String>, Vec<String>)>();
-        let mut smt = decls.join("\n");
-        let type_ranges = ranges.join("\n");
-        smt.push('\n');
-        smt.push_str(&type_ranges);
-        smt.push('\n');
+        let mut smt =
+            SmtConstraints::from_range_constraints(ranges).merge(SmtConstraints::from_decls(decls));
         for c in &self.constraints {
-            smt.push_str(&c.to_smt());
-            smt.push('\n');
+            smt = smt.merge(c.to_smt());
         }
         for b in &self.bus_interactions {
-            smt.push_str(&b.to_smt());
-            smt.push('\n');
+            smt = smt.merge(b.to_smt());
         }
         smt
     }
@@ -467,7 +463,7 @@ pub fn build<A: Adapter>(
         .collect::<BTreeSet<_>>();
 
     println!("Gonna try SMT...");
-    let var_subs = smt::get_unique_vars(&machine.to_smt(), &var_names);
+    let var_subs = smt::get_unique_vars(machine.to_smt(), &var_names);
     println!("After SMT");
 
     // add guards to constraints that are not satisfied by zeroes
