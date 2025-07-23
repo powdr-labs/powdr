@@ -24,7 +24,7 @@ impl<T: Display> std::fmt::Display for BusType<T> {
             BusType::ExecutionBridge => "EXECUTION_BRIDGE",
             BusType::Memory => "MEMORY",
             BusType::PcLookup => "PC_LOOKUP",
-            BusType::OpenVmBitwiseLookup => "BITWISE_LOOKUP",
+            BusType::OpenVmBitwiseLookup => "OPENVM_BITWISE_LOOKUP",
             BusType::Other(other_type) => &other_type.to_string(),
         };
         write!(f, "{name}")
