@@ -464,7 +464,11 @@ pub fn build<A: Adapter>(
 
     println!("Gonna try SMT...");
     // let var_subs = smt::get_unique_vars(machine.to_smt(), &var_names);
-    smt::detect_redundant_constraints(machine.to_smt());
+    // smt::detect_redundant_constraints(machine.to_smt());
+
+    // Compute Groebner basis
+    let _gb_constraints = smt::compute_groebner_basis(&machine);
+
     println!("After SMT");
 
     // add guards to constraints that are not satisfied by zeroes
