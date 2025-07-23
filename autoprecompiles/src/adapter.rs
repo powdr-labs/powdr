@@ -24,7 +24,7 @@ pub trait Adapter: Sized {
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
     type MemoryBusInteraction: MemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
-    type BusType: Clone + Display + Sync + Eq + PartialEq;
+    type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 

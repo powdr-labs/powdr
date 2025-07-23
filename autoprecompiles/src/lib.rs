@@ -267,7 +267,7 @@ pub struct VmConfig<'a, A: Adapter> {
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: A::BusInteractionHandler,
     /// The bus map that maps bus id to bus type
-    pub bus_map: BusMap<A::BusType>,
+    pub bus_map: BusMap<A::CustomBusTypes>,
 }
 
 // We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
