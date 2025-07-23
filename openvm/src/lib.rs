@@ -750,6 +750,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     #[allow(clippy::too_many_arguments)]
@@ -1461,7 +1462,7 @@ mod tests {
                     main: 14676,
                     log_up: 12112,
                 },
-                constraints: 4143,
+                constraints: 4073,
                 bus_interactions: 11668,
             },
             powdr_expected_machine_count: 10,
