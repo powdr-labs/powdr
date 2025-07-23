@@ -192,11 +192,11 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         .map(|c| (c, c.to_factors().into_iter().collect::<HashSet<_>>()))
         .collect_vec();
     for ((c1, f1), (c2, f2)) in constraints_as_factors.iter().tuple_combinations() {
-        if f1.is_subset(&f2) {
+        if f1.is_subset(f2) {
             // c1 is a factor of c2, so any satisfying assignment of c1 also satisfies c2.
             // This means we can remove c2.
             redandant_constraints.insert((*c2).clone());
-        } else if f2.is_subset(&f1) {
+        } else if f2.is_subset(f1) {
             redandant_constraints.insert((*c1).clone());
         }
     }
