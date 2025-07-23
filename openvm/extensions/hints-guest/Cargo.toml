@@ -10,3 +10,4 @@ repository.workspace = true
 openvm-platform = { workspace = true, features = ["rust-runtime"] }
 openvm-rv32im-guest.workspace = true
 openvm-custom-insn.workspace = true
+strum_macros = "0.27"

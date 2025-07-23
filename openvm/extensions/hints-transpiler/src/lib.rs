@@ -1,4 +1,4 @@
-use powdr_openvm_hints_guest::{OPCODE, HINTS_FUNCT3, HINTS_FUNCT7};
+use powdr_openvm_hints_guest::{OPCODE, HINTS_FUNCT3, HintsFunct7};
 use openvm_instructions::{instruction::Instruction, riscv::RV32_REGISTER_NUM_LIMBS, LocalOpcode, PhantomDiscriminant};
 use openvm_instructions_derive::LocalOpcode;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -21,7 +21,8 @@ pub enum HintsPhantom {
     // idk if there is a "proper" way for avoiding conflicts in this number,
     // just looked at ovm code and picked the next range that didn't seem to be
     // used
-    HintReverseBytes = 0x60
+    HintReverseBytes = 0x60,
+    HintK256InverseField10x26 = 0x61,
 }
 
 #[derive(Default)]
@@ -39,12 +40,18 @@ impl<F: PrimeField32> TranspilerExtension<F> for HintsTranspilerExtension {
         }
 
         let insn = RType::new(instruction_u32);
-        if (insn.funct3 as u8, insn.funct7 as u8) != (HINTS_FUNCT3, HINTS_FUNCT7) {
+        if insn.funct3 as u8 != HINTS_FUNCT3 {
             return None;
         }
 
+        let funct7 = HintsFunct7::from_repr(insn.funct7 as u8)?;
+        let disc = match funct7 {
+            HintsFunct7::ReverseBytes => HintsPhantom::HintReverseBytes,
+            HintsFunct7::K256InverseField10x26 => HintsPhantom::HintK256InverseField10x26,
+        };
+
         let instruction = Instruction::phantom(
-            PhantomDiscriminant(HintsPhantom::HintReverseBytes as u16),
+            PhantomDiscriminant(disc as u16),
             F::from_canonical_usize(RV32_REGISTER_NUM_LIMBS * insn.rs1),
             F::ZERO,
             0);
