@@ -53,6 +53,7 @@ fn is_unique(smt2: &String, var: &String, value: &String) -> bool {
 /// Return only uniquely determined variables and their values
 pub fn get_unique_vars(smt2: &String, vars: &BTreeSet<String>) -> HashMap<String, String> {
     println!("Get unique vars");
+    println!("SMT:\n{smt2}");
     let Some(values) = get_values(smt2, vars) else {
         println!("Original constraints unsat");
         return HashMap::new();

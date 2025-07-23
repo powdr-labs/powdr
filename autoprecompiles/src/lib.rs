@@ -6,6 +6,7 @@ pub use blocks::{BasicBlock, PgoConfig};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -116,7 +117,13 @@ pub fn algebraic_to_smt<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Strin
             };
             format!("({op_str} {left} {right})")
         }
-        _ => todo!(),
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let expr = algebraic_to_smt(expr);
+            let op_str = match op {
+                AlgebraicUnaryOperator::Minus => "-",
+            };
+            format!("({op_str} {expr})")
+        }
     }
 }
 
@@ -162,9 +169,9 @@ impl<T: FieldElement> SymbolicBusInteraction<T> {
     pub fn to_smt(&self) -> String {
         if self.id == 3 {
             self.range_check_to_smt()
-        } else if self.id == 5 {
-            self.byte_check_to_smt()
         } else if self.id == 6 {
+            self.byte_check_to_smt()
+        } else if self.id == 7 {
             self.range_check_2_to_smt()
         } else {
             String::new()
@@ -185,7 +192,7 @@ impl<T: FieldElement> SymbolicBusInteraction<T> {
     }
 
     fn range_check_2_to_smt(&self) -> String {
-        assert_eq!(self.id, 6);
+        assert_eq!(self.id, 7);
         assert_eq!(self.args.len(), 2);
         let v1 = algebraic_to_smt(&self.args[0]);
         let v2 = algebraic_to_smt(&self.args[1]);
@@ -193,7 +200,7 @@ impl<T: FieldElement> SymbolicBusInteraction<T> {
     }
 
     fn byte_check_to_smt(&self) -> String {
-        assert_eq!(self.id, 5);
+        assert_eq!(self.id, 6);
         assert_eq!(self.args.len(), 4);
         let v1 = algebraic_to_smt(&self.args[0]);
         let v2 = algebraic_to_smt(&self.args[1]);
@@ -454,15 +461,17 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     )?;
 
-    // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
-
     let var_names = machine
         .main_columns()
         .map(|c| (*c.name).clone())
         .collect::<BTreeSet<_>>();
 
+    println!("Gonna try SMT...");
     let var_subs = smt::get_unique_vars(&machine.to_smt(), &var_names);
+    println!("After SMT");
+
+    // add guards to constraints that are not satisfied by zeroes
+    let machine = add_guards(machine);
 
     let machine = convert_machine(machine, &A::into_field);
 
