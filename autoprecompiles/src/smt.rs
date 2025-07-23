@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::collections::{BTreeSet, HashMap, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
@@ -174,6 +174,7 @@ pub fn get_unique_vars(
 
 pub fn detect_redundant_constraints(smt2: SmtConstraints) {
     println!("Solving original system");
+    println!("{}", smt2.to_string());
     match solve(&smt2) {
         SmtResult::UNSAT => {
             panic!("Original system should be SAT.");
@@ -212,8 +213,8 @@ pub fn detect_redundant_constraints(smt2: SmtConstraints) {
 pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std::fmt::Display>(
     machine: &crate::SymbolicMachine<T>,
 ) -> Vec<crate::SymbolicConstraint<T>> {
-    use std::collections::{BTreeSet, BTreeMap};
     use crate::expression::AlgebraicReference;
+    use std::collections::{BTreeMap, BTreeSet};
 
     println!(
         "Computing Groebner basis for {} constraints",
@@ -230,7 +231,7 @@ pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std:
         .main_columns()
         .map(|col| ((*col.name).clone(), col))
         .collect();
-    
+
     let variables: BTreeSet<String> = variable_map.keys().cloned().collect();
 
     println!(
@@ -241,7 +242,7 @@ pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std:
 
     // Use max degree of 3
     const MAX_DEGREE: usize = 3;
-    
+
     // Convert constraints to Python format and generate script
     let python_script = generate_groebner_script(&machine.constraints, &variables, MAX_DEGREE);
     println!("Python script:\n{python_script}\n");
@@ -267,7 +268,7 @@ pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std:
 
     // Parse the output polynomials
     let mut gb_constraints = Vec::new();
-    
+
     for line in stdout.lines() {
         if let Some(poly_str) = line.strip_prefix("POLY:") {
             let poly_str = poly_str.trim();
@@ -288,22 +289,22 @@ pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std:
             vars
         })
         .collect();
-    
+
     let eliminated_vars: BTreeSet<_> = variables.difference(&gb_variables).collect();
-    
-    println!(
-        "\nGroebner basis computation complete:"
-    );
+
+    println!("\nGroebner basis computation complete:");
     println!("  Original constraints: {}", machine.constraints.len());
     println!("  Groebner basis size: {}", gb_constraints.len());
     println!("  Original variables: {}", variables.len());
     println!("  Variables in GB: {}", gb_variables.len());
-    let eliminated_names = eliminated_vars.iter()
+    let eliminated_names = eliminated_vars
+        .iter()
         .map(|s| s.to_string())
         .collect::<Vec<_>>()
         .join(", ");
-    
-    println!("  Eliminated variables: {} ({})", 
+
+    println!(
+        "  Eliminated variables: {} ({})",
         eliminated_vars.len(),
         eliminated_names
     );
@@ -312,10 +313,13 @@ pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std:
 }
 
 /// Collect variable names from an AlgebraicExpression
-fn collect_variables_from_expr<T>(expr: &crate::expression::AlgebraicExpression<T>, vars: &mut BTreeSet<String>) {
+fn collect_variables_from_expr<T>(
+    expr: &crate::expression::AlgebraicExpression<T>,
+    vars: &mut BTreeSet<String>,
+) {
     use crate::expression::{AlgebraicExpression, AlgebraicReference};
     use powdr_expression::{AlgebraicBinaryOperation, AlgebraicUnaryOperation};
-    
+
     match expr {
         AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
             vars.insert((**name).clone());
@@ -336,7 +340,6 @@ fn parse_sympy_polynomial<T: powdr_number::FieldElement>(
     poly_str: &str,
     var_map: &BTreeMap<String, crate::expression::AlgebraicReference>,
 ) -> Option<crate::expression::AlgebraicExpression<T>> {
-    
     // Tokenize and parse the polynomial
     let tokens = tokenize_polynomial(poly_str);
     parse_tokens::<T>(&tokens, var_map)
@@ -357,12 +360,20 @@ enum Token {
 fn tokenize_polynomial(input: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
-    
+
     while let Some(&ch) = chars.peek() {
         match ch {
-            ' ' => { chars.next(); }
-            '+' => { tokens.push(Token::Plus); chars.next(); }
-            '-' => { tokens.push(Token::Minus); chars.next(); }
+            ' ' => {
+                chars.next();
+            }
+            '+' => {
+                tokens.push(Token::Plus);
+                chars.next();
+            }
+            '-' => {
+                tokens.push(Token::Minus);
+                chars.next();
+            }
             '*' => {
                 chars.next();
                 if chars.peek() == Some(&'*') {
@@ -372,8 +383,14 @@ fn tokenize_polynomial(input: &str) -> Vec<Token> {
                     tokens.push(Token::Star);
                 }
             }
-            '(' => { tokens.push(Token::LParen); chars.next(); }
-            ')' => { tokens.push(Token::RParen); chars.next(); }
+            '(' => {
+                tokens.push(Token::LParen);
+                chars.next();
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                chars.next();
+            }
             '0'..='9' => {
                 let mut num = String::new();
                 while let Some(&ch) = chars.peek() {
@@ -405,7 +422,7 @@ fn tokenize_polynomial(input: &str) -> Vec<Token> {
             }
         }
     }
-    
+
     tokens
 }
 
@@ -413,7 +430,6 @@ fn parse_tokens<T: powdr_number::FieldElement>(
     tokens: &[Token],
     var_map: &BTreeMap<String, crate::expression::AlgebraicReference>,
 ) -> Option<crate::expression::AlgebraicExpression<T>> {
-    
     let mut parser = Parser::new(tokens, var_map);
     parser.parse_expression()
 }
@@ -426,7 +442,10 @@ struct Parser<'a, T> {
 }
 
 impl<'a, T: powdr_number::FieldElement> Parser<'a, T> {
-    fn new(tokens: &'a [Token], var_map: &'a BTreeMap<String, crate::expression::AlgebraicReference>) -> Self {
+    fn new(
+        tokens: &'a [Token],
+        var_map: &'a BTreeMap<String, crate::expression::AlgebraicReference>,
+    ) -> Self {
         Parser {
             tokens,
             pos: 0,
@@ -434,62 +453,64 @@ impl<'a, T: powdr_number::FieldElement> Parser<'a, T> {
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
-    
+
     fn advance(&mut self) {
         self.pos += 1;
     }
-    
+
     fn parse_expression(&mut self) -> Option<crate::expression::AlgebraicExpression<T>> {
         self.parse_additive()
     }
-    
+
     fn parse_additive(&mut self) -> Option<crate::expression::AlgebraicExpression<T>> {
         use crate::expression::AlgebraicExpression;
         use powdr_expression::AlgebraicBinaryOperator;
         let mut left = self.parse_multiplicative()?;
-        
+
         while let Some(token) = self.current() {
             match token {
                 Token::Plus => {
                     self.advance();
                     let right = self.parse_multiplicative()?;
-                    left = AlgebraicExpression::new_binary(left, AlgebraicBinaryOperator::Add, right);
+                    left =
+                        AlgebraicExpression::new_binary(left, AlgebraicBinaryOperator::Add, right);
                 }
                 Token::Minus => {
                     self.advance();
                     let right = self.parse_multiplicative()?;
-                    left = AlgebraicExpression::new_binary(left, AlgebraicBinaryOperator::Sub, right);
+                    left =
+                        AlgebraicExpression::new_binary(left, AlgebraicBinaryOperator::Sub, right);
                 }
                 _ => break,
             }
         }
-        
+
         Some(left)
     }
-    
+
     fn parse_multiplicative(&mut self) -> Option<crate::expression::AlgebraicExpression<T>> {
         use crate::expression::AlgebraicExpression;
         use powdr_expression::AlgebraicBinaryOperator;
         let mut left = self.parse_power()?;
-        
+
         while let Some(Token::Star) = self.current() {
             self.advance();
             let right = self.parse_power()?;
             left = AlgebraicExpression::new_binary(left, AlgebraicBinaryOperator::Mul, right);
         }
-        
+
         Some(left)
     }
-    
+
     fn parse_power(&mut self) -> Option<crate::expression::AlgebraicExpression<T>> {
         use crate::expression::AlgebraicExpression;
         use powdr_expression::AlgebraicBinaryOperator;
         let mut base = self.parse_unary()?;
-        
+
         if let Some(Token::Power) = self.current() {
             self.advance();
             // For now, we'll expand powers by repeated multiplication
@@ -499,30 +520,33 @@ impl<'a, T: powdr_number::FieldElement> Parser<'a, T> {
                     // Expand power as repeated multiplication
                     for _ in 1..exp {
                         base = AlgebraicExpression::new_binary(
-                            base.clone(), 
-                            AlgebraicBinaryOperator::Mul, 
-                            base.clone()
+                            base.clone(),
+                            AlgebraicBinaryOperator::Mul,
+                            base.clone(),
                         );
                     }
                 }
             }
         }
-        
+
         Some(base)
     }
-    
+
     fn parse_unary(&mut self) -> Option<crate::expression::AlgebraicExpression<T>> {
         use crate::expression::AlgebraicExpression;
         use powdr_expression::AlgebraicUnaryOperator;
         if let Some(Token::Minus) = self.current() {
             self.advance();
             let expr = self.parse_unary()?;
-            return Some(AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, expr));
+            return Some(AlgebraicExpression::new_unary(
+                AlgebraicUnaryOperator::Minus,
+                expr,
+            ));
         }
-        
+
         self.parse_primary()
     }
-    
+
     fn parse_primary(&mut self) -> Option<crate::expression::AlgebraicExpression<T>> {
         use crate::expression::AlgebraicExpression;
         match self.current()?.clone() {
@@ -571,16 +595,30 @@ fn algebraic_to_python<T: powdr_number::FieldElement>(
                 AlgebraicBinaryOperator::Mul => {
                     // Add parentheses for clarity when multiplying
                     let left_paren = match left.as_ref() {
-                        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { op: AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub, .. }) => true,
+                        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                            op: AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub,
+                            ..
+                        }) => true,
                         _ => false,
                     };
                     let right_paren = match right.as_ref() {
-                        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { op: AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub, .. }) => true,
+                        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                            op: AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub,
+                            ..
+                        }) => true,
                         _ => false,
                     };
-                    
-                    let left_final = if left_paren { format!("({})", left_str) } else { left_str };
-                    let right_final = if right_paren { format!("({})", right_str) } else { right_str };
+
+                    let left_final = if left_paren {
+                        format!("({})", left_str)
+                    } else {
+                        left_str
+                    };
+                    let right_final = if right_paren {
+                        format!("({})", right_str)
+                    } else {
+                        right_str
+                    };
                     format!("({} * {})", left_final, right_final)
                 }
             }
