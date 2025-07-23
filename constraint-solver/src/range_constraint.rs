@@ -745,6 +745,15 @@ mod test {
     }
 
     #[test]
+    fn disjunction_mask() {
+        type F = GoldilocksField;
+        let a = RangeConstraint::<F>::from_mask(2u32);
+        let b = RangeConstraint::<F>::from_mask(1u32);
+        let d = a.disjunction(&b);
+        assert_eq!(d, RangeConstraint::from_mask(3u32));
+    }
+
+    #[test]
     fn disjunction_combinations() {
         type F = GoldilocksField;
         let lower = [10, 10000, 100060];

@@ -170,6 +170,7 @@ where
         .collect::<Vec<_>>();
     // Substitute any bus interaction fields with their definitions
     for v in variables {
+        assert!(matches!(v, Variable::BusInteractionField(..)));
         let Variable::BusInteractionField(..) = v else {
             unreachable!()
         };
