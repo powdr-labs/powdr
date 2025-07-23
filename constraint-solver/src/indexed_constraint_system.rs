@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Display,
-    hash::{Hash, Hasher},
+    hash::Hash,
 };
 
 use itertools::Itertools;
