@@ -239,8 +239,11 @@ pub fn compute_groebner_basis<T: powdr_number::FieldElement + Clone + Ord + std:
         variables.len()
     );
 
+    // Use max degree of 3
+    const MAX_DEGREE: usize = 3;
+    
     // Convert constraints to Python format and generate script
-    let python_script = generate_groebner_script(&machine.constraints, &variables);
+    let python_script = generate_groebner_script(&machine.constraints, &variables, MAX_DEGREE);
     println!("Python script:\n{python_script}\n");
 
     // Write Python script to temporary file
@@ -595,6 +598,7 @@ fn algebraic_to_python<T: powdr_number::FieldElement>(
 fn generate_groebner_script<T: powdr_number::FieldElement>(
     constraints: &[crate::SymbolicConstraint<T>],
     variables: &BTreeSet<String>,
+    max_degree: usize,
 ) -> String {
     let var_list = variables.iter().cloned().collect::<Vec<_>>().join(", ");
 
@@ -624,7 +628,87 @@ polys = []
 
     script.push_str(&format!(
         r#"
-# Compute Groebner basis
+# Compute truncated Groebner basis with degree bound
+def truncated_groebner_basis(polys, vars, max_degree, field):
+    """
+    Compute a truncated Groebner basis that respects degree bounds.
+    Uses a simple approach: compute reductions but skip high-degree results.
+    """
+    # Start with input polynomials that satisfy degree bound
+    basis = []
+    for p in polys:
+        if p.total_degree() <= max_degree:
+            basis.append(p)
+    
+    if not basis:
+        return []
+    
+    # Simple reduction approach
+    changed = True
+    iterations = 0
+    max_iterations = 10  # Prevent infinite loops
+    
+    while changed and iterations < max_iterations:
+        changed = False
+        iterations += 1
+        new_polys = []
+        
+        # Try to reduce each pair
+        for i in range(len(basis)):
+            for j in range(i + 1, len(basis)):
+                try:
+                    # Try polynomial division
+                    _, r = basis[i].div(basis[j])
+                    if not r.is_zero and r.total_degree() <= max_degree:
+                        # Check if this is genuinely new
+                        is_new = True
+                        for existing in basis + new_polys:
+                            if r.rem(existing).is_zero:
+                                is_new = False
+                                break
+                        if is_new:
+                            new_polys.append(r)
+                            changed = True
+                    
+                    # Try the other direction
+                    _, r = basis[j].div(basis[i])
+                    if not r.is_zero and r.total_degree() <= max_degree:
+                        is_new = True
+                        for existing in basis + new_polys:
+                            if r.rem(existing).is_zero:
+                                is_new = False
+                                break
+                        if is_new:
+                            new_polys.append(r)
+                            changed = True
+                            
+                except:
+                    continue
+        
+        # Add new polynomials to basis
+        basis.extend(new_polys)
+        
+        # Remove redundant polynomials
+        if len(basis) > 20:  # Keep basis size manageable
+            # Sort by degree and keep lowest degree ones
+            basis.sort(key=lambda p: (p.total_degree(), len(str(p))))
+            basis = basis[:15]
+    
+    # Final reduction pass
+    final_basis = []
+    for p in basis:
+        if p.total_degree() <= max_degree and not p.is_zero:
+            # Check if redundant
+            is_redundant = False
+            for q in final_basis:
+                if p.rem(q).is_zero:
+                    is_redundant = True
+                    break
+            if not is_redundant:
+                final_basis.append(p)
+    
+    return final_basis
+
 try:
     if len(polys) == 0:
         print("No polynomials to process")
@@ -632,12 +716,51 @@ try:
         # Convert to polynomial objects over the field
         poly_objects = [Poly(p, [{}], domain=field) for p in polys]
         
-        # Compute Groebner basis
-        gb = groebner(poly_objects, [{}], domain=field)
+        # Compute truncated Groebner basis with degree bound {}
+        max_degree = {}
+        gb = truncated_groebner_basis(poly_objects, [{}], max_degree, field)
+        
+        # Also compute full GB for comparison
+        full_gb = groebner(poly_objects, [{}], domain=field)
         
         # Print results
         print(f"Original polynomials: {{len(polys)}}")
-        print(f"Groebner basis size: {{len(gb)}}")
+        print(f"Full Groebner basis size: {{len(full_gb)}} (max degree: {{max(p.total_degree() for p in full_gb) if full_gb else 0}})")
+        print(f"Truncated GB size: {{len(gb)}} (max degree: {{max(p.total_degree() for p in gb) if gb else 0}})")
+        
+        # Verify equivalence: compute GB of truncated GB
+        print("\\nVerifying equivalence...")
+        if gb:
+            gb_of_truncated = groebner(gb, [{}], domain=field)
+            print(f"GB of truncated GB size: {{len(gb_of_truncated)}} (max degree: {{max(p.total_degree() for p in gb_of_truncated) if gb_of_truncated else 0}})")
+            
+            # Check if they generate the same ideal by comparing the full GBs
+            # Two ideals are equal iff their reduced Groebner bases are equal
+            full_gb_sorted = sorted([str(p.as_expr()) for p in full_gb])
+            gb_of_truncated_sorted = sorted([str(p.as_expr()) for p in gb_of_truncated])
+            
+            if full_gb_sorted == gb_of_truncated_sorted:
+                print("✓ Verification PASSED: Truncated GB generates the same ideal!")
+            else:
+                print("✗ Verification FAILED: Truncated GB generates a different ideal")
+                print(f"  Full GB: {{len(full_gb_sorted)}} polynomials")
+                print(f"  GB of truncated: {{len(gb_of_truncated_sorted)}} polynomials")
+                
+                # Additional check: verify each polynomial in full GB reduces to 0 modulo truncated GB
+                all_reduce_to_zero = True
+                for p in full_gb:
+                    remainder = p
+                    for q in gb:
+                        remainder = remainder.rem(q)
+                    if not remainder.is_zero:
+                        all_reduce_to_zero = False
+                        print(f"  Polynomial from full GB doesn't reduce to 0: {{p.as_expr()}}")
+                        break
+                
+                if all_reduce_to_zero:
+                    print("  However, all full GB polynomials reduce to 0 modulo truncated GB")
+                    print("  This means truncated GB contains the original ideal (possibly larger)")
+        
         for poly in gb:
             # Convert back to expression format
             expr = str(poly.as_expr())
@@ -647,7 +770,7 @@ except Exception as e:
     print(f"ERROR: {{e}}")
     traceback.print_exc()
 "#,
-        var_list, var_list
+        var_list, max_degree, max_degree, var_list, var_list, var_list
     ));
 
     script
