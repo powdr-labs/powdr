@@ -2,6 +2,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::inliner::{
     inline_everything_below_degree_bound, substitution_would_not_violate_degree_bound,
@@ -40,9 +41,7 @@ pub fn optimize<A: Adapter>(
     }
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
-    println!("\n\nInitial system:\n{constraint_system}");
     let mut constraint_system = introduce_bus_interaction_variables(constraint_system);
-    println!("\n\nAfter introducing bus interaction variables:\n{constraint_system}");
 
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
@@ -61,8 +60,6 @@ pub fn optimize<A: Adapter>(
                     == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
                 "Expected all PC lookups to be removed."
             );
-
-            println!("\n\n----------------------------------\nFinal system: {constraint_system}");
 
             return Ok(constraint_system_to_symbolic_machine(
                 remove_bus_interaction_variables(constraint_system),
@@ -86,7 +83,13 @@ fn optimization_loop_iteration<A: Adapter>(
         constraint_system,
         bus_interaction_handler.clone(),
         |var, expr, system| {
+            // Do not inline bus interaction field variables but also do not inline
+            // variables defined via bus interaction field variables
             !matches!(var, Variable::BusInteractionField(_, _))
+                && !expr
+                    .referenced_unknown_variables()
+                    .any(|v| matches!(v, Variable::BusInteractionField(_, _)))
+                // and stay below the degree bound.
                 && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound)
         },
         stats_logger,
@@ -350,6 +353,7 @@ fn remove_bus_interaction_variables<T: FieldElement, V: Clone + Ord + Hash + Eq 
             .algebraic_constraints
             .into_iter()
             .map(|expr| expr.transform_var_type(&mut transform_to_original_variable))
+            .filter(|expr| expr != &Zero::zero())
             .collect(),
         bus_interactions: substituted_system
             .bus_interactions

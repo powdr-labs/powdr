@@ -25,10 +25,15 @@ mod quadratic_equivalences;
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> Result<SolveResult<T, V>, Error>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T: RuntimeConstant
+        + VarTransformable<V, Variable<V>>
+        + Display
+        + ReferencedSymbols<V>
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
@@ -37,13 +42,14 @@ where
         + Display,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let (bus_interaction_variable_wrapper, constraint_system) =
-        BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
+    // let (bus_interaction_variable_wrapper, constraint_system) =
+    //     BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
 
     let result = Solver::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result))
+    // Ok(bus_interaction_variable_wrapper.finalize(result))
+    Ok(result)
 }
 
 /// The result of the solving process.
