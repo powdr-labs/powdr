@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use num_traits::identities::{One, Zero};
@@ -7,7 +7,7 @@ use powdr_constraint_solver::{
         BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
     },
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::{apply_expression_substitutions, apply_substitutions},
+    indexed_constraint_system::apply_expression_substitutions,
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},
     symbolic_expression::SymbolicExpression,
@@ -42,6 +42,7 @@ fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
         .collect::<HashMap<_, _>>();
 
     let mut error = false;
+    #[allow(clippy::iter_over_hash_type)]
     for (variable, value) in &expected_final_state {
         if final_state.get(variable) != Some(value) {
             log::error!("Mismatch for variable {variable}:");
