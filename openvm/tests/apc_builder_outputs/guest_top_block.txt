@@ -24,7 +24,7 @@ mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_1, 12
 mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_3, 17]
 mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_3, 12]
 
-// Bus 6 (BITWISE_LOOKUP):
+// Bus 6 (OPENVM_BITWISE_LOOKUP):
 mult=is_valid * 1, args=[rs1_data__0_1, rs1_data__1_1, 0, 0]
 mult=is_valid * 1, args=[rs1_data__2_1, rs1_data__3_1, 0, 0]
 
