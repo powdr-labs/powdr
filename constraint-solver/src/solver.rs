@@ -11,7 +11,7 @@ use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
 use crate::solver::bus_interaction_variable_wrapper::{
-    introduce_bus_interaction_variables, BusInteractionVariableWrapper, Variable,
+    introduce_bus_interaction_variables, Variable,
 };
 use crate::utils::known_variables;
 
