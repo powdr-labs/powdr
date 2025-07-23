@@ -101,7 +101,7 @@ use smt::SmtConstraints;
 impl<T: FieldElement> SymbolicConstraint<T> {
     pub fn to_smt(&self) -> SmtConstraints {
         let expr = algebraic_to_smt(&self.expr);
-        SmtConstraints::from_poly_constraints(vec![format!("(assert (= (mod {expr} {P}) 0))")])
+        SmtConstraints::from_poly_constraints(vec![format!("(= (mod {expr} {P}) 0)")])
     }
 }
 
@@ -218,7 +218,7 @@ impl<T: FieldElement> SymbolicBusInteraction<T> {
 }
 
 fn range_check_to_smt(v: String, max_range: u64) -> String {
-    format!("(assert (and (>= {v} 0) (< {v} {max_range})))")
+    format!("(and (>= {v} 0) (< {v} {max_range}))")
 }
 
 fn byte_check_to_smt(v: String) -> String {
@@ -463,7 +463,8 @@ pub fn build<A: Adapter>(
         .collect::<BTreeSet<_>>();
 
     println!("Gonna try SMT...");
-    let var_subs = smt::get_unique_vars(machine.to_smt(), &var_names);
+    // let var_subs = smt::get_unique_vars(machine.to_smt(), &var_names);
+    smt::detect_redundant_constraints(machine.to_smt());
     println!("After SMT");
 
     // add guards to constraints that are not satisfied by zeroes

@@ -35,6 +35,36 @@ fn get_values(smt2: &String, vars: &BTreeSet<String>) -> Option<HashMap<String, 
     Some(values)
 }
 
+enum SmtResult {
+    SAT,
+    UNSAT,
+    UNKNOWN,
+}
+
+fn solve(smt2: &SmtConstraints) -> SmtResult {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, "{}", smt2.to_string()).unwrap();
+    writeln!(file, "(check-sat)").unwrap();
+
+    let output = Command::new("z3")
+        .arg(file.path())
+        .arg("-T:1")
+        .output()
+        .expect("Failed to run z3");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    println!("Query stdout: {stdout}");
+    println!("Query stderr: {stderr}");
+    if stdout.contains("timeout") {
+        SmtResult::UNKNOWN
+    } else if stdout.contains("unsat") {
+        SmtResult::UNSAT
+    } else {
+        SmtResult::SAT
+    }
+}
+
 /// Check if a variable is uniquely determined by asserting it's not equal to its current value
 fn is_unique(smt2: &String, var: &String, value: &String) -> bool {
     let mut file = NamedTempFile::new().unwrap();
@@ -50,6 +80,7 @@ fn is_unique(smt2: &String, var: &String, value: &String) -> bool {
     stdout.contains("unsat")
 }
 
+#[derive(Debug, Clone)]
 pub struct SmtConstraints {
     pub decls: Vec<String>,
     pub range_constraints: Vec<String>,
@@ -62,6 +93,25 @@ impl SmtConstraints {
         self.range_constraints.extend(other.range_constraints);
         self.poly_constraints.extend(other.poly_constraints);
         self
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut smt2 = String::new();
+        for decl in &self.decls {
+            smt2.push_str(decl);
+            smt2.push('\n');
+        }
+        for range in &self.range_constraints {
+            let a = format!("(assert {range})");
+            smt2.push_str(&a);
+            smt2.push('\n');
+        }
+        for poly in &self.poly_constraints {
+            let a = format!("(assert {poly})");
+            smt2.push_str(&a);
+            smt2.push('\n');
+        }
+        smt2
     }
 
     pub fn from_decls(decls: Vec<String>) -> Self {
@@ -94,12 +144,8 @@ pub fn get_unique_vars(
     smt2_constraints: SmtConstraints,
     vars: &BTreeSet<String>,
 ) -> HashMap<String, String> {
-    let mut smt2: Vec<String> = Vec::new();
-    smt2.extend(smt2_constraints.decls);
-    smt2.extend(smt2_constraints.range_constraints);
-    smt2.extend(smt2_constraints.poly_constraints);
+    let smt2 = smt2_constraints.to_string();
 
-    let smt2 = smt2.join("\n");
     println!("Get unique vars");
     println!("SMT:\n{smt2}");
     let Some(values) = get_values(&smt2, vars) else {
@@ -124,4 +170,40 @@ pub fn get_unique_vars(
             }
         })
         .collect()
+}
+
+pub fn detect_redundant_constraints(smt2: SmtConstraints) {
+    println!("Solving original system");
+    match solve(&smt2) {
+        SmtResult::UNSAT => {
+            panic!("Original system should be SAT.");
+        }
+        SmtResult::SAT => {
+            println!("Original system is SAT.");
+        }
+
+        SmtResult::UNKNOWN => {
+            println!("Could not solve original system, assuming it is SAT.");
+        }
+    }
+
+    for (i, p) in smt2.poly_constraints.iter().enumerate() {
+        let mut test_smt2 = smt2.clone();
+        test_smt2.poly_constraints.remove(i);
+        let neg_p = format!("(not {p})");
+        test_smt2.poly_constraints.push(neg_p);
+        println!("Testing constraint...");
+        match solve(&test_smt2) {
+            SmtResult::UNSAT => {
+                println!("Constraint {i} is redundant: {p}");
+            }
+            SmtResult::SAT => {
+                println!("Constraint {i} is NOT redundant: {p}");
+            }
+
+            SmtResult::UNKNOWN => {
+                println!("Could not solve for constraint {i}: {p}");
+            }
+        }
+    }
 }
