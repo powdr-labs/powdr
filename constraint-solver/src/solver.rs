@@ -10,7 +10,7 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
-use crate::solver::bus_interaction_variable_wrapper::{BusInteractionVariableWrapper, Variable};
+use crate::solver::bus_interaction_variable_wrapper::Variable;
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};

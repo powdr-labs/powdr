@@ -4,9 +4,7 @@ use std::{collections::BTreeMap, fmt::Display};
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
-use powdr_constraint_solver::inliner::{
-    inline_everything_below_degree_bound, substitution_would_not_violate_degree_bound,
-};
+use powdr_constraint_solver::inliner::substitution_would_not_violate_degree_bound;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -379,6 +377,7 @@ fn transform_to_original_variable<V: Clone>(v: &Variable<V>) -> V {
 
 /// Returns `Some(var, expr)` if `constraint` is equivalent to `var = expr`
 /// and `var` is the only bus interaction variable in `constraint`.
+#[allow(clippy::type_complexity)]
 fn try_solve_for_single_bus_interaction_variable<
     T: FieldElement,
     V: Clone + Ord + Hash + Eq + Display,
