@@ -1,14 +1,69 @@
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
+use powdr_number::ExpressionConvertible;
 use std::hash::Hash;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystem},
-    grouped_expression::GroupedExpression,
-    runtime_constant::{RuntimeConstant, Substitutable, VarTransformable},
-    solver::{RangeConstraints, SolveResult},
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
+    range_constraint::RangeConstraint,
+    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable},
+    solver::{BasicSolver, Error, ExpressionAssignment, RangeConstraints, SolveResult, Solver},
 };
+
+pub fn introduce_bus_interaction_variables<T, V, B>(
+    constraint_system: ConstraintSystem<T, V>,
+    bus_interaction_handler: B,
+) -> impl Solver<T, V>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
+        + VarTransformable<Variable<V>, V, Transformed = T>
+        + ReferencedSymbols<Variable<V>>
+        + Substitutable<Variable<V>>
+        + ExpressionConvertible<T::FieldType, Variable<V>>
+        + Display,
+    B: BusInteractionHandler<T::FieldType>,
+{
+    let mut new_constraints = Vec::new();
+    let mut bus_interaction_vars = BTreeMap::new();
+    let bus_interactions = constraint_system
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .map(|(bus_interaction_index, bus_interaction)| {
+            BusInteraction::from_iter(bus_interaction.fields().enumerate().map(
+                |(field_index, expr)| {
+                    let transformed_expr =
+                        expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
+                    let v = Variable::BusInteractionField(bus_interaction_index, field_index);
+                    new_constraints.push(
+                        transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
+                    );
+                    bus_interaction_vars.insert(v.clone(), expr.clone());
+                    GroupedExpression::from_unknown_variable(v)
+                },
+            ))
+        })
+        .collect();
+    let algebraic_constraints = constraint_system
+        .algebraic_constraints
+        .iter()
+        .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
+        .chain(new_constraints)
+        .collect();
+
+    BusInteractionVariableWrapper {
+        bus_interaction_vars,
+        solver: BasicSolver::new(ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions,
+        })
+        .with_bus_interaction_handler(bus_interaction_handler),
+    }
+}
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -28,58 +83,44 @@ impl<V: Display> Display for Variable<V> {
     }
 }
 
-pub struct BusInteractionVariableWrapper<T, V> {
-    pub bus_interaction_vars: BTreeMap<Variable<V>, GroupedExpression<T, V>>,
+pub struct BusInteractionVariableWrapper<T: RuntimeConstant, V, S> {
+    bus_interaction_vars: BTreeMap<Variable<V>, GroupedExpression<T, V>>,
+    solver: S,
 }
 
-impl<T, V: Ord + Clone + Hash + Eq + Display> BusInteractionVariableWrapper<T, V>
+impl<T: RuntimeConstant, V: Clone, S: RangeConstraintProvider<T::FieldType, Variable<V>>>
+    RangeConstraintProvider<T::FieldType, V> for BusInteractionVariableWrapper<T, V, S>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+        self.solver.get(&Variable::Variable(var.clone()))
+    }
+}
+
+impl<T: RuntimeConstant, V, S> Solver<T, V> for BusInteractionVariableWrapper<T, V, S>
+where
+    V: Clone,
+    T: VarTransformable<V, Variable<V>>,
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>,
+    S: Solver<T::Transformed, Variable<V>>,
+{
+    fn solve(&mut self) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Returns all assignments that have not yet been returned.
+    fn assignments(&mut self) -> Vec<ExpressionAssignment<T, V>> {
+        todo!()
+    }
+}
+
+impl<T, V: Ord + Clone + Hash + Eq + Display, S> BusInteractionVariableWrapper<T, V, S>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
+        + ReferencedSymbols<Variable<V>>
         + Substitutable<Variable<V>>,
 {
-    pub fn replace_bus_interaction_expressions(
-        constraint_system: ConstraintSystem<T, V>,
-    ) -> (Self, ConstraintSystem<T::Transformed, Variable<V>>) {
-        let mut new_constraints = Vec::new();
-        let mut bus_interaction_vars = BTreeMap::new();
-        let bus_interactions = constraint_system
-            .bus_interactions
-            .iter()
-            .enumerate()
-            .map(|(bus_interaction_index, bus_interaction)| {
-                BusInteraction::from_iter(bus_interaction.fields().enumerate().map(
-                    |(field_index, expr)| {
-                        let transformed_expr =
-                            expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
-                        let v = Variable::BusInteractionField(bus_interaction_index, field_index);
-                        new_constraints.push(
-                            transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
-                        );
-                        bus_interaction_vars.insert(v.clone(), expr.clone());
-                        GroupedExpression::from_unknown_variable(v)
-                    },
-                ))
-            })
-            .collect();
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: constraint_system
-                .algebraic_constraints
-                .iter()
-                .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
-                .chain(new_constraints)
-                .collect(),
-            bus_interactions,
-        };
-        (
-            Self {
-                bus_interaction_vars,
-            },
-            constraint_system,
-        )
-    }
-
     pub fn finalize(
         mut self,
         solve_result: SolveResult<T::Transformed, Variable<V>>,

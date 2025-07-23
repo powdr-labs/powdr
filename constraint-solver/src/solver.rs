@@ -10,7 +10,9 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
-use crate::solver::bus_interaction_variable_wrapper::{BusInteractionVariableWrapper, Variable};
+use crate::solver::bus_interaction_variable_wrapper::{
+    introduce_bus_interaction_variables, BusInteractionVariableWrapper, Variable,
+};
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
@@ -37,13 +39,24 @@ where
         + Display,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let (bus_interaction_variable_wrapper, constraint_system) =
-        BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
+    let wrapped_solver =
+        introduce_bus_interaction_variables(constraint_system, bus_interaction_handler);
 
-    let result = Solver::new(constraint_system)
-        .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result))
+    // let solver =
+    //     BasicSolver::new(constraint_system).with_bus_interaction_handler(bus_interaction_handler);
+    // solver.solve()?;
+    todo!()
+    //    Ok(bus_interaction_variable_wrapper.finalize(result))
+}
+
+pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> {
+    /// Tries to solve the current system, i.e. learn new assignments and range constraints.
+    /// The newly generated assignments can be obtained using `assignments()`.
+    /// Returns an error if a conflict is found.
+    fn solve(&mut self) -> Result<(), Error>;
+
+    /// Returns all assignments that have not yet been returned.
+    fn assignments(&mut self) -> Vec<ExpressionAssignment<T, V>>;
 }
 
 /// The result of the solving process.
@@ -75,8 +88,11 @@ pub enum Error {
 /// An assignment of a variable.
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
+/// A substitution of an expression by another expression.
+pub type ExpressionAssignment<T, V> = (GroupedExpression<T, V>, GroupedExpression<T, V>);
+
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
+pub struct BasicSolver<T: RuntimeConstant, V, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -90,7 +106,7 @@ pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
 }
 
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
-    Solver<T, V, DefaultBusInteractionHandler<T::FieldType>>
+    BasicSolver<T, V, DefaultBusInteractionHandler<T::FieldType>>
 {
     pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
@@ -98,7 +114,7 @@ impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Dis
             "Expected all variables to be unknown."
         );
 
-        Solver {
+        BasicSolver {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Default::default(),
@@ -107,7 +123,7 @@ impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Dis
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V, BusInter>
+impl<T, V, BusInter> Solver<T, V> for BasicSolver<T, V, BusInter>
 where
     V: Ord + Clone + Hash + Eq + Display,
     T: RuntimeConstant
@@ -115,32 +131,9 @@ where
         + Display
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
+    BusInter: BusInteractionHandler<T::FieldType>,
 {
-    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
-        self,
-        bus_interaction_handler: B,
-    ) -> Solver<T, V, B> {
-        assert!(self.assignments.is_empty());
-        Solver {
-            bus_interaction_handler,
-            constraint_system: self.constraint_system,
-            range_constraints: self.range_constraints,
-            assignments: self.assignments,
-        }
-    }
-
-    /// Solves the constraints as far as possible, returning concrete variable
-    /// assignments and determined range constraints.
-    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
-        self.loop_until_no_progress()?;
-        Ok(SolveResult {
-            assignments: self.assignments,
-            range_constraints: self.range_constraints,
-            bus_field_assignments: Default::default(),
-        })
-    }
-
-    fn loop_until_no_progress(&mut self) -> Result<(), Error> {
+    fn solve(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
             // Try solving constraints in isolation.
@@ -163,6 +156,40 @@ where
         Ok(())
     }
 
+    fn assignments(&mut self) -> Vec<ExpressionAssignment<T, V>> {
+        self.assignments
+            .drain(..)
+            .map(|(v, expr)| (GroupedExpression::from_unknown_variable(v), expr))
+            .collect()
+    }
+}
+
+impl<T: RuntimeConstant, V, BusInter: BusInteractionHandler<T::FieldType>>
+    BasicSolver<T, V, BusInter>
+{
+    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
+        self,
+        bus_interaction_handler: B,
+    ) -> BasicSolver<T, V, B> {
+        assert!(self.assignments.is_empty());
+        BasicSolver {
+            bus_interaction_handler,
+            constraint_system: self.constraint_system,
+            range_constraints: self.range_constraints,
+            assignments: self.assignments,
+        }
+    }
+}
+
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> BasicSolver<T, V, BusInter>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Display
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
+{
     /// Tries to make progress by solving each constraint in isolation.
     fn solve_in_isolation(&mut self) -> Result<bool, Error> {
         let mut progress = false;
@@ -276,7 +303,15 @@ where
 }
 
 impl<T: RuntimeConstant, V: Clone + Hash + Eq, B> RangeConstraintProvider<T::FieldType, V>
-    for &Solver<T, V, B>
+    for BasicSolver<T, V, B>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+        self.range_constraints.get(var)
+    }
+}
+
+impl<T: RuntimeConstant, V: Clone + Hash + Eq, B> RangeConstraintProvider<T::FieldType, V>
+    for &BasicSolver<T, V, B>
 {
     fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
         self.range_constraints.get(var)
