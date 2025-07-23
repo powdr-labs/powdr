@@ -189,6 +189,17 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
 
+    /// Computes the degree of a GroupedExpression (as it is contsructed) in the unknown variables.
+    /// Variables inside runtime constants are ignored.
+    pub fn degree(&self) -> usize {
+        self.quadratic
+            .iter()
+            .map(|(l, r)| l.degree() + r.degree())
+            .chain((!self.linear.is_empty()).then_some(1))
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
     /// Panics if the expression is quadratic.
     pub fn coefficient_of_variable(&self, var: &V) -> Option<&T> {

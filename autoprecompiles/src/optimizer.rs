@@ -2,6 +2,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
+use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -35,8 +36,10 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let mut constraint_system =
-        introduce_bus_interaction_variables(symbolic_machine_to_constraint_system(machine));
+    let constraint_system = symbolic_machine_to_constraint_system(machine);
+    println!("\n\nInitial system:\n{constraint_system}");
+    let mut constraint_system = introduce_bus_interaction_variables(constraint_system);
+    println!("\n\nAfter introducing bus interaction variables:\n{constraint_system}");
 
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
@@ -55,6 +58,8 @@ pub fn optimize<A: Adapter>(
                     == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
                 "Expected all PC lookups to be removed."
             );
+
+            println!("\n\n----------------------------------\nFinal system: {constraint_system}");
 
             return Ok(constraint_system_to_symbolic_machine(
                 remove_bus_interaction_variables(constraint_system),
@@ -317,8 +322,66 @@ fn introduce_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
     }
 }
 
-fn remove_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
+/// Reverses the effect of `introduce_bus_interaction_variables`, by inlining bus interaction
+/// field variables. This might fail in some cases.
+fn remove_bus_interaction_variables<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     constraint_system: ConstraintSystem<T, Variable<V>>,
 ) -> ConstraintSystem<T, V> {
-    todo!()
+    let bus_interaction_var_definitions = constraint_system
+        .algebraic_constraints
+        .iter()
+        .flat_map(|expr| try_solve_for_single_bus_interaction_variable(expr))
+        .into_grouping_map()
+        .min_by_key(|_, expr| expr.degree());
+    let substituted_system = apply_substitutions(
+        constraint_system,
+        bus_interaction_var_definitions
+            .into_iter()
+            .sorted_by_key(|(var, _)| var.clone()),
+    );
+    ConstraintSystem {
+        algebraic_constraints: substituted_system
+            .algebraic_constraints
+            .into_iter()
+            .map(|expr| expr.transform_var_type(&mut transform_to_original_variable))
+            .collect(),
+        bus_interactions: substituted_system
+            .bus_interactions
+            .into_iter()
+            .map(|bi| {
+                BusInteraction::from_iter(
+                    bi.fields()
+                        .map(|expr| expr.transform_var_type(&mut transform_to_original_variable)),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn transform_to_original_variable<V: Clone>(v: &Variable<V>) -> V {
+    match v {
+        Variable::Variable(v) => v.clone(),
+        Variable::BusInteractionField(_, _) => {
+            panic!("Unexpected bus interaction field in transformation to original variable")
+        }
+    }
+}
+
+/// Returns `Some(var, expr)` if `constraint` is equivalent to `var = expr`
+/// and `var` is the only bus interaction variable in `constraint`.
+fn try_solve_for_single_bus_interaction_variable<
+    T: FieldElement,
+    V: Clone + Ord + Hash + Eq + Display,
+>(
+    constraint: &GroupedExpression<T, Variable<V>>,
+) -> Option<(Variable<V>, GroupedExpression<T, Variable<V>>)> {
+    let var = constraint
+        .referenced_unknown_variables()
+        .filter(|var| matches!(var, Variable::BusInteractionField(_, _)))
+        .unique()
+        .exactly_one()
+        .ok()?
+        .clone();
+    let solution = constraint.try_solve_for(&var)?;
+    Some((var, solution))
 }
