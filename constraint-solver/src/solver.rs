@@ -26,7 +26,7 @@ mod quadratic_equivalences;
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
-) -> Result<(Vec<Substitution<T, V>>, RangeConstraints<T::FieldType, V>), Error>
+) -> Result<Vec<Substitution<T, V>>, Error>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
@@ -44,9 +44,9 @@ where
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()?;
 
-    Ok(bus_interaction_variable_wrapper::untransform_solve_result(
+    Ok(bus_interaction_variable_wrapper::untransform_assignments(
         bus_interaction_variable_definitions,
-        result,
+        result.assignments,
     ))
 }
 
