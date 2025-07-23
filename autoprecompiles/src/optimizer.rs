@@ -1,10 +1,12 @@
-use std::collections::BTreeMap;
+use std::hash::Hash;
+use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
     journaling_constraint_system::JournalingConstraintSystem,
+    runtime_constant::VarTransformable,
 };
 use powdr_number::FieldElement;
 
@@ -33,7 +35,8 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut constraint_system =
+        introduce_bus_interaction_variables(symbolic_machine_to_constraint_system(machine));
 
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
@@ -53,19 +56,23 @@ pub fn optimize<A: Adapter>(
                 "Expected all PC lookups to be removed."
             );
 
-            return Ok(constraint_system_to_symbolic_machine(constraint_system));
+            return Ok(constraint_system_to_symbolic_machine(
+                remove_bus_interaction_variables(constraint_system),
+            ));
         }
     }
 }
 
 fn optimization_loop_iteration<A: Adapter>(
-    constraint_system: ConstraintSystem<A::PowdrField, AlgebraicReference>,
+    constraint_system: ConstraintSystem<A::PowdrField, Variable<AlgebraicReference>>,
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> Result<ConstraintSystem<A::PowdrField, AlgebraicReference>, crate::constraint_optimizer::Error>
-{
+) -> Result<
+    ConstraintSystem<A::PowdrField, Variable<AlgebraicReference>>,
+    crate::constraint_optimizer::Error,
+> {
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
@@ -75,7 +82,7 @@ fn optimization_loop_iteration<A: Adapter>(
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system = optimize_memory::<_, _, A::MemoryBusInteraction>(
+        let constraint_system = optimize_memory::<_, _, A::MemoryBusInteraction<_, _>>(
             constraint_system,
             memory_bus_id,
             NoRangeConstraints,
@@ -83,7 +90,7 @@ fn optimization_loop_iteration<A: Adapter>(
         assert!(check_register_operation_consistency::<
             _,
             _,
-            A::MemoryBusInteraction,
+            A::MemoryBusInteraction<_, _>,
         >(&constraint_system, memory_bus_id));
         stats_logger.log("memory optimization", &constraint_system);
         constraint_system
@@ -253,4 +260,65 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
     grouped_expression_to_algebraic(&algebraic_to_grouped_expression(&e))
+}
+
+/// A wrapped variable: Either a regular variable or a bus interaction field.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum Variable<V> {
+    Variable(V),
+    BusInteractionField(usize, usize),
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Variable(v) => write!(f, "{v}"),
+            Variable::BusInteractionField(bus_index, field_index) => {
+                write!(f, "BusInteractionField({bus_index}, {field_index})")
+            }
+        }
+    }
+}
+
+/// Transfrom the variable type of a constraint system by introducing
+/// new variables for bus interaction fields.
+fn introduce_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
+    constraint_system: ConstraintSystem<T, V>,
+) -> ConstraintSystem<T, Variable<V>> {
+    let mut new_constraints = Vec::new();
+    let mut bus_interaction_vars = BTreeMap::new();
+    let bus_interactions = constraint_system
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .map(|(bus_interaction_index, bus_interaction)| {
+            BusInteraction::from_iter(bus_interaction.fields().enumerate().map(
+                |(field_index, expr)| {
+                    let transformed_expr =
+                        expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
+                    let v = Variable::BusInteractionField(bus_interaction_index, field_index);
+                    new_constraints.push(
+                        transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
+                    );
+                    bus_interaction_vars.insert(v.clone(), expr.clone());
+                    GroupedExpression::from_unknown_variable(v)
+                },
+            ))
+        })
+        .collect();
+    ConstraintSystem {
+        algebraic_constraints: constraint_system
+            .algebraic_constraints
+            .iter()
+            .map(|expr| expr.transform_var_type(&mut |v| Variable::Variable(v.clone())))
+            .chain(new_constraints)
+            .collect(),
+        bus_interactions,
+    }
+}
+
+fn remove_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
+    constraint_system: ConstraintSystem<T, Variable<V>>,
+) -> ConstraintSystem<T, V> {
+    todo!()
 }
