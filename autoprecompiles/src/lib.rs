@@ -101,28 +101,27 @@ use smt::SmtConstraints;
 impl<T: FieldElement> SymbolicConstraint<T> {
     pub fn to_smt(&self) -> SmtConstraints {
         let expr = algebraic_to_smt(&self.expr);
-        SmtConstraints::from_poly_constraints(vec![format!("(= (mod {expr} {P}) 0)")])
+        SmtConstraints::from_poly_constraints(vec![format!("{expr}")])
     }
 }
 
 pub fn algebraic_to_smt<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String {
     match expr {
-        AlgebraicExpression::Number(x) => format!("{x}"),
+        AlgebraicExpression::Number(x) => format!("(as ff{x} BB)"),
         AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => (**name).clone(),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             let left = algebraic_to_smt(left);
             let right = algebraic_to_smt(right);
-            let op_str = match op {
-                AlgebraicBinaryOperator::Add => "+",
-                AlgebraicBinaryOperator::Sub => "-",
-                AlgebraicBinaryOperator::Mul => "*",
-            };
-            format!("({op_str} {left} {right})")
+            match op {
+                AlgebraicBinaryOperator::Add => format!("(ff.add {left} {right})"),
+                AlgebraicBinaryOperator::Sub => format!("(ff.add {left} (ff.neg {right}))"),
+                AlgebraicBinaryOperator::Mul => format!("(ff.mul {left} {right})"),
+            }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             let expr = algebraic_to_smt(expr);
             let op_str = match op {
-                AlgebraicUnaryOperator::Minus => "-",
+                AlgebraicUnaryOperator::Minus => "ff.neg",
             };
             format!("({op_str} {expr})")
         }
@@ -276,7 +275,8 @@ impl<T: FieldElement> SymbolicMachine<T> {
             .main_columns()
             .map(|c| {
                 (
-                    format!("(declare-fun {c} () Int)"),
+                    // format!("(declare-fun {c} () Int)"),
+                    format!("{c}"),
                     range_check_to_smt((*(c.name)).clone(), P.into()),
                 )
             })

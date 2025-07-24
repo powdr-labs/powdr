@@ -46,11 +46,13 @@ fn solve(smt2: &SmtConstraints) -> SmtResult {
     writeln!(file, "{}", smt2.to_string()).unwrap();
     writeln!(file, "(check-sat)").unwrap();
 
-    let output = Command::new("z3")
+    // let output = Command::new("z3")
+    let output = Command::new("cvc5")
         .arg(file.path())
-        .arg("-T:5")
+        // .arg("-T:5")
         .output()
-        .expect("Failed to run z3");
+        // .expect("Failed to run z3");
+        .expect("Failed to run cvc5");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -85,29 +87,45 @@ pub struct SmtConstraints {
     pub decls: Vec<String>,
     pub range_constraints: Vec<String>,
     pub poly_constraints: Vec<String>,
+    pub poly_constraints_not_zero: Vec<String>,
 }
 
+const P: u32 = (1 << 31) - (1 << 27) + 1;
 impl SmtConstraints {
     pub fn merge(mut self, other: SmtConstraints) -> Self {
         self.decls.extend(other.decls);
         self.range_constraints.extend(other.range_constraints);
         self.poly_constraints.extend(other.poly_constraints);
+        self.poly_constraints_not_zero
+            .extend(other.poly_constraints_not_zero);
         self
     }
 
     pub fn to_string(&self) -> String {
         let mut smt2 = String::new();
+        smt2.push_str(&format!("(set-logic QF_FF)"));
+        smt2.push('\n');
+        smt2.push_str(&format!("(set-option :incremental true)"));
+        smt2.push('\n');
+        smt2.push_str(&format!("(define-sort BB () (_ FiniteField {P}))"));
+        smt2.push('\n');
         for decl in &self.decls {
-            smt2.push_str(decl);
+            let d = format!("(declare-fun {decl} () BB)");
+            smt2.push_str(&d);
             smt2.push('\n');
         }
-        for range in &self.range_constraints {
-            let a = format!("(assert {range})");
+        // for range in &self.range_constraints {
+        //     let a = format!("(assert {range})");
+        //     smt2.push_str(&a);
+        //     smt2.push('\n');
+        // }
+        for poly in &self.poly_constraints {
+            let a = format!("(assert (= (as ff0 BB) {poly}))");
             smt2.push_str(&a);
             smt2.push('\n');
         }
-        for poly in &self.poly_constraints {
-            let a = format!("(assert {poly})");
+        for poly in &self.poly_constraints_not_zero {
+            let a = format!("(assert (not (= (as ff0 BB) {poly})))");
             smt2.push_str(&a);
             smt2.push('\n');
         }
@@ -118,6 +136,7 @@ impl SmtConstraints {
         SmtConstraints {
             decls,
             poly_constraints: Vec::new(),
+            poly_constraints_not_zero: Vec::new(),
             range_constraints: Vec::new(),
         }
     }
@@ -126,6 +145,7 @@ impl SmtConstraints {
         SmtConstraints {
             range_constraints,
             poly_constraints: Vec::new(),
+            poly_constraints_not_zero: Vec::new(),
             decls: Vec::new(),
         }
     }
@@ -133,6 +153,7 @@ impl SmtConstraints {
     pub fn from_poly_constraints(poly_constraints: Vec<String>) -> Self {
         SmtConstraints {
             poly_constraints,
+            poly_constraints_not_zero: Vec::new(),
             range_constraints: Vec::new(),
             decls: Vec::new(),
         }
@@ -191,9 +212,9 @@ pub fn detect_redundant_constraints(smt2: SmtConstraints) {
     for (i, p) in smt2.poly_constraints.iter().enumerate() {
         let mut test_smt2 = smt2.clone();
         test_smt2.poly_constraints.remove(i);
-        let neg_p = format!("(not {p})");
-        test_smt2.poly_constraints.push(neg_p);
-        println!("Testing constraint...");
+        test_smt2.poly_constraints_not_zero.push(p.clone());
+        println!("\n\n\nTesting constraint {p}...");
+        println!("{}", test_smt2.to_string());
         match solve(&test_smt2) {
             SmtResult::UNSAT => {
                 println!("Constraint {i} is redundant: {p}");
