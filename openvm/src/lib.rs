@@ -1318,7 +1318,7 @@ mod tests {
     fn test_machine_compilation(
         guest: GuestTestConfig,
         expected_metrics: MachineTestMetrics,
-        expected_columns_saved: Option<AirWidthsDiff>,
+        expected_columns_saved: Option<Expect>,
     ) {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
@@ -1360,7 +1360,10 @@ mod tests {
                 .map(|(_, columns_saved)| columns_saved.unwrap())
                 .sum::<AirWidthsDiff>()
         });
-        assert_eq!(columns_saved, expected_columns_saved);
+        assert_eq!(columns_saved.is_some(), expected_columns_saved.is_some());
+        if let Some(expected) = expected_columns_saved {
+            expected.assert_debug_eq(&columns_saved.unwrap());
+        }
 
         // In Cell PGO, check that the apc candidates were persisted to disk
         let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
@@ -1457,7 +1460,7 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(AirWidthsDiff {
+            Some(expect![[r#"AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
                     main: 170,
@@ -1468,7 +1471,7 @@ mod tests {
                     main: 48,
                     log_up: 36,
                 },
-            }),
+            }"#]]),
         );
     }
 
@@ -1531,7 +1534,7 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(AirWidthsDiff {
+            Some(expect![[r#"AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
                     main: 176212,
@@ -1542,7 +1545,7 @@ mod tests {
                     main: 14656,
                     log_up: 12092,
                 },
-            }),
+            }"#]]),
         );
     }
 
@@ -1664,7 +1667,7 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(AirWidthsDiff {
+            Some(expect![[r#"AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
                     main: 27194,
@@ -1675,7 +1678,7 @@ mod tests {
                     main: 2010,
                     log_up: 1788,
                 },
-            }),
+            }"#]]),
         );
     }
 
@@ -1713,7 +1716,7 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(AirWidthsDiff {
+            Some(expect![[r#"AirWidthsDiff {
                 before: AirWidths {
                     preprocessed: 0,
                     main: 38986,
@@ -1724,7 +1727,7 @@ mod tests {
                     main: 4843,
                     log_up: 3952,
                 },
-            }),
+            }"#]]),
         );
 
         // TODO
