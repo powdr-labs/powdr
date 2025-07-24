@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use super::{Gate, PlonkCircuit, Variable};
+use crate::bus_map::BusMap;
 use crate::plonk::bus_interaction_handler::add_bus_to_plonk_circuit;
-use crate::BusMap;
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use powdr_autoprecompiles::SymbolicMachine;

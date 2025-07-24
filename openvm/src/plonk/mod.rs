@@ -4,7 +4,7 @@ use std::fmt::{self, Display};
 
 use powdr_autoprecompiles::bus_map::BusType;
 
-use crate::format_fe;
+use crate::{bus_map::OpenVmBusType, format_fe};
 
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
@@ -89,14 +89,20 @@ impl<F: PrimeField32, V> Default for Gate<F, V> {
 }
 
 impl<F: PrimeField32, V> Gate<F, V> {
-    pub fn get_bus_gate_type(&self) -> Option<BusType> {
+    pub fn get_bus_gate_type(&self) -> Option<BusType<OpenVmBusType>> {
         let selectors = [
-            (BusType::BitwiseLookup, &self.q_bitwise),
+            (BusType::OpenVmBitwiseLookup, &self.q_bitwise),
             (BusType::Memory, &self.q_memory),
-            (BusType::VariableRangeChecker, &self.q_range_check),
+            (
+                BusType::Other(OpenVmBusType::VariableRangeChecker),
+                &self.q_range_check,
+            ),
             (BusType::ExecutionBridge, &self.q_execution),
             (BusType::PcLookup, &self.q_pc),
-            (BusType::TupleRangeChecker, &self.q_range_tuple),
+            (
+                BusType::Other(OpenVmBusType::TupleRangeChecker),
+                &self.q_range_tuple,
+            ),
         ];
 
         let mut active_selector = None;
@@ -108,7 +114,7 @@ impl<F: PrimeField32, V> Gate<F, V> {
                         selectors
                             .iter()
                             .filter(|(_, val)| *val == &F::ONE)
-                            .map(|(name, _)| *name)
+                            .map(|(name, _)| name.to_string())
                             .collect::<Vec<_>>()
                     );
                 }
@@ -125,12 +131,12 @@ where
     V: Display,
 {
     match gate.get_bus_gate_type() {
-        Some(BusType::BitwiseLookup) => "bitwise",
+        Some(BusType::OpenVmBitwiseLookup) => "bitwise",
         Some(BusType::Memory) => "memory",
-        Some(BusType::VariableRangeChecker) => "range_check",
+        Some(BusType::Other(OpenVmBusType::VariableRangeChecker)) => "range_check",
         Some(BusType::ExecutionBridge) => "execution",
         Some(BusType::PcLookup) => "pc",
-        Some(BusType::TupleRangeChecker) => "tuple_range",
+        Some(BusType::Other(OpenVmBusType::TupleRangeChecker)) => "tuple_range",
         None => "none",
     }
 }

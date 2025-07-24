@@ -6,6 +6,7 @@ use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
+use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::OriginalAirs;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
@@ -29,7 +30,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
-use crate::{BusMap, PrecompileImplementation};
+use crate::PrecompileImplementation;
 
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
