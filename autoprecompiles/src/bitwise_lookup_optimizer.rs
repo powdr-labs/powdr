@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::{fmt::Debug, fmt::Display};
 
@@ -9,7 +8,7 @@ use powdr_constraint_solver::constraint_system::{
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::solver::{self, bus_interaction_variable_wrapper, Solver};
+use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
@@ -108,33 +107,4 @@ fn is_simple_multiplicity_bitwise_bus_interaction<T: FieldElement, V: Clone + Ha
 ) -> bool {
     bus_int.bus_id == GroupedExpression::from_number(T::from(bitwise_lookup_bus_id))
         && bus_int.multiplicity.is_one()
-}
-
-fn determine_range_constraints_using_solver<
-    T: FieldElement,
-    V: Clone + Hash + Eq + Ord + Debug + Display,
->(
-    system: &ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T>,
-) -> HashMap<GroupedExpression<T, V>, RangeConstraint<T>> {
-    let (wrapper, transformed_system) = solver::bus_interaction_variable_wrapper::BusInteractionVariableWrapper::replace_bus_interaction_expressions(system.clone());
-    Solver::new(transformed_system)
-        .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()
-        .unwrap()
-        .range_constraints
-        .range_constraints
-        .into_iter()
-        .map(|(var, range_constraint)| {
-            let expr = match var {
-                bus_interaction_variable_wrapper::Variable::BusInteractionField(..) => {
-                    wrapper.bus_interaction_vars[&var].clone()
-                }
-                bus_interaction_variable_wrapper::Variable::Variable(v) => {
-                    GroupedExpression::from_unknown_variable(v)
-                }
-            };
-            (expr, range_constraint)
-        })
-        .collect()
 }

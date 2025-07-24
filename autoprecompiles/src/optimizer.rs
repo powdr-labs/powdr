@@ -8,9 +8,7 @@ use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_constraint_solver::indexed_constraint_system::{
     apply_substitutions, IndexedConstraintSystem,
 };
-use powdr_constraint_solver::inliner::{
-    inline_everything_below_degree_bound, substitution_would_not_violate_degree_bound,
-};
+use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},

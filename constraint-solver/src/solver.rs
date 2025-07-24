@@ -7,10 +7,7 @@ use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{
-    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
-};
-use crate::solver::bus_interaction_variable_wrapper::Variable;
+use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
@@ -18,7 +15,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-pub mod bus_interaction_variable_wrapper;
 mod exhaustive_search;
 mod quadratic_equivalences;
 
@@ -29,27 +25,15 @@ pub fn solve_system<T, V>(
 ) -> Result<SolveResult<T, V>, Error>
 where
     T: RuntimeConstant
-        + VarTransformable<V, Variable<V>>
         + Display
         + ReferencedSymbols<V>
-        + ExpressionConvertible<T::FieldType, V>
-        + Substitutable<V>,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>
-        + ReferencedSymbols<Variable<V>>
-        + Substitutable<Variable<V>>
-        + ExpressionConvertible<<T::Transformed as RuntimeConstant>::FieldType, Variable<V>>
-        + Display,
+        + Substitutable<V>
+        + ExpressionConvertible<T::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    // let (bus_interaction_variable_wrapper, constraint_system) =
-    //     BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
-
-    let result = Solver::new(constraint_system)
+    Solver::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()?;
-    // Ok(bus_interaction_variable_wrapper.finalize(result))
-    Ok(result)
+        .solve()
 }
 
 /// The result of the solving process.
