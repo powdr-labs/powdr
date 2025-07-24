@@ -1,10 +1,16 @@
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
-use powdr_constraint_solver::inliner::substitution_would_not_violate_degree_bound;
+use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::indexed_constraint_system::{
+    apply_substitutions, IndexedConstraintSystem,
+};
+use powdr_constraint_solver::inliner::{
+    inline_everything_below_degree_bound, substitution_would_not_violate_degree_bound,
+};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -13,6 +19,8 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
+use crate::constraint_optimizer::IsBusStateful;
+use crate::memory_optimizer::MemoryBusInteraction;
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -41,15 +49,25 @@ pub fn optimize<A: Adapter>(
     let constraint_system = symbolic_machine_to_constraint_system(machine);
     let mut constraint_system = introduce_bus_interaction_variables(constraint_system);
 
-    loop {
+    let mut constraint_system = loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<A>(
-            constraint_system,
-            bus_interaction_handler.clone(),
-            degree_bound,
-            &mut stats_logger,
-            bus_map,
-        )?;
+        constraint_system =
+            optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<A::PowdrField, _>>(
+                constraint_system,
+                bus_interaction_handler.clone(),
+                |var, expr, system| {
+                    // Do not inline bus interaction field variables but also do not inline
+                    // variables defined via bus interaction field variables
+                    !matches!(var, Variable::BusInteractionField(_, _))
+                && !expr
+                    .referenced_unknown_variables()
+                    .any(|v| matches!(v, Variable::BusInteractionField(_, _)))
+                // and stay below the degree bound.
+                && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound)
+                },
+                &mut stats_logger,
+                bus_map,
+            )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
             let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
@@ -59,51 +77,61 @@ pub fn optimize<A: Adapter>(
                 "Expected all PC lookups to be removed."
             );
 
-            return Ok(constraint_system_to_symbolic_machine(
-                remove_bus_interaction_variables(constraint_system),
-            ));
+            break remove_bus_interaction_variables(constraint_system);
+        }
+    };
+
+    loop {
+        let stats = stats_logger::Stats::from(&constraint_system);
+        constraint_system =
+            optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<A::PowdrField, _>>(
+                constraint_system,
+                bus_interaction_handler.clone(),
+                inline_everything_below_degree_bound(degree_bound),
+                &mut stats_logger,
+                bus_map,
+            )?;
+        if stats == stats_logger::Stats::from(&constraint_system) {
+            // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
+            let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
+            assert!(
+                !constraint_system.bus_interactions.iter().any(|b| b.bus_id
+                    == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
+                "Expected all PC lookups to be removed."
+            );
+
+            return Ok(constraint_system_to_symbolic_machine(constraint_system));
         }
     }
 }
 
-fn optimization_loop_iteration<A: Adapter>(
-    constraint_system: ConstraintSystem<A::PowdrField, Variable<AlgebraicReference>>,
-    bus_interaction_handler: A::BusInteractionHandler,
-    degree_bound: DegreeBound,
+fn optimization_loop_iteration<
+    P: FieldElement,
+    V: Ord + Clone + Eq + Hash + Debug + Display,
+    C: PartialEq + Eq + Clone + Display,
+    M: MemoryBusInteraction<P, V>,
+>(
+    constraint_system: ConstraintSystem<P, V>,
+    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    shall_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
-    bus_map: &BusMap<A::CustomBusTypes>,
-) -> Result<
-    ConstraintSystem<A::PowdrField, Variable<AlgebraicReference>>,
-    crate::constraint_optimizer::Error,
-> {
+    bus_map: &BusMap<C>,
+) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
-        |var, expr, system| {
-            // Do not inline bus interaction field variables but also do not inline
-            // variables defined via bus interaction field variables
-            !matches!(var, Variable::BusInteractionField(_, _))
-                && !expr
-                    .referenced_unknown_variables()
-                    .any(|v| matches!(v, Variable::BusInteractionField(_, _)))
-                // and stay below the degree bound.
-                && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound)
-        },
+        shall_inline,
         stats_logger,
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system = optimize_memory::<_, _, A::MemoryBusInteraction<_, _>>(
-            constraint_system,
-            memory_bus_id,
-            NoRangeConstraints,
-        );
-        assert!(check_register_operation_consistency::<
-            _,
-            _,
-            A::MemoryBusInteraction<_, _>,
-        >(&constraint_system, memory_bus_id));
+        let constraint_system =
+            optimize_memory::<_, _, M>(constraint_system, memory_bus_id, NoRangeConstraints);
+        assert!(check_register_operation_consistency::<_, _, M>(
+            &constraint_system,
+            memory_bus_id
+        ));
         stats_logger.log("memory optimization", &constraint_system);
         constraint_system
     } else {
