@@ -914,9 +914,11 @@ fn combine_removing_zeros<T: RuntimeConstant, V: Clone + Ord + Eq>(
     result
 }
 
-fn remove_quadratic_terms_adding_to_zero<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    terms: &mut Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
-) {
+/// Removes pairs of items from `terms` whose products add to zero.
+fn remove_quadratic_terms_adding_to_zero<E: PartialEq>(terms: &mut Vec<(E, E)>)
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
     let mut to_remove = HashSet::new();
     for ((i, first), (j, second)) in terms.iter().enumerate().tuple_combinations() {
         if to_remove.contains(&i) || to_remove.contains(&j) {
@@ -933,18 +935,18 @@ fn remove_quadratic_terms_adding_to_zero<T: RuntimeConstant, V: Clone + Ord + Eq
         *terms = terms
             .drain(..)
             .enumerate()
-            .filter(|(i, _)| !to_remove.contains(&i))
+            .filter(|(i, _)| !to_remove.contains(i))
             .map(|(_, term)| term)
             .collect();
     }
 }
 
-/// Returns true if `first.0 * first.1 + second.0 * second.1 == 0`,
+/// Returns true if `first.0 * first.1 = -second.0 * second.1`,
 /// but does not catch all cases.
-fn quadratic_terms_add_to_zero<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    first: &(GroupedExpression<T, V>, GroupedExpression<T, V>),
-    second: &(GroupedExpression<T, V>, GroupedExpression<T, V>),
-) -> bool {
+fn quadratic_terms_add_to_zero<E: PartialEq>(first: &(E, E), second: &(E, E)) -> bool
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
     let (s0, s1) = second;
     // Check if `first.0 * first.1 == -(second.0 * second.1)`, but we can swap left and right
     // and we can put the negation either left or right.
