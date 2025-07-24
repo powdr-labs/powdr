@@ -1,4 +1,6 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use std::fmt::Display;
+
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +9,7 @@ use crate::{
     constraint_optimizer::IsBusStateful,
     expression::AlgebraicReference,
     memory_optimizer::MemoryBusInteraction,
-    Apc, InstructionHandler,
+    Apc, InstructionHandler, VmConfig,
 };
 
 pub trait Adapter: Sized {
@@ -22,6 +24,7 @@ pub trait Adapter: Sized {
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
     type MemoryBusInteraction: MemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
+    type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
@@ -30,3 +33,9 @@ pub trait Adapter: Sized {
 
 pub type ApcStats<A> = <<A as Adapter>::Candidate as Candidate<A>>::ApcStats;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
+pub type AdapterVmConfig<'a, A> = VmConfig<
+    'a,
+    <A as Adapter>::InstructionHandler,
+    <A as Adapter>::BusInteractionHandler,
+    <A as Adapter>::CustomBusTypes,
+>;

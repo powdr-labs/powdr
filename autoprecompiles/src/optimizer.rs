@@ -24,7 +24,7 @@ pub fn optimize<A: Adapter>(
     mut machine: SymbolicMachine<A::PowdrField>,
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
-    bus_map: &BusMap,
+    bus_map: &BusMap<A::CustomBusTypes>,
 ) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -63,7 +63,7 @@ fn optimization_loop_iteration<A: Adapter>(
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     stats_logger: &mut StatsLogger,
-    bus_map: &BusMap,
+    bus_map: &BusMap<A::CustomBusTypes>,
 ) -> Result<ConstraintSystem<A::PowdrField, AlgebraicReference>, crate::constraint_optimizer::Error>
 {
     let mut variable_dispenser =
@@ -94,7 +94,7 @@ fn optimization_loop_iteration<A: Adapter>(
         constraint_system
     };
 
-    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
+    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
         let system = optimize_bitwise_lookup(
             constraint_system,
             bitwise_bus_id,

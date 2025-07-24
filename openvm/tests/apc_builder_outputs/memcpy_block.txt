@@ -24,7 +24,7 @@ mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4, 17]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4, 12]
 
-// Bus 6 (BITWISE_LOOKUP):
+// Bus 6 (OPENVM_BITWISE_LOOKUP):
 mult=is_valid * 1, args=[b__0_0, 3, b__0_0 + 3 - 2 * b__0_1, 1]
 mult=is_valid * 1, args=[1 - new_var_175 * b__0_1, 1 - new_var_176 * (b__0_2 + b__1_2 + b__2_2 + b__3_2), new_var_176 * (b__0_2 + b__1_2 + b__2_2 + b__3_2) + new_var_175 * b__0_1 + 2 * a__0_4 - 2, 1]
 
