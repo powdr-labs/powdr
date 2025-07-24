@@ -272,7 +272,8 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 _ => true,
             }
         });
-        // TODO here we  should go through the quadratic terms and remove those that cancel out
+        remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
+
         if to_add.try_to_known().map(|ta| ta.is_known_zero()) != Some(true) {
             *self += to_add;
         }
@@ -318,7 +319,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 }
             })
             .collect();
-        // TODO here we  should go through the quadratic terms and remove those that cancel out
+        remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
 
         *self += to_add;
     }
@@ -889,22 +890,19 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
 
 /// Returns the sum of these quadratic terms while removing terms that
 /// cancel each other out.
-fn combine_removing_zeros<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    first: Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
-    mut second: Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
-) -> Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)> {
-    // TODO make this more efficient.
+fn combine_removing_zeros<E: PartialEq>(first: Vec<(E, E)>, mut second: Vec<(E, E)>) -> Vec<(E, E)>
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
     let mut result = first
         .into_iter()
-        .filter(|f| {
-            if let Some((j, _)) = second.iter().find_position(|s| {
-                let (l1, r1) = f;
-                let (l2, r2) = s;
-                (*l1 == -l2 && r1 == r2)
-                    || (l1 == l2 && *r1 == -r2)
-                    || (*l1 == -r2 && r1 == l2)
-                    || (l1 == r2 && *r1 == -l2)
-            }) {
+        .filter(|first| {
+            // Try to find l1 * r1 inside `second`.
+            if let Some((j, _)) = second
+                .iter()
+                .find_position(|second| quadratic_terms_add_to_zero(first, second))
+            {
+                // We found a match, so they cancel each other out, we remove both.
                 second.remove(j);
                 false
             } else {
@@ -914,6 +912,47 @@ fn combine_removing_zeros<T: RuntimeConstant, V: Clone + Ord + Eq>(
         .collect_vec();
     result.extend(second);
     result
+}
+
+/// Removes pairs of items from `terms` whose products add to zero.
+fn remove_quadratic_terms_adding_to_zero<E: PartialEq>(terms: &mut Vec<(E, E)>)
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    let mut to_remove = HashSet::new();
+    for ((i, first), (j, second)) in terms.iter().enumerate().tuple_combinations() {
+        if to_remove.contains(&i) || to_remove.contains(&j) {
+            // We already removed this term.
+            continue;
+        }
+        if quadratic_terms_add_to_zero(first, second) {
+            // We found a match, so they cancel each other out, we remove both.
+            to_remove.insert(i);
+            to_remove.insert(j);
+        }
+    }
+    if !to_remove.is_empty() {
+        *terms = terms
+            .drain(..)
+            .enumerate()
+            .filter(|(i, _)| !to_remove.contains(i))
+            .map(|(_, term)| term)
+            .collect();
+    }
+}
+
+/// Returns true if `first.0 * first.1 = -second.0 * second.1`,
+/// but does not catch all cases.
+fn quadratic_terms_add_to_zero<E: PartialEq>(first: &(E, E), second: &(E, E)) -> bool
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    let (s0, s1) = second;
+    // Check if `first.0 * first.1 == -(second.0 * second.1)`, but we can swap left and right
+    // and we can put the negation either left or right.
+    let n1 = (&-s0, s1);
+    let n2 = (s0, &-s1);
+    [n1, n2].contains(&(&first.0, &first.1)) || [n1, n2].contains(&(&first.1, &first.0))
 }
 
 impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for &GroupedExpression<T, V> {
@@ -1700,5 +1739,20 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             "-((t) * (u) - 3 * z + 5)"
         );
         assert_eq!((b - a).to_string(), "(t) * (u) - 3 * z + 5");
+    }
+
+    #[test]
+    fn remove_quadratic_zeros_after_substitution() {
+        let a = var("x") * var("r") + var("z") * constant(3);
+        let b = var("t") * var("u") + constant(5) + var("y") * var("x");
+        let mut t = b - a;
+        // Cannot simplify yet, because the terms are different
+        assert_eq!(
+            t.to_string(),
+            "(t) * (u) + (y) * (x) - (x) * (r) - 3 * z + 5"
+        );
+        t.substitute_by_unknown(&"r", &var("y"));
+        // Now the first term in `a` is equal to the last in `b`.
+        assert_eq!(t.to_string(), "(t) * (u) - 3 * z + 5");
     }
 }
