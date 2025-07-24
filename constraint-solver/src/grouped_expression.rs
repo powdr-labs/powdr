@@ -912,7 +912,7 @@ fn combine_removing_zeros<T: RuntimeConstant, V: Clone + Ord + Eq>(
             }
         })
         .collect_vec();
-    result.extend(second.into_iter());
+    result.extend(second);
     result
 }
 

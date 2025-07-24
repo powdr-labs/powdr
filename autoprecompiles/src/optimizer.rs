@@ -115,7 +115,7 @@ pub fn optimize<A: Adapter>(
             break constraint_system;
         }
     };
-    return Ok(constraint_system_to_symbolic_machine(constraint_system));
+    Ok(constraint_system_to_symbolic_machine(constraint_system))
 }
 
 fn optimization_loop_iteration<
