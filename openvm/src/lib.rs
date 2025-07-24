@@ -1460,18 +1460,20 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(expect![[r#"AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 170,
-                    log_up: 128,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 48,
-                    log_up: 36,
-                },
-            }"#]]),
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 170,
+                        log_up: 128,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 48,
+                        log_up: 36,
+                    },
+                }
+            "#]]),
         );
     }
 
@@ -1716,18 +1718,20 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(expect![[r#"AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 38986,
-                    log_up: 26936,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 4843,
-                    log_up: 3952,
-                },
-            }"#]]),
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 38986,
+                        log_up: 26936,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 4843,
+                        log_up: 3952,
+                    },
+                }
+            "#]]),
         );
 
         // TODO
