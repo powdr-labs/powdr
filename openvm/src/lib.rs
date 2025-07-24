@@ -1459,10 +1459,10 @@ mod tests {
                 widths: AirWidths {
                     preprocessed: 0,
                     main: 14676,
-                    log_up: 12112,
+                    log_up: 11976,
                 },
                 constraints: 4143,
-                bus_interactions: 11668,
+                bus_interactions: 11642,
             },
             powdr_expected_machine_count: 10,
             non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
@@ -1620,7 +1620,7 @@ mod tests {
                 main: 4843,
                 log_up: 3952,
             },
-            constraints: 962,
+            constraints: 968,
             bus_interactions: 3818,
         };
 
