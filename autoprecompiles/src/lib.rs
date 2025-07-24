@@ -462,9 +462,10 @@ pub fn build<A: Adapter>(
         .map(|c| (*c.name).clone())
         .collect::<BTreeSet<_>>();
 
-    println!("Gonna try SMT...");
+    println!("Gonna try SMT for\n{machine}...");
     // let var_subs = smt::get_unique_vars(machine.to_smt(), &var_names);
-    smt::detect_redundant_constraints(machine.to_smt());
+    let redundant_sets = smt::detect_redundant_constraints(machine.to_smt());
+    println!("Redundant sets: {redundant_sets:#?}");
 
     // Compute Groebner basis
     // let _gb_constraints = smt::compute_groebner_basis(&machine);

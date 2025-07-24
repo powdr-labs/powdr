@@ -13,10 +13,12 @@ fn get_values(smt2: &String, vars: &BTreeSet<String>) -> Option<HashMap<String, 
     let var_list = vars.iter().cloned().collect::<Vec<String>>().join(" ");
     writeln!(file, "(get-value ({var_list}))").unwrap();
 
-    let output = Command::new("z3")
+    let output = Command::new("cvc5")
         .arg(file.path())
+        .arg("--produce-models")
+        .arg("--tlimit-per=2000")
         .output()
-        .expect("Failed to run z3");
+        .expect("Failed to run cvc5");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -49,7 +51,8 @@ fn solve(smt2: &SmtConstraints) -> SmtResult {
     // let output = Command::new("z3")
     let output = Command::new("cvc5")
         .arg(file.path())
-        // .arg("-T:5")
+        .arg("--produce-models")
+        .arg("--tlimit-per=2000")
         .output()
         // .expect("Failed to run z3");
         .expect("Failed to run cvc5");
@@ -58,7 +61,7 @@ fn solve(smt2: &SmtConstraints) -> SmtResult {
     let stderr = String::from_utf8_lossy(&output.stderr);
     println!("Query stdout: {stdout}");
     println!("Query stderr: {stderr}");
-    if stdout.contains("timeout") {
+    if stdout.contains("timeout") || stdout.contains("unknown") {
         SmtResult::UNKNOWN
     } else if stdout.contains("unsat") {
         SmtResult::UNSAT
@@ -73,7 +76,7 @@ fn is_unique(smt2: &String, var: &String, value: &String) -> bool {
     writeln!(file, "{smt2}\n(assert (not (= {var} {value})))").unwrap();
     writeln!(file, "(check-sat)").unwrap();
 
-    let output = Command::new("z3")
+    let output = Command::new("cvc5")
         .arg(file.path())
         .output()
         .expect("Failed to run z3");
@@ -124,11 +127,18 @@ impl SmtConstraints {
             smt2.push_str(&a);
             smt2.push('\n');
         }
-        for poly in &self.poly_constraints_not_zero {
-            let a = format!("(assert (not (= (as ff0 BB) {poly})))");
-            smt2.push_str(&a);
+        if !self.poly_constraints_not_zero.is_empty() {
+            let inner = self
+                .poly_constraints_not_zero
+                .iter()
+                .map(|poly| format!("(= (as ff0 BB) {poly})"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let outer_neg = format!("(assert (not (and {inner})))");
+            smt2.push_str(&outer_neg);
             smt2.push('\n');
         }
+
         smt2
     }
 
@@ -193,22 +203,23 @@ pub fn get_unique_vars(
         .collect()
 }
 
-pub fn detect_redundant_constraints(smt2: SmtConstraints) {
+// Detects redundant constraints and returns subsets of contraints that are redundant together.
+pub fn detect_redundant_constraints(smt2: SmtConstraints) -> Vec<Vec<usize>> {
     println!("Solving original system");
-    println!("{}", smt2.to_string());
-    match solve(&smt2) {
-        SmtResult::UNSAT => {
-            panic!("Original system should be SAT.");
-        }
-        SmtResult::SAT => {
-            println!("Original system is SAT.");
-        }
-
-        SmtResult::UNKNOWN => {
-            println!("Could not solve original system, assuming it is SAT.");
-        }
-    }
-
+    // println!("{}", smt2.to_string());
+    // match solve(&smt2) {
+    //     SmtResult::UNSAT => {
+    //         panic!("Original system should be SAT.");
+    //     }
+    //     SmtResult::SAT => {
+    //         println!("Original system is SAT.");
+    //     }
+    //
+    //     SmtResult::UNKNOWN => {
+    //         println!("Could not solve original system, assuming it is SAT.");
+    //     }
+    // }
+    let mut redundant_set = Vec::new();
     for (i, p) in smt2.poly_constraints.iter().enumerate() {
         let mut test_smt2 = smt2.clone();
         test_smt2.poly_constraints.remove(i);
@@ -218,6 +229,7 @@ pub fn detect_redundant_constraints(smt2: SmtConstraints) {
         match solve(&test_smt2) {
             SmtResult::UNSAT => {
                 println!("Constraint {i} is redundant: {p}");
+                redundant_set.push(i);
             }
             SmtResult::SAT => {
                 println!("Constraint {i} is NOT redundant: {p}");
@@ -228,6 +240,39 @@ pub fn detect_redundant_constraints(smt2: SmtConstraints) {
             }
         }
     }
+
+    use itertools::Itertools;
+
+    // Iterate from largest subsets to smallest
+    let mut redundant_sets = redundant_set.iter().map(|x| vec![*x]).collect::<Vec<_>>();
+    return redundant_sets;
+    for size in (2..=redundant_set.len()).rev() {
+        for subset in redundant_set.iter().combinations(size) {
+            let mut test_smt2 = smt2.clone();
+            for ip in subset.iter().rev() {
+                let p = smt2.poly_constraints[**ip].clone();
+                test_smt2.poly_constraints.remove(**ip);
+                test_smt2.poly_constraints_not_zero.push(p.clone());
+            }
+            println!("\n\n\nTesting constraints {:?}...", subset);
+            println!("{}", test_smt2.to_string());
+            match solve(&test_smt2) {
+                SmtResult::UNSAT => {
+                    println!("Constraints are redundant");
+                    redundant_sets.push(subset.iter().map(|x| **x).collect());
+                }
+                SmtResult::SAT => {
+                    println!("Constraints are NOT redundant");
+                }
+
+                SmtResult::UNKNOWN => {
+                    println!("Could not solve for constraints");
+                }
+            }
+        }
+    }
+
+    redundant_sets
 }
 
 /// Compute Groebner basis of a SymbolicMachine's polynomial constraints
