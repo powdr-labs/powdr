@@ -71,16 +71,14 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
     let byte_range_constraint = RangeConstraint::from_mask(0xffu64);
-    let range_constraints = Solver::new(system.clone())
-        .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()
-        .unwrap()
-        .range_constraints;
+    let mut solver =
+        Solver::new(system.clone()).with_bus_interaction_handler(bus_interaction_handler);
+    solver.solve().unwrap();
 
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
         .filter(|expr| {
-            let rc = expr.range_constraint(&range_constraints);
+            let rc = expr.range_constraint(&&solver);
             rc != rc.conjunction(&byte_range_constraint)
         })
         .unique()

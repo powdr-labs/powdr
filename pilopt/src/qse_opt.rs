@@ -12,7 +12,7 @@ use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
-    solver::{self, SolveResult},
+    solver,
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
 use powdr_number::FieldElement;
@@ -57,7 +57,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         Err(_) => {
             log::error!("Error while QSE-optimizing. This is usually the case when the constraints are inconsistent.");
         }
-        Ok(SolveResult { assignments, .. }) => {
+        Ok(assignments) => {
             let constraint_system = apply_substitutions(constraint_system, assignments.clone());
             pil_file
                 .identities
