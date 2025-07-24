@@ -91,7 +91,7 @@ fn format_fe<F: PrimeField32>(v: F) -> String {
 }
 
 pub use openvm_build::GuestOptions;
-pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+pub use powdr_autoprecompiles::bus_map::BusType;
 
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
