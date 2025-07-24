@@ -20,7 +20,7 @@ fn get_values<T: FieldElement>(
     let var_list = vars.iter().cloned().collect::<Vec<String>>().join(" ");
     let extra = format!("(get-value ({var_list}))");
 
-    let (res, stdout, _stderr) = solve(machine, None, Some(extra));
+    let (res, stdout, _stderr) = solve(machine, Default::default(), None, Some(extra));
 
     match res {
         SmtResult::Unsat | SmtResult::Unknown => None,
@@ -38,7 +38,7 @@ fn get_values<T: FieldElement>(
 /// Check if a variable is uniquely determined by asserting it's not equal to its current value
 fn is_unique<T: FieldElement>(machine: &SymbolicMachine<T>, var: &String, value: &String) -> bool {
     let extra = format!("(assert (not (= {var} {value})))");
-    let (res, _stdout, _stderr) = solve(machine, Some(extra), None);
+    let (res, _stdout, _stderr) = solve(machine, Default::default(), Some(extra), None);
     matches!(res, SmtResult::Unsat)
 }
 
@@ -65,13 +65,13 @@ pub fn get_unique_vars<T: FieldElement>(
 
 fn solve<T: FieldElement>(
     machine: &SymbolicMachine<T>,
+    decls: BTreeSet<String>,
     extra_before_check: Option<String>,
     extra_after_check: Option<String>,
 ) -> (SmtResult, String, String) {
-    let mut smt2 = symbolic_machine_to_smtlib2(machine);
+    let mut smt2 = symbolic_machine_to_smtlib2(machine, decls);
 
     let mut file = NamedTempFile::new().unwrap();
-    // writeln!(file, "{smt2}").unwrap();
 
     if let Some(extra) = extra_before_check {
         println!("adding before check: {extra}");
@@ -99,6 +99,9 @@ fn solve<T: FieldElement>(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
+    if !stdout.is_empty() {
+        eprintln!("cvc5 stdout: {stdout}");
+    }
     if !stderr.is_empty() {
         eprintln!("cvc5 stderr: {stderr}");
     }
@@ -214,17 +217,28 @@ enum SmtResult {
 
 const P: u32 = (1 << 31) - (1 << 27) + 1;
 
-fn symbolic_machine_to_smtlib2<T: FieldElement>(machine: &SymbolicMachine<T>) -> String {
+fn symbolic_machine_to_smtlib2<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+    decls: BTreeSet<String>,
+) -> String {
     let mut smt2 = String::new();
     smt2.push_str("(set-logic QF_FF)\n");
     smt2.push_str("(set-option :incremental true)\n");
     smt2.push_str(&format!("(define-sort BB () (_ FiniteField {P}))\n"));
 
-    let decls = machine
+    let mut this_decls = machine
         .main_columns()
         .map(|c|
                 // Variable declarations.
-                format!("(declare-fun {c} () BB)"))
+                format!("{c}"))
+        .collect::<BTreeSet<String>>();
+
+    this_decls.extend(decls);
+
+    println!("this_decls: {this_decls:?}");
+    let decls = this_decls
+        .into_iter()
+        .map(|c| format!("(declare-fun {c} () BB)"))
         .collect::<Vec<String>>()
         .join("\n");
 
@@ -258,7 +272,7 @@ pub fn detect_redundant_constraints<T: FieldElement>(
 ) -> Vec<Vec<usize>> {
     println!("machine:\n{machine}");
     // Original constraint system should be SAT.
-    match solve(machine, None, None).0 {
+    match solve(machine, Default::default(), None, None).0 {
         SmtResult::Unsat => {
             panic!("Original system should be SAT.");
         }
@@ -273,12 +287,19 @@ pub fn detect_redundant_constraints<T: FieldElement>(
         }
     }
 
+    let decls = machine
+        .main_columns()
+        .map(|c|
+                // Variable declarations.
+                format!("{c}"))
+        .collect::<BTreeSet<String>>();
+
     let mut redundant_set = Vec::new();
     for (i, p) in machine.constraints.iter().enumerate() {
         let mut test_machine = machine.clone();
         test_machine.constraints.remove(i);
         let extra = negate_constraints_smtlib2(vec![p.clone()]);
-        match solve(&test_machine, Some(extra), None).0 {
+        match solve(&test_machine, decls.clone(), Some(extra), None).0 {
             SmtResult::Unsat => {
                 println!("Constraint {i} is redundant: {p}");
                 redundant_set.push(i);
@@ -305,7 +326,7 @@ pub fn detect_redundant_constraints<T: FieldElement>(
                 to_negate.push(p.clone());
             }
             let extra = negate_constraints_smtlib2(to_negate);
-            match solve(&test_machine, Some(extra), None).0 {
+            match solve(&test_machine, decls.clone(), Some(extra), None).0 {
                 SmtResult::Unsat => {
                     // println!("Constraints are redundant");
                     redundant_sets.push(subset.iter().map(|x| **x).collect());
