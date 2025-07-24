@@ -1536,18 +1536,20 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(expect![[r#"AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 176212,
-                    log_up: 117468,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 14656,
-                    log_up: 12092,
-                },
-            }"#]]),
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 176212,
+                        log_up: 117468,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 14656,
+                        log_up: 12092,
+                    },
+                }
+            "#]]),
         );
     }
 
@@ -1669,18 +1671,20 @@ mod tests {
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            Some(expect![[r#"AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 27194,
-                    log_up: 18736,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 2010,
-                    log_up: 1788,
-                },
-            }"#]]),
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 27194,
+                        log_up: 18736,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 2010,
+                        log_up: 1788,
+                    },
+                }
+            "#]]),
         );
     }
 
