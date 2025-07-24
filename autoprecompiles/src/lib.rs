@@ -338,7 +338,9 @@ pub fn build<A: Adapter>(
         .map(|c| (*c.name).clone())
         .collect::<BTreeSet<_>>();
 
-    let _var_subs = smt::get_unique_vars(&machine, &var_names);
+    // let mut machine = machine;
+    // machine.constraints.remove(machine.constraints.len() - 1);
+    // let _var_subs = smt::get_unique_vars(&machine, &var_names);
     let redundant_sets = smt::detect_redundant_constraints(&machine);
     println!("redundant sets: {redundant_sets:#?}");
 
