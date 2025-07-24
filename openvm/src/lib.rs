@@ -1703,8 +1703,8 @@ mod tests {
                             main: 4843,
                             log_up: 3952,
                         },
-                        constraints: 962,
-                        bus_interactions: 3818,
+                        constraints: 963,
+                        bus_interactions: 3817,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
