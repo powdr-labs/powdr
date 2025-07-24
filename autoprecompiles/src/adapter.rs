@@ -23,7 +23,10 @@ pub trait Adapter: Sized {
     type Candidate: Candidate<Self> + Send;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
-    type MemoryBusInteraction<T: FieldElement, V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<T, V>;
+    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
+        Self::PowdrField,
+        V,
+    >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;

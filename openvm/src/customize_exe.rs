@@ -70,8 +70,8 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
-    type MemoryBusInteraction<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> =
-        OpenVmMemoryBusInteraction<T, V>;
+    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
+        OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
