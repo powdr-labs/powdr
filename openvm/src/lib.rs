@@ -1540,7 +1540,7 @@ mod tests {
                 after: AirWidths {
                     preprocessed: 0,
                     main: 14656,
-                    log_up: 12092,
+                    log_up: 11956,
                 },
             }),
         );
