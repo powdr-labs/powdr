@@ -1412,18 +1412,8 @@ mod tests {
                 skip: GUEST_SKIP_PGO,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 48,
-                            log_up: 36,
-                        },
-                        constraints: 22,
-                        bus_interactions: 30,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1438,18 +1428,8 @@ mod tests {
                 skip: GUEST_SKIP_PGO,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 48,
-                            log_up: 36,
-                        },
-                        constraints: 22,
-                        bus_interactions: 30,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1482,18 +1462,8 @@ mod tests {
                 skip: GUEST_SHA256_SKIP,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 48,
-                            log_up: 36,
-                        },
-                        constraints: 22,
-                        bus_interactions: 30,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1508,18 +1478,8 @@ mod tests {
                 skip: GUEST_SHA256_SKIP,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 48,
-                            log_up: 36,
-                        },
-                        constraints: 22,
-                        bus_interactions: 30,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1583,18 +1543,8 @@ mod tests {
                 skip: GUEST_KECCAK_SKIP,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 27194,
-                            log_up: 18736,
-                        },
-                        constraints: 166,
-                        bus_interactions: 1782,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1609,18 +1559,8 @@ mod tests {
                 skip: GUEST_KECCAK_SKIP,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 27194,
-                            log_up: 18736,
-                        },
-                        constraints: 166,
-                        bus_interactions: 1782,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1635,18 +1575,8 @@ mod tests {
                 skip: GUEST_KECCAK_SKIP,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 27194,
-                            log_up: 18736,
-                        },
-                        constraints: 166,
-                        bus_interactions: 1782,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
@@ -1682,18 +1612,8 @@ mod tests {
                 skip: GUEST_KECCAK_SKIP,
             },
             MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 27194,
-                            log_up: 18736,
-                        },
-                        constraints: 166,
-                        bus_interactions: 1782,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect!["1"],
+                powdr_expected_sum: expect![],
+                powdr_expected_machine_count: expect![],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
