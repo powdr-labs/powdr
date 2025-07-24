@@ -272,6 +272,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 _ => true,
             }
         });
+        // TODO here we  should go through the quadratic terms and remove those that cancel out
         if to_add.try_to_known().map(|ta| ta.is_known_zero()) != Some(true) {
             *self += to_add;
         }
@@ -317,6 +318,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 }
             })
             .collect();
+        // TODO here we  should go through the quadratic terms and remove those that cancel out
 
         *self += to_add;
     }
@@ -873,7 +875,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
     for GroupedExpression<T, V>
 {
     fn add_assign(&mut self, rhs: Self) {
-        self.quadratic.extend(rhs.quadratic);
+        self.quadratic = combine_removing_zeros(std::mem::take(&mut self.quadratic), rhs.quadratic);
         for (var, coeff) in rhs.linear {
             self.linear
                 .entry(var.clone())
@@ -883,6 +885,35 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
         self.constant += rhs.constant.clone();
         self.linear.retain(|_, f| !f.is_known_zero());
     }
+}
+
+/// Returns the sum of these quadratic terms while removing terms that
+/// cancel each other out.
+fn combine_removing_zeros<T: RuntimeConstant, V: Clone + Ord + Eq>(
+    first: Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
+    mut second: Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
+) -> Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)> {
+    // TODO make this more efficient.
+    let mut result = first
+        .into_iter()
+        .filter(|f| {
+            if let Some((j, _)) = second.iter().find_position(|s| {
+                let (l1, r1) = f;
+                let (l2, r2) = s;
+                (*l1 == -l2 && r1 == r2)
+                    || (l1 == l2 && *r1 == -r2)
+                    || (*l1 == -r2 && r1 == l2)
+                    || (l1 == r2 && *r1 == -l2)
+            }) {
+                second.remove(j);
+                false
+            } else {
+                true
+            }
+        })
+        .collect_vec();
+    result.extend(second.into_iter());
+    result
 }
 
 impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for &GroupedExpression<T, V> {
@@ -1658,5 +1689,16 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
                 .to_string(),
             "-t * y"
         );
+    }
+
+    #[test]
+    fn combine_removing_zeros() {
+        let a = var("x") * var("y") + var("z") * constant(3);
+        let b = var("t") * var("u") + constant(5) + var("y") * var("x");
+        assert_eq!(
+            (a.clone() - b.clone()).to_string(),
+            "-((t) * (u) - 3 * z + 5)"
+        );
+        assert_eq!((b - a).to_string(), "(t) * (u) - 3 * z + 5");
     }
 }

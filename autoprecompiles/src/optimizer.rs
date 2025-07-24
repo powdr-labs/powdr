@@ -51,23 +51,35 @@ pub fn optimize<A: Adapter>(
 
     let mut constraint_system = loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system =
-            optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<A::PowdrField, _>>(
-                constraint_system,
-                bus_interaction_handler.clone(),
-                |var, expr, system| {
-                    // Do not inline bus interaction field variables but also do not inline
-                    // variables defined via bus interaction field variables
-                    !matches!(var, Variable::BusInteractionField(_, _))
-                && !expr
-                    .referenced_unknown_variables()
-                    .any(|v| matches!(v, Variable::BusInteractionField(_, _)))
-                // and stay below the degree bound.
-                && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound)
-                },
-                &mut stats_logger,
-                bus_map,
-            )?;
+        constraint_system = optimization_loop_iteration::<
+            _,
+            _,
+            _,
+            A::MemoryBusInteraction<A::PowdrField, _>,
+        >(
+            constraint_system,
+            bus_interaction_handler.clone(),
+            |var, expr, system| {
+                // Do not inline bus interaction field variables but also do not inline
+                // variables defined via bus interaction field variables
+                let inline = !matches!(var, Variable::BusInteractionField(_, _))
+                        && expr.degree() <= 1
+                        && !expr
+                            .referenced_unknown_variables()
+                            .any(|v| matches!(v, Variable::BusInteractionField(_, _)))
+                        // and stay below the degree bound.
+                        && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound);
+                if inline {
+                    println!(
+                        "Inlining variable {var} with degree {} expression\n{expr}",
+                        expr.degree()
+                    );
+                }
+                inline
+            },
+            &mut stats_logger,
+            bus_map,
+        )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
             let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
@@ -81,7 +93,7 @@ pub fn optimize<A: Adapter>(
         }
     };
 
-    loop {
+    let constraint_system = loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system =
             optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<A::PowdrField, _>>(
@@ -100,9 +112,10 @@ pub fn optimize<A: Adapter>(
                 "Expected all PC lookups to be removed."
             );
 
-            return Ok(constraint_system_to_symbolic_machine(constraint_system));
+            break constraint_system;
         }
-    }
+    };
+    return Ok(constraint_system_to_symbolic_machine(constraint_system));
 }
 
 fn optimization_loop_iteration<
