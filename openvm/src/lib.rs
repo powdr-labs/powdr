@@ -751,6 +751,7 @@ where
 mod tests {
     use super::*;
     use expect_test::{expect, Expect};
+    use expect_test::{expect, Expect};
     use test_log::test;
 
     #[allow(clippy::too_many_arguments)]
