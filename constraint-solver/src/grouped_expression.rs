@@ -890,10 +890,10 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
 
 /// Returns the sum of these quadratic terms while removing terms that
 /// cancel each other out.
-fn combine_removing_zeros<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    first: Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
-    mut second: Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)>,
-) -> Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)> {
+fn combine_removing_zeros<E: PartialEq>(first: Vec<(E, E)>, mut second: Vec<(E, E)>) -> Vec<(E, E)>
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
     let mut result = first
         .into_iter()
         .filter(|first| {
