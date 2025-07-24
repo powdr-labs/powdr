@@ -1309,6 +1309,7 @@ mod tests {
         expected_columns_saved: Option<AirWidthsDiff>, // only available in Pgo::Cell
     }
 
+    #[derive(Debug, PartialEq, Eq)]
     struct MachineTestMetrics {
         powdr_expected_sum: AirMetrics,
         powdr_expected_machine_count: usize,
@@ -1331,26 +1332,21 @@ mod tests {
         )
         .unwrap();
 
-        let MachineTestMetrics {
-            powdr_expected_sum,
-            powdr_expected_machine_count,
+        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
+        let non_powdr_expected_machine_count = non_powdr_air_metrics.len();
+        let non_powdr_expected_sum = non_powdr_air_metrics.into_iter().sum::<AirMetrics>();
+
+        let actual_metrics = MachineTestMetrics {
+            powdr_expected_sum: powdr_air_metrics
+                .iter()
+                .map(|(metrics, _)| metrics.clone())
+                .sum::<AirMetrics>(),
+            powdr_expected_machine_count: powdr_air_metrics.len(),
             non_powdr_expected_sum,
             non_powdr_expected_machine_count,
-        } = params.expected_metrics;
+        };
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
-        let powdr_machine_count = powdr_air_metrics.len();
-        let non_powdr_machine_count = non_powdr_air_metrics.len();
-        let powdr_sum = powdr_air_metrics
-            .iter()
-            .map(|(metrics, _)| metrics.clone())
-            .sum::<AirMetrics>();
-        let non_powdr_sum = non_powdr_air_metrics.into_iter().sum::<AirMetrics>();
-
-        assert_eq!(powdr_machine_count, *powdr_expected_machine_count);
-        assert_eq!(non_powdr_machine_count, *non_powdr_expected_machine_count);
-        assert_eq!(powdr_sum, *powdr_expected_sum);
-        assert_eq!(non_powdr_sum, *non_powdr_expected_sum);
+        assert_eq!(actual_metrics, *params.expected_metrics);
 
         // Test cells saved in Pgo::Cell
         if is_cell_pgo {
