@@ -750,8 +750,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
     use expect_test::{expect, Expect};
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     #[allow(clippy::too_many_arguments)]
