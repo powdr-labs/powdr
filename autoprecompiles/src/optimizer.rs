@@ -51,35 +51,26 @@ pub fn optimize<A: Adapter>(
 
     let mut constraint_system = loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<
-            _,
-            _,
-            _,
-            A::MemoryBusInteraction<A::PowdrField, _>,
-        >(
-            constraint_system,
-            bus_interaction_handler.clone(),
-            |var, expr, system| {
-                // Do not inline bus interaction field variables but also do not inline
-                // variables defined via bus interaction field variables
-                let inline = !matches!(var, Variable::BusInteractionField(_, _))
-                        && expr.degree() <= 1
-                        && !expr
-                            .referenced_unknown_variables()
-                            .any(|v| matches!(v, Variable::BusInteractionField(_, _)))
-                        // and stay below the degree bound.
-                        && substitution_would_not_violate_degree_bound(var, expr, system, degree_bound);
-                if inline {
-                    println!(
-                        "Inlining variable {var} with degree {} expression\n{expr}",
-                        expr.degree()
-                    );
-                }
-                inline
-            },
-            &mut stats_logger,
-            bus_map,
-        )?;
+        constraint_system =
+            optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<A::PowdrField, _>>(
+                constraint_system,
+                bus_interaction_handler.clone(),
+                |var, expr, _system| {
+                    // Do not inline bus interaction field variables (unless they are replaced
+                    // by a single other variable) and also do not inline
+                    // variables defined via bus interaction field variables.
+                    let is_about_bus_field_var =
+                        (matches!(var, Variable::BusInteractionField(_, _))
+                            && expr.try_to_simple_unknown().is_none())
+                            || expr
+                                .referenced_unknown_variables()
+                                .any(|v| matches!(v, Variable::BusInteractionField(_, _)));
+                    // and only inline if the degree is at most 1.
+                    !is_about_bus_field_var && expr.degree() <= 1
+                },
+                &mut stats_logger,
+                bus_map,
+            )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
             let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
