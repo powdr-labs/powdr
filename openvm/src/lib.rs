@@ -1494,7 +1494,7 @@ mod tests {
                             main: 14676,
                             log_up: 12112,
                         },
-                        constraints: 4143,
+                        constraints: 4073,
                         bus_interactions: 11668,
                     }
                 "#]],
@@ -1522,7 +1522,7 @@ mod tests {
                             main: 14656,
                             log_up: 12092,
                         },
-                        constraints: 4127,
+                        constraints: 4059,
                         bus_interactions: 11658,
                     }
                 "#]],
@@ -1704,7 +1704,7 @@ mod tests {
                             main: 4843,
                             log_up: 3952,
                         },
-                        constraints: 962,
+                        constraints: 950,
                         bus_interactions: 3818,
                     }
                 "#]],
