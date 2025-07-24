@@ -112,7 +112,7 @@ fn optimization_loop_iteration<
 >(
     constraint_system: ConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    shall_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
+    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
@@ -120,7 +120,7 @@ fn optimization_loop_iteration<
     let constraint_system = optimize_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
-        shall_inline,
+        should_inline,
         stats_logger,
     )?;
     let constraint_system = constraint_system.system().clone();

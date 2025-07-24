@@ -18,15 +18,13 @@ pub struct DegreeBound {
 }
 
 /// Reduce variables in the constraint system by inlining them,
-/// as long as the resulting degree stays within `max_degree`.
-/// The degree is just the degree in the unknown variables, i.e.
-/// potential variables inside runtime constants do not count towards the degree.
+/// if the callback `should_inline` returns true.
 pub fn replace_constrained_witness_columns<
     T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: JournalingConstraintSystem<T, V>,
-    shall_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
+    should_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
 ) -> JournalingConstraintSystem<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
@@ -38,7 +36,7 @@ pub fn replace_constrained_witness_columns<
         let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if shall_inline(&var, &expr, constraint_system.indexed_system()) {
+            if should_inline(&var, &expr, constraint_system.indexed_system()) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
@@ -114,21 +112,14 @@ fn find_inlinable_variables<
 >(
     constraint: &GroupedExpression<T, V>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
-    let mut substitutions = vec![];
-
     let (_, linear, _) = constraint.components();
-
-    for (target_var, _) in linear {
-        let Some(rhs_expr) = constraint.try_solve_for(target_var) else {
-            continue;
-        };
-
-        assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
-
-        substitutions.push((target_var.clone(), rhs_expr));
-    }
-
-    substitutions
+    linear
+        .filter_map(|(target_var, _)| {
+            let rhs_expr = constraint.try_solve_for(target_var)?;
+            assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
+            Some((target_var.clone(), rhs_expr))
+        })
+        .collect()
 }
 
 /// Calculate the degree of a GroupedExpression assuming a variable is

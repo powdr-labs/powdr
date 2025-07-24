@@ -37,7 +37,7 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    shall_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
+    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
     let constraint_system =
@@ -49,7 +49,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     stats_logger.log("removing disconnected columns", &constraint_system);
 
     let constraint_system =
-        inliner::replace_constrained_witness_columns(constraint_system, shall_inline);
+        inliner::replace_constrained_witness_columns(constraint_system, should_inline);
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
