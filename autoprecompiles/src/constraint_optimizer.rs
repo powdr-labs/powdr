@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use itertools::Itertools;
 use num_traits::Zero;
@@ -183,20 +187,44 @@ pub trait IsBusStateful<T: FieldElement> {
 fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
-    let mut redandant_constraints = HashSet::new();
+    // Maps each factor to the set of constraints that contain it.
+    let mut constraints_by_factor = HashMap::new();
+    // Turns each constraint into a set of factors.
     let constraints_as_factors = constraint_system
         .algebraic_constraints()
-        .map(|c| (c, c.to_factors().into_iter().collect::<HashSet<_>>()))
+        .enumerate()
+        .map(|(i, c)| {
+            let factors = c.to_factors();
+            for f in &factors {
+                constraints_by_factor
+                    .entry(f.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(i);
+            }
+            factors
+        })
         .collect_vec();
-    for ((c1, f1), (c2, f2)) in constraints_as_factors.iter().tuple_combinations() {
-        if f1.is_subset(f2) {
-            // c1 is a factor of c2, so any satisfying assignment of c1 also satisfies c2.
-            // This means we can remove c2.
-            redandant_constraints.insert((*c2).clone());
-        } else if f2.is_subset(f1) {
-            redandant_constraints.insert((*c1).clone());
-        }
+
+    let mut redundant_constraints = HashSet::<usize>::new();
+    for (i, factors) in constraints_as_factors.iter().enumerate() {
+        // Go through all factors `f` and compute the intersection of all
+        // constraints in `constraints_by_factor[f]`. These constraints
+        // are multiples of the current constraint, so they are all redundant.
+        // But be sure to exclude the current constraint itself.
+        let mut redundant = factors
+            .iter()
+            .map(|f| constraints_by_factor[f].clone())
+            .reduce(|a, b| a.intersection(&b).copied().collect())
+            .unwrap();
+        // Remove the constraint itself.
+        assert!(redundant.remove(&i));
+        redundant_constraints.extend(redundant);
     }
-    constraint_system.retain_algebraic_constraints(|c| !redandant_constraints.contains(c));
+    let mut counter = 0;
+    constraint_system.retain_algebraic_constraints(|_| {
+        let retain = !redundant_constraints.contains(&counter);
+        counter += 1;
+        retain
+    });
     constraint_system
 }
