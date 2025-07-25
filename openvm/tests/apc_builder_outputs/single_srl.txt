@@ -1,3 +1,11 @@
+Instructions:
+  SRL rd_ptr = 68, rs1_ptr = 40, rs2 = 25, rs2_as = 0
+
+APC advantage:
+  - Main columns: 53 -> 15 (3.53x reduction)
+  - Bus interactions: 24 -> 12 (2.00x reduction)
+  - Constraints: 76 -> 1 (76.00x reduction)
+
 // Symbolic machine using 15 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):

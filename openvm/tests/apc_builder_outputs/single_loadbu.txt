@@ -1,3 +1,11 @@
+Instructions:
+  LOADBU rd_rs2_ptr = 8, rs1_ptr = 2, imm = 21, mem_as = 2, needs_write = 1, imm_sign = 0
+
+APC advantage:
+  - Main columns: 41 -> 26 (1.58x reduction)
+  - Bus interactions: 17 -> 16 (1.06x reduction)
+  - Constraints: 25 -> 15 (1.67x reduction)
+
 // Symbolic machine using 26 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):

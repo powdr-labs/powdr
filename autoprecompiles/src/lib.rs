@@ -24,6 +24,7 @@ mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
