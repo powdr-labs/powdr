@@ -12,13 +12,17 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::{self, bus_interaction_variable_wrapper, Solver};
 use powdr_number::FieldElement;
 
-/// Optimize interactions with the bitwise lookup bus. It mostly optimizes the use of
-/// byte-range constraints.
+/// Optimize interactions with the bitwise lookup bus.
+/// It optimizes bitwise lookups of boolean-constrained inputs and optimizes (re-groups)
+/// the use of byte-range constraints.
 pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Debug + Display>(
     mut system: ConstraintSystem<T, V>,
     bitwise_lookup_bus_id: u64,
-    bus_interaction_handler: impl BusInteractionHandler<T>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> ConstraintSystem<T, V> {
+    let range_constraints =
+        determine_range_constraints_using_solver(&system, bus_interaction_handler.clone());
+
     // Expressions that we need to byte-constrain at the end.
     let mut to_byte_constrain = vec![];
     // New constraints (mainly substitutions) we will add.
@@ -59,6 +63,24 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
                 let [a, b] = args.try_into().unwrap();
                 new_constraints.push(a.clone() - b.clone());
                 to_byte_constrain.push(a.clone());
+                false
+            } else if args.iter().all(|arg| {
+                let rc = if let Some(n) = arg.try_to_number() {
+                    RangeConstraint::from_value(n)
+                } else {
+                    range_constraints.get(arg).cloned().unwrap_or_default()
+                };
+                rc.conjunction(&RangeConstraint::from_mask(1)) == rc
+            }) {
+                // All three expressions are either zero or one, we can replace the bus
+                // interaction by an algebraic constraint.
+                // TODO we could be a bit more clever about which variables to use in the
+                // quadratic term
+                let two = GroupedExpression::from_number(T::from(2));
+                new_constraints
+                    .push(x.clone() + y.clone() - z.clone() - two * x.clone() * y.clone());
+                // Byte-constrain them to be sure we are not missing anything.
+                to_byte_constrain.extend([x, y, z].into_iter().cloned());
                 false
             } else {
                 true

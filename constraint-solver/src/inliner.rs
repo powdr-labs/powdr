@@ -104,7 +104,7 @@ fn is_valid_substitution<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     degree_bound: DegreeBound,
 ) -> bool {
-    let replacement_deg = expression_degree(expr);
+    let replacement_deg = expr.degree();
 
     constraint_system
         .constraints_referencing_variables(std::iter::once(var.clone()))
@@ -138,19 +138,6 @@ fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clon
                 + expression_degree_with_virtual_substitution(r, var, replacement_deg)
         })
         .chain(linear.map(|(v, _)| if v == var { replacement_deg } else { 1 }))
-        .max()
-        .unwrap_or(0)
-}
-
-/// Computes the degree of a GroupedExpression in the unknown variables.
-/// Variables inside runtime constants are ignored.
-fn expression_degree<T: RuntimeConstant, V: Ord + Clone>(expr: &GroupedExpression<T, V>) -> usize {
-    let (quadratic, linear, _) = expr.components();
-
-    quadratic
-        .iter()
-        .map(|(l, r)| expression_degree(l) + expression_degree(r))
-        .chain(linear.map(|_| 1))
         .max()
         .unwrap_or(0)
 }
