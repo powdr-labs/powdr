@@ -70,7 +70,7 @@ const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 };
 
 pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
-    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
+    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
 }
 
 fn format_fe<F: PrimeField32>(v: F) -> String {

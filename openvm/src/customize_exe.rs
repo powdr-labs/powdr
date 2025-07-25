@@ -241,18 +241,22 @@ pub fn customize(
 
     let extensions = apcs
         .into_iter()
+        .enumerate()
         .map(
             |(
-                Apc {
-                    block,
-                    opcode,
-                    machine,
-                    subs,
-                },
-                apc_stats,
+                i,
+                (
+                    Apc {
+                        block,
+                        machine,
+                        subs,
+                    },
+                    apc_stats,
+                ),
             )| {
+                let opcode = POWDR_OPCODE + i;
                 let new_instr = OpenVmInstruction {
-                    opcode: VmOpcode::from_usize(opcode as usize),
+                    opcode: VmOpcode::from_usize(opcode),
                     a: BabyBear::ZERO,
                     b: BabyBear::ZERO,
                     c: BabyBear::ZERO,
@@ -293,9 +297,9 @@ pub fn customize(
                     .unwrap();
 
                 PowdrPrecompile::new(
-                    format!("PowdrAutoprecompile_{opcode}"),
+                    format!("PowdrAutoprecompile_{}", block.start_pc),
                     PowdrOpcode {
-                        class_offset: opcode as usize,
+                        class_offset: opcode,
                     },
                     machine,
                     acc.into_iter()
@@ -420,13 +424,13 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         apc_candidates_dir_path: &Path,
     ) -> OpenVmApcCandidateJsonExport<Instr<BabyBear>> {
         OpenVmApcCandidateJsonExport {
-            opcode: self.apc.opcode,
+            start_pc: self.apc.start_pc(),
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
             total_width_before: self.widths.before.total(),
             total_width_after: self.widths.after.total(),
             apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.opcode))
+                .join(format!("apc_{}.cbor", self.apc.start_pc()))
                 .display()
                 .to_string(),
         }
@@ -439,8 +443,8 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidateJsonExport<I> {
-    // opcode
-    opcode: u32,
+    // start_pc
+    start_pc: u64,
     // execution_frequency
     execution_frequency: usize,
     // original instructions
@@ -477,6 +481,6 @@ impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     }
 
     fn tie_breaker(&self) -> usize {
-        self.apc.opcode as usize
+        self.apc.start_pc() as usize
     }
 }

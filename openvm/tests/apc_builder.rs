@@ -7,7 +7,7 @@ use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::Instr;
-use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND};
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
@@ -46,7 +46,6 @@ fn compile(program: Vec<Instruction<BabyBear>>) -> String {
         },
         vm_config,
         degree_bound,
-        POWDR_OPCODE as u32,
         None,
     )
     .unwrap()
