@@ -1,3 +1,11 @@
+Instructions:
+  XOR rd_ptr = 8, rs1_ptr = 5, rs2 = 16777215, rs2_as = 0
+
+APC advantage:
+  - Main columns: 36 -> 18 (2.00x reduction)
+  - Bus interactions: 20 -> 14 (1.43x reduction)
+  - Constraints: 22 -> 1 (22.00x reduction)
+
 // Symbolic machine using 18 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):

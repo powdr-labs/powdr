@@ -1,3 +1,11 @@
+Instructions:
+  SUB rd_ptr = 8, rs1_ptr = 0, rs2 = 5, rs2_as = 1
+
+APC advantage:
+  - Main columns: 36 -> 20 (1.80x reduction)
+  - Bus interactions: 20 -> 16 (1.25x reduction)
+  - Constraints: 22 -> 5 (4.40x reduction)
+
 // Symbolic machine using 20 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):

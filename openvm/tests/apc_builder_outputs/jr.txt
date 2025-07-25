@@ -1,3 +1,11 @@
+Instructions:
+  JAL 1 0 8 1 0
+
+APC advantage:
+  - Main columns: 18 -> 2 (9.00x reduction)
+  - Bus interactions: 10 -> 2 (5.00x reduction)
+  - Constraints: 9 -> 1 (9.00x reduction)
+
 // Symbolic machine using 2 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
