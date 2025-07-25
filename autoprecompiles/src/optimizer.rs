@@ -45,11 +45,11 @@ pub fn optimize<A: Adapter>(
     }
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
-    let mut constraint_system = introduce_bus_interaction_variables(constraint_system);
+    let constraint_system = introduce_bus_interaction_variables(constraint_system);
 
-    let mut constraint_system = loop {
-        let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<_>>(
+    // Run the optimizer while avoiding inlining bus interaction field variables
+    let constraint_system =
+        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
             |var, expr, _system| {
@@ -67,41 +67,57 @@ pub fn optimize<A: Adapter>(
             &mut stats_logger,
             bus_map,
         )?;
-        if stats == stats_logger::Stats::from(&constraint_system) {
-            // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
-            let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
-            assert!(
-                !constraint_system.bus_interactions.iter().any(|b| b.bus_id
-                    == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
-                "Expected all PC lookups to be removed."
-            );
 
-            break remove_bus_interaction_variables(constraint_system);
-        }
-    };
-
-    let constraint_system = loop {
-        let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<_>>(
+    // Now remove the bus interaction field variables and run the optimizer,
+    // allowing all inlining below the degree bound.
+    let constraint_system = remove_bus_interaction_variables(constraint_system);
+    let constraint_system =
+        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map,
         )?;
-        if stats == stats_logger::Stats::from(&constraint_system) {
-            // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
-            let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
-            assert!(
-                !constraint_system.bus_interactions.iter().any(|b| b.bus_id
-                    == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
-                "Expected all PC lookups to be removed."
-            );
 
-            break constraint_system;
-        }
-    };
+    // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
+    let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
+    assert!(
+        !constraint_system
+            .bus_interactions
+            .iter()
+            .any(|b| b.bus_id
+                == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
+        "Expected all PC lookups to be removed."
+    );
     Ok(constraint_system_to_symbolic_machine(constraint_system))
+}
+
+fn run_optimization_loop_until_no_change<
+    P: FieldElement,
+    V: Ord + Clone + Eq + Hash + Debug + Display,
+    C: PartialEq + Eq + Clone + Display,
+    M: MemoryBusInteraction<P, V>,
+>(
+    mut constraint_system: ConstraintSystem<P, V>,
+    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
+    stats_logger: &mut StatsLogger,
+    bus_map: &BusMap<C>,
+) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
+    loop {
+        let stats = stats_logger::Stats::from(&constraint_system);
+        constraint_system = optimization_loop_iteration::<_, _, _, M>(
+            constraint_system,
+            bus_interaction_handler.clone(),
+            &should_inline,
+            stats_logger,
+            bus_map,
+        )?;
+        if stats == stats_logger::Stats::from(&constraint_system) {
+            return Ok(constraint_system);
+        }
+    }
 }
 
 fn optimization_loop_iteration<
@@ -319,7 +335,7 @@ impl<V: Display> Display for Variable<V> {
     }
 }
 
-/// Transfrom the variable type of a constraint system by introducing
+/// Transform the variable type of a constraint system by introducing
 /// new variables for bus interaction fields.
 fn introduce_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
     constraint_system: ConstraintSystem<T, V>,

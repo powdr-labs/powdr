@@ -6,7 +6,7 @@ use num_traits::{One, Zero};
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
-use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
