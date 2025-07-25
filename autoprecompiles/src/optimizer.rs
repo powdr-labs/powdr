@@ -9,6 +9,7 @@ use powdr_constraint_solver::indexed_constraint_system::{
     apply_substitutions, IndexedConstraintSystem,
 };
 use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
+use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -52,18 +53,7 @@ pub fn optimize<A: Adapter>(
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
-            |var, expr, _system| {
-                // Do not inline bus interaction field variables (unless they are replaced
-                // by a single other variable) and also do not inline
-                // variables defined via bus interaction field variables.
-                let is_about_bus_field_var = (matches!(var, Variable::BusInteractionField(_, _))
-                    && expr.try_to_simple_unknown().is_none())
-                    || expr
-                        .referenced_unknown_variables()
-                        .any(|v| matches!(v, Variable::BusInteractionField(_, _)));
-                // and only inline if the degree is at most 1.
-                !is_about_bus_field_var && expr.degree() <= 1
-            },
+            only_inline_degree_one_and_no_bus_field_vars,
             &mut stats_logger,
             bus_map,
         )?;
@@ -91,6 +81,24 @@ pub fn optimize<A: Adapter>(
         "Expected all PC lookups to be removed."
     );
     Ok(constraint_system_to_symbolic_machine(constraint_system))
+}
+
+/// Inlining discriminator that prevents the inliner from inlining
+/// bus interaction field variables (unless they are replaced
+/// by a single other variable) and variables defined via bus interaction
+/// field variables. All other variables are inlined if the expression has degree at most one.
+fn only_inline_degree_one_and_no_bus_field_vars<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+    var: &Variable<V>,
+    expr: &GroupedExpression<T, Variable<V>>,
+    _constraint_system: &IndexedConstraintSystem<T, Variable<V>>,
+) -> bool {
+    let is_about_bus_field_var = (matches!(var, Variable::BusInteractionField(_, _))
+        && expr.try_to_simple_unknown().is_none())
+        || expr
+            .referenced_unknown_variables()
+            .any(|v| matches!(v, Variable::BusInteractionField(_, _)));
+    // and only inline if the degree is at most 1.
+    !is_about_bus_field_var && expr.degree() <= 1
 }
 
 fn run_optimization_loop_until_no_change<
