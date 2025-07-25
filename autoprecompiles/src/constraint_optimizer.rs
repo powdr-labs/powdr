@@ -60,9 +60,6 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
 
-    let constraint_system = remove_equal_constraints(constraint_system);
-    stats_logger.log("removing equal constraints", &constraint_system);
-
     let constraint_system =
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
@@ -151,14 +148,6 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord
     constraint_system
 }
 
-fn remove_equal_constraints<P: FieldElement, V: Eq + Hash + Clone>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
-) -> JournalingConstraintSystem<P, V> {
-    let mut seen = HashSet::new();
-    constraint_system.retain_algebraic_constraints(|constraint| seen.insert(constraint.clone()));
-    constraint_system
-}
-
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
@@ -227,11 +216,8 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         redundant_constraints.extend(redundant);
     }
     let mut counter = 0;
-    constraint_system.retain_algebraic_constraints(|c| {
+    constraint_system.retain_algebraic_constraints(|_| {
         let retain = !redundant_constraints.contains(&counter);
-        if !retain {
-            println!("Removing {c}");
-        }
         counter += 1;
         retain
     });
