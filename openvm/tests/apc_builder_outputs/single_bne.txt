@@ -1,3 +1,11 @@
+Instructions:
+  BNE 8 5 2 1 1
+
+APC advantage:
+  - Main columns: 26 -> 18 (1.44x reduction)
+  - Bus interactions: 11 -> 10 (1.10x reduction)
+  - Constraints: 11 -> 6 (1.83x reduction)
+
 // Symbolic machine using 18 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
