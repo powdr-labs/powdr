@@ -40,7 +40,7 @@ use std::{
 };
 use strum::{Display, EnumString};
 
-use crate::customize_exe::Prog;
+pub use crate::customize_exe::Prog;
 use tracing::Level;
 
 #[cfg(test)]
