@@ -25,7 +25,7 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -33,7 +33,6 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -41,15 +40,8 @@ use std::{
 };
 use strum::{Display, EnumString};
 
-use tracing::dispatcher::Dispatch;
-use tracing::field::Field as TracingField;
-use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::{
-    layer::Context,
-    prelude::*,
-    registry::{LookupSpan, Registry},
-    Layer,
-};
+use crate::customize_exe::Prog;
+use tracing::Level;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
@@ -620,131 +612,16 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let program = compile_openvm(guest, guest_opts).unwrap();
-    execution_profile(program, inputs)
-}
-
-// Produces execution count by pc
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = program;
-
-    // in memory collector storage
-    let collector = PgoCollector::new(&exe.program);
-
-    // build subscriber
-    let subscriber = Registry::default().with(collector.clone());
+    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let program = Prog::from(&exe.program);
 
     // prepare for execute
     let sdk = Sdk::default();
 
-    // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
-    let dispatch = Dispatch::new(subscriber);
-    tracing::dispatcher::with_default(&dispatch, || {
-        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs)
+    execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
+        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs.clone())
             .unwrap();
-    });
-
-    // Extract the collected data
-    let pc_index_count = collector.into_hashmap();
-
-    // the smallest pc is the same as the pc_base if there's no stdin
-    let pc_min = pc_index_count.keys().min().unwrap();
-    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, exe.program.pc_base);
-
-    // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
-
-    if tracing::enabled!(Level::TRACE) {
-        // print pc_index map in descending order of pc_index count
-        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-        pc_index_count_sorted.iter().for_each(|(pc, count)| {
-            tracing::trace!("pc_index {}: {}", pc, count);
-        });
-    }
-
-    pc_index_count
-}
-
-// holds basic type fields of execution objects captured in trace by subscriber
-#[derive(Default)]
-struct PgoData {
-    pc: Option<usize>,
-}
-
-impl tracing::field::Visit for PgoData {
-    // when we receive a u64 field, they are parsed into fields of the pgo data
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        if field.name() == "pc" {
-            self.pc = Some(value as usize);
-        }
-    }
-
-    // required for implementation, but in practice we will only receive u64 fields
-    // the fields we receive are determined by the instruction trace print out of our openvm fork during execution
-    fn record_debug(&mut self, _: &TracingField, _: &dyn std::fmt::Debug) {}
-}
-
-// A Layer that collects data we are interested in using for the pgo from the trace fields.
-#[derive(Clone)]
-struct PgoCollector {
-    step: usize,
-    pc_base: usize,
-    pc_index_map: Arc<Vec<AtomicU32>>,
-}
-
-impl PgoCollector {
-    fn new<F>(program: &Program<F>) -> Self {
-        let max_pc_index = program.instructions_and_debug_infos.len();
-        // create a map with max_pc entries initialized to 0
-        let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
-        Self {
-            pc_index_map,
-            step: program.step as usize,
-            pc_base: program.pc_base as usize,
-        }
-    }
-
-    fn into_hashmap(self) -> HashMap<u64, u32> {
-        // Turn the map into a HashMap of (pc_index, count)
-        self.pc_index_map
-            .iter()
-            .enumerate()
-            .filter_map(|(pc_index, count)| {
-                let count = count.load(Ordering::Relaxed);
-
-                // if the count is zero, we skip it
-                if count == 0 {
-                    return None;
-                }
-                let pc = self.pc_base + (pc_index * self.step);
-
-                Some((pc as u64, count))
-            })
-            .collect()
-    }
-
-    fn increment(&self, pc: usize) {
-        self.pc_index_map[(pc - self.pc_base) / self.step].fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-impl<S> Layer<S> for PgoCollector
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        // build a visitor to parse and hold trace fields we are interested in
-        let mut visitor = PgoData::default();
-        event.record(&mut visitor);
-
-        // because our subscriber is at the trace level, for trace print outs that don't match PgoData,
-        // the visitor can't parse them, and these cases are filtered out automatically
-        if let Some(pc) = visitor.pc {
-            self.increment(pc);
-        }
-    }
+    })
 }
 
 #[cfg(test)]

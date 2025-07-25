@@ -86,6 +86,12 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
 pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 
+impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
+    fn from(program: &'a OpenVmProgram<F>) -> Self {
+        Prog(program)
+    }
+}
+
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
 #[derive(Clone, Serialize, Deserialize)]
@@ -126,6 +132,10 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
                 .iter()
                 .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
         )
+    }
+
+    fn length(&self) -> u32 {
+        self.0.instructions_and_debug_infos.len() as u32
     }
 }
 
