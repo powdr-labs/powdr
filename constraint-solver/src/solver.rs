@@ -31,9 +31,30 @@ where
         + ExpressionConvertible<T::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    Solver::new(constraint_system)
+    SolverImpl::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
         .solve()
+}
+
+pub fn solver<T, V>(
+    constraint_system: ConstraintSystem<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+) -> impl Solver<T, V>
+where
+    T: RuntimeConstant
+        + Display
+        + ReferencedSymbols<V>
+        + Substitutable<V>
+        + ExpressionConvertible<T::FieldType, V>,
+    V: Ord + Clone + Hash + Eq + Display,
+{
+    SolverImpl::new(constraint_system).with_bus_interaction_handler(bus_interaction_handler)
+}
+
+pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> {
+    /// Solves the constraints as far as possible, returning concrete variable
+    /// assignments. Does not return the same assignments again.
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
 }
 
 /// An error occurred while solving the constraint system.
@@ -53,7 +74,7 @@ pub enum Error {
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
+struct SolverImpl<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -68,24 +89,38 @@ pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
 }
 
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
-    Solver<T, V, DefaultBusInteractionHandler<T::FieldType>>
+    SolverImpl<T, V, DefaultBusInteractionHandler<T::FieldType>>
 {
-    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
+    fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
 
-        Solver {
+        SolverImpl {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Default::default(),
             assignments_to_return: Default::default(),
         }
     }
+
+    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
+        self,
+        bus_interaction_handler: B,
+    ) -> SolverImpl<T, V, B> {
+        assert!(self.assignments_to_return.is_empty());
+        SolverImpl {
+            bus_interaction_handler,
+            constraint_system: self.constraint_system,
+            range_constraints: self.range_constraints,
+            assignments_to_return: self.assignments_to_return,
+        }
+    }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V, BusInter>
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> RangeConstraintProvider<T::FieldType, V>
+    for SolverImpl<T, V, BusInter>
 where
     V: Ord + Clone + Hash + Eq + Display,
     T: RuntimeConstant
@@ -94,26 +129,36 @@ where
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
-    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
-        self,
-        bus_interaction_handler: B,
-    ) -> Solver<T, V, B> {
-        assert!(self.assignments_to_return.is_empty());
-        Solver {
-            bus_interaction_handler,
-            constraint_system: self.constraint_system,
-            range_constraints: self.range_constraints,
-            assignments_to_return: self.assignments_to_return,
-        }
+    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+        self.range_constraints.get(var)
     }
+}
 
-    /// Solves the constraints as far as possible, returning concrete variable
-    /// assignments. Does not return the same assignments again.
-    pub fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V>
+    for SolverImpl<T, V, BusInter>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Display
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
+{
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.loop_until_no_progress()?;
         Ok(std::mem::take(&mut self.assignments_to_return))
     }
+}
 
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> SolverImpl<T, V, BusInter>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Display
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
+{
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
@@ -177,7 +222,7 @@ where
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
         let equivalences = quadratic_equivalences::find_quadratic_equalities(
             self.constraint_system.algebraic_constraints(),
-            &self.range_constraints,
+            &*self,
         );
         for (x, y) in &equivalences {
             self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
@@ -191,7 +236,7 @@ where
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         let assignments = exhaustive_search::get_unique_assignments(
             &self.constraint_system,
-            &self.range_constraints,
+            &*self,
             &self.bus_interaction_handler,
         )?;
 
@@ -250,14 +295,6 @@ where
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Hash + Eq, B> RangeConstraintProvider<T::FieldType, V>
-    for &Solver<T, V, B>
-{
-    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
-        self.range_constraints.get(var)
-    }
-}
-
 /// The currently known range constraints for the variables.
 pub struct RangeConstraints<T: FieldElement, V> {
     pub range_constraints: HashMap<V, RangeConstraint<T>>,
@@ -274,14 +311,6 @@ impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
 
 impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
     for RangeConstraints<T, V>
-{
-    fn get(&self, var: &V) -> RangeConstraint<T> {
-        self.range_constraints.get(var).cloned().unwrap_or_default()
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
-    for &RangeConstraints<T, V>
 {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         self.range_constraints.get(var).cloned().unwrap_or_default()

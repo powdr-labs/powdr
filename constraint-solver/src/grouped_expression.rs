@@ -391,6 +391,12 @@ pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
 
+impl<R: RangeConstraintProvider<T, V>, T: FieldElement, V> RangeConstraintProvider<T, V> for &R {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        R::get(self, var)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct NoRangeConstraints;
 impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
