@@ -1,10 +1,12 @@
 use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::evaluation::evaluate_apc;
 use powdr_autoprecompiles::{build, BasicBlock, DegreeBound, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
+use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::Instr;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
@@ -12,8 +14,8 @@ use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
 
-// A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(program: Vec<Instruction<BabyBear>>) -> String {
+// Compiles a basic block to a string, listing the basic block, an evaluation of the APC, and APC constraints.
+fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -39,19 +41,33 @@ fn compile(program: Vec<Instruction<BabyBear>>) -> String {
         bus_interactions: OPENVM_DEGREE_BOUND - 1,
     };
 
-    build::<BabyBearOpenVmApcAdapter>(
-        BasicBlock {
-            statements: program.into_iter().map(Instr).collect(),
-            start_pc: 0,
-        },
+    let basic_block_str = basic_block
+        .iter()
+        .map(|inst| format!("  {}", openvm_instruction_formatter(inst)))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let basic_block = BasicBlock {
+        statements: basic_block.into_iter().map(Instr).collect(),
+        start_pc: 0,
+    };
+
+    let apc = build::<BabyBearOpenVmApcAdapter>(
+        basic_block.clone(),
         vm_config,
         degree_bound,
         POWDR_OPCODE as u32,
         None,
     )
-    .unwrap()
-    .machine()
-    .render(&bus_map)
+    .unwrap();
+    let apc = apc.machine();
+
+    let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
+
+    format!(
+        "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
+        apc.render(&bus_map)
+    )
 }
 
 /// Compare `actual` against the contents of the file at `path`.
