@@ -8,7 +8,7 @@ use powdr_constraint_solver::constraint_system::{
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::solver::Solver;
+use powdr_constraint_solver::solver::{solver, Solver};
 use powdr_number::FieldElement;
 
 /// Optimize interactions with the bitwise lookup bus.
@@ -94,14 +94,13 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     // expressions we still need to byte-constrain. Some are maybe already
     // byte-constrained by other bus interactions.
     let byte_range_constraint = RangeConstraint::from_mask(0xffu64);
-    let mut solver =
-        Solver::new(system.clone()).with_bus_interaction_handler(bus_interaction_handler);
+    let mut solver = solver(system.clone(), bus_interaction_handler);
     solver.solve().unwrap();
 
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
         .filter(|expr| {
-            let rc = expr.range_constraint(&&solver);
+            let rc = expr.range_constraint(&solver);
             rc != rc.conjunction(&byte_range_constraint)
         })
         .unique()
