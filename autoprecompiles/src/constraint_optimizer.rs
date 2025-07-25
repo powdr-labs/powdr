@@ -209,20 +209,29 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
     for (i, factors) in constraints_as_factors.iter().enumerate() {
         // Go through all factors `f` and compute the intersection of all
         // constraints in `constraints_by_factor[f]`. These constraints
-        // are multiples of the current constraint, so they are all redundant.
-        // But be sure to exclude the current constraint itself.
+        // are multiples of the current constraint, so they are redundant
+        // if they are proper multiples, i.e. have at least one more factor.
         let mut redundant = factors
             .iter()
             .map(|f| constraints_by_factor[f].clone())
             .reduce(|a, b| a.intersection(&b).copied().collect())
             .unwrap();
-        // Remove the constraint itself.
-        assert!(redundant.remove(&i));
+        // Only remove constraints that have the same factors if their index
+        // is larger than the current one.
+        // Counting the factors is sufficient here.
+        redundant.retain(|j| {
+            let other_factors = &constraints_as_factors[*j];
+            assert!(other_factors.len() >= factors.len());
+            other_factors.len() > factors.len() || *j > i
+        });
         redundant_constraints.extend(redundant);
     }
     let mut counter = 0;
-    constraint_system.retain_algebraic_constraints(|_| {
+    constraint_system.retain_algebraic_constraints(|c| {
         let retain = !redundant_constraints.contains(&counter);
+        if !retain {
+            println!("Removing {c}");
+        }
         counter += 1;
         retain
     });
