@@ -18,6 +18,10 @@ use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effe
 use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
+/// Terms with more than `MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS` quadratic terms
+/// are not analyzed for pairs that sum to zero.
+const MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS: usize = 20;
+
 #[derive(Default)]
 pub struct ProcessResult<T: RuntimeConstant, V> {
     pub effects: Vec<Effect<T, V>>,
@@ -894,6 +898,11 @@ fn combine_removing_zeros<E: PartialEq>(first: Vec<(E, E)>, mut second: Vec<(E, 
 where
     for<'a> &'a E: Neg<Output = E>,
 {
+    if first.len() + second.len() > MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS {
+        // If there are too many terms, we cannot do this efficiently.
+        return first.into_iter().chain(second).collect();
+    }
+
     let mut result = first
         .into_iter()
         .filter(|first| {
@@ -919,6 +928,11 @@ fn remove_quadratic_terms_adding_to_zero<E: PartialEq>(terms: &mut Vec<(E, E)>)
 where
     for<'a> &'a E: Neg<Output = E>,
 {
+    if terms.len() > MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS {
+        // If there are too many terms, we cannot do this efficiently.
+        return;
+    }
+
     let mut to_remove = HashSet::new();
     for ((i, first), (j, second)) in terms.iter().enumerate().tuple_combinations() {
         if to_remove.contains(&i) || to_remove.contains(&j) {
