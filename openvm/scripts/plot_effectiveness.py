@@ -13,7 +13,7 @@ def load_apc_data(json_path):
         data = json.load(f)
     
     return pd.DataFrame([{
-        'opcode': item['opcode'],
+        'start_pc': item['start_pc'],
         'effectiveness': item['total_width_before'] / item['total_width_after'],
         'instructions': len(item['original_block']['statements']),
         'software_version_cells': item['total_width_before'] * item['execution_frequency'],
@@ -38,9 +38,9 @@ def plot_effectiveness(json_path, filename=None):
     total_cells = df['software_version_cells'].sum()
     
     # Print top 10 basic blocks
-    top10 = df.nlargest(10, 'software_version_cells')[['opcode', 'software_version_cells', 'effectiveness', 'instructions', 'total_width_before', 'total_width_after']]
+    top10 = df.nlargest(10, 'software_version_cells')[['start_pc', 'software_version_cells', 'effectiveness', 'instructions', 'total_width_before', 'total_width_after']]
     top10['software_version_cells'] = top10['software_version_cells'].apply(format_cell_count)
-    top10.columns = ['Opcode', 'Trace Cells', 'Effectiveness', 'Instructions', 'Width Before', 'Width After']
+    top10.columns = ['Start PC', 'Trace Cells', 'Effectiveness', 'Instructions', 'Width Before', 'Width After']
     print("\nTop 10 Basic Blocks by Trace Cells:")
     print(top10.to_string(index=False))
     print()
