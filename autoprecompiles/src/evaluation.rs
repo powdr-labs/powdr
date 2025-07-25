@@ -3,9 +3,15 @@ use std::{fmt::Display, iter::Sum, ops::Add};
 use crate::{blocks::Instruction, InstructionHandler, SymbolicMachine};
 
 #[derive(Clone, Copy, PartialEq, Default, Eq, Debug)]
+/// Statistics of an AIR
 pub struct AirStats {
+    /// The number of main columns
     pub main_columns: usize,
+    /// The number of polynomial constraints
     pub constraints: usize,
+    /// The number of bus interactions. Note that in some proof systems, they might
+    /// translate to a number of columns. The exact number depends on many factors,
+    /// including the degree of the bus interaction fields, which is not measured here.
     pub bus_interactions: usize,
 }
 
@@ -36,11 +42,18 @@ impl Sum<AirStats> for AirStats {
     }
 }
 
+/// Evaluation result of an APC evaluation
 pub struct EvaluationResult {
+    /// Statistics before optimizations, i.e., the sum of the AIR stats
+    /// of all AIRs that *would* be involved in proving this basic block
+    /// if it was run in software.
     pub before: AirStats,
+    /// The AIR stats of the APC.
     pub after: AirStats,
 }
 
+/// Evaluate an APC by comparing its cost to the cost of executing the
+/// basic block in software.
 pub fn evaluate_apc<
     F: Clone + Ord + std::fmt::Display,
     I: Instruction<F>,
