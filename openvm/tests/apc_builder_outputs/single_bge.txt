@@ -1,3 +1,11 @@
+Instructions:
+  BGE 8 5 2 1 1
+
+APC advantage:
+  - Main columns: 32 -> 22 (1.45x reduction)
+  - Bus interactions: 13 -> 12 (1.08x reduction)
+  - Constraints: 25 -> 19 (1.32x reduction)
+
 // Symbolic machine using 22 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
