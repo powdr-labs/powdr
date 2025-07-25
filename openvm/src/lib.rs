@@ -26,7 +26,6 @@ use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
-use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
