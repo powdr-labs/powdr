@@ -77,15 +77,15 @@ impl ConstraintSystemItem {
 
     /// Turns this indexed-based item into a reference to the actual constraint.
     fn to_constraint_ref<'a, T, V>(
-        &self,
+        self,
         constraint_system: &'a ConstraintSystem<T, V>,
     ) -> ConstraintRef<'a, T, V> {
         match self {
             ConstraintSystemItem::AlgebraicConstraint(i) => {
-                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[*i])
+                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[i])
             }
             ConstraintSystemItem::BusInteraction(i) => {
-                ConstraintRef::BusInteraction(&constraint_system.bus_interactions[*i])
+                ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
             }
         }
     }
