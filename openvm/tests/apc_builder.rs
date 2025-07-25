@@ -52,13 +52,8 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         start_pc: 0,
     };
 
-    let apc = build::<BabyBearOpenVmApcAdapter>(
-        basic_block.clone(),
-        vm_config,
-        degree_bound,
-        None,
-    )
-    .unwrap();
+    let apc = build::<BabyBearOpenVmApcAdapter>(basic_block.clone(), vm_config, degree_bound, None)
+        .unwrap();
     let apc = apc.machine();
 
     let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
