@@ -61,22 +61,26 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let base = Path::new("tests/apc_builder_outputs");
     let file_path = base.join(format!("{test_name}.txt"));
 
-    match fs::read_to_string(&file_path) {
-        Ok(expected) => {
-            assert_eq!(
-                expected.trim(),
-                actual.trim(),
-                "The output of `{test_name}` does not match the expected output. \
-                 To re-generate the expected output, delete the file `{test_name}.txt` and re-run the test.",
-            );
-        }
-        _ => {
-            // Write the new expected output to the file
-            fs::create_dir_all(base).unwrap();
-            fs::write(&file_path, actual).unwrap();
+    if std::env::var("UPDATE_EXPECT")
+        .map(|v| v.as_str() == "1")
+        .unwrap_or(false)
+        || !file_path.exists()
+    {
+        // Write the new expected output to the file
+        fs::create_dir_all(base).unwrap();
+        fs::write(&file_path, actual).unwrap();
 
-            println!("Expected output for `{test_name}` was updated. Re-run the test to confirm.");
-        }
+        println!("Expected output for `{test_name}` was updated. Re-run the test to confirm.");
+    } else {
+        let expected = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(
+            expected.trim(),
+            actual.trim(),
+            "The output of `{test_name}` does not match the expected output. \
+                 To overwrite the expected output with the currently generated one, \
+                 re-run the test with the environment variable `UPDATE_EXPECT=1` or \
+                 delete the file `{test_name}.txt`.",
+        );
     }
 }
 

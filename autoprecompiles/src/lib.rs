@@ -1,4 +1,4 @@
-use crate::adapter::{Adapter, AdapterApc};
+use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
@@ -24,6 +24,7 @@ mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
 pub mod memory_optimizer;
@@ -185,7 +186,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
 }
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
-    pub fn render(&self, bus_map: &BusMap) -> String {
+    pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
         let mut output = format!(
             "// Symbolic machine using {} unique main columns\n",
             self.main_columns().count()
@@ -261,17 +262,17 @@ pub enum InstructionKind {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, M, B> {
+pub struct VmConfig<'a, M, B, C> {
     /// Maps an opcode to its AIR.
     pub instruction_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
-    pub bus_map: BusMap,
+    pub bus_map: BusMap<C>,
 }
 
 // We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
-impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
+impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
     fn clone(&self) -> Self {
         VmConfig {
             instruction_handler: self.instruction_handler,
@@ -312,7 +313,7 @@ impl<T, I> Apc<T, I> {
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
