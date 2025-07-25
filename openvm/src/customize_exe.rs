@@ -241,72 +241,75 @@ pub fn customize(
 
     let extensions = apcs
         .into_iter()
-        .map(
-            |(
-                Apc {
-                    block,
-                    opcode,
-                    machine,
-                    subs,
+        .enumerate()
+        .map(|(i, (apc, apc_stats))| {
+            let Apc {
+                block,
+                machine,
+                subs,
+            } = apc;
+            let opcode = POWDR_OPCODE + i;
+            // Create a new instruction that will be used to replace the original instructions in the block.
+            // Note that this instruction is never actually looked up, because our APCs do not contain any
+            // PC lookup (instead, they hardcode a PC in the execution bridge receive).
+            // Replacing the instruction here has the effect that the prover is forced to use the APC.
+            // We could also skip this to allow the prover to take either the software or APC path.
+            // This does complicate witgen though, because which executor should be run is no longer deterministic.
+            let new_instr = OpenVmInstruction {
+                opcode: VmOpcode::from_usize(opcode),
+                a: BabyBear::ZERO,
+                b: BabyBear::ZERO,
+                c: BabyBear::ZERO,
+                d: BabyBear::ZERO,
+                e: BabyBear::ZERO,
+                f: BabyBear::ZERO,
+                g: BabyBear::ZERO,
+            };
+
+            let start_index = ((block.start_pc - exe.program.pc_base as u64)
+                / exe.program.step as u64)
+                .try_into()
+                .unwrap();
+            let n_acc = block.statements.len();
+            let (acc, new_instrs): (Vec<_>, Vec<_>) = program[start_index..start_index + n_acc]
+                .iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    let instr = x.as_ref().unwrap();
+                    let instr = instr.0.clone();
+                    if i == 0 {
+                        (instr, new_instr.clone())
+                    } else {
+                        (instr, noop.clone())
+                    }
+                })
+                .collect();
+
+            let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
+
+            let len_before = program.len();
+            program.splice(start_index..start_index + n_acc, new_instrs);
+            assert_eq!(program.len(), len_before);
+
+            let is_valid_column = machine
+                .main_columns()
+                .find(|c| &*c.name == "is_valid")
+                .unwrap();
+
+            PowdrPrecompile::new(
+                format!("PowdrAutoprecompile_{}", block.start_pc),
+                PowdrOpcode {
+                    class_offset: opcode,
                 },
+                machine,
+                acc.into_iter()
+                    .zip_eq(subs)
+                    .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
+                    .collect(),
+                is_valid_column,
                 apc_stats,
-            )| {
-                let new_instr = OpenVmInstruction {
-                    opcode: VmOpcode::from_usize(opcode as usize),
-                    a: BabyBear::ZERO,
-                    b: BabyBear::ZERO,
-                    c: BabyBear::ZERO,
-                    d: BabyBear::ZERO,
-                    e: BabyBear::ZERO,
-                    f: BabyBear::ZERO,
-                    g: BabyBear::ZERO,
-                };
-
-                let start_index = ((block.start_pc - exe.program.pc_base as u64)
-                    / exe.program.step as u64)
-                    .try_into()
-                    .unwrap();
-                let n_acc = block.statements.len();
-                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[start_index..start_index + n_acc]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, x)| {
-                        let instr = x.as_ref().unwrap();
-                        let instr = instr.0.clone();
-                        if i == 0 {
-                            (instr, new_instr.clone())
-                        } else {
-                            (instr, noop.clone())
-                        }
-                    })
-                    .collect();
-
-                let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
-
-                let len_before = program.len();
-                program.splice(start_index..start_index + n_acc, new_instrs);
-                assert_eq!(program.len(), len_before);
-
-                let is_valid_column = machine
-                    .main_columns()
-                    .find(|c| &*c.name == "is_valid")
-                    .unwrap();
-
-                PowdrPrecompile::new(
-                    format!("PowdrAutoprecompile_{opcode}"),
-                    PowdrOpcode {
-                        class_offset: opcode as usize,
-                    },
-                    machine,
-                    acc.into_iter()
-                        .zip_eq(subs)
-                        .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
-                        .collect(),
-                    is_valid_column,
-                    apc_stats,
-                )
-            },
-        )
+            )
+        })
         .collect();
 
     CompiledProgram {
@@ -420,13 +423,13 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         apc_candidates_dir_path: &Path,
     ) -> OpenVmApcCandidateJsonExport<Instr<BabyBear>> {
         OpenVmApcCandidateJsonExport {
-            opcode: self.apc.opcode,
+            start_pc: self.apc.start_pc(),
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
             total_width_before: self.widths.before.total(),
             total_width_after: self.widths.after.total(),
             apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.opcode))
+                .join(format!("apc_{}.cbor", self.apc.start_pc()))
                 .display()
                 .to_string(),
         }
@@ -439,8 +442,8 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidateJsonExport<I> {
-    // opcode
-    opcode: u32,
+    // start_pc
+    start_pc: u64,
     // execution_frequency
     execution_frequency: usize,
     // original instructions
@@ -477,6 +480,6 @@ impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     }
 
     fn tie_breaker(&self) -> usize {
-        self.apc.opcode as usize
+        self.apc.start_pc() as usize
     }
 }

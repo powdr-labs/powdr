@@ -46,23 +46,15 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
-    /// The opcode id of the first APC instruction. Other APC instructions will have consecutive ids.
-    pub first_apc_opcode: usize,
 }
 
 impl PowdrConfig {
-    pub fn new(
-        autoprecompiles: u64,
-        skip_autoprecompiles: u64,
-        degree_bound: DegreeBound,
-        first_apc_opcode: usize,
-    ) -> Self {
+    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
-            first_apc_opcode,
         }
     }
 
@@ -297,7 +289,6 @@ pub trait InstructionHandler<T, I> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I> {
     pub block: BasicBlock<I>,
-    pub opcode: u32,
     pub machine: SymbolicMachine<T>,
     pub subs: Vec<Vec<u64>>,
 }
@@ -310,13 +301,17 @@ impl<T, I> Apc<T, I> {
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
+
+    /// The PC of the first line of the basic block. Can be used to identify the APC.
+    pub fn start_pc(&self) -> u64 {
+        self.block.start_pc
+    }
 }
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
-    opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine::<A>(
@@ -341,12 +336,11 @@ pub fn build<A: Adapter>(
         block,
         machine,
         subs,
-        opcode,
     };
 
     if let Some(path) = apc_candidates_dir_path {
         let ser_path = path
-            .join(format!("apc_candidate_{opcode}"))
+            .join(format!("apc_candidate_{}", apc.start_pc()))
             .with_extension("cbor");
         std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
         let file =
