@@ -251,9 +251,10 @@ pub fn customize(
             let opcode = POWDR_OPCODE + i;
             // Create a new instruction that will be used to replace the original instructions in the block.
             // Note that this instruction is never actually looked up, because our APCs do not contain any
-            // PC lookup (instead, they hard-code a PC in the execution bridge receive).
+            // PC lookup (instead, they hardcode a PC in the execution bridge receive).
             // Replacing the instruction here has the effect that the prover is forced to use the APC.
             // We could also skip this to allow the prover to take either the software or APC path.
+            // This does complicate witgen though, because which executor should be run is no longer deterministic.
             let new_instr = OpenVmInstruction {
                 opcode: VmOpcode::from_usize(opcode),
                 a: BabyBear::ZERO,
