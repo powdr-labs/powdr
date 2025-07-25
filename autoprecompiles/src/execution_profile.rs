@@ -16,7 +16,10 @@ use tracing_subscriber::{
 
 // Produces execution count by pc
 // Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn execution_profile<A: Adapter>(program: &A::Program, f: impl FnOnce()) -> HashMap<u64, u32> {
+pub fn execution_profile<A: Adapter>(
+    program: &A::Program,
+    execute_fn: impl FnOnce(),
+) -> HashMap<u64, u32> {
     // in memory collector storage
     let collector = PgoCollector::new::<A>(program);
 
@@ -25,7 +28,7 @@ pub fn execution_profile<A: Adapter>(program: &A::Program, f: impl FnOnce()) -> 
 
     // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
     let dispatch = Dispatch::new(subscriber);
-    tracing::dispatcher::with_default(&dispatch, f);
+    tracing::dispatcher::with_default(&dispatch, execute_fn);
 
     // Extract the collected data
     let pc_index_count = collector.into_hashmap();
@@ -78,7 +81,7 @@ struct PgoCollector {
 
 impl PgoCollector {
     fn new<A: Adapter>(program: &A::Program) -> Self {
-        let max_pc_index = program.len();
+        let max_pc_index = program.length();
         // create a map with max_pc entries initialized to 0
         let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
         Self {

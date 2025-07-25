@@ -50,7 +50,7 @@ pub trait Program<I> {
     fn instructions(&self) -> Box<dyn Iterator<Item = I> + '_>;
 
     /// Returns the number of instructions in the program.
-    fn len(&self) -> u32;
+    fn length(&self) -> u32;
 }
 
 pub trait Instruction<T>: Clone {

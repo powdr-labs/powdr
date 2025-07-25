@@ -33,7 +33,6 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -42,15 +41,7 @@ use std::{
 use strum::{Display, EnumString};
 
 use crate::customize_exe::Prog;
-use tracing::dispatcher::Dispatch;
-use tracing::field::Field as TracingField;
-use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::{
-    layer::Context,
-    prelude::*,
-    registry::{LookupSpan, Registry},
-    Layer,
-};
+use tracing::Level;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;

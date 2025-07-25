@@ -134,7 +134,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
         )
     }
 
-    fn len(&self) -> u32 {
+    fn length(&self) -> u32 {
         self.0.instructions_and_debug_infos.len() as u32
     }
 }
