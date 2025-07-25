@@ -62,7 +62,7 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
     .unwrap();
     let apc = apc.machine();
 
-    let evaluation = evaluate_apc(&basic_block.statements, &airs, &apc);
+    let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
 
     format!(
         "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
