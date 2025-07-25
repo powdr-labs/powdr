@@ -1,5 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::fmt::Display;
+use std::hash::Hash;
 use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
@@ -26,7 +28,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
-use powdr_autoprecompiles::expression::{try_convert, AlgebraicReference};
+use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_autoprecompiles::{BasicBlock, VmConfig};
@@ -68,7 +70,8 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
-    type MemoryBusInteraction = OpenVmMemoryBusInteraction<Self::PowdrField, AlgebraicReference>;
+    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
+        OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
@@ -85,6 +88,12 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
 pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
+
+impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
+    fn from(program: &'a OpenVmProgram<F>) -> Self {
+        Prog(program)
+    }
+}
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
@@ -126,6 +135,10 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
                 .iter()
                 .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
         )
+    }
+
+    fn length(&self) -> u32 {
+        self.0.instructions_and_debug_infos.len() as u32
     }
 }
 

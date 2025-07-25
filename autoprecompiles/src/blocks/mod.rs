@@ -48,6 +48,9 @@ pub trait Program<I> {
 
     /// Returns an iterator over the instructions in the program.
     fn instructions(&self) -> Box<dyn Iterator<Item = I> + '_>;
+
+    /// Returns the number of instructions in the program.
+    fn length(&self) -> u32;
 }
 
 pub trait Instruction<T>: Clone {
