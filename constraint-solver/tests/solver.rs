@@ -29,7 +29,7 @@ pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
 ) {
     let final_state = solve_system(system, bus_interaction_handler).unwrap();
     let expected_final_state = expected_assignments.into_iter().collect();
-    assert_expected_state(final_state.assignments, expected_final_state);
+    assert_expected_state(final_state, expected_final_state);
 }
 
 pub fn assert_conflicting<B: BusInteractionHandler<GoldilocksField>>(
@@ -294,7 +294,7 @@ fn add_with_carry() {
     };
 
     let final_state = solve_system(constraint_system.clone(), TestBusInteractionHandler).unwrap();
-    let final_state = apply_substitutions(constraint_system, final_state.assignments)
+    let final_state = apply_substitutions(constraint_system, final_state)
         .algebraic_constraints
         .iter()
         .format("\n")

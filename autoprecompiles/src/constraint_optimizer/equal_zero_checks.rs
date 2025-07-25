@@ -8,7 +8,7 @@ use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstr
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::solver;
+use powdr_constraint_solver::solver::{self, VariableAssignment};
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::reachability::reachable_variables_except_blocked;
@@ -21,16 +21,14 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     new_var: &mut impl FnMut() -> V,
 ) -> JournalingConstraintSystem<T, V> {
-    let rc = solver::Solver::new(constraint_system.system().clone())
-        .with_bus_interaction_handler(bus_interaction_handler.clone())
-        .solve()
-        .unwrap()
-        .range_constraints;
+    let mut solver = solver::Solver::new(constraint_system.system().clone())
+        .with_bus_interaction_handler(bus_interaction_handler.clone());
+    solver.solve().unwrap();
     let binary_range_constraint = RangeConstraint::from_mask(1);
     let binary_variables = constraint_system
         .indexed_system()
         .unknown_variables()
-        .filter(|v| rc.get(v) == binary_range_constraint)
+        .filter(|v| (&solver).get(v) == binary_range_constraint)
         .cloned()
         .collect::<BTreeSet<_>>();
     for var in binary_variables {
@@ -38,7 +36,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
             try_replace_equal_zero_check(
                 &mut constraint_system,
                 bus_interaction_handler.clone(),
-                &rc,
+                &&solver,
                 new_var,
                 var.clone(),
                 value,
@@ -242,7 +240,7 @@ fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     assignments: impl IntoIterator<Item = (V, T)>,
-) -> Result<solver::SolveResult<T, V>, solver::Error> {
+) -> Result<Vec<VariableAssignment<T, V>>, solver::Error> {
     let mut system = constraint_system.clone();
     for (var, value) in assignments {
         system.substitute_by_known(&var, &value);
@@ -252,10 +250,9 @@ fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
 
 /// Returns all variables that are assigned zero in the solution.
 fn zero_assigments<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    solution: &solver::SolveResult<T, V>,
+    solution: &[VariableAssignment<T, V>],
 ) -> impl Iterator<Item = V> + '_ {
     solution
-        .assignments
         .iter()
         .filter_map(|(v, val)| (val.try_to_number()? == 0.into()).then_some(v.clone()))
 }

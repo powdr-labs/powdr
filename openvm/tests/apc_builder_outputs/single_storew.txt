@@ -1,3 +1,11 @@
+Instructions:
+  STOREW rd_rs2_ptr = 8, rs1_ptr = 2, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 1
+
+APC advantage:
+  - Main columns: 41 -> 22 (1.86x reduction)
+  - Bus interactions: 17 -> 16 (1.06x reduction)
+  - Constraints: 25 -> 3 (8.33x reduction)
+
 // Symbolic machine using 22 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):

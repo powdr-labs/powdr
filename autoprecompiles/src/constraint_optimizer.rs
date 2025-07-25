@@ -1,10 +1,10 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use inliner::DegreeBound;
 use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
     grouped_expression::GroupedExpression,
+    indexed_constraint_system::IndexedConstraintSystem,
     inliner,
     journaling_constraint_system::JournalingConstraintSystem,
     solver::solve_system,
@@ -39,7 +39,7 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    degree_bound: DegreeBound,
+    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     new_var: &mut impl FnMut() -> V,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
@@ -55,7 +55,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
         replace_equal_zero_checks(constraint_system, bus_interaction_handler.clone(), new_var);
 
     let constraint_system =
-        inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
+        inliner::replace_constrained_witness_columns(constraint_system, should_inline);
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
@@ -75,15 +75,12 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
-    let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
+    let assignments = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
     log::trace!("Solver figured out the following assignments:");
-    for (var, value) in result.assignments.iter() {
+    for (var, value) in assignments.iter() {
         log::trace!("  {var} = {value}");
     }
-    constraint_system.apply_substitutions(result.assignments);
-    // TODO could we somehow get rid of this special case by keeping
-    // bus interaction field variables in the system for longer?
-    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
+    constraint_system.apply_substitutions(assignments);
     Ok(constraint_system)
 }
 
