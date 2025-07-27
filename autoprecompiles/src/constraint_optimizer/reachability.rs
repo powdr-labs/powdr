@@ -18,8 +18,7 @@ pub fn reachable_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// Returns the set of all variables reachable from an initial set via shared constraints
 /// (algebraic constraints and bus interactions).
 /// The set of blocking variables is a barrier that stops the reachability search.
-/// The returned set does not contain the blocking variables but it does contain
-/// the initial variables.
+/// The returned set contains reachable blocking variables and the initial variables.
 pub fn reachable_variables_except_blocked<T: FieldElement, V: Clone + Ord + Hash + Display>(
     initial_variables: impl IntoIterator<Item = V>,
     blocking_variables: impl IntoIterator<Item = V>,
@@ -27,26 +26,18 @@ pub fn reachable_variables_except_blocked<T: FieldElement, V: Clone + Ord + Hash
 ) -> HashSet<V> {
     let mut reachable_variables = initial_variables.into_iter().collect::<HashSet<_>>();
     let blocking_variables = blocking_variables.into_iter().collect::<HashSet<_>>();
-    // We just remove variables, order does not matter.
-    #[allow(clippy::iter_over_hash_type)]
-    for v in &blocking_variables {
-        reachable_variables.remove(v);
-    }
 
     loop {
         let size_before = reachable_variables.len();
+        // TODO could use an IndexedConstraintSystem for performance.
         for expr in constraint_system.iter() {
             if expr
                 .referenced_variables()
-                .any(|var| reachable_variables.contains(var))
+                .any(|var| reachable_variables.contains(var) && !blocking_variables.contains(var))
             {
-                // This constraint is connected to a reachable variable.
-                // Add all variables of this constraint except the blocking ones.
-                reachable_variables.extend(
-                    expr.referenced_variables()
-                        .filter(|&var| !blocking_variables.contains(var))
-                        .cloned(),
-                );
+                // This constraint is connected to a reachable variable,
+                // add all variables of this constraint.
+                reachable_variables.extend(expr.referenced_variables().cloned());
             }
         }
         if reachable_variables.len() == size_before {

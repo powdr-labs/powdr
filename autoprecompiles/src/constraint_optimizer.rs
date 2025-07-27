@@ -18,8 +18,10 @@ use powdr_number::FieldElement;
 
 use crate::stats_logger::StatsLogger;
 
+mod equal_zero_checks;
 mod reachability;
 
+use equal_zero_checks::replace_equal_zero_checks;
 use reachability::reachable_variables;
 
 #[derive(Debug)]
@@ -44,6 +46,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
+    new_var: &mut impl FnMut() -> V,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
     let constraint_system =
         solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
@@ -52,6 +55,9 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system =
         remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
+
+    let constraint_system =
+        replace_equal_zero_checks(constraint_system, bus_interaction_handler.clone(), new_var);
 
     let constraint_system =
         inliner::replace_constrained_witness_columns(constraint_system, should_inline);
