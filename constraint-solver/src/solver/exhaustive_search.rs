@@ -4,6 +4,8 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 use crate::constraint_system::BusInteractionHandler;
+use crate::constraint_system::ConstraintRef;
+use crate::effect::Effect;
 use crate::grouped_expression::RangeConstraintProvider;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::runtime_constant::ReferencedSymbols;
@@ -108,8 +110,7 @@ where
 {
     let mut assignments =
         get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
-            constraint_system
-                .derive_more_assignments(assignments, &rc, bus_interaction_handler)
+            derive_more_assignments(constraint_system, assignments, &rc, bus_interaction_handler)
                 .ok()
         });
     let Some(first_assignments) = assignments.next() else {
@@ -194,4 +195,76 @@ fn has_small_max_range_width<T: FieldElement, V: Clone + Ord>(
     } else {
         false
     }
+}
+
+/// The provided assignments lead to a contradiction in the constraint system.
+struct ContradictingConstraintError;
+
+/// Given a list of assignments, tries to extend it with more assignments, based on the
+/// constraints in the constraint system.
+/// Fails if any of the assignments *directly* contradicts any of the constraints.
+/// Note that getting an OK(_) here does not mean that there is no contradiction, as
+/// this function only does one step of the derivation.
+fn derive_more_assignments<T, V: Clone + Hash + Ord + Eq + Display>(
+    constraint_system: &IndexedConstraintSystem<T, V>,
+    assignments: BTreeMap<V, T::FieldType>,
+    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
+) -> Result<BTreeMap<V, T::FieldType>, ContradictingConstraintError>
+where
+    T: RuntimeConstant
+        + Substitutable<V>
+        + ReferencedSymbols<V>
+        + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>
+        + Display,
+{
+    let effects = constraint_system
+        .constraints_referencing_variables(assignments.keys().cloned())
+        .map(|constraint| match constraint {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                let mut identity = identity.clone();
+                for (variable, value) in assignments.iter() {
+                    identity.substitute_by_known(variable, &T::from(*value));
+                }
+                identity
+                    .solve(range_constraints)
+                    .map(|result| result.effects)
+                    .map_err(|_| ContradictingConstraintError)
+            }
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                let mut bus_interaction = bus_interaction.clone();
+                for (variable, value) in assignments.iter() {
+                    bus_interaction
+                        .fields_mut()
+                        .for_each(|expr| expr.substitute_by_known(variable, &T::from(*value)))
+                }
+                bus_interaction
+                    .solve(bus_interaction_handler, range_constraints)
+                    .map_err(|_| ContradictingConstraintError)
+            }
+        })
+        // Early return if any constraint leads to a contradiction.
+        .collect::<Result<Vec<_>, _>>()?;
+
+    effects
+        .into_iter()
+        .flatten()
+        .filter_map(|effect| {
+            if let Effect::Assignment(variable, value) = effect {
+                Some((variable, value.try_to_number()?))
+            } else {
+                None
+            }
+        })
+        .chain(assignments)
+        // Union of all unique assignments, but returning an error if there are any contradictions.
+        .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
+            if let Some(existing) = map.insert(variable, value) {
+                if existing != value {
+                    // Duplicate assignment with different value.
+                    return Err(ContradictingConstraintError);
+                }
+            }
+            Ok(map)
+        })
 }

@@ -188,6 +188,44 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         }
     }
 
+    /// Returns `vec![f1, f2, ..., fn]` such that `self` is equivalent to
+    /// `c * f1 * f2 * ... * fn` for some constant `c`.
+    /// Tries to find as many factors as possible and also tries to normalize
+    /// the factors as much as possible.
+    pub fn to_factors(&self) -> Vec<Self> {
+        let summands = self.quadratic.len()
+            + self.linear.len()
+            + if self.constant.is_known_zero() { 0 } else { 1 };
+        if summands == 0 {
+            vec![Self::zero()]
+        } else if summands == 1 {
+            if let [(l, r)] = self.quadratic.as_slice() {
+                l.to_factors().into_iter().chain(r.to_factors()).collect()
+            } else if let Some((var, _)) = self.linear.iter().next() {
+                vec![Self::from_unknown_variable(var.clone())]
+            } else {
+                vec![]
+            }
+        } else {
+            // Try to normalize
+            let divide_by = if !self.constant.is_known_zero() {
+                // If the constant is not zero, we divide by the constant.
+                if self.constant.is_known_nonzero() {
+                    self.constant.clone()
+                } else {
+                    T::one()
+                }
+            } else if !self.linear.is_empty() {
+                // Otherwise, we divide by the factor of the smallest variable.
+                self.linear.iter().next().unwrap().1.clone()
+            } else {
+                // This is a sum of quadratic expressions, we cannot really normalize this part.
+                T::one()
+            };
+            vec![self.clone() * T::one().field_div(&divide_by)]
+        }
+    }
+
     /// Returns the quadratic, linear and constant components of this expression.
     pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
         (&self.quadratic, self.linear.iter(), &self.constant)
@@ -1774,5 +1812,21 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         t.substitute_by_unknown(&"r", &var("y"));
         // Now the first term in `a` is equal to the last in `b`.
         assert_eq!(t.to_string(), "(t) * (u) - 3 * z + 5");
+    }
+
+    #[test]
+    fn to_factors() {
+        let expr = (constant(3) * var("x"))
+            * -var("y")
+            * constant(3)
+            * (constant(5) * var("z") + constant(5))
+            * (constant(2) * var("t") + constant(4) * var("z"))
+            * (var("t") * constant(2));
+        assert_eq!(
+            expr.to_string(),
+            "-(((((9 * x) * (y)) * (5 * z + 5)) * (2 * t + 4 * z)) * (2 * t))"
+        );
+        let factors = expr.to_factors().into_iter().format(", ").to_string();
+        assert_eq!(factors, "x, y, z + 1, t + 2 * z, t");
     }
 }
