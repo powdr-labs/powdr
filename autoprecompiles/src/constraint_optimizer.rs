@@ -1,13 +1,18 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
-use inliner::DegreeBound;
+use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintSystem},
     grouped_expression::GroupedExpression,
+    indexed_constraint_system::IndexedConstraintSystem,
     inliner,
     journaling_constraint_system::JournalingConstraintSystem,
-    solver::solve_system,
+    solver::Solver,
 };
 use powdr_number::FieldElement;
 
@@ -36,48 +41,50 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 ///   from the constraint system.
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
+    solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    degree_bound: DegreeBound,
+    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
-    let constraint_system =
-        solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
+    let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
-        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
+        remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
+    // TODO should we remove inlined columns in the solver?
+    // TODO should we inline here at all during solving (instead if only inside the solver)?
     let constraint_system =
-        inliner::replace_constrained_witness_columns(constraint_system, degree_bound);
+        inliner::replace_constrained_witness_columns(constraint_system, should_inline);
+    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().cloned());
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
 
-    let constraint_system = remove_equal_constraints(constraint_system);
-    stats_logger.log("removing equal constraints", &constraint_system);
-
     let constraint_system =
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
+
+    // TODO maybe we should keep learnt range constraints stored somewhere because
+    // we might not be able to re-derive them if some constraints are missing.
+    let constraint_system = remove_redundant_constraints(constraint_system);
+    stats_logger.log("removing redundant constraints", &constraint_system);
 
     Ok(constraint_system)
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T>,
+    solver: &mut impl Solver<T, V>,
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
-    let result = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
+    let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
-    for (var, value) in result.assignments.iter() {
+    for (var, value) in assignments.iter() {
         log::trace!("  {var} = {value}");
     }
-    constraint_system.apply_substitutions(result.assignments);
-    // TODO could we somehow get rid of this special case by keeping
-    // bus interaction field variables in the system for longer?
-    constraint_system.apply_bus_field_assignments(result.bus_field_assignments);
+    constraint_system.apply_substitutions(assignments);
     Ok(constraint_system)
 }
 
@@ -89,8 +96,9 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// them is safe.
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
-fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
     let initial_variables = variables_in_stateful_bus_interactions(
@@ -99,6 +107,8 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     )
     .cloned();
     let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
+
+    solver.retain_variables(&variables_to_keep);
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
@@ -144,14 +154,6 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord
     constraint_system
 }
 
-fn remove_equal_constraints<P: FieldElement, V: Eq + Hash + Clone>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
-) -> JournalingConstraintSystem<P, V> {
-    let mut seen = HashSet::new();
-    constraint_system.retain_algebraic_constraints(|constraint| seen.insert(constraint.clone()));
-    constraint_system
-}
-
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
@@ -174,4 +176,56 @@ pub trait IsBusStateful<T: FieldElement> {
     /// interaction with the rest of the zkVM. Examples of stateful buses are memory and
     /// execution bridge. Examples of non-stateful buses are fixed lookups.
     fn is_stateful(&self, bus_id: T) -> bool;
+}
+
+/// Removes constraints that are factors of other constraints.
+fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
+    // Maps each factor to the set of constraints that contain it.
+    let mut constraints_by_factor = HashMap::new();
+    // Turns each constraint into a set of factors.
+    let constraints_as_factors = constraint_system
+        .algebraic_constraints()
+        .enumerate()
+        .map(|(i, c)| {
+            let factors = c.to_factors();
+            for f in &factors {
+                constraints_by_factor
+                    .entry(f.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(i);
+            }
+            factors
+        })
+        .collect_vec();
+
+    let mut redundant_constraints = HashSet::<usize>::new();
+    for (i, factors) in constraints_as_factors.iter().enumerate() {
+        // Go through all factors `f` and compute the intersection of all
+        // constraints in `constraints_by_factor[f]`. These constraints
+        // are multiples of the current constraint, so they are redundant
+        // if they are proper multiples, i.e. have at least one more factor.
+        let mut redundant = factors
+            .iter()
+            .map(|f| constraints_by_factor[f].clone())
+            .reduce(|a, b| a.intersection(&b).copied().collect())
+            .unwrap();
+        // Only remove constraints that have the same factors if their index
+        // is larger than the current one.
+        // Counting the factors is sufficient here.
+        redundant.retain(|j| {
+            let other_factors = &constraints_as_factors[*j];
+            assert!(other_factors.len() >= factors.len());
+            other_factors.len() > factors.len() || *j > i
+        });
+        redundant_constraints.extend(redundant);
+    }
+    let mut counter = 0;
+    constraint_system.retain_algebraic_constraints(|_| {
+        let retain = !redundant_constraints.contains(&counter);
+        counter += 1;
+        retain
+    });
+    constraint_system
 }

@@ -18,6 +18,10 @@ use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effe
 use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
+/// Terms with more than `MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS` quadratic terms
+/// are not analyzed for pairs that sum to zero.
+const MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS: usize = 20;
+
 #[derive(Default)]
 pub struct ProcessResult<T: RuntimeConstant, V> {
     pub effects: Vec<Effect<T, V>>,
@@ -184,9 +188,58 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         }
     }
 
+    /// Returns `vec![f1, f2, ..., fn]` such that `self` is equivalent to
+    /// `c * f1 * f2 * ... * fn` for some constant `c`.
+    /// Tries to find as many factors as possible and also tries to normalize
+    /// the factors as much as possible.
+    pub fn to_factors(&self) -> Vec<Self> {
+        let summands = self.quadratic.len()
+            + self.linear.len()
+            + if self.constant.is_known_zero() { 0 } else { 1 };
+        if summands == 0 {
+            vec![Self::zero()]
+        } else if summands == 1 {
+            if let [(l, r)] = self.quadratic.as_slice() {
+                l.to_factors().into_iter().chain(r.to_factors()).collect()
+            } else if let Some((var, _)) = self.linear.iter().next() {
+                vec![Self::from_unknown_variable(var.clone())]
+            } else {
+                vec![]
+            }
+        } else {
+            // Try to normalize
+            let divide_by = if !self.constant.is_known_zero() {
+                // If the constant is not zero, we divide by the constant.
+                if self.constant.is_known_nonzero() {
+                    self.constant.clone()
+                } else {
+                    T::one()
+                }
+            } else if !self.linear.is_empty() {
+                // Otherwise, we divide by the factor of the smallest variable.
+                self.linear.iter().next().unwrap().1.clone()
+            } else {
+                // This is a sum of quadratic expressions, we cannot really normalize this part.
+                T::one()
+            };
+            vec![self.clone() * T::one().field_div(&divide_by)]
+        }
+    }
+
     /// Returns the quadratic, linear and constant components of this expression.
     pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
         (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
+    /// Computes the degree of a GroupedExpression (as it is contsructed) in the unknown variables.
+    /// Variables inside runtime constants are ignored.
+    pub fn degree(&self) -> usize {
+        self.quadratic
+            .iter()
+            .map(|(l, r)| l.degree() + r.degree())
+            .chain((!self.linear.is_empty()).then_some(1))
+            .max()
+            .unwrap_or(0)
     }
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
@@ -261,6 +314,8 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 _ => true,
             }
         });
+        remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
+
         if to_add.try_to_known().map(|ta| ta.is_known_zero()) != Some(true) {
             *self += to_add;
         }
@@ -306,6 +361,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 }
             })
             .collect();
+        remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
 
         *self += to_add;
     }
@@ -371,6 +427,12 @@ impl<T: RuntimeConstant + VarTransformable<V1, V2>, V1: Ord + Clone, V2: Ord + C
 
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
+}
+
+impl<R: RangeConstraintProvider<T, V>, T: FieldElement, V> RangeConstraintProvider<T, V> for &R {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        R::get(self, var)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -862,7 +924,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
     for GroupedExpression<T, V>
 {
     fn add_assign(&mut self, rhs: Self) {
-        self.quadratic.extend(rhs.quadratic);
+        self.quadratic = combine_removing_zeros(std::mem::take(&mut self.quadratic), rhs.quadratic);
         for (var, coeff) in rhs.linear {
             self.linear
                 .entry(var.clone())
@@ -872,6 +934,83 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
         self.constant += rhs.constant.clone();
         self.linear.retain(|_, f| !f.is_known_zero());
     }
+}
+
+/// Returns the sum of these quadratic terms while removing terms that
+/// cancel each other out.
+fn combine_removing_zeros<E: PartialEq>(first: Vec<(E, E)>, mut second: Vec<(E, E)>) -> Vec<(E, E)>
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    if first.len() + second.len() > MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS {
+        // If there are too many terms, we cannot do this efficiently.
+        return first.into_iter().chain(second).collect();
+    }
+
+    let mut result = first
+        .into_iter()
+        .filter(|first| {
+            // Try to find l1 * r1 inside `second`.
+            if let Some((j, _)) = second
+                .iter()
+                .find_position(|second| quadratic_terms_add_to_zero(first, second))
+            {
+                // We found a match, so they cancel each other out, we remove both.
+                second.remove(j);
+                false
+            } else {
+                true
+            }
+        })
+        .collect_vec();
+    result.extend(second);
+    result
+}
+
+/// Removes pairs of items from `terms` whose products add to zero.
+fn remove_quadratic_terms_adding_to_zero<E: PartialEq>(terms: &mut Vec<(E, E)>)
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    if terms.len() > MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS {
+        // If there are too many terms, we cannot do this efficiently.
+        return;
+    }
+
+    let mut to_remove = HashSet::new();
+    for ((i, first), (j, second)) in terms.iter().enumerate().tuple_combinations() {
+        if to_remove.contains(&i) || to_remove.contains(&j) {
+            // We already removed this term.
+            continue;
+        }
+        if quadratic_terms_add_to_zero(first, second) {
+            // We found a match, so they cancel each other out, we remove both.
+            to_remove.insert(i);
+            to_remove.insert(j);
+        }
+    }
+    if !to_remove.is_empty() {
+        *terms = terms
+            .drain(..)
+            .enumerate()
+            .filter(|(i, _)| !to_remove.contains(i))
+            .map(|(_, term)| term)
+            .collect();
+    }
+}
+
+/// Returns true if `first.0 * first.1 = -second.0 * second.1`,
+/// but does not catch all cases.
+fn quadratic_terms_add_to_zero<E: PartialEq>(first: &(E, E), second: &(E, E)) -> bool
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    let (s0, s1) = second;
+    // Check if `first.0 * first.1 == -(second.0 * second.1)`, but we can swap left and right
+    // and we can put the negation either left or right.
+    let n1 = (&-s0, s1);
+    let n2 = (s0, &-s1);
+    [n1, n2].contains(&(&first.0, &first.1)) || [n1, n2].contains(&(&first.1, &first.0))
 }
 
 impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for &GroupedExpression<T, V> {
@@ -1647,5 +1786,47 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
                 .to_string(),
             "-t * y"
         );
+    }
+
+    #[test]
+    fn combine_removing_zeros() {
+        let a = var("x") * var("y") + var("z") * constant(3);
+        let b = var("t") * var("u") + constant(5) + var("y") * var("x");
+        assert_eq!(
+            (a.clone() - b.clone()).to_string(),
+            "-((t) * (u) - 3 * z + 5)"
+        );
+        assert_eq!((b - a).to_string(), "(t) * (u) - 3 * z + 5");
+    }
+
+    #[test]
+    fn remove_quadratic_zeros_after_substitution() {
+        let a = var("x") * var("r") + var("z") * constant(3);
+        let b = var("t") * var("u") + constant(5) + var("y") * var("x");
+        let mut t = b - a;
+        // Cannot simplify yet, because the terms are different
+        assert_eq!(
+            t.to_string(),
+            "(t) * (u) + (y) * (x) - (x) * (r) - 3 * z + 5"
+        );
+        t.substitute_by_unknown(&"r", &var("y"));
+        // Now the first term in `a` is equal to the last in `b`.
+        assert_eq!(t.to_string(), "(t) * (u) - 3 * z + 5");
+    }
+
+    #[test]
+    fn to_factors() {
+        let expr = (constant(3) * var("x"))
+            * -var("y")
+            * constant(3)
+            * (constant(5) * var("z") + constant(5))
+            * (constant(2) * var("t") + constant(4) * var("z"))
+            * (var("t") * constant(2));
+        assert_eq!(
+            expr.to_string(),
+            "-(((((9 * x) * (y)) * (5 * z + 5)) * (2 * t + 4 * z)) * (2 * t))"
+        );
+        let factors = expr.to_factors().into_iter().format(", ").to_string();
+        assert_eq!(factors, "x, y, z + 1, t + 2 * z, t");
     }
 }

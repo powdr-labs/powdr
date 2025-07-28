@@ -1,4 +1,4 @@
-use crate::adapter::{Adapter, AdapterApc};
+use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::bus_map::{BusMap, BusType};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
@@ -24,6 +24,8 @@ mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod evaluation;
+pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
 pub mod memory_optimizer;
@@ -44,23 +46,15 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
-    /// The opcode id of the first APC instruction. Other APC instructions will have consecutive ids.
-    pub first_apc_opcode: usize,
 }
 
 impl PowdrConfig {
-    pub fn new(
-        autoprecompiles: u64,
-        skip_autoprecompiles: u64,
-        degree_bound: DegreeBound,
-        first_apc_opcode: usize,
-    ) -> Self {
+    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
-            first_apc_opcode,
         }
     }
 
@@ -185,7 +179,7 @@ impl<T: Display> Display for SymbolicMachine<T> {
 }
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
-    pub fn render(&self, bus_map: &BusMap) -> String {
+    pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
         let mut output = format!(
             "// Symbolic machine using {} unique main columns\n",
             self.main_columns().count()
@@ -261,17 +255,17 @@ pub enum InstructionKind {
 }
 
 /// A configuration of a VM in which execution is happening.
-pub struct VmConfig<'a, M, B> {
+pub struct VmConfig<'a, M, B, C> {
     /// Maps an opcode to its AIR.
     pub instruction_handler: &'a M,
     /// The bus interaction handler, used by the constraint solver to reason about bus interactions.
     pub bus_interaction_handler: B,
     /// The bus map that maps bus id to bus type
-    pub bus_map: BusMap,
+    pub bus_map: BusMap<C>,
 }
 
 // We implement Clone manually because deriving it adds a Clone bound to the `InstructionMachineHandler`
-impl<'a, M, B: Clone> Clone for VmConfig<'a, M, B> {
+impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
     fn clone(&self) -> Self {
         VmConfig {
             instruction_handler: self.instruction_handler,
@@ -295,7 +289,6 @@ pub trait InstructionHandler<T, I> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I> {
     pub block: BasicBlock<I>,
-    pub opcode: u32,
     pub machine: SymbolicMachine<T>,
     pub subs: Vec<Vec<u64>>,
 }
@@ -308,13 +301,17 @@ impl<T, I> Apc<T, I> {
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
+
+    /// The PC of the first line of the basic block. Can be used to identify the APC.
+    pub fn start_pc(&self) -> u64 {
+        self.block.start_pc
+    }
 }
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
-    opcode: u32,
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let (machine, subs) = statements_to_symbolic_machine::<A>(
@@ -323,7 +320,7 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
-    let machine = optimizer::optimize(
+    let machine = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
@@ -339,12 +336,11 @@ pub fn build<A: Adapter>(
         block,
         machine,
         subs,
-        opcode,
     };
 
     if let Some(path) = apc_candidates_dir_path {
         let ser_path = path
-            .join(format!("apc_candidate_{opcode}"))
+            .join(format!("apc_candidate_{}", apc.start_pc()))
             .with_extension("cbor");
         std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
         let file =

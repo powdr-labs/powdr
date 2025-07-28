@@ -2,6 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use crate::bus_map::BusMap;
 use crate::extraction_utils::OriginalAirs;
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
@@ -10,7 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{BusMap, ExtendedVmConfig};
+use crate::ExtendedVmConfig;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -89,10 +90,6 @@ impl<F: PrimeField32> PlonkChip<F> {
 }
 
 impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
-    fn receives_from_program_chip(&self) -> bool {
-        false
-    }
-
     fn execute(
         &mut self,
         memory: &mut MemoryController<F>,

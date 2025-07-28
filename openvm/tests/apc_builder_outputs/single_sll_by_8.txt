@@ -1,3 +1,11 @@
+Instructions:
+  SLL rd_ptr = 68, rs1_ptr = 40, rs2 = 8, rs2_as = 0
+
+APC advantage:
+  - Main columns: 53 -> 14 (3.79x reduction)
+  - Bus interactions: 24 -> 10 (2.40x reduction)
+  - Constraints: 76 -> 1 (76.00x reduction)
+
 // Symbolic machine using 14 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -15,10 +23,6 @@ mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
-
-// Bus 6 (BITWISE_LOOKUP):
-mult=is_valid * 1, args=[b__0_0, b__1_0, 0, 0]
-mult=is_valid * 1, args=[b__2_0, 0, 0, 0]
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0

@@ -7,56 +7,77 @@ use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{
-    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
-};
-use crate::solver::bus_interaction_variable_wrapper::{BusInteractionVariableWrapper, Variable};
+use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-mod bus_interaction_variable_wrapper;
 mod exhaustive_search;
 mod quadratic_equivalences;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<<T::Transformed as RuntimeConstant>::FieldType>,
-) -> Result<SolveResult<T, V>, Error>
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>
-        + ReferencedSymbols<Variable<V>>
-        + Substitutable<Variable<V>>
-        + ExpressionConvertible<<T::Transformed as RuntimeConstant>::FieldType, Variable<V>>
-        + Display,
+    T: RuntimeConstant
+        + Display
+        + ReferencedSymbols<V>
+        + Substitutable<V>
+        + ExpressionConvertible<T::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let (bus_interaction_variable_wrapper, constraint_system) =
-        BusInteractionVariableWrapper::replace_bus_interaction_expressions(constraint_system);
-
-    let result = Solver::new(constraint_system)
+    SolverImpl::new(constraint_system)
         .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()?;
-    Ok(bus_interaction_variable_wrapper.finalize(result))
+        .solve()
 }
 
-/// The result of the solving process.
-pub struct SolveResult<T: RuntimeConstant, V> {
-    /// The concrete variable assignments that were derived.
-    /// Values might contain variables that are replaced as well,
-    /// and because of that, assignments should be applied in order.
-    pub assignments: Vec<VariableAssignment<T, V>>,
-    /// The range constraints the solver was able to determine
-    /// for the variables.
-    pub range_constraints: RangeConstraints<T::FieldType, V>,
-    /// Maps a (bus interaction index, field index) to a concrete value.
-    pub bus_field_assignments: BTreeMap<(usize, usize), T::FieldType>,
+/// Creates a new solver for the given system and bus interaction handler.
+pub fn new_solver<T, V>(
+    constraint_system: ConstraintSystem<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+) -> impl Solver<T, V>
+where
+    T: RuntimeConstant
+        + Display
+        + ReferencedSymbols<V>
+        + Substitutable<V>
+        + ExpressionConvertible<T::FieldType, V>,
+    V: Ord + Clone + Hash + Eq + Display,
+{
+    SolverImpl::new(constraint_system).with_bus_interaction_handler(bus_interaction_handler)
+}
+
+pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
+    RangeConstraintProvider<T::FieldType, V> + Sized
+{
+    /// Solves the constraints as far as possible, returning concrete variable
+    /// assignments. Does not return the same assignments again if called more than once.
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
+
+    /// Adds a new algebraic constraint to the system.
+    fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    );
+
+    /// Removes all variables except those in `variables_to_keep`.
+    /// The idea is that the outside system is not interested in the variables
+    /// any more. This should remove all constraints that include one of the variables
+    /// and also remove all variables derived from those variables.
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>);
+
+    /// Returns the best known range constraint for the given expression.
+    fn range_constraint_for_expression(
+        &self,
+        expr: &GroupedExpression<T, V>,
+    ) -> RangeConstraint<T::FieldType> {
+        expr.range_constraint(self)
+    }
 }
 
 /// An error occurred while solving the constraint system.
@@ -76,7 +97,7 @@ pub enum Error {
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
+struct SolverImpl<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -86,28 +107,54 @@ pub struct Solver<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     range_constraints: RangeConstraints<T::FieldType, V>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
-    assignments: Vec<VariableAssignment<T, V>>,
+    /// This is cleared with every call to `solve()`.
+    assignments_to_return: Vec<VariableAssignment<T, V>>,
 }
 
 impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
-    Solver<T, V, DefaultBusInteractionHandler<T::FieldType>>
+    SolverImpl<T, V, DefaultBusInteractionHandler<T::FieldType>>
 {
-    pub fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
+    fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
         );
 
-        Solver {
+        SolverImpl {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
             bus_interaction_handler: Default::default(),
-            assignments: Default::default(),
+            assignments_to_return: Default::default(),
+        }
+    }
+
+    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
+        self,
+        bus_interaction_handler: B,
+    ) -> SolverImpl<T, V, B> {
+        assert!(self.assignments_to_return.is_empty());
+        SolverImpl {
+            bus_interaction_handler,
+            constraint_system: self.constraint_system,
+            range_constraints: self.range_constraints,
+            assignments_to_return: self.assignments_to_return,
         }
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V, BusInter>
+impl<T, V, BusInter> RangeConstraintProvider<T::FieldType, V> for SolverImpl<T, V, BusInter>
+where
+    V: Clone + Hash + Eq,
+    T: RuntimeConstant,
+    BusInter: BusInteractionHandler<T::FieldType>,
+{
+    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+        self.range_constraints.get(var)
+    }
+}
+
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V>
+    for SolverImpl<T, V, BusInter>
 where
     V: Ord + Clone + Hash + Eq + Display,
     T: RuntimeConstant
@@ -116,30 +163,46 @@ where
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
-    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
-        self,
-        bus_interaction_handler: B,
-    ) -> Solver<T, V, B> {
-        assert!(self.assignments.is_empty());
-        Solver {
-            bus_interaction_handler,
-            constraint_system: self.constraint_system,
-            range_constraints: self.range_constraints,
-            assignments: self.assignments,
-        }
-    }
-
-    /// Solves the constraints as far as possible, returning concrete variable
-    /// assignments and determined range constraints.
-    pub fn solve(mut self) -> Result<SolveResult<T, V>, Error> {
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.loop_until_no_progress()?;
-        Ok(SolveResult {
-            assignments: self.assignments,
-            range_constraints: self.range_constraints,
-            bus_field_assignments: Default::default(),
-        })
+        Ok(std::mem::take(&mut self.assignments_to_return))
     }
 
+    fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    ) {
+        self.constraint_system
+            .add_algebraic_constraints(constraints);
+    }
+
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
+        assert!(self.assignments_to_return.is_empty(),);
+        self.range_constraints
+            .range_constraints
+            .retain(|v, _| variables_to_keep.contains(v));
+        self.constraint_system.retain_algebraic_constraints(|c| {
+            c.referenced_variables()
+                .any(|v| variables_to_keep.contains(v))
+        });
+        self.constraint_system
+            .retain_bus_interactions(|bus_interaction| {
+                bus_interaction
+                    .referenced_variables()
+                    .any(|v| variables_to_keep.contains(v))
+            });
+    }
+}
+
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> SolverImpl<T, V, BusInter>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Display
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
+{
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
@@ -203,7 +266,7 @@ where
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
         let equivalences = quadratic_equivalences::find_quadratic_equalities(
             self.constraint_system.algebraic_constraints(),
-            &self.range_constraints,
+            &*self,
         );
         for (x, y) in &equivalences {
             self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
@@ -217,7 +280,7 @@ where
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         let assignments = exhaustive_search::get_unique_assignments(
             &self.constraint_system,
-            &self.range_constraints,
+            &*self,
             &self.bus_interaction_handler,
         )?;
 
@@ -268,18 +331,11 @@ where
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
-        self.assignments.push((variable.clone(), expr.clone()));
+        self.assignments_to_return
+            .push((variable.clone(), expr.clone()));
         // TODO we could check if the variable already has an assignment,
         // but usually it should not be in the system once it has been assigned.
         true
-    }
-}
-
-impl<T: RuntimeConstant, V: Clone + Hash + Eq, B> RangeConstraintProvider<T::FieldType, V>
-    for &Solver<T, V, B>
-{
-    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
-        self.range_constraints.get(var)
     }
 }
 
@@ -299,14 +355,6 @@ impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
 
 impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
     for RangeConstraints<T, V>
-{
-    fn get(&self, var: &V) -> RangeConstraint<T> {
-        self.range_constraints.get(var).cloned().unwrap_or_default()
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
-    for &RangeConstraints<T, V>
 {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         self.range_constraints.get(var).cloned().unwrap_or_default()

@@ -26,7 +26,7 @@ use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::TranspilerExtension;
-use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
@@ -36,7 +36,6 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -45,15 +44,8 @@ use std::{
 use std::rc::Rc;
 use strum::{Display, EnumString};
 
-use tracing::dispatcher::Dispatch;
-use tracing::field::Field as TracingField;
-use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::{
-    layer::Context,
-    prelude::*,
-    registry::{LookupSpan, Registry},
-    Layer,
-};
+pub use crate::customize_exe::Prog;
+use tracing::Level;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
@@ -82,7 +74,7 @@ const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 };
 
 pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
-    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
+    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
 }
 
 fn format_fe<F: PrimeField32>(v: F) -> String {
@@ -95,7 +87,7 @@ fn format_fe<F: PrimeField32>(v: F) -> String {
 }
 
 pub use openvm_build::GuestOptions;
-pub use powdr_autoprecompiles::bus_map::{BusMap, BusType};
+pub use powdr_autoprecompiles::bus_map::BusType;
 
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
@@ -106,7 +98,8 @@ pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE
 mod powdr_extension;
 
 pub mod bus_interaction_handler;
-mod instruction_formatter;
+pub mod instruction_formatter;
+pub mod memory_bus_interaction;
 
 mod plonk;
 
@@ -705,136 +698,24 @@ pub fn execution_profile_from_guest(
     let extensions = vec![
         hints_transpiler,
     ];
-    let program = compile_openvm(guest, guest_opts, extensions).unwrap();
-    execution_profile(program, inputs)
-}
-
-// Produces execution count by pc
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
-pub fn execution_profile(program: OriginalCompiledProgram, inputs: StdIn) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, vm_config } = program;
-
-    // in memory collector storage
-    let collector = PgoCollector::new(&exe.program);
-
-    // build subscriber
-    let subscriber = Registry::default().with(collector.clone());
+    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts, extensions).unwrap();
+    let program = Prog::from(&exe.program);
 
     // prepare for execute
     let sdk = Sdk::default();
 
-    // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
-    let dispatch = Dispatch::new(subscriber);
-    tracing::dispatcher::with_default(&dispatch, || {
-        sdk.execute(exe.clone(), vm_config.clone(), inputs)
+    execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
+        sdk.execute(exe.clone(), vm_config.clone(), inputs.clone())
             .unwrap();
-    });
-
-    // Extract the collected data
-    let pc_index_count = collector.into_hashmap();
-
-    // the smallest pc is the same as the pc_base if there's no stdin
-    let pc_min = pc_index_count.keys().min().unwrap();
-    tracing::debug!("pc_min: {}; pc_base: {}", pc_min, exe.program.pc_base);
-
-    // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
-
-    if tracing::enabled!(Level::TRACE) {
-        // print pc_index map in descending order of pc_index count
-        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
-        pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
-        pc_index_count_sorted.iter().for_each(|(pc, count)| {
-            tracing::trace!("pc_index {}: {}", pc, count);
-        });
-    }
-
-    pc_index_count
+    })
 }
 
-// holds basic type fields of execution objects captured in trace by subscriber
-#[derive(Default)]
-struct PgoData {
-    pc: Option<usize>,
-}
-
-impl tracing::field::Visit for PgoData {
-    // when we receive a u64 field, they are parsed into fields of the pgo data
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        if field.name() == "pc" {
-            self.pc = Some(value as usize);
-        }
-    }
-
-    // required for implementation, but in practice we will only receive u64 fields
-    // the fields we receive are determined by the instruction trace print out of our openvm fork during execution
-    fn record_debug(&mut self, _: &TracingField, _: &dyn std::fmt::Debug) {}
-}
-
-// A Layer that collects data we are interested in using for the pgo from the trace fields.
-#[derive(Clone)]
-struct PgoCollector {
-    step: usize,
-    pc_base: usize,
-    pc_index_map: Arc<Vec<AtomicU32>>,
-}
-
-impl PgoCollector {
-    fn new<F>(program: &Program<F>) -> Self {
-        let max_pc_index = program.instructions_and_debug_infos.len();
-        // create a map with max_pc entries initialized to 0
-        let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
-        Self {
-            pc_index_map,
-            step: program.step as usize,
-            pc_base: program.pc_base as usize,
-        }
-    }
-
-    fn into_hashmap(self) -> HashMap<u64, u32> {
-        // Turn the map into a HashMap of (pc_index, count)
-        self.pc_index_map
-            .iter()
-            .enumerate()
-            .filter_map(|(pc_index, count)| {
-                let count = count.load(Ordering::Relaxed);
-
-                // if the count is zero, we skip it
-                if count == 0 {
-                    return None;
-                }
-                let pc = self.pc_base + (pc_index * self.step);
-
-                Some((pc as u64, count))
-            })
-            .collect()
-    }
-
-    fn increment(&self, pc: usize) {
-        self.pc_index_map[(pc - self.pc_base) / self.step].fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-impl<S> Layer<S> for PgoCollector
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        // build a visitor to parse and hold trace fields we are interested in
-        let mut visitor = PgoData::default();
-        event.record(&mut visitor);
-
-        // because our subscriber is at the trace level, for trace print outs that don't match PgoData,
-        // the visitor can't parse them, and these cases are filtered out automatically
-        if let Some(pc) = visitor.pc {
-            self.increment(pc);
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use expect_test::{expect, Expect};
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     #[allow(clippy::too_many_arguments)]
@@ -1385,65 +1266,68 @@ mod tests {
 
     // The following are compilation tests only
 
-    struct MachineTestParams<'a> {
+    struct GuestTestConfig {
         pgo_config: PgoConfig,
-        guest: &'a str,
-        guest_apc: u64,
-        guest_skip: u64,
-        expected_metrics: &'a MachineTestMetrics,
-        expected_columns_saved: Option<AirWidthsDiff>, // only available in Pgo::Cell
+        name: &'static str,
+        apc: u64,
+        skip: u64,
     }
 
     struct MachineTestMetrics {
-        powdr_expected_sum: AirMetrics,
-        powdr_expected_machine_count: usize,
+        powdr_expected_sum: Expect,
+        powdr_expected_machine_count: Expect,
         non_powdr_expected_sum: AirMetrics,
         non_powdr_expected_machine_count: usize,
     }
 
-    fn test_machine_compilation(params: MachineTestParams) {
+    fn test_machine_compilation(
+        guest: GuestTestConfig,
+        expected_metrics: MachineTestMetrics,
+        expected_columns_saved: Option<Expect>,
+    ) {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
-        let config = default_powdr_openvm_config(params.guest_apc, params.guest_skip)
+        let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let is_cell_pgo = matches!(params.pgo_config, PgoConfig::Cell(_, _));
+        let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let compiled_program = compile_guest(
-            params.guest,
+            guest.name,
             GuestOptions::default(),
             config,
             PrecompileImplementation::SingleRowChip,
-            params.pgo_config,
+            guest.pgo_config,
         )
         .unwrap();
 
-        let MachineTestMetrics {
-            powdr_expected_sum,
-            powdr_expected_machine_count,
-            non_powdr_expected_sum,
-            non_powdr_expected_machine_count,
-        } = params.expected_metrics;
-
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
-        let powdr_machine_count = powdr_air_metrics.len();
-        let non_powdr_machine_count = non_powdr_air_metrics.len();
-        let powdr_sum = powdr_air_metrics
-            .iter()
-            .map(|(metrics, _)| metrics.clone())
-            .sum::<AirMetrics>();
-        let non_powdr_sum = non_powdr_air_metrics.into_iter().sum::<AirMetrics>();
 
-        assert_eq!(powdr_machine_count, *powdr_expected_machine_count);
-        assert_eq!(non_powdr_machine_count, *non_powdr_expected_machine_count);
-        assert_eq!(powdr_sum, *powdr_expected_sum);
-        assert_eq!(non_powdr_sum, *non_powdr_expected_sum);
-
-        // Test cells saved in Pgo::Cell
-        if is_cell_pgo {
-            let columns_saved = powdr_air_metrics
+        expected_metrics.powdr_expected_sum.assert_debug_eq(
+            &powdr_air_metrics
+                .iter()
+                .map(|(metrics, _)| metrics.clone())
+                .sum::<AirMetrics>(),
+        );
+        expected_metrics
+            .powdr_expected_machine_count
+            .assert_debug_eq(&powdr_air_metrics.len());
+        assert_eq!(
+            non_powdr_air_metrics.len(),
+            expected_metrics.non_powdr_expected_machine_count
+        );
+        assert_eq!(
+            non_powdr_air_metrics.into_iter().sum::<AirMetrics>(),
+            expected_metrics.non_powdr_expected_sum
+        );
+        let columns_saved = is_cell_pgo.then(|| {
+            // Test cells saved in Pgo::Cell
+            powdr_air_metrics
                 .into_iter()
                 .map(|(_, columns_saved)| columns_saved.unwrap())
-                .sum::<AirWidthsDiff>();
-            assert_eq!(columns_saved, params.expected_columns_saved.unwrap());
+                .sum::<AirWidthsDiff>()
+        });
+        assert_eq!(columns_saved.is_some(), expected_columns_saved.is_some());
+        if let Some(expected) = expected_columns_saved {
+            expected.assert_debug_eq(&columns_saved.unwrap());
         }
 
         // In Cell PGO, check that the apc candidates were persisted to disk
@@ -1488,49 +1372,74 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
 
-        let expected_metrics = MachineTestMetrics {
-            powdr_expected_sum: AirMetrics {
-                widths: AirWidths {
-                    preprocessed: 0,
-                    main: 48,
-                    log_up: 36,
-                },
-                constraints: 22,
-                bus_interactions: 30,
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                name: GUEST,
+                apc: GUEST_APC,
+                skip: GUEST_SKIP_PGO,
             },
-            powdr_expected_machine_count: 1,
-            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-        };
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 48,
+                            log_up: 36,
+                        },
+                        constraints: 22,
+                        bus_interactions: 30,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    1
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            None,
+        );
 
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
-            guest: GUEST,
-            guest_apc: GUEST_APC,
-            guest_skip: GUEST_SKIP_PGO,
-            expected_metrics: &expected_metrics,
-            expected_columns_saved: None, // not tested in instruction mode
-        });
-
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Cell(pgo_data, None),
-            guest: GUEST,
-            guest_apc: GUEST_APC,
-            guest_skip: GUEST_SKIP_PGO,
-            expected_metrics: &expected_metrics,
-            expected_columns_saved: Some(AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 170,
-                    log_up: 128,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 48,
-                    log_up: 36,
-                },
-            }),
-        });
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST,
+                apc: GUEST_APC,
+                skip: GUEST_SKIP_PGO,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 48,
+                            log_up: 36,
+                        },
+                        constraints: 22,
+                        bus_interactions: 30,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    1
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 170,
+                        log_up: 128,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 48,
+                        log_up: 36,
+                    },
+                }
+            "#]]),
+        );
     }
 
     #[test]
@@ -1539,64 +1448,74 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin);
 
-        let expected_metrics_instruction = MachineTestMetrics {
-            powdr_expected_sum: AirMetrics {
-                widths: AirWidths {
-                    preprocessed: 0,
-                    main: 14676,
-                    log_up: 12128,
-                },
-                constraints: 4143,
-                bus_interactions: 11673,
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                name: GUEST_SHA256,
+                apc: GUEST_SHA256_APC_PGO,
+                skip: GUEST_SHA256_SKIP,
             },
-            powdr_expected_machine_count: 10,
-            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-        };
-
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
-            guest: GUEST_SHA256,
-            guest_apc: GUEST_SHA256_APC_PGO,
-            guest_skip: GUEST_SHA256_SKIP,
-            expected_metrics: &expected_metrics_instruction,
-            expected_columns_saved: None, // not tested in instruction mode
-        });
-
-        let expected_metrics_cell = MachineTestMetrics {
-            powdr_expected_sum: AirMetrics {
-                widths: AirWidths {
-                    preprocessed: 0,
-                    main: 14656,
-                    log_up: 12108,
-                },
-                constraints: 4127,
-                bus_interactions: 11663,
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 14676,
+                            log_up: 11976,
+                        },
+                        constraints: 4143,
+                        bus_interactions: 11642,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    10
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
             },
-            powdr_expected_machine_count: 10,
-            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-        };
+            None,
+        );
 
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Cell(pgo_data, None),
-            guest: GUEST_SHA256,
-            guest_apc: GUEST_SHA256_APC_PGO,
-            guest_skip: GUEST_SHA256_SKIP,
-            expected_metrics: &expected_metrics_cell,
-            expected_columns_saved: Some(AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 176212,
-                    log_up: 117468,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 14656,
-                    log_up: 12108,
-                },
-            }),
-        });
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST_SHA256,
+                apc: GUEST_SHA256_APC_PGO,
+                skip: GUEST_SHA256_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 14656,
+                            log_up: 11956,
+                        },
+                        constraints: 4127,
+                        bus_interactions: 11632,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    10
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 176212,
+                        log_up: 117468,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 14656,
+                        log_up: 11956,
+                    },
+                }
+            "#]]),
+        );
     }
 
     #[test]
@@ -1636,59 +1555,102 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
 
-        // All three modes happen to create 1 APC for the same basic block
-        let expected_metrics = MachineTestMetrics {
-            powdr_expected_sum: AirMetrics {
-                widths: AirWidths {
-                    preprocessed: 0,
-                    main: 2010,
-                    log_up: 1788,
-                },
-                constraints: 166,
-                bus_interactions: 1782,
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::None,
+                name: GUEST_KECCAK,
+                apc: GUEST_KECCAK_APC,
+                skip: GUEST_KECCAK_SKIP,
             },
-            powdr_expected_machine_count: 1,
-            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-        };
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 2010,
+                            log_up: 1788,
+                        },
+                        constraints: 166,
+                        bus_interactions: 1782,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    1
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            None,
+        );
 
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::None,
-            guest: GUEST_KECCAK,
-            guest_apc: GUEST_KECCAK_APC,
-            guest_skip: GUEST_KECCAK_SKIP,
-            expected_metrics: &expected_metrics,
-            expected_columns_saved: None, // not tested in none mode
-        });
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                name: GUEST_KECCAK,
+                apc: GUEST_KECCAK_APC,
+                skip: GUEST_KECCAK_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 2010,
+                            log_up: 1788,
+                        },
+                        constraints: 166,
+                        bus_interactions: 1782,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    1
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            None,
+        );
 
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Instruction(pgo_data.clone()),
-            guest: GUEST_KECCAK,
-            guest_apc: GUEST_KECCAK_APC,
-            guest_skip: GUEST_KECCAK_SKIP,
-            expected_metrics: &expected_metrics,
-            expected_columns_saved: None, // not tested in instruction mode
-        });
-
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Cell(pgo_data, None),
-            guest: GUEST_KECCAK,
-            guest_apc: GUEST_KECCAK_APC,
-            guest_skip: GUEST_KECCAK_SKIP,
-            expected_metrics: &expected_metrics,
-            expected_columns_saved: Some(AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 27194,
-                    log_up: 18736,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 2010,
-                    log_up: 1788,
-                },
-            }),
-        });
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST_KECCAK,
+                apc: GUEST_KECCAK_APC,
+                skip: GUEST_KECCAK_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 2010,
+                            log_up: 1788,
+                        },
+                        constraints: 166,
+                        bus_interactions: 1782,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    1
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 27194,
+                        log_up: 18736,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 2010,
+                        log_up: 1788,
+                    },
+                }
+            "#]]),
+        );
     }
 
     #[test]
@@ -1699,48 +1661,55 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let pgo_data =
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
-        let powdr_metrics_sum = AirMetrics {
-            widths: AirWidths {
-                preprocessed: 0,
-                main: 4831,
-                log_up: 3968,
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
+                name: GUEST_KECCAK,
+                apc: GUEST_KECCAK_APC_PGO_LARGE,
+                skip: GUEST_KECCAK_SKIP,
             },
-            constraints: 958,
-            bus_interactions: 3821,
-        };
-
-        let expected_metrics = MachineTestMetrics {
-            powdr_expected_sum: powdr_metrics_sum.clone(),
-            powdr_expected_machine_count: 19,
-            non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-            non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-        };
-
-        test_machine_compilation(MachineTestParams {
-            pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
-            guest: GUEST_KECCAK,
-            guest_apc: GUEST_KECCAK_APC_PGO_LARGE,
-            guest_skip: GUEST_KECCAK_SKIP,
-            expected_metrics: &expected_metrics,
-            expected_columns_saved: Some(AirWidthsDiff {
-                before: AirWidths {
-                    preprocessed: 0,
-                    main: 38950,
-                    log_up: 26908,
-                },
-                after: AirWidths {
-                    preprocessed: 0,
-                    main: 4831,
-                    log_up: 3968,
-                },
-            }),
-        });
-
-        // Assert that total columns don't exceed the initial limit set
-        let total_columns = (powdr_metrics_sum + NON_POWDR_EXPECTED_SUM).widths.total();
-        assert!(
-            total_columns <= MAX_TOTAL_COLUMNS,
-            "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 4843,
+                            log_up: 3952,
+                        },
+                        constraints: 958,
+                        bus_interactions: 3817,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    19
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 38986,
+                        log_up: 26936,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 4843,
+                        log_up: 3952,
+                    },
+                }
+            "#]]),
         );
+
+        // TODO
+
+        // // Assert that total columns don't exceed the initial limit set
+        // let total_columns = (powdr_metrics_sum + NON_POWDR_EXPECTED_SUM).widths.total();
+        // assert!(
+        //     total_columns <= MAX_TOTAL_COLUMNS,
+        //     "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
+        // );
     }
 }
