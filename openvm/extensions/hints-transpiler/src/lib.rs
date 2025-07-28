@@ -1,8 +1,10 @@
-use powdr_openvm_hints_guest::{OPCODE, HINTS_FUNCT3, HintsFunct7};
-use openvm_instructions::{instruction::Instruction, riscv::RV32_REGISTER_NUM_LIMBS, LocalOpcode, PhantomDiscriminant};
+use openvm_instructions::{
+    instruction::Instruction, riscv::RV32_REGISTER_NUM_LIMBS, LocalOpcode, PhantomDiscriminant,
+};
 use openvm_instructions_derive::LocalOpcode;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_transpiler::{TranspilerExtension, TranspilerOutput};
+use powdr_openvm_hints_guest::{HintsFunct7, HINTS_FUNCT3, OPCODE};
 use rrs_lib::instruction_formats::RType;
 use strum::{EnumCount, EnumIter, FromRepr};
 
@@ -58,7 +60,8 @@ impl<F: PrimeField32> TranspilerExtension<F> for HintsTranspilerExtension {
             PhantomDiscriminant(disc as u16),
             F::from_canonical_usize(RV32_REGISTER_NUM_LIMBS * insn.rs1),
             F::ZERO,
-            0);
+            0,
+        );
 
         Some(TranspilerOutput::one_to_one(instruction))
     }

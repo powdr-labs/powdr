@@ -143,10 +143,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 }
 
 pub fn customize(
-    OriginalCompiledProgram {
-        mut exe,
-        vm_config,
-    }: OriginalCompiledProgram,
+    OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,

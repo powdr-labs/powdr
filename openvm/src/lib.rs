@@ -36,12 +36,12 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
+use std::rc::Rc;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::rc::Rc;
 use strum::{Display, EnumString};
 
 pub use crate::customize_exe::Prog;
@@ -302,10 +302,9 @@ pub fn compile_guest(
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(HintsTranspilerExtension{});
-    let extensions = vec![
-        hints_transpiler,
-    ];
+    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> =
+        Rc::new(HintsTranspilerExtension {});
+    let extensions = vec![hints_transpiler];
     let original_program = compile_openvm(guest, guest_opts.clone(), extensions)?;
 
     // Optional tally of opcode freqency (only enabled for debug level logs)
@@ -451,7 +450,10 @@ impl VmConfig<BabyBear> for ExtendedVmConfig {
 
     fn create_chip_complex(
         &self,
-    ) -> std::result::Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
+    ) -> std::result::Result<
+        VmChipComplex<BabyBear, Self::Executor, Self::Periphery>,
+        VmInventoryError,
+    > {
         let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
         if self.hints_extension {
             complex = complex.extend(&HintsExtension)?;
@@ -462,8 +464,7 @@ impl VmConfig<BabyBear> for ExtendedVmConfig {
 
 impl InitFileGenerator for ExtendedVmConfig {
     fn generate_init_file_contents(&self) -> Option<String> {
-        self.sdk_vm_config
-            .generate_init_file_contents()
+        self.sdk_vm_config.generate_init_file_contents()
     }
 
     fn write_to_init_file(
@@ -694,11 +695,11 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> = Rc::new(HintsTranspilerExtension{});
-    let extensions = vec![
-        hints_transpiler,
-    ];
-    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts, extensions).unwrap();
+    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> =
+        Rc::new(HintsTranspilerExtension {});
+    let extensions = vec![hints_transpiler];
+    let OriginalCompiledProgram { exe, vm_config } =
+        compile_openvm(guest, guest_opts, extensions).unwrap();
     let program = Prog::from(&exe.program);
 
     // prepare for execute
@@ -709,7 +710,6 @@ pub fn execution_profile_from_guest(
             .unwrap();
     })
 }
-
 
 #[cfg(test)]
 mod tests {

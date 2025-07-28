@@ -5,7 +5,10 @@ use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
+use crate::{
+    AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr,
+    SpecializedExecutor, APP_LOG_BLOWUP,
+};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -108,8 +111,13 @@ fn to_option<T>(mut v: Vec<T>) -> Option<T> {
 }
 
 /// A lazy chip complex that is initialized on the first access
-type LazyChipComplex =
-    Option<VmChipComplex<BabyBear, ExtendedVmConfigExecutor<BabyBear>, ExtendedVmConfigPeriphery<BabyBear>>>;
+type LazyChipComplex = Option<
+    VmChipComplex<
+        BabyBear,
+        ExtendedVmConfigExecutor<BabyBear>,
+        ExtendedVmConfigPeriphery<BabyBear>,
+    >,
+>;
 
 /// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
@@ -120,8 +128,11 @@ pub struct ChipComplexGuard<'a> {
 }
 
 impl<'a> Deref for ChipComplexGuard<'a> {
-    type Target =
-        VmChipComplex<BabyBear, ExtendedVmConfigExecutor<BabyBear>, ExtendedVmConfigPeriphery<BabyBear>>;
+    type Target = VmChipComplex<
+        BabyBear,
+        ExtendedVmConfigExecutor<BabyBear>,
+        ExtendedVmConfigPeriphery<BabyBear>,
+    >;
 
     fn deref(&self) -> &Self::Target {
         // Unwrap is safe here because we ensure that the chip complex is initialized
@@ -267,7 +278,11 @@ impl OriginalVmConfig {
     pub fn create_chip_complex(
         &self,
     ) -> Result<
-        VmChipComplex<BabyBear, ExtendedVmConfigExecutor<BabyBear>, ExtendedVmConfigPeriphery<BabyBear>>,
+        VmChipComplex<
+            BabyBear,
+            ExtendedVmConfigExecutor<BabyBear>,
+            ExtendedVmConfigPeriphery<BabyBear>,
+        >,
         VmInventoryError,
     > {
         // Clear the cache

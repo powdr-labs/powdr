@@ -81,31 +81,30 @@ pub fn hint_reverse_bytes(val: u32) -> u32 {
     }
     #[cfg(not(target_os = "zkvm"))]
     {
-        ((val & 0x000000FF) << 24) |
-        ((val & 0x0000FF00) << 8)  |
-        ((val & 0x00FF0000) >> 8)  |
-        ((val & 0xFF000000) >> 24)
+        ((val & 0x000000FF) << 24)
+            | ((val & 0x0000FF00) << 8)
+            | ((val & 0x00FF0000) >> 8)
+            | ((val & 0xFF000000) >> 24)
     }
 }
 
 // Inverse of field element in SECP256k1 modulus (if not zero).
 #[cfg(target_os = "zkvm")]
-pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8;32] {
+pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
     insn_k256_inverse_field(sec1_bytes.as_ptr() as *const u8);
-    let inverse = core::mem::MaybeUninit::<[u8;32]>::uninit();
+    let inverse = core::mem::MaybeUninit::<[u8; 32]>::uninit();
     unsafe {
         openvm_rv32im_guest::hint_buffer_u32!(inverse.as_ptr() as *const u8, 8);
         inverse.assume_init()
     }
 }
 
-
 // Inverse of field element in SECP256k1 modulus (if not zero).
 // Takes in the raw 32-bit architecture representation of the field element from k256 (`FieldElement10x26`).
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
     insn_k256_inverse_field_10x26(elem.as_ptr() as *const u8);
-    let inverse = core::mem::MaybeUninit::<[u32;10]>::uninit();
+    let inverse = core::mem::MaybeUninit::<[u32; 10]>::uninit();
     unsafe {
         openvm_rv32im_guest::hint_buffer_u32!(inverse.as_ptr() as *const u8, 10);
         inverse.assume_init()
@@ -125,7 +124,7 @@ pub fn hint_k256_sqrt_field_10x26(elem: [u32; 10]) -> Option<[u32; 10]> {
         }
     }
     // read actual square root value
-    let sqrt = core::mem::MaybeUninit::<[u32;10]>::uninit();
+    let sqrt = core::mem::MaybeUninit::<[u32; 10]>::uninit();
     unsafe {
         openvm_rv32im_guest::hint_buffer_u32!(sqrt.as_ptr() as *const u8, 10);
         Some(sqrt.assume_init())

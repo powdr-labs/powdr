@@ -4,10 +4,12 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::{
+    extraction_utils::OriginalAirs,
+    powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
-    }, ExtendedVmConfig, Instr
+    },
+    ExtendedVmConfig, Instr,
 };
 
 use super::{
@@ -394,7 +396,12 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     use openvm_sha256_circuit::Sha256;
 
     let this = base_config;
-    let mut complex: DummyChipComplex<F> = this.sdk_vm_config.system.config.create_chip_complex()?.transmute();
+    let mut complex: DummyChipComplex<F> = this
+        .sdk_vm_config
+        .system
+        .config
+        .create_chip_complex()?
+        .transmute();
 
     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
     complex.base.memory_controller.offline_memory = memory.clone();

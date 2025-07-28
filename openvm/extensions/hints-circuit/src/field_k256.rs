@@ -1,15 +1,15 @@
 //! The code here has been mostly copied from the `k256` crate.
 //! Its the 32-bit implementation of the field element.
 
+use elliptic_curve::consts::U32;
 use elliptic_curve::{
     subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption},
-    zeroize::Zeroize, FieldBytesEncoding,
+    zeroize::Zeroize,
+    FieldBytesEncoding,
 };
-use elliptic_curve::consts::U32;
 // use crypto_bigint::U256;
-use elliptic_curve::bigint::U256;
 use elliptic_curve::bigint::ArrayEncoding;
-
+use elliptic_curve::bigint::U256;
 
 pub type FieldBytes = elliptic_curve::FieldBytes<Secp256k1>;
 
@@ -706,7 +706,6 @@ impl FieldElement10x26 {
     pub fn square(&self) -> Self {
         self.mul_inner(self)
     }
-
 
     pub fn pow2k(&self, k: u32) -> Self {
         let mut x = *self;
