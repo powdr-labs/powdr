@@ -11,7 +11,7 @@ use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable}
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -57,6 +57,13 @@ pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments. Does not return the same assignments again.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
+
+    fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    );
+
+    fn retain_variables(&mut self, variables_to_keep: impl IntoIterator<Item = V>);
 
     fn range_constraint_for_expression(
         &self,
@@ -156,6 +163,32 @@ where
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.loop_until_no_progress()?;
         Ok(std::mem::take(&mut self.assignments_to_return))
+    }
+
+    fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    ) {
+        self.constraint_system
+            .add_algebraic_constraints(constraints);
+    }
+
+    fn retain_variables(&mut self, variables_to_keep: impl IntoIterator<Item = V>) {
+        let variables_to_keep: HashSet<_> = variables_to_keep.into_iter().collect();
+        assert!(self.assignments_to_return.is_empty(),);
+        self.range_constraints
+            .range_constraints
+            .retain(|v, _| variables_to_keep.contains(v));
+        self.constraint_system.retain_algebraic_constraints(|c| {
+            c.referenced_variables()
+                .any(|v| variables_to_keep.contains(v))
+        });
+        self.constraint_system
+            .retain_bus_interactions(|bus_interaction| {
+                bus_interaction
+                    .referenced_variables()
+                    .any(|v| variables_to_keep.contains(v))
+            });
     }
 }
 

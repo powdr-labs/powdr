@@ -9,6 +9,7 @@ use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintRef, 
 use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::runtime_constant::{RuntimeConstant, VarTransformable};
+use powdr_constraint_solver::solver::Solver;
 use powdr_constraint_solver::utils::possible_concrete_values;
 use powdr_number::FieldElement;
 
@@ -21,9 +22,11 @@ pub fn optimize_memory<
     M: MemoryBusInteraction<T, V>,
 >(
     mut system: ConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
     memory_bus_id: u64,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
 ) -> ConstraintSystem<T, V> {
+    // TODO use the solver here.
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices::<T, V, M>(&system, memory_bus_id, range_constraints);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
@@ -33,6 +36,7 @@ pub fn optimize_memory<
         .enumerate()
         .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
         .collect();
+    solver.add_algebraic_constraints(new_constraints.iter().cloned());
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
     system

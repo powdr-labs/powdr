@@ -147,14 +147,19 @@ fn optimization_loop_iteration<
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
         constraint_system,
+        solver,
         bus_interaction_handler.clone(),
         should_inline,
         stats_logger,
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system =
-            optimize_memory::<_, _, M>(constraint_system, memory_bus_id, NoRangeConstraints);
+        let constraint_system = optimize_memory::<_, _, M>(
+            constraint_system,
+            solver,
+            memory_bus_id,
+            NoRangeConstraints,
+        );
         assert!(check_register_operation_consistency::<_, _, M>(
             &constraint_system,
             memory_bus_id
