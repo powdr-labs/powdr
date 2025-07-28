@@ -60,7 +60,7 @@ where
 
 pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> + Sized {
     /// Solves the constraints as far as possible, returning concrete variable
-    /// assignments. Does not return the same assignments again.
+    /// assignments. Does not return the same assignments again if called more than once.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
 
     /// Adds a new algebraic constraint to the system.
