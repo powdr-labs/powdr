@@ -24,7 +24,7 @@ pub fn solve_system<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
@@ -42,7 +42,7 @@ pub fn new_solver<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> impl Solver<T, V>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
@@ -188,11 +188,18 @@ where
     }
 }
 
+impl<T, V, S: Display> Display for BooleanExtractedSolver<T, V, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Boolean extracted solver:\n{}", self.solver)
+    }
+}
+
 impl<T, V, S> Solver<T, V> for BooleanExtractedSolver<T, V, S>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>,
+        + VarTransformable<Variable<V>, V, Transformed = T>
+        + Display,
     V: Ord + Clone + Eq + Hash + Display,
     S: Solver<T::Transformed, Variable<V>>,
 {
@@ -215,10 +222,15 @@ where
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
         self.solver
-            .add_algebraic_constraints(constraints.into_iter().map(|constr| {
+            .add_algebraic_constraints(constraints.into_iter().flat_map(|constr| {
                 let constr = constr.transform_var_type(&mut |v| v.clone().into());
-                extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var())
-                    .unwrap_or(constr)
+                // TODO easier iter?
+                [
+                    Some(constr.clone()),
+                    extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var()),
+                ]
+                .into_iter()
+                .flatten()
             }))
     }
 
@@ -289,6 +301,14 @@ where
 {
     fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
         self.range_constraints.get(var)
+    }
+}
+
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Hash + Display, BusInter> Display
+    for SolverImpl<T, V, BusInter>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.constraint_system)
     }
 }
 
