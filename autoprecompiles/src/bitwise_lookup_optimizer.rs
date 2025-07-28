@@ -93,7 +93,7 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
     let mut to_byte_constrain = to_byte_constrain
         .into_iter()
         .filter(|expr| {
-            let rc = expr.range_constraint(&solver);
+            let rc = solver.range_constraint_for_expression(expr);
             rc != rc.conjunction(&byte_range_constraint)
         })
         .unique()
