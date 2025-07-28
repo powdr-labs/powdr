@@ -65,7 +65,7 @@ toml = "0.8.14"
 rustc-demangle = "0.1.25"
 
 [dev-dependencies]
-test-log = { version = "0.2.17", features = ["trace"] }
+test-log = "0.2.12"
 tempfile = "3.20.0"
 pretty_assertions = "1.4.0"
 openvm-ecc-circuit.workspace = true
