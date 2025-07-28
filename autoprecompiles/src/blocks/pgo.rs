@@ -9,9 +9,9 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, ApcStats},
+    adapter::{Adapter, AdapterApc, AdapterVmConfig, ApcStats},
     blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
-    BasicBlock, PowdrConfig, VmConfig,
+    BasicBlock, PowdrConfig,
 };
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
@@ -51,7 +51,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     fn create(
         apc: AdapterApc<A>,
         pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+        vm_config: AdapterVmConfig<A>,
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
@@ -69,7 +69,7 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     pgo_program_pc_count: HashMap<u64, u32>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
 ) -> Vec<(AdapterApc<A>, ApcStats<A>)> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -94,12 +94,11 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     let res = parallel_fractional_knapsack(
-        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
+        blocks.into_par_iter().filter_map(|block| {
             let apc = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
-                (config.first_apc_opcode + i) as u32,
                 config.apc_candidates_dir_path.as_deref(),
             )
             .ok()?;
@@ -134,7 +133,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_pc_count: HashMap<u64, u32>,
     config: &PowdrConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
@@ -171,7 +170,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
 fn create_apcs_with_no_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
@@ -193,7 +192,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
 ) -> Vec<(AdapterApc<A>, Option<ApcStats<A>>)> {
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
@@ -232,7 +231,7 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
 fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
-    vm_config: VmConfig<A::InstructionHandler, A::BusInteractionHandler>,
+    vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
@@ -241,21 +240,17 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .into_par_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .enumerate()
-        .map(|(index, block)| {
+        .map(|block| {
             tracing::debug!(
                 "Accelerating block of length {} and start pc {}",
                 block.statements.len(),
                 block.start_pc
             );
 
-            let apc_opcode = config.first_apc_opcode + index;
-
             crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
-                apc_opcode as u32,
                 config.apc_candidates_dir_path.as_deref(),
             )
             .unwrap()

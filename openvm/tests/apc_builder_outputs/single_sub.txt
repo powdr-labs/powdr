@@ -1,3 +1,11 @@
+Instructions:
+  SUB rd_ptr = 8, rs1_ptr = 7, rs2 = 5, rs2_as = 1
+
+APC advantage:
+  - Main columns: 36 -> 24 (1.50x reduction)
+  - Bus interactions: 20 -> 16 (1.25x reduction)
+  - Constraints: 22 -> 5 (4.40x reduction)
+
 // Symbolic machine using 24 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -20,7 +28,7 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
-// Bus 6 (BITWISE_LOOKUP):
+// Bus 6 (OPENVM_BITWISE_LOOKUP):
 mult=is_valid * 1, args=[a__0_0, a__1_0, 0, 0]
 mult=is_valid * 1, args=[a__2_0, a__3_0, 0, 0]
 
