@@ -1297,11 +1297,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 60,
-                            log_up: 60,
+                            main: 48,
+                            log_up: 36,
                         },
-                        constraints: 58,
-                        bus_interactions: 38,
+                        constraints: 22,
+                        bus_interactions: 30,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
