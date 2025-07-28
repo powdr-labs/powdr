@@ -1,13 +1,13 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::constraint_system::{
-    BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
-};
+use crate::constraint_system::{BusInteractionHandler, ConstraintSystem};
 use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
+use crate::runtime_constant::{
+    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
+};
 use crate::utils::known_variables;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
@@ -31,9 +31,7 @@ where
         + ExpressionConvertible<T::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    SolverImpl::new(constraint_system)
-        .with_bus_interaction_handler(bus_interaction_handler)
-        .solve()
+    SolverImpl::new(constraint_system, bus_interaction_handler).solve()
 }
 
 /// Creates a new solver for the given system and bus interaction handler.
@@ -49,7 +47,7 @@ where
         + ExpressionConvertible<T::FieldType, V>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    SolverImpl::new(constraint_system).with_bus_interaction_handler(bus_interaction_handler)
+    SolverImpl::new(constraint_system, bus_interaction_handler)
 }
 
 pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
@@ -77,6 +75,67 @@ pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
         expr.range_constraint(self)
+    }
+}
+
+/// A solver that automatically converts between two variable types if the variables
+/// are convertible into each other.
+pub struct VariableConvertingSolver<T1, T2, V1, V2, S> {
+    solver: S,
+    _phantom: std::marker::PhantomData<(T1, T2, V1, V2)>,
+}
+
+impl<T1, T2, V1: Ord + Clone + Eq, V2: Ord + Clone + Eq, S: Solver<T2, V2>>
+    RangeConstraintProvider<T1::FieldType, V1> for VariableConvertingSolver<T1, T2, V1, V2, S>
+where
+    V1: Into<V2>,
+    T1: RuntimeConstant,
+    T2: RuntimeConstant<FieldType = T1::FieldType>,
+{
+    fn get(&self, var: &V1) -> RangeConstraint<T1::FieldType> {
+        self.solver.get(&var.clone().into())
+    }
+}
+
+impl<T1, T2, V1, V2, S> Solver<T1, V1> for VariableConvertingSolver<T1, T2, V1, V2, S>
+where
+    T1: RuntimeConstant + VarTransformable<V1, V2, Transformed = T2>,
+    T2: RuntimeConstant<FieldType = T1::FieldType> + VarTransformable<V2, V1, Transformed = T1>,
+    V1: Into<V2> + Ord + Clone + Eq,
+    V2: TryInto<V1> + Ord + Clone + Eq + Hash,
+    S: Solver<T2, V2> + RangeConstraintProvider<T1::FieldType, V1>,
+{
+    /// Uses the inner solver to solve the system and filters out any assignments
+    /// that cannot be converted to "outer" variables.
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T1, V1>>, Error> {
+        let assignments = self.solver.solve()?;
+        Ok(assignments
+            .into_iter()
+            .filter_map(|(v, expr)| {
+                let v = v.try_into().ok()?;
+                let expr = expr.try_transform_var_type(&mut |v| v.clone().try_into().ok())?;
+                Some((v, expr))
+            })
+            .collect())
+    }
+
+    fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T1, V1>>,
+    ) {
+        self.solver.add_algebraic_constraints(
+            constraints
+                .into_iter()
+                .map(|c| c.transform_var_type(&mut |v| v.clone().into())),
+        )
+    }
+
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<V1>) {
+        let variables_to_keep = variables_to_keep
+            .iter()
+            .map(|v| v.clone().into())
+            .collect::<HashSet<_>>();
+        self.solver.retain_variables(&variables_to_keep);
     }
 }
 
@@ -111,10 +170,13 @@ struct SolverImpl<T: RuntimeConstant, V: Clone + Eq, BusInterHandler> {
     assignments_to_return: Vec<VariableAssignment<T, V>>,
 }
 
-impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Display>
-    SolverImpl<T, V, DefaultBusInteractionHandler<T::FieldType>>
+impl<
+        T: RuntimeConstant + ReferencedSymbols<V>,
+        V: Ord + Clone + Hash + Eq + Display,
+        B: BusInteractionHandler<T::FieldType>,
+    > SolverImpl<T, V, B>
 {
-    fn new(constraint_system: ConstraintSystem<T, V>) -> Self {
+    fn new(constraint_system: ConstraintSystem<T, V>, bus_interaction_handler: B) -> Self {
         assert!(
             known_variables(constraint_system.expressions()).is_empty(),
             "Expected all variables to be unknown."
@@ -123,21 +185,8 @@ impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Dis
         SolverImpl {
             constraint_system: IndexedConstraintSystem::from(constraint_system),
             range_constraints: Default::default(),
-            bus_interaction_handler: Default::default(),
-            assignments_to_return: Default::default(),
-        }
-    }
-
-    pub fn with_bus_interaction_handler<B: BusInteractionHandler<T::FieldType>>(
-        self,
-        bus_interaction_handler: B,
-    ) -> SolverImpl<T, V, B> {
-        assert!(self.assignments_to_return.is_empty());
-        SolverImpl {
             bus_interaction_handler,
-            constraint_system: self.constraint_system,
-            range_constraints: self.range_constraints,
-            assignments_to_return: self.assignments_to_return,
+            assignments_to_return: Default::default(),
         }
     }
 }
