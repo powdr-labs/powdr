@@ -52,7 +52,7 @@ pub struct IndexedConstraintSystem<T, V> {
 /// In order to remove items, convert it to `IndexedConstraintSystem`,
 /// remove the items and convert it back.
 ///
-/// Add new constraints to the system is allowed, though.
+/// Adding new constraints to the system is allowed, though.
 #[derive(Clone, Default)]
 pub struct IndexedConstraintSystemWithQueue<T, V> {
     constraint_system: IndexedConstraintSystem<T, V>,
