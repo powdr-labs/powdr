@@ -97,6 +97,7 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
 mod single_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     // ALU Chip instructions
     #[test]
@@ -299,6 +300,7 @@ mod single_instruction_tests {
 mod complex_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     #[test]
     fn guest_top_block() {
@@ -336,11 +338,28 @@ mod complex_tests {
 
         assert_machine_output(program.to_vec(), "memcpy_block");
     }
+
+    #[test]
+    fn stack_accesses() {
+        // The memory optimizer should realize that [x2 + 24] is accessed twice,
+        // with the same value of x2. Therefore, we can reduce it to just one access.
+        let program = [
+            // Load [x2 + 20] into x8
+            loadw(8, 2, 20, 2, 1, 0),
+            // Load [x2 + 24] into x8
+            loadw(9, 2, 24, 2, 1, 0),
+            // Store [x8] into [x2 + 24]
+            storew(8, 2, 24, 2, 1, 0),
+        ];
+
+        assert_machine_output(program.to_vec(), "stack_accesses");
+    }
 }
 
 mod pseudo_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     // Arithmetic pseudo instructions
     #[test]
