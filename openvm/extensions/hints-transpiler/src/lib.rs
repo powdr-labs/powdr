@@ -22,7 +22,9 @@ pub enum HintsPhantom {
     // just looked at ovm code and picked the next range that didn't seem to be
     // used
     HintReverseBytes = 0x60,
-    HintK256InverseField10x26 = 0x61,
+    HintK256InverseField = 0x61,
+    HintK256InverseField10x26 = 0x62,
+    HintK256SqrtField10x26 = 0x63,
 }
 
 #[derive(Default)]
@@ -47,7 +49,9 @@ impl<F: PrimeField32> TranspilerExtension<F> for HintsTranspilerExtension {
         let funct7 = HintsFunct7::from_repr(insn.funct7 as u8)?;
         let disc = match funct7 {
             HintsFunct7::ReverseBytes => HintsPhantom::HintReverseBytes,
+            HintsFunct7::K256InverseField => HintsPhantom::HintK256InverseField,
             HintsFunct7::K256InverseField10x26 => HintsPhantom::HintK256InverseField10x26,
+            HintsFunct7::K256SqrtField10x26 => HintsPhantom::HintK256SqrtField10x26,
         };
 
         let instruction = Instruction::phantom(
