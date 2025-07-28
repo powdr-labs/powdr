@@ -1,5 +1,6 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
+use crate::boolean_extractor::extract_boolean;
 use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem};
 use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
@@ -23,12 +24,13 @@ pub fn solve_system<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
-    T: RuntimeConstant
+    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
+        + VarTransformable<Variable<V>, V, Transformed = T>
+        + ReferencedSymbols<Variable<V>>
         + Display
-        + ReferencedSymbols<V>
-        + Substitutable<V>
-        + ExpressionConvertible<T::FieldType, V>
-        + VarTransformable<V, Variable<V>>,
+        + ExpressionConvertible<T::FieldType, Variable<V>>
+        + Substitutable<Variable<V>>,
     V: Ord + Clone + Hash + Eq + Display,
 {
     new_solver(constraint_system, bus_interaction_handler).solve()
@@ -40,18 +42,20 @@ pub fn new_solver<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> impl Solver<T, V>
 where
-    T: RuntimeConstant
+    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
+        + VarTransformable<Variable<V>, V, Transformed = T>
+        + ReferencedSymbols<Variable<V>>
         + Display
-        + ReferencedSymbols<V>
-        + Substitutable<V>
-        + ExpressionConvertible<T::FieldType, V>
-        + VarTransformable<V, Variable<V>>,
+        + ExpressionConvertible<T::FieldType, Variable<V>>
+        + Substitutable<Variable<V>>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let mut solver = SolverImpl::new(bus_interaction_handler);
-    solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
-    solver.add_bus_interactions(constraint_system.bus_interactions);
-    solver
+    let solver = SolverImpl::new(bus_interaction_handler);
+    let mut boolean_extracted_solver = BooleanExtractedSolver::new(solver);
+    boolean_extracted_solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
+    boolean_extracted_solver.add_bus_interactions(constraint_system.bus_interactions);
+    boolean_extracted_solver
 }
 
 pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> + Sized {
@@ -170,6 +174,85 @@ where
             boolean_var_dispenser: BooleanVarDispenser::new(),
             _phantom: std::marker::PhantomData,
         }
+    }
+}
+
+impl<T, V, S> RangeConstraintProvider<T::FieldType, V> for BooleanExtractedSolver<T, V, S>
+where
+    T: RuntimeConstant,
+    S: RangeConstraintProvider<T::FieldType, Variable<V>>,
+    V: Clone,
+{
+    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+        self.solver.get(&Variable::from(var.clone()))
+    }
+}
+
+impl<T, V, S> Solver<T, V> for BooleanExtractedSolver<T, V, S>
+where
+    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
+        + VarTransformable<Variable<V>, V, Transformed = T>,
+    V: Ord + Clone + Eq + Hash + Display,
+    S: Solver<T::Transformed, Variable<V>>,
+{
+    /// Solves the system and ignores all assignments that contain a boolean variable
+    /// (either on the LHS or the RHS).
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+        let assignments = self.solver.solve()?;
+        Ok(assignments
+            .into_iter()
+            .filter_map(|(v, expr)| {
+                let v = v.try_to_original()?;
+                let expr = expr.try_transform_var_type(&mut |v| v.try_to_original())?;
+                Some((v, expr))
+            })
+            .collect())
+    }
+
+    fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    ) {
+        self.solver
+            .add_algebraic_constraints(constraints.into_iter().map(|constr| {
+                let constr = constr.transform_var_type(&mut |v| v.clone().into());
+                extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var())
+                    .unwrap_or(constr)
+            }))
+    }
+
+    fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
+    ) {
+        self.solver
+            .add_bus_interactions(bus_interactions.into_iter().map(|bus_interaction| {
+                bus_interaction
+                    .fields()
+                    .map(|expr| {
+                        // We cannot extract booleans here because that only works
+                        // for "constr = 0".
+                        expr.transform_var_type(&mut |v| v.clone().into())
+                    })
+                    .collect()
+            }))
+    }
+
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
+        let variables_to_keep = variables_to_keep
+            .iter()
+            .map(|v| Variable::from(v.clone()))
+            .collect::<HashSet<_>>();
+        self.solver.retain_variables(&variables_to_keep);
+    }
+
+    fn range_constraint_for_expression(
+        &self,
+        expr: &GroupedExpression<T, V>,
+    ) -> RangeConstraint<T::FieldType> {
+        let expr = expr.transform_var_type(&mut |v| v.clone().into());
+        self.solver.range_constraint_for_expression(&expr)
     }
 }
 
