@@ -1,19 +1,17 @@
 use std::{
     cmp,
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt::Display,
     hash::Hash,
 };
 
 use bitvec::vec::BitVec;
 use itertools::Itertools;
-use powdr_number::ExpressionConvertible;
 
 use crate::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem},
-    effect::Effect,
-    grouped_expression::{GroupedExpression, RangeConstraintProvider},
-    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
+    constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem},
+    grouped_expression::GroupedExpression,
+    runtime_constant::{RuntimeConstant, Substitutable},
 };
 
 /// Applies multiple substitutions to a ConstraintSystem in an efficient manner.
@@ -319,81 +317,6 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
                 .or_default()
                 .extend(items.iter().cloned());
         }
-    }
-}
-
-/// The provided assignments lead to a contradiction in the constraint system.
-pub struct ContradictingConstraintError;
-
-impl<
-        T: RuntimeConstant
-            + ReferencedSymbols<V>
-            + Substitutable<V>
-            + ExpressionConvertible<T::FieldType, V>
-            + Display,
-        V: Clone + Hash + Ord + Eq + Display,
-    > IndexedConstraintSystem<T, V>
-{
-    /// Given a list of assignments, tries to extend it with more assignments, based on the
-    /// constraints in the constraint system.
-    /// Fails if any of the assignments *directly* contradicts any of the constraints.
-    /// Note that getting an OK(_) here does not mean that there is no contradiction, as
-    /// this function only does one step of the derivation.
-    pub fn derive_more_assignments(
-        &self,
-        assignments: BTreeMap<V, T::FieldType>,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-        bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
-    ) -> Result<BTreeMap<V, T::FieldType>, ContradictingConstraintError> {
-        let effects = self
-            .constraints_referencing_variables(assignments.keys().cloned())
-            .map(|constraint| match constraint {
-                ConstraintRef::AlgebraicConstraint(identity) => {
-                    let mut identity = identity.clone();
-                    for (variable, value) in assignments.iter() {
-                        identity.substitute_by_known(variable, &T::from(*value));
-                    }
-                    identity
-                        .solve(range_constraints)
-                        .map(|result| result.effects)
-                        .map_err(|_| ContradictingConstraintError)
-                }
-                ConstraintRef::BusInteraction(bus_interaction) => {
-                    let mut bus_interaction = bus_interaction.clone();
-                    for (variable, value) in assignments.iter() {
-                        bus_interaction
-                            .fields_mut()
-                            .for_each(|expr| expr.substitute_by_known(variable, &T::from(*value)))
-                    }
-                    bus_interaction
-                        .solve(bus_interaction_handler, range_constraints)
-                        .map_err(|_| ContradictingConstraintError)
-                }
-            })
-            // Early return if any constraint leads to a contradiction.
-            .collect::<Result<Vec<_>, _>>()?;
-
-        effects
-            .into_iter()
-            .flatten()
-            .filter_map(|effect| {
-                if let Effect::Assignment(variable, value) = effect {
-                    Some((variable, value.try_to_number()?))
-                } else {
-                    None
-                }
-            })
-            .chain(assignments)
-            // Union of all unique assignments, but returning an error if there are any contradictions.
-            .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
-                if let Some(existing) = map.insert(variable, value) {
-                    if existing != value {
-                        // Duplicate assignment with different value.
-                        return Err(ContradictingConstraintError);
-                    }
-                }
-                Ok(map)
-            })
     }
 }
 

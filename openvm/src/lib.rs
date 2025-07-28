@@ -70,7 +70,7 @@ const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 };
 
 pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
-    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND, POWDR_OPCODE)
+    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
 }
 
 fn format_fe<F: PrimeField32>(v: F) -> String {
@@ -628,6 +628,7 @@ pub fn execution_profile_from_guest(
 mod tests {
     use super::*;
     use expect_test::{expect, Expect};
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     #[allow(clippy::too_many_arguments)]
@@ -1375,7 +1376,7 @@ mod tests {
                             main: 14676,
                             log_up: 11976,
                         },
-                        constraints: 4213,
+                        constraints: 4143,
                         bus_interactions: 11642,
                     }
                 "#]],
@@ -1403,7 +1404,7 @@ mod tests {
                             main: 14656,
                             log_up: 11956,
                         },
-                        constraints: 4195,
+                        constraints: 4127,
                         bus_interactions: 11632,
                     }
                 "#]],
@@ -1589,7 +1590,7 @@ mod tests {
                             main: 4843,
                             log_up: 3952,
                         },
-                        constraints: 969,
+                        constraints: 958,
                         bus_interactions: 3817,
                     }
                 "#]],

@@ -94,12 +94,11 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
 
     // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
     let res = parallel_fractional_knapsack(
-        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
+        blocks.into_par_iter().filter_map(|block| {
             let apc = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
-                (config.first_apc_opcode + i) as u32,
                 config.apc_candidates_dir_path.as_deref(),
             )
             .ok()?;
@@ -241,21 +240,17 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .into_par_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .enumerate()
-        .map(|(index, block)| {
+        .map(|block| {
             tracing::debug!(
                 "Accelerating block of length {} and start pc {}",
                 block.statements.len(),
                 block.start_pc
             );
 
-            let apc_opcode = config.first_apc_opcode + index;
-
             crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
-                apc_opcode as u32,
                 config.apc_candidates_dir_path.as_deref(),
             )
             .unwrap()
