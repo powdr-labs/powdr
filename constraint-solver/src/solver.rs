@@ -177,7 +177,7 @@ where
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
-        assert!(self.assignments_to_return.is_empty(),);
+        assert!(self.assignments_to_return.is_empty());
         self.range_constraints
             .range_constraints
             .retain(|v, _| variables_to_keep.contains(v));

@@ -44,13 +44,6 @@ pub struct IndexedConstraintSystem<T, V> {
 /// and are put in a queue. Handling an item can cause an update to a variable,
 /// which causes all constraints referencing that variable to be put back into the
 /// queue.
-///
-/// Note that this structure specifically does not allow
-/// removing items from the system, because that would destroy the queue.
-/// In order to remove items, convert it to `IndexedConstraintSystem`,
-/// remove the items and convert it back.
-///
-/// Adding new constraints to the system is allowed, though.
 #[derive(Clone, Default)]
 pub struct IndexedConstraintSystemWithQueue<T, V> {
     constraint_system: IndexedConstraintSystem<T, V>,
@@ -445,6 +438,47 @@ where
             .substitute_by_unknown(variable, substitution);
         self.variable_updated(variable);
     }
+
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    ) {
+        let initial_len = self
+            .constraint_system
+            .constraint_system
+            .algebraic_constraints
+            .len();
+        self.constraint_system
+            .add_algebraic_constraints(constraints.into_iter().enumerate().map(|(i, c)| {
+                self.queue
+                    .push(ConstraintSystemItem::AlgebraicConstraint(initial_len + i));
+                c
+            }));
+    }
+
+    pub fn retain_algebraic_constraints(
+        &mut self,
+        mut f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+    ) {
+        self.constraint_system.retain_algebraic_constraints(&mut f);
+        if !self.queue.queue.is_empty() {
+            // Removing items will destroy the indices, which is only safe if
+            // the queue is empty. Otherwise, we just put all items back into the queue.
+            self.queue = ConstraintSystemQueue::new(self.constraint_system.system());
+        }
+    }
+
+    pub fn retain_bus_interactions(
+        &mut self,
+        mut f: impl FnMut(&BusInteraction<GroupedExpression<T, V>>) -> bool,
+    ) {
+        self.constraint_system.retain_bus_interactions(&mut f);
+        if !self.queue.queue.is_empty() {
+            // Removing items will destroy the indices, which is only safe if
+            // the queue is empty. Otherwise, we just put all items back into the queue.
+            self.queue = ConstraintSystemQueue::new(self.constraint_system.system());
+        }
+    }
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
@@ -477,7 +511,6 @@ impl ConstraintSystemQueue {
         // The maximum value of `item.flat_id()` is `2 * max(num_algebraic, num_bus) + 1`
         let mut in_queue = BitVec::repeat(false, 2 * cmp::max(num_algebraic, num_bus) + 2);
         for item in &queue {
-            // TODO try to remove this.
             let item: &ConstraintSystemItem = item;
             in_queue.set(item.flat_id(), true);
         }
@@ -485,7 +518,9 @@ impl ConstraintSystemQueue {
     }
 
     fn push(&mut self, item: ConstraintSystemItem) {
-        // TODO we need to extend the queue if we add new items to the system.
+        if self.in_queue.len() <= item.flat_id() {
+            self.in_queue.resize(item.flat_id() + 1, false);
+        }
         if !self.in_queue[item.flat_id()] {
             self.queue.push_back(item);
             self.in_queue.set(item.flat_id(), true);
