@@ -551,6 +551,7 @@ impl ConstraintSystemQueue {
             .chain((0..num_bus).map(ConstraintSystemItem::BusInteraction))
             .collect::<Vec<_>>()
             .into();
+        // The maximum value of `item.flat_id()` is `2 * max(num_algebraic, num_bus) + 1`
         let mut in_queue = BitVec::repeat(false, 2 * cmp::max(num_algebraic, num_bus) + 2);
         for item in &queue {
             // TODO try to remove this.
