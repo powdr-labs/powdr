@@ -57,6 +57,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     // TODO should we inline here at all during solving (instead if only inside the solver)?
     let constraint_system =
         inliner::replace_constrained_witness_columns(constraint_system, should_inline);
+    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().cloned());
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
