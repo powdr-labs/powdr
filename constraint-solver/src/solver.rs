@@ -36,7 +36,7 @@ where
         .solve()
 }
 
-pub fn solver<T, V>(
+pub fn new_solver<T, V>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> impl Solver<T, V>
@@ -51,10 +51,19 @@ where
     SolverImpl::new(constraint_system).with_bus_interaction_handler(bus_interaction_handler)
 }
 
-pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> {
+pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
+    RangeConstraintProvider<T::FieldType, V> + Sized
+{
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments. Does not return the same assignments again.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
+
+    fn range_constraint_for_expression(
+        &self,
+        expr: &GroupedExpression<T, V>,
+    ) -> RangeConstraint<T::FieldType> {
+        expr.range_constraint(self)
+    }
 }
 
 /// An error occurred while solving the constraint system.

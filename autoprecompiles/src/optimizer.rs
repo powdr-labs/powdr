@@ -10,6 +10,7 @@ use powdr_constraint_solver::indexed_constraint_system::{
 };
 use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
+use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
@@ -113,10 +114,12 @@ fn run_optimization_loop_until_no_change<
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
+    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimization_loop_iteration::<_, _, _, M>(
             constraint_system,
+            &mut solver,
             bus_interaction_handler.clone(),
             &should_inline,
             stats_logger,
@@ -135,6 +138,7 @@ fn optimization_loop_iteration<
     M: MemoryBusInteraction<P, V>,
 >(
     constraint_system: ConstraintSystem<P, V>,
+    solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
@@ -165,6 +169,7 @@ fn optimization_loop_iteration<
         let system = optimize_bitwise_lookup(
             constraint_system,
             bitwise_bus_id,
+            solver,
             bus_interaction_handler.clone(),
         );
         stats_logger.log("optimizing bitwise lookup", &system);
