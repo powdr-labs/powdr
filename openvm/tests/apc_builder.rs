@@ -346,7 +346,7 @@ mod complex_tests {
         let program = [
             // Load [x2 + 20] into x8
             loadw(8, 2, 20, 2, 1, 0),
-            // Load [x2 + 24] into x8
+            // Load [x2 + 24] into x9
             loadw(9, 2, 24, 2, 1, 0),
             // Store [x8] into [x2 + 24]
             storew(8, 2, 24, 2, 1, 0),
