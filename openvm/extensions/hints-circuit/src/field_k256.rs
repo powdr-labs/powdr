@@ -55,6 +55,7 @@ impl elliptic_curve::PrimeCurve for Secp256k1 {}
 #[derive(Clone, Copy, Debug)]
 pub struct FieldElement10x26(pub(crate) [u32; 10]);
 
+// TODO: maybe instead clean this file up and only keep code that is used?
 #[allow(unused)]
 impl FieldElement10x26 {
     /// Zero element.
