@@ -504,7 +504,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::SdkSystemConfig;
+    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig};
 
     #[test]
     fn test_get_bus_map() {
@@ -538,7 +538,7 @@ mod tests {
             supported_curves.push(bls_config.clone());
             supported_pairing_curves.push(PairingCurve::Bls12_381);
         }
-        let vm_config = SdkVmConfig::builder()
+        let sdk_vm_config = SdkVmConfig::builder()
             .system(system_config.into())
             .rv32i(Default::default())
             .rv32m(rv32m)
@@ -552,17 +552,23 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = OriginalVmConfig::new(vm_config).bus_map();
+        let _ = OriginalVmConfig::new(ExtendedVmConfig {
+            sdk_vm_config,
+            hints_extension: false,
+        })
+        .bus_map();
     }
 
     #[test]
     fn test_export_pil() {
         let writer = &mut Vec::new();
-        let base_config = OriginalVmConfig::new(
-            SdkVmConfig::builder()
+        let ext_config = ExtendedVmConfig {
+            sdk_vm_config: SdkVmConfig::builder()
                 .system(SdkSystemConfig::default())
                 .build(),
-        );
+            hints_extension: false,
+        };
+        let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config = SpecializedConfig::new(
             base_config,
             vec![],

@@ -8,6 +8,7 @@ use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
+use powdr_openvm::ExtendedVmConfig;
 use powdr_openvm::Instr;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND};
 use pretty_assertions::assert_eq;
@@ -23,7 +24,12 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         .io(Default::default())
         .build();
 
-    let original_config = OriginalVmConfig::new(sdk_vm_config);
+    let ext_vm_config = ExtendedVmConfig {
+        sdk_vm_config,
+        hints_extension: false,
+    };
+
+    let original_config = OriginalVmConfig::new(ext_vm_config);
 
     let airs = original_config.airs().unwrap();
     let bus_map = original_config.bus_map();
