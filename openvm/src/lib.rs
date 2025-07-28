@@ -1376,8 +1376,8 @@ mod tests {
                             main: 14680,
                             log_up: 11980,
                         },
-                        constraints: 4143,
-                        bus_interactions: 11642,
+                        constraints: 4147,
+                        bus_interactions: 11644,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1404,8 +1404,8 @@ mod tests {
                             main: 14660,
                             log_up: 11960,
                         },
-                        constraints: 4127,
-                        bus_interactions: 11632,
+                        constraints: 4131,
+                        bus_interactions: 11634,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
