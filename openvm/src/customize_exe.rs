@@ -246,10 +246,7 @@ pub fn customize(
 
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
-            program.add_apc_instruction_at_pc_index(
-                start_index,
-                VmOpcode::from_usize(opcode),
-            );
+            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             let is_valid_column = machine
                 .main_columns()
@@ -257,7 +254,7 @@ pub fn customize(
                 .unwrap();
 
             PowdrPrecompile::new(
-                format!("PowdrAutoprecompile_{opcode}"),
+                format!("PowdrAutoprecompile_{}", block.start_pc),
                 PowdrOpcode {
                     class_offset: opcode,
                 },
