@@ -1,0 +1,10 @@
+[workspace]
+[package]
+name = "openvm-ecc-powdr-affine-add"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git" }
+k256 = {git = "https://github.com/ShuangWu121/elliptic-curves.git",default-features = false,features=["expose-field","arithmetic"]}
+hex-literal = "1.0.0"
