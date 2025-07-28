@@ -22,12 +22,21 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct IndexedConstraintSystem<T, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
     variable_occurrences: HashMap<V, Vec<ConstraintSystemItem>>,
+}
+
+impl<T, V> Default for IndexedConstraintSystem<T, V> {
+    fn default() -> Self {
+        IndexedConstraintSystem {
+            constraint_system: ConstraintSystem::default(),
+            variable_occurrences: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
