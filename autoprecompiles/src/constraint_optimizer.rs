@@ -101,7 +101,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
     .cloned();
     let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
 
-    solver.retain_variables(variables_to_keep.iter().cloned().sorted());
+    solver.retain_variables(&variables_to_keep);
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint

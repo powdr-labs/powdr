@@ -36,6 +36,7 @@ where
         .solve()
 }
 
+/// Creates a new solver for the given system and bus interaction handler.
 pub fn new_solver<T, V>(
     constraint_system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
@@ -58,13 +59,19 @@ pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
     /// assignments. Does not return the same assignments again.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
 
+    /// Adds a new algebraic constraint to the system.
     fn add_algebraic_constraints(
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     );
 
-    fn retain_variables(&mut self, variables_to_keep: impl IntoIterator<Item = V>);
+    /// Removes all variables except those in `variables_to_keep`.
+    /// The idea is that the outside system is not interested in the variables
+    /// any more. This should remove all constraints that include one of the variables
+    /// and also remove all variables derived from those variables.
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>);
 
+    /// Returns the best known range constraint for the given expression.
     fn range_constraint_for_expression(
         &self,
         expr: &GroupedExpression<T, V>,
@@ -135,15 +142,11 @@ impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Hash + Eq + Dis
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> RangeConstraintProvider<T::FieldType, V>
-    for SolverImpl<T, V, BusInter>
+impl<T, V, BusInter> RangeConstraintProvider<T::FieldType, V> for SolverImpl<T, V, BusInter>
 where
-    V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Display
-        + ExpressionConvertible<T::FieldType, V>
-        + Substitutable<V>,
+    V: Clone + Hash + Eq,
+    T: RuntimeConstant,
+    BusInter: BusInteractionHandler<T::FieldType>,
 {
     fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
         self.range_constraints.get(var)
@@ -173,8 +176,7 @@ where
             .add_algebraic_constraints(constraints);
     }
 
-    fn retain_variables(&mut self, variables_to_keep: impl IntoIterator<Item = V>) {
-        let variables_to_keep: HashSet<_> = variables_to_keep.into_iter().collect();
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
         assert!(self.assignments_to_return.is_empty(),);
         self.range_constraints
             .range_constraints
