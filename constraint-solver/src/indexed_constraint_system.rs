@@ -44,7 +44,7 @@ pub struct IndexedConstraintSystem<T, V> {
 /// In particular, the assumption is that items in the constraint system
 /// need to be "handled". Initially, all items need to be "handled"
 /// and are put in a queue. Handling an item can cause an update to a variable,
-/// which causes all constraints referencing thet variable to be put back into the
+/// which causes all constraints referencing that variable to be put back into the
 /// queue.
 ///
 /// Note that this structure specifically does not allow
