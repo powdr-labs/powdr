@@ -7,7 +7,7 @@ use std::{
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteractionHandler, ConstraintSystem},
+    constraint_system::{BusInteractionHandler, ConstraintRef, ConstraintSystem},
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner,
@@ -50,6 +50,10 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
+        remove_free_variables(constraint_system, bus_interaction_handler.clone());
+    stats_logger.log("removing free variables", &constraint_system);
+
+    let constraint_system =
         remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
@@ -83,6 +87,68 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     }
     constraint_system.apply_substitutions(assignments);
     Ok(constraint_system)
+}
+
+fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<T, V>,
+    bus_interaction_handler: impl IsBusStateful<T> + Clone,
+) -> JournalingConstraintSystem<T, V> {
+    let variables_to_delete = constraint_system
+        .indexed_system()
+        .get_variables_referenced_once()
+        .filter(|(_variable, constraint)| match constraint {
+            // Even if the degree is 1, it could be connected to a stateful bus interaction!
+            ConstraintRef::AlgebraicConstraint(..) => false,
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+                !bus_interaction_handler.is_stateful(bus_id)
+                    && bus_interaction
+                        .fields()
+                        .filter(|field| field.try_to_number().is_none())
+                        .count()
+                        == 1
+            }
+        })
+        .map(|(variable, _constraint)| variable.clone())
+        .collect::<HashSet<_>>();
+
+    let all_variables = constraint_system
+        .system()
+        .algebraic_constraints
+        .iter()
+        .flat_map(|constraint| constraint.referenced_variables())
+        .chain(
+            constraint_system
+                .system()
+                .bus_interactions
+                .iter()
+                .flat_map(|bus_interaction| bus_interaction.referenced_variables()),
+        )
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let variables_to_keep = all_variables
+        .difference(&variables_to_delete)
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    // solver.retain_variables(&variables_to_keep);
+
+    constraint_system.retain_algebraic_constraints(|constraint| {
+        constraint
+            .referenced_variables()
+            .all(|var| variables_to_keep.contains(var))
+    });
+
+    constraint_system.retain_bus_interactions(|bus_interaction| {
+        let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+        bus_interaction_handler.is_stateful(bus_id)
+            || bus_interaction
+                .referenced_variables()
+                .all(|var| variables_to_keep.contains(var))
+    });
+
+    constraint_system
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),

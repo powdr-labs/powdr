@@ -35,6 +35,22 @@ enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     BusInteraction(usize),
 }
+impl ConstraintSystemItem {
+    /// Turns this indexed-based item into a reference to the actual constraint.
+    fn to_constraint_ref<'a, T, V>(
+        self,
+        constraint_system: &'a ConstraintSystem<T, V>,
+    ) -> ConstraintRef<'a, T, V> {
+        match self {
+            ConstraintSystemItem::AlgebraicConstraint(i) => {
+                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[i])
+            }
+            ConstraintSystemItem::BusInteraction(i) => {
+                ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
+            }
+        }
+    }
+}
 
 impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>>
     for IndexedConstraintSystem<T, V>
@@ -207,12 +223,19 @@ impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, 
             .filter_map(|v| self.variable_occurrences.get(&v))
             .flatten()
             .unique()
-            .map(|&item| match item {
-                ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
-                    &self.constraint_system.algebraic_constraints[i],
-                ),
-                ConstraintSystemItem::BusInteraction(i) => {
-                    ConstraintRef::BusInteraction(&self.constraint_system.bus_interactions[i])
+            .map(|&item| item.to_constraint_ref(self.system()))
+    }
+
+    pub fn get_variables_referenced_once<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (&'a V, ConstraintRef<'a, T, V>)> + 'a {
+        self.variable_occurrences
+            .iter()
+            .filter_map(|(variable, occurrences)| {
+                if occurrences.len() == 1 {
+                    Some((variable, occurrences[0].to_constraint_ref(self.system())))
+                } else {
+                    None
                 }
             })
     }
