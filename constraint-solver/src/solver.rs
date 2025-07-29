@@ -238,13 +238,13 @@ where
         self.solver
             .add_algebraic_constraints(constraints.into_iter().flat_map(|constr| {
                 let constr = constr.transform_var_type(&mut |v| v.clone().into());
-                // TODO easier iter?
-                [
-                    Some(constr.clone()),
-                    extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var()),
-                ]
-                .into_iter()
-                .flatten()
+                std::iter::once(constr.clone()).chain(
+                    extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var())
+                        .iter()
+                        .flat_map(move |extracted| {
+                            [extracted.clone(), constr.clone() - extracted.clone()].into_iter()
+                        }),
+                )
             }))
     }
 
