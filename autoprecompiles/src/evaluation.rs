@@ -2,7 +2,9 @@ use std::{fmt::Display, iter::Sum, ops::Add};
 
 use crate::{blocks::Instruction, InstructionHandler, SymbolicMachine};
 
-#[derive(Clone, Copy, PartialEq, Default, Eq, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, PartialEq, Default, Eq, Debug, Serialize, Deserialize)]
 /// Statistics of an AIR
 pub struct AirStats {
     /// The number of main columns
@@ -42,6 +44,7 @@ impl Sum<AirStats> for AirStats {
     }
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
 /// Evaluation result of an APC evaluation
 pub struct EvaluationResult {
     /// Statistics before optimizations, i.e., the sum of the AIR stats
