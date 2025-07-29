@@ -121,7 +121,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
         let rs1 = unsafe_read_rv32_register(memory, a);
         // read the k256 field_10x26 as raw bytes
         let bytes: [u8; FIELD10X26_BYTES] = memory
-            .unsafe_read::<{FIELD10X26_BYTES}>(
+            .unsafe_read::<{ FIELD10X26_BYTES }>(
                 F::from_canonical_u32(RV32_MEMORY_AS),
                 F::from_canonical_u32(rs1),
             )
@@ -133,7 +133,11 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
         // we just reinterpret the bytes as a k256 field element. We don't use mem::transmute to avoid alignment issues
         let mut elem = [0u32; 10];
         unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), elem.as_mut_ptr() as *mut u8, FIELD10X26_BYTES);
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                elem.as_mut_ptr() as *mut u8,
+                FIELD10X26_BYTES,
+            );
         }
         let elem = field10x26_k256::FieldElement10x26(elem);
         let inv = elem.invert();
@@ -168,7 +172,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
         let rs1 = unsafe_read_rv32_register(memory, a);
         // read the k256 field_10x26 as raw bytes
         let bytes: [u8; FIELD10X26_BYTES] = memory
-            .unsafe_read::<{FIELD10X26_BYTES}>(
+            .unsafe_read::<{ FIELD10X26_BYTES }>(
                 F::from_canonical_u32(RV32_MEMORY_AS),
                 F::from_canonical_u32(rs1),
             )
@@ -180,7 +184,11 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
         // we just reinterpret the bytes as a k256 field element. Can't use mem::transmute due to alighment requirements
         let mut elem = [0u32; 10];
         unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), elem.as_mut_ptr() as *mut u8, FIELD10X26_BYTES);
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                elem.as_mut_ptr() as *mut u8,
+                FIELD10X26_BYTES,
+            );
         }
         let elem = field10x26_k256::FieldElement10x26(elem);
         let res = elem.sqrt();

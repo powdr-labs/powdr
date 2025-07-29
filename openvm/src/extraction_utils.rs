@@ -552,11 +552,7 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = OriginalVmConfig::new(ExtendedVmConfig {
-            sdk_vm_config,
-            hints_extension: false,
-        })
-        .bus_map();
+        let _ = OriginalVmConfig::new(ExtendedVmConfig { sdk_vm_config }).bus_map();
     }
 
     #[test]
@@ -566,7 +562,6 @@ mod tests {
             sdk_vm_config: SdkVmConfig::builder()
                 .system(SdkSystemConfig::default())
                 .build(),
-            hints_extension: false,
         };
         let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config = SpecializedConfig::new(

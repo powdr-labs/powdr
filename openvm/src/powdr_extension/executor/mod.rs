@@ -464,9 +464,8 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         complex = complex.extend(ecc)?;
     }
 
-    if this.hints_extension {
-        complex = complex.extend(&HintsExtension)?;
-    }
+    // add custom extensions
+    complex = complex.extend(&HintsExtension)?;
 
     Ok(complex)
 }

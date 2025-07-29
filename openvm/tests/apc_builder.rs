@@ -24,10 +24,7 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         .io(Default::default())
         .build();
 
-    let ext_vm_config = ExtendedVmConfig {
-        sdk_vm_config,
-        hints_extension: false,
-    };
+    let ext_vm_config = ExtendedVmConfig { sdk_vm_config };
 
     let original_config = OriginalVmConfig::new(ext_vm_config);
 

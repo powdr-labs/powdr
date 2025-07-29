@@ -7,8 +7,8 @@ use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_openvm_hints_transpiler::HintsPhantom;
 
 // this module is mostly copy/pasted code from k256 for the field element representation in 32-bit architectures
-mod field10x26_k256;
 mod executors;
+mod field10x26_k256;
 
 /// OpenVM extension with miscellaneous hint implementations.
 pub struct HintsExtension;

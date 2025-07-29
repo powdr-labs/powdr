@@ -25,7 +25,6 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use openvm_transpiler::TranspilerExtension;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
@@ -36,7 +35,6 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
-use std::rc::Rc;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -231,8 +229,6 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-    // TODO: pass some other kind of config and instantiate extensions inside
-    extensions: Vec<Rc<dyn TranspilerExtension<BabyBear>>>,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
     let sdk = Sdk::default();
 
@@ -269,17 +265,15 @@ pub fn compile_openvm(
         Default::default(),
     )?;
 
-    // Transpile the ELF into a VmExe. Note that this happens using the sdk transpiler only, our extension does not use a transpiler.
+    // Transpile the ELF into a VmExe.
     let mut transpiler = sdk_vm_config.transpiler();
-    for ext in extensions {
-        transpiler = transpiler.with_processor(ext);
-    }
+
+    // Add our custom transpiler extensions
+    transpiler = transpiler.with_extension(HintsTranspilerExtension {});
+
     let exe = sdk.transpile(elf, transpiler)?;
 
-    let vm_config = ExtendedVmConfig {
-        sdk_vm_config,
-        hints_extension: true, // TODO: pass some kind of config here
-    };
+    let vm_config = ExtendedVmConfig { sdk_vm_config };
 
     Ok(OriginalCompiledProgram { exe, vm_config })
 }
@@ -302,10 +296,7 @@ pub fn compile_guest(
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> =
-        Rc::new(HintsTranspilerExtension {});
-    let extensions = vec![hints_transpiler];
-    let original_program = compile_openvm(guest, guest_opts.clone(), extensions)?;
+    let original_program = compile_openvm(guest, guest_opts.clone())?;
 
     // Optional tally of opcode freqency (only enabled for debug level logs)
     if tracing::enabled!(Level::DEBUG) {
@@ -430,10 +421,10 @@ pub struct OriginalCompiledProgram {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-// SdkVmConfig plus custom openvm extensions, before autoprecompile transformations
+// SdkVmConfig plus custom openvm extensions, before autoprecompile transformations.
+// For now, only includes custom hints.
 pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
-    pub hints_extension: bool,
 }
 
 impl VmConfig<BabyBear> for ExtendedVmConfig {
@@ -455,9 +446,7 @@ impl VmConfig<BabyBear> for ExtendedVmConfig {
         VmInventoryError,
     > {
         let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
-        if self.hints_extension {
-            complex = complex.extend(&HintsExtension)?;
-        }
+        complex = complex.extend(&HintsExtension)?;
         Ok(complex)
     }
 }
@@ -695,11 +684,7 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let hints_transpiler: Rc<dyn TranspilerExtension<BabyBear>> =
-        Rc::new(HintsTranspilerExtension {});
-    let extensions = vec![hints_transpiler];
-    let OriginalCompiledProgram { exe, vm_config } =
-        compile_openvm(guest, guest_opts, extensions).unwrap();
+    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
     // prepare for execute
