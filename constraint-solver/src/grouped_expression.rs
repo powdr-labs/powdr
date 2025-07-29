@@ -234,7 +234,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
 
     /// Computes the degree of a GroupedExpression in the unknown variables.
     /// Note that it might overestimate the degree if the expression contains
-    /// terms that cancel each other out, e.g. `(2 * x) * x - 2 * (x * x)`.
+    /// terms that cancel each other out, e.g. `a * (b + 1) - a * b - a`.
     /// Variables inside runtime constants are ignored.
     pub fn degree(&self) -> usize {
         self.quadratic
