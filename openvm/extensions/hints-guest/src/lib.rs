@@ -68,7 +68,7 @@ fn insn_k256_sqrt_field_10x26(bytes: *const u8) {
     );
 }
 
-// TODO: this is just a silly hint example, remove
+// Just an example hint that reverses the bytes of a u32 value.
 pub fn hint_reverse_bytes(val: u32) -> u32 {
     #[cfg(target_os = "zkvm")]
     {

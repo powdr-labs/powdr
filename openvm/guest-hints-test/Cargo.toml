@@ -5,7 +5,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-# TODO: point hints-guest extension to github/main and remove the following `rev`
+# The `rev` here must point to the same version used in the workspace
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
 powdr-openvm-hints-guest = { path = "../extensions/hints-guest/" }
 
