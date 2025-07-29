@@ -1,5 +1,11 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash};
+use std::{
+    cmp,
+    collections::{HashMap, VecDeque},
+    fmt::Display,
+    hash::Hash,
+};
 
+use bitvec::vec::BitVec;
 use itertools::Itertools;
 
 use crate::{
@@ -30,10 +36,50 @@ pub struct IndexedConstraintSystem<T, V> {
     variable_occurrences: HashMap<V, Vec<ConstraintSystemItem>>,
 }
 
+/// Structure on top of [`IndexedConstraintSystem`] that
+/// tracks changes to variables and how they may affect constraints.
+///
+/// In particular, the assumption is that items in the constraint system
+/// need to be "handled". Initially, all items need to be "handled"
+/// and are put in a queue. Handling an item can cause an update to a variable,
+/// which causes all constraints referencing that variable to be put back into the
+/// queue.
+#[derive(Clone, Default)]
+pub struct IndexedConstraintSystemWithQueue<T, V> {
+    constraint_system: IndexedConstraintSystem<T, V>,
+    queue: ConstraintSystemQueue,
+}
+
+/// A reference to an item in the constraint system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     BusInteraction(usize),
+}
+
+impl ConstraintSystemItem {
+    /// Returns an index that is unique across both algebraic constraints and bus interactions.
+    fn flat_id(&self) -> usize {
+        match self {
+            ConstraintSystemItem::AlgebraicConstraint(i) => 2 * i,
+            ConstraintSystemItem::BusInteraction(i) => 2 * i + 1,
+        }
+    }
+
+    /// Turns this indexed-based item into a reference to the actual constraint.
+    fn to_constraint_ref<'a, T, V>(
+        self,
+        constraint_system: &'a ConstraintSystem<T, V>,
+    ) -> ConstraintRef<'a, T, V> {
+        match self {
+            ConstraintSystemItem::AlgebraicConstraint(i) => {
+                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[i])
+            }
+            ConstraintSystemItem::BusInteraction(i) => {
+                ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
+            }
+        }
+    }
 }
 
 impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>>
@@ -207,14 +253,7 @@ impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, 
             .filter_map(|v| self.variable_occurrences.get(&v))
             .flatten()
             .unique()
-            .map(|&item| match item {
-                ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
-                    &self.constraint_system.algebraic_constraints[i],
-                ),
-                ConstraintSystemItem::BusInteraction(i) => {
-                    ConstraintRef::BusInteraction(&self.constraint_system.bus_interactions[i])
-                }
-            })
+            .map(|&item| item.to_constraint_ref(&self.constraint_system))
     }
 }
 
@@ -347,6 +386,153 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.constraint_system)
+    }
+}
+
+impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord, C: Into<IndexedConstraintSystem<T, V>>> From<C>
+    for IndexedConstraintSystemWithQueue<T, V>
+{
+    fn from(constraint_system: C) -> Self {
+        let constraint_system = constraint_system.into();
+        let queue = ConstraintSystemQueue::new(constraint_system.system());
+        Self {
+            constraint_system,
+            queue,
+        }
+    }
+}
+
+impl<T, V> IndexedConstraintSystemWithQueue<T, V>
+where
+    T: RuntimeConstant + Substitutable<V>,
+    V: Clone + Ord + Hash,
+{
+    /// Returns a reference to the underlying indexed constraint system.
+    pub fn system(&self) -> &IndexedConstraintSystem<T, V> {
+        &self.constraint_system
+    }
+
+    /// Removes the next item from the queue and returns it.
+    pub fn pop_front<'a>(&'a mut self) -> Option<ConstraintRef<'a, T, V>> {
+        self.queue
+            .pop_front()
+            .map(|item| item.to_constraint_ref(&self.constraint_system.constraint_system))
+    }
+
+    /// Notifies the system that a variable has been updated and causes all constraints
+    /// referencing that variable to be put back into the queue.
+    ///
+    /// Note that this function does not have to be called if the system is modified directly.
+    pub fn variable_updated(&mut self, variable: &V) {
+        if let Some(items) = self.constraint_system.variable_occurrences.get(variable) {
+            for item in items {
+                self.queue.push(*item);
+            }
+        }
+    }
+
+    /// Substitutes a variable with a known value in the whole system.
+    /// This function also updates the queue accordingly.
+    pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
+        self.constraint_system
+            .substitute_by_unknown(variable, substitution);
+        self.variable_updated(variable);
+    }
+
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    ) {
+        let initial_len = self
+            .constraint_system
+            .constraint_system
+            .algebraic_constraints
+            .len();
+        self.constraint_system
+            .add_algebraic_constraints(constraints.into_iter().enumerate().map(|(i, c)| {
+                self.queue
+                    .push(ConstraintSystemItem::AlgebraicConstraint(initial_len + i));
+                c
+            }));
+    }
+
+    pub fn retain_algebraic_constraints(
+        &mut self,
+        mut f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+    ) {
+        self.constraint_system.retain_algebraic_constraints(&mut f);
+        if !self.queue.queue.is_empty() {
+            // Removing items will destroy the indices, which is only safe if
+            // the queue is empty. Otherwise, we just put all items back into the queue.
+            self.queue = ConstraintSystemQueue::new(self.constraint_system.system());
+        }
+    }
+
+    pub fn retain_bus_interactions(
+        &mut self,
+        mut f: impl FnMut(&BusInteraction<GroupedExpression<T, V>>) -> bool,
+    ) {
+        self.constraint_system.retain_bus_interactions(&mut f);
+        if !self.queue.queue.is_empty() {
+            // Removing items will destroy the indices, which is only safe if
+            // the queue is empty. Otherwise, we just put all items back into the queue.
+            self.queue = ConstraintSystemQueue::new(self.constraint_system.system());
+        }
+    }
+}
+
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
+    for IndexedConstraintSystemWithQueue<T, V>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.constraint_system)
+    }
+}
+
+/// The actual queue used in `IndexedConstraintSystemWithQueue`.
+///
+/// It keeps track that there are no duplicates in the queue by maintaining
+/// a flat bitvector of items in the queue.
+#[derive(Default, Clone)]
+struct ConstraintSystemQueue {
+    queue: VecDeque<ConstraintSystemItem>,
+    in_queue: BitVec,
+}
+
+impl ConstraintSystemQueue {
+    fn new<T, V>(constraint_system: &ConstraintSystem<T, V>) -> Self {
+        let num_algebraic = constraint_system.algebraic_constraints.len();
+        let num_bus = constraint_system.bus_interactions.len();
+        let queue = (0..num_algebraic)
+            .map(ConstraintSystemItem::AlgebraicConstraint)
+            .chain((0..num_bus).map(ConstraintSystemItem::BusInteraction))
+            .collect::<Vec<_>>()
+            .into();
+        // The maximum value of `item.flat_id()` is `2 * max(num_algebraic, num_bus) + 1`
+        let mut in_queue = BitVec::repeat(false, 2 * cmp::max(num_algebraic, num_bus) + 2);
+        for item in &queue {
+            let item: &ConstraintSystemItem = item;
+            in_queue.set(item.flat_id(), true);
+        }
+        Self { queue, in_queue }
+    }
+
+    fn push(&mut self, item: ConstraintSystemItem) {
+        if self.in_queue.len() <= item.flat_id() {
+            self.in_queue.resize(item.flat_id() + 1, false);
+        }
+        if !self.in_queue[item.flat_id()] {
+            self.queue.push_back(item);
+            self.in_queue.set(item.flat_id(), true);
+        }
+    }
+
+    fn pop_front(&mut self) -> Option<ConstraintSystemItem> {
+        let item = self.queue.pop_front();
+        if let Some(item) = &item {
+            self.in_queue.set(item.flat_id(), false);
+        }
+        item
     }
 }
 
