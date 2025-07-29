@@ -93,6 +93,14 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     Ok(constraint_system)
 }
 
+/// Removes free variables from the constraint system, under some conditions.
+///
+/// Motivation: Suppose there is a constraint `2 * foo = bar` and `foo` only appears in this constraint.
+/// Then, if we assume that all constraints are satisfiable, the prover would be able to satisfy it for
+/// any value of `bar` by solving for `foo`. Therefore, the constraint can be removed.
+/// The same would be true for a *stateless* bus interaction, e.g. `[foo * bar] in [BYTES]`.
+///
+/// This function *some* constraints like this (see TODOs below).
 fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
