@@ -23,8 +23,25 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     mut var_dispenser: impl FnMut() -> V,
 ) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
+    // Try to align `left` and `right` so that at least one variable has the same coefficient.
+    // We multiply `left` by a nonzero factor, this does not change the constraint.
+
+    let factor = if right.is_affine() {
+        if let Some((var, left_coeff)) = left.components().1.next() {
+            let Some(right_coeff) = right.coefficient_of_variable(var) else {
+                // `right` does not have that variable, so this method does not work.
+                return None;
+            };
+            right_coeff.field_div(left_coeff)
+        } else {
+            T::one()
+        }
+    } else {
+        T::one()
+    };
+
     // `constr = 0` is equivalent to `left * right = 0`
-    let offset = left - right;
+    let offset = &(left.clone() * &factor) - right;
     // We only do the transformation if `offset` is known, because
     // otherwise the constraint stays quadratic.
     offset.try_to_known()?;

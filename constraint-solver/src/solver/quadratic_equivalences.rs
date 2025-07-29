@@ -110,18 +110,20 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
         if !left.is_affine() || !right.is_affine() {
             return None;
         }
-        // `constr = 0` is equivalent to `left * right = 0`
-        let offset = (left - right).try_to_known()?.try_to_number()?;
-        // `offset + right = left`
-        // `constr = 0` is equivalent to `right * (right + offset) = 0`
-        let variables = right
-            .referenced_unknown_variables()
-            .cloned()
-            .collect::<HashSet<_>>();
-        Some(Self {
-            expr: right.clone(),
-            offset: offset.into(),
-            variables,
+        [left, &-left].into_iter().find_map(|left| {
+            // `constr = 0` is equivalent to `left * right = 0`
+            let offset = (left - right).try_to_known()?.try_to_number()?;
+            // `offset + right = left`
+            // `constr = 0` is equivalent to `right * (right + offset) = 0`
+            let variables = right
+                .referenced_unknown_variables()
+                .cloned()
+                .collect::<HashSet<_>>();
+            Some(Self {
+                expr: right.clone(),
+                offset: offset.into(),
+                variables,
+            })
         })
     }
 
