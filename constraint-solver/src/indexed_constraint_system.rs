@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     fmt::Display,
     hash::Hash,
 };
@@ -33,7 +33,7 @@ pub struct IndexedConstraintSystem<T, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
-    variable_occurrences: HashMap<V, Vec<ConstraintSystemItem>>,
+    variable_occurrences: HashMap<V, BTreeSet<ConstraintSystemItem>>,
 }
 
 /// Structure on top of [`IndexedConstraintSystem`] that
@@ -154,7 +154,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
 /// match the type of the items in `list`.
 fn retain<V, Item>(
     list: &mut Vec<Item>,
-    occurrences: &mut HashMap<V, Vec<ConstraintSystemItem>>,
+    occurrences: &mut HashMap<V, BTreeSet<ConstraintSystemItem>>,
     mut f: impl FnMut(&Item) -> bool,
     constraint_kind_constructor: impl Fn(usize) -> ConstraintSystemItem + Copy,
 ) {
@@ -179,7 +179,7 @@ fn retain<V, Item>(
     );
     occurrences.values_mut().for_each(|occurrences| {
         *occurrences = occurrences
-            .iter_mut()
+            .iter()
             .filter_map(|item| match item {
                 ConstraintSystemItem::AlgebraicConstraint(i) if is_algebraic_constraint => {
                     replacement_map[*i].map(constraint_kind_constructor)
@@ -266,7 +266,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
         for item in self
             .variable_occurrences
             .get(variable)
-            .unwrap_or(&Vec::new())
+            .unwrap_or(&BTreeSet::new())
         {
             substitute_by_known_in_item(&mut self.constraint_system, *item, variable, substitution);
         }
@@ -292,7 +292,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
             .variable_occurrences
             .get(variable)
             .cloned()
-            .unwrap_or(Vec::new());
+            .unwrap_or(BTreeSet::new());
         for item in &items {
             substitute_by_unknown_in_item(
                 &mut self.constraint_system,
@@ -317,7 +317,7 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
 /// to the items they occur in.
 fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
     constraint_system: &ConstraintSystem<T, V>,
-) -> HashMap<V, Vec<ConstraintSystemItem>> {
+) -> HashMap<V, BTreeSet<ConstraintSystemItem>> {
     let occurrences_in_algebraic_constraints = constraint_system
         .algebraic_constraints
         .iter()
@@ -342,6 +342,9 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
         .into_group_map()
+        .into_iter()
+        .map(|(variable, occurrences)| (variable, occurrences.into_iter().collect::<BTreeSet<_>>()))
+        .collect()
 }
 
 fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>(
