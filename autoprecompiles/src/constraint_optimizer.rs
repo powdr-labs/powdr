@@ -150,6 +150,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                     == 1;
                 // If the expression is linear in the free variable, the prover would be able to solve for it
                 // to satisfy the constraint. Otherwise, this is not necessarily the case.
+                // Note that if the above check is true, there will only be one field of degree > 0.
                 let all_degrees_at_most_one = bus_interaction
                     .payload
                     .iter()
