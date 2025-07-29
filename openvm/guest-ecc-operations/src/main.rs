@@ -61,9 +61,9 @@ pub fn main() {
     let sum_projective = p1_projective + p2_projective;
     let sum_affine = sum_projective.to_affine();
     assert_eq!(sum_affine, p3_affine);
+    
 
-    // double assign
-
+    //double assign
     p2_projective = p2_projective.double();
     assert_eq!(p2_projective.to_affine(), p4_affine);
 
