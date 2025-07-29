@@ -435,13 +435,16 @@ where
         a: &GroupedExpression<T, V>,
         b: &GroupedExpression<T, V>,
     ) -> bool {
+        if let (Some(a), Some(b)) = (a.try_to_known(), b.try_to_known()) {
+            return (a.clone() - b.clone()).is_known_nonzero();
+        }
         let equivalent_to_a = self.equivalent_expressions(a);
         let equivalent_to_b = self.equivalent_expressions(b);
         equivalent_to_a
             .iter()
             .cartesian_product(&equivalent_to_b)
-            .any(|(a, b)| {
-                possible_concrete_values(&(a - b), self, 20)
+            .any(|(a_eq, b_eq)| {
+                possible_concrete_values(&(a_eq - b_eq), self, 20)
                     .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
             })
     }
@@ -537,12 +540,12 @@ where
         &mut self,
         expression: &GroupedExpression<T, V>,
     ) -> Vec<GroupedExpression<T, V>> {
-        if let Some(equiv) = self.equivalent_expressions_cache.get(expression) {
-            return equiv.clone();
-        }
         if expression.is_quadratic() {
             // This case is too complicated.
             return vec![expression.clone()];
+        }
+        if let Some(equiv) = self.equivalent_expressions_cache.get(expression) {
+            return equiv.clone();
         }
 
         // Go through the constraints related to this expression
