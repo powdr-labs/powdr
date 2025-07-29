@@ -250,19 +250,13 @@ where
                 let constr = constr.transform_var_type(&mut |v| v.clone().into());
                 let extracted =
                     try_extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var())
-                        .iter()
-                        .flat_map(|extracted| {
+                        .inspect(|_| {
                             // Make sure to range-constrain the variable
                             self.solver.add_range_constraint(
                                 &self.boolean_var_dispenser.latest_var().unwrap(),
                                 RangeConstraint::from_mask(1),
                             );
-                            // Also add a constraint that shows that the two versions
-                            // are equivalent.
-                            let equiv = &constr - extracted;
-                            [extracted.clone(), equiv]
-                        })
-                        .collect_vec();
+                        });
                 std::iter::once(constr).chain(extracted)
             })
             .collect_vec();
