@@ -1,6 +1,7 @@
+use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::boolean_extractor::extract_boolean;
+use crate::boolean_extractor::try_extract_boolean;
 use crate::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem,
 };
@@ -76,6 +77,9 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
         &mut self,
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
     );
+
+    /// Adds a new range constraint for the variable.
+    fn add_range_constraint(&mut self, var: &V, constraint: RangeConstraint<T::FieldType>);
 
     /// Removes all variables except those in `variables_to_keep`.
     /// The idea is that the outside system is not interested in the variables
@@ -155,6 +159,10 @@ impl BooleanVarDispenser {
         self.next_boolean_id += 1;
         Variable::Boolean(id)
     }
+
+    fn latest_var<V>(&self) -> Option<Variable<V>> {
+        (self.next_boolean_id > 0).then(|| Variable::Boolean(self.next_boolean_id - 1))
+    }
 }
 
 struct BooleanExtractedSolver<T, V, S> {
@@ -223,17 +231,23 @@ where
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
-        self.solver
-            .add_algebraic_constraints(constraints.into_iter().flat_map(|constr| {
+        let constraints = constraints
+            .into_iter()
+            .flat_map(|constr| {
                 let constr = constr.transform_var_type(&mut |v| v.clone().into());
-                // TODO easier iter?
-                [
-                    Some(constr.clone()),
-                    extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var()),
-                ]
-                .into_iter()
-                .flatten()
-            }))
+                let extracted =
+                    try_extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var())
+                        .inspect(|_| {
+                            // Make sure to range-constrain the variable
+                            self.solver.add_range_constraint(
+                                &self.boolean_var_dispenser.latest_var().unwrap(),
+                                RangeConstraint::from_mask(1),
+                            );
+                        });
+                std::iter::once(constr).chain(extracted)
+            })
+            .collect_vec();
+        self.solver.add_algebraic_constraints(constraints);
     }
 
     fn add_bus_interactions(
@@ -251,6 +265,11 @@ where
                     })
                     .collect()
             }))
+    }
+
+    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
+        self.solver
+            .add_range_constraint(&variable.clone().into(), constraint);
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
@@ -343,6 +362,10 @@ where
     ) {
         self.constraint_system
             .add_bus_interactions(bus_interactions);
+    }
+
+    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
+        self.apply_range_constraint_update(variable, constraint);
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
