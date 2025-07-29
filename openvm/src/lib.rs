@@ -811,6 +811,8 @@ mod tests {
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
+    const GUEST_HINTS_TEST: &str = "guest-hints-test";
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1236,6 +1238,23 @@ mod tests {
         tracing::debug!(
             "Proving sha256 with PgoConfig::Instruction took {:?}",
             elapsed
+        );
+    }
+
+    #[test]
+    /// check that the hints test guest compiles and proves successfully
+    fn hints_test_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_HINTS_TEST);
+        let config = default_powdr_openvm_config(0, 0);
+
+        prove_simple(
+            GUEST_SHA256,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
         );
     }
 
