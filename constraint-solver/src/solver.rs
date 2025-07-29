@@ -88,6 +88,16 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType>;
+
+    /// Returns `true` if `a` and `b` are different for all satisfying assignments.
+    /// In other words, `a - b` does not allow the value zero.
+    /// If this function returns `false`, it does not mean that `a` and `b` are equal,
+    /// i.e. a function always returning `false` here satisfies the trait.
+    fn are_expressions_known_to_be_different(
+        &self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool;
 }
 
 /// An error occurred while solving the constraint system.
@@ -268,6 +278,16 @@ where
         let expr = expr.transform_var_type(&mut |v| v.clone().into());
         self.solver.range_constraint_for_expression(&expr)
     }
+
+    fn are_expressions_known_to_be_different(
+        &self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool {
+        let a = a.transform_var_type(&mut |v| v.clone().into());
+        let b = b.transform_var_type(&mut |v| v.clone().into());
+        self.solver.are_expressions_known_to_be_different(&a, &b)
+    }
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
@@ -367,6 +387,22 @@ where
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
         expr.range_constraint(self)
+    }
+
+    fn are_expressions_known_to_be_different(
+        &self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool {
+        let equivalent_to_a = self.equivalent_expressions(a);
+        let equivalent_to_b = self.equivalent_expressions(b);
+        equivalent_to_a
+            .iter()
+            .cartesian_product(equivalent_to_b)
+            .any(|(a, b)| {
+                // check if a - b is non-zero. the memory optimizer uses exhaustive search here.
+                todo!()
+            })
     }
 }
 
