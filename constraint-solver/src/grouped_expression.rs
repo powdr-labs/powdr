@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -557,14 +558,12 @@ impl<
     /// be split into different bit areas.
     pub fn try_split(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<GroupedExpression<T, V>>> {
         if self.is_quadratic() {
             return None;
         }
-        let Some(constant) = self.constant.try_to_number() else {
-            return None;
-        };
+        let constant = self.constant.try_to_number()?;
         if constant != 0.into() {
             // TODO can we solve this?
             return None;
@@ -587,7 +586,7 @@ impl<
             .into_grouping_map()
             .sum()
             .into_iter()
-            .sorted()
+            // TODO  .sorted()
             .collect_vec();
         if components.len() < 2 {
             return None;
@@ -618,12 +617,12 @@ impl<
                 continue;
             }
 
-            // If `rest` change by one, the result will "step over" the range constraint of
+            // If `rest` changes by one, the result will "step over" the range constraint of
             // the candidate. Now what remains is to check that the others do not wrap.
 
-            let rest: QuadraticSymbolicExpression<_, _> = rest
+            let rest: GroupedExpression<_, _> = rest
                 .into_iter()
-                .map(|(coeff, expr)| expr * &SymbolicExpression::from(coeff / smallest_coeff))
+                .map(|(coeff, expr)| expr * &T::from(coeff / smallest_coeff))
                 .sum();
             // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`.
 
@@ -635,7 +634,7 @@ impl<
                 // `candidate` has to be zero regardless of the value of `rest`,
                 // we can split it out into its own constraint.
                 parts.push(candidate.clone());
-                components[index] = (0.into(), T::from(0).into());
+                components[index] = (Zero::zero(), Zero::zero());
             }
         }
         if parts.is_empty() {
@@ -651,7 +650,7 @@ impl<
                 [(_, expr)] => expr.clone(), // if there is only one component, we can ignore the coefficient
                 _ => remaining
                     .into_iter()
-                    .map(|(coeff, expr)| expr * SymbolicExpression::from(coeff))
+                    .map(|(coeff, expr)| expr * T::from(coeff))
                     .sum(),
             });
             Some(parts)
@@ -1042,7 +1041,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sum for QuadraticSymbolicExpression<T, V> {
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sum for GroupedExpression<T, V> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let mut result = Zero::zero();
         for item in iter {
@@ -1919,7 +1918,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "-a + x
+            "-(a - x)
 b + y"
         );
     }
