@@ -371,7 +371,7 @@ where
         + Substitutable<V>,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
-        // TODO invalidate cache?
+        self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
         Ok(std::mem::take(&mut self.assignments_to_return))
     }
@@ -380,7 +380,7 @@ where
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
-        // TODO invalidate cache?
+        self.equivalent_expressions_cache.clear();
         self.constraint_system
             .add_algebraic_constraints(constraints);
     }
@@ -389,18 +389,18 @@ where
         &mut self,
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
     ) {
-        // TODO invalidate cache?
+        self.equivalent_expressions_cache.clear();
         self.constraint_system
             .add_bus_interactions(bus_interactions);
     }
 
     fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
-        // TODO invalidate cache?
+        self.equivalent_expressions_cache.clear();
         self.apply_range_constraint_update(variable, constraint);
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
-        // TODO invalidate cache?
+        self.equivalent_expressions_cache.clear();
         assert!(self.assignments_to_return.is_empty());
         self.range_constraints
             .range_constraints
@@ -455,7 +455,6 @@ where
         + Hash,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
-        // TODO invalidate cache?
         loop {
             let mut progress = false;
             // Try solving constraints in isolation.
