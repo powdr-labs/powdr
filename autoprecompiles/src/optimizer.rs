@@ -13,7 +13,7 @@ use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
-    grouped_expression::{GroupedExpression, NoRangeConstraints},
+    grouped_expression::GroupedExpression,
     journaling_constraint_system::JournalingConstraintSystem,
     runtime_constant::VarTransformable,
 };
@@ -154,12 +154,8 @@ fn optimization_loop_iteration<
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system = optimize_memory::<_, _, M>(
-            constraint_system,
-            solver,
-            memory_bus_id,
-            NoRangeConstraints,
-        );
+        let constraint_system =
+            optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
         assert!(check_register_operation_consistency::<_, _, M>(
             &constraint_system,
             memory_bus_id

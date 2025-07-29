@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::extract_boolean;
@@ -11,6 +12,7 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
+use crate::utils::possible_concrete_values;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::{HashMap, HashSet};
@@ -398,10 +400,10 @@ where
         let equivalent_to_b = self.equivalent_expressions(b);
         equivalent_to_a
             .iter()
-            .cartesian_product(equivalent_to_b)
+            .cartesian_product(&equivalent_to_b)
             .any(|(a, b)| {
-                // check if a - b is non-zero. the memory optimizer uses exhaustive search here.
-                todo!()
+                possible_concrete_values(&(a - b), self, 20)
+                    .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
             })
     }
 }
@@ -486,6 +488,36 @@ where
         }
 
         Ok(progress)
+    }
+
+    fn equivalent_expressions(
+        &self,
+        expression: &GroupedExpression<T, V>,
+    ) -> Vec<GroupedExpression<T, V>> {
+        if expression.is_quadratic() {
+            // This case is too complicated or too easy.
+            return vec![expression.clone()];
+        }
+
+        // TODO cache this.
+
+        // Go through the constraints related to this expression
+        // and try to solve for the expression
+        let mut exprs = self
+            .constraint_system
+            .system()
+            .constraints_referencing_variables(expression.referenced_unknown_variables().cloned())
+            .filter_map(|constr| match constr {
+                ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
+                ConstraintRef::BusInteraction(_) => None,
+            })
+            .flat_map(|constr| constr.try_solve_for_expr(expression))
+            .collect_vec();
+        if exprs.is_empty() {
+            // If we cannot solve for the expression, we just take the expression unmodified.
+            exprs.push(expression.clone());
+        }
+        exprs
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
