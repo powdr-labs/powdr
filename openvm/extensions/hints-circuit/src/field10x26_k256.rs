@@ -731,17 +731,14 @@ impl FieldElement10x26 {
         let x223 = x220.pow2k(3).mul(&x3);
 
         // The final result is then assembled using a sliding window over the blocks.
-        let res = x223
-            .pow2k(23)
+        x223.pow2k(23)
             .mul(&x22)
             .pow2k(5)
             .mul(self)
             .pow2k(3)
             .mul(&x2)
             .pow2k(2)
-            .mul(self);
-
-        res
+            .mul(self)
     }
 
     /// Returns the square root of self mod p, or `None` if no square root exists.

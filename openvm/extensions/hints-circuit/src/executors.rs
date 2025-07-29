@@ -201,7 +201,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
             streams.hint_stream = 1u32
                 .to_le_bytes() // indicates that a square root exists
                 .into_iter()
-                .chain(bytes.into_iter())
+                .chain(bytes)
                 .map(|b| F::from_canonical_u8(b))
                 .collect();
         } else {

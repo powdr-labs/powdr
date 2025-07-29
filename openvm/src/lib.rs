@@ -467,6 +467,7 @@ impl InitFileGenerator for ExtendedVmConfig {
 }
 
 #[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigExecutor<F>),
