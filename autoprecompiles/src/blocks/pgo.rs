@@ -71,6 +71,10 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     max_total_apc_columns: Option<usize>,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<(AdapterApc<A>, ApcStats<A>)> {
+    if config.autoprecompiles == 0 {
+        return vec![];
+    }
+
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
