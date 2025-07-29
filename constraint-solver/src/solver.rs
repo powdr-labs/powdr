@@ -1,7 +1,9 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::extract_boolean;
-use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem};
+use crate::constraint_system::{
+    BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem,
+};
 use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
