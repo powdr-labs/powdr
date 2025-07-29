@@ -100,7 +100,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// any value of `bar` by solving for `foo`. Therefore, the constraint can be removed.
 /// The same would be true for a *stateless* bus interaction, e.g. `[foo * bar] in [BYTES]`.
 ///
-/// This function *some* constraints like this (see TODOs below).
+/// This function removes *some* constraints like this (see TODOs below).
 fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
