@@ -103,6 +103,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 
     let variables_to_delete = all_variables
         .iter()
+        // Find variables that are referenced in exactly one constraint
         .filter_map(|variable| {
             constraint_system
                 .indexed_system()
@@ -111,17 +112,37 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 .ok()
                 .map(|constraint| (variable.clone(), constraint))
         })
-        .filter(|(_variable, constraint)| match constraint {
-            // Even if the degree is 1, it could be connected to a stateful bus interaction!
+        .filter(|(variable, constraint)| match constraint {
+            // TODO: These constraints could be removed also if they are linear in the free variable.
+            // The problem with this currently is that this removes constraints like
+            // `writes_aux__prev_data__3_0 - BusInteractionField(15, 7)` (`writes_aux__prev_data__3_0` is a free variable)
+            // which causes `remove_bus_interaction_variables` to fail, because it doesn't know the definition of the
+            // bus interaction variable.
             ConstraintRef::AlgebraicConstraint(..) => false,
             ConstraintRef::BusInteraction(bus_interaction) => {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
-                !bus_interaction_handler.is_stateful(bus_id)
-                    && bus_interaction
-                        .fields()
-                        .filter(|field| field.try_to_number().is_none())
-                        .count()
-                        == 1
+                // Only stateless bus interactions can be removed.
+                let is_stateless = !bus_interaction_handler.is_stateful(bus_id);
+                // TODO: This is overly strict.
+                // We assume that the bus interaction is satisfiable. Given that it is, there
+                // will be at least one assignment of the payload fields that satisfies it.
+                // If the prover has the freedom to choose each payload field, it can always find
+                // a satisfying assignment.
+                // This could be generalized to multiple unknown fields, but it would be more complicated,
+                // because *each* field would need a *different* free variable.
+                let has_one_unknown_field = bus_interaction
+                    .payload
+                    .iter()
+                    .filter(|field| field.try_to_number().is_none())
+                    .count()
+                    == 1;
+                // If the expression is linear in the free variable, the prover would be able to solve for it
+                // to satisfy the constraint. Otherwise, this is not necessarily the case.
+                let all_degrees_at_most_one = bus_interaction
+                    .payload
+                    .iter()
+                    .all(|field| field.degree_of_variable(variable) <= 1);
+                is_stateless && has_one_unknown_field && all_degrees_at_most_one
             }
         })
         .map(|(variable, _constraint)| variable.clone())
