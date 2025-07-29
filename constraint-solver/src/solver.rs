@@ -1,10 +1,10 @@
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::extract_boolean;
-use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem};
+use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem};
 use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
-use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
@@ -272,7 +272,7 @@ where
 struct SolverImpl<T: RuntimeConstant, V, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
-    constraint_system: IndexedConstraintSystem<T, V>,
+    constraint_system: IndexedConstraintSystemWithQueue<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: BusInterHandler,
     /// The currently known range constraints of the variables.
@@ -344,7 +344,7 @@ where
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
-        assert!(self.assignments_to_return.is_empty(),);
+        assert!(self.assignments_to_return.is_empty());
         self.range_constraints
             .range_constraints
             .retain(|v, _| variables_to_keep.contains(v));
@@ -382,8 +382,6 @@ where
             let mut progress = false;
             // Try solving constraints in isolation.
             progress |= self.solve_in_isolation()?;
-            // Try inferring new information using bus interactions.
-            progress |= self.solve_bus_interactions()?;
             // Try to find equivalent variables using quadratic constraints.
             progress |= self.try_solve_quadratic_equivalences();
 
@@ -403,13 +401,17 @@ where
     /// Tries to make progress by solving each constraint in isolation.
     fn solve_in_isolation(&mut self) -> Result<bool, Error> {
         let mut progress = false;
-        for i in 0..self.constraint_system.algebraic_constraints().len() {
-            // TODO: Improve efficiency by only running skipping constraints that
-            // have not received any updates since they were last processed.
-            let effects = self.constraint_system.algebraic_constraints()[i]
-                .solve(&self.range_constraints)
-                .map_err(Error::QseSolvingError)?
-                .effects;
+        while let Some(item) = self.constraint_system.pop_front() {
+            let effects = match item {
+                ConstraintRef::AlgebraicConstraint(c) => {
+                    c.solve(&self.range_constraints)
+                        .map_err(Error::QseSolvingError)?
+                        .effects
+                }
+                ConstraintRef::BusInteraction(b) => b
+                    .solve(&self.bus_interaction_handler, &self.range_constraints)
+                    .map_err(|_| Error::BusInteractionError)?,
+            };
             for effect in effects {
                 progress |= self.apply_effect(effect);
             }
@@ -417,29 +419,10 @@ where
         Ok(progress)
     }
 
-    /// Tries to infer new information using bus interactions.
-    fn solve_bus_interactions(&mut self) -> Result<bool, Error> {
-        let mut progress = false;
-        let effects = self
-            .constraint_system
-            .bus_interactions()
-            .iter()
-            .map(|bus_interaction| {
-                bus_interaction.solve(&self.bus_interaction_handler, &self.range_constraints)
-            })
-            // Collect to satisfy borrow checker
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_e| Error::BusInteractionError)?;
-        for effect in effects.into_iter().flatten() {
-            progress |= self.apply_effect(effect);
-        }
-        Ok(progress)
-    }
-
     /// Tries to find equivalent variables using quadratic constraints.
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
         let equivalences = quadratic_equivalences::find_quadratic_equalities(
-            self.constraint_system.algebraic_constraints(),
+            self.constraint_system.system().algebraic_constraints(),
             &*self,
         );
         for (x, y) in &equivalences {
@@ -453,7 +436,7 @@ where
     /// apply it. This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         let assignments = exhaustive_search::get_unique_assignments(
-            &self.constraint_system,
+            self.constraint_system.system(),
             &*self,
             &self.bus_interaction_handler,
         )?;
@@ -495,6 +478,7 @@ where
             } else {
                 // The range constraint was updated.
                 log::trace!("({variable}: {range_constraint})");
+                self.constraint_system.variable_updated(variable);
             }
             true
         } else {
