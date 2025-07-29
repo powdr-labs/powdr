@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::once,
 };
 
 use itertools::Itertools;
@@ -93,9 +94,23 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
-    let variables_to_delete = constraint_system
-        .indexed_system()
-        .get_variables_referenced_once()
+    let all_variables = constraint_system
+        .system()
+        .expressions()
+        .flat_map(|expr| expr.referenced_variables())
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let variables_to_delete = all_variables
+        .iter()
+        .filter_map(|variable| {
+            constraint_system
+                .indexed_system()
+                .constraints_referencing_variables(once(variable.clone()))
+                .exactly_one()
+                .ok()
+                .map(|constraint| (variable.clone(), constraint))
+        })
         .filter(|(_variable, constraint)| match constraint {
             // Even if the degree is 1, it could be connected to a stateful bus interaction!
             ConstraintRef::AlgebraicConstraint(..) => false,
@@ -110,21 +125,6 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
             }
         })
         .map(|(variable, _constraint)| variable.clone())
-        .collect::<HashSet<_>>();
-
-    let all_variables = constraint_system
-        .system()
-        .algebraic_constraints
-        .iter()
-        .flat_map(|constraint| constraint.referenced_variables())
-        .chain(
-            constraint_system
-                .system()
-                .bus_interactions
-                .iter()
-                .flat_map(|bus_interaction| bus_interaction.referenced_variables()),
-        )
-        .cloned()
         .collect::<HashSet<_>>();
 
     let variables_to_keep = all_variables
