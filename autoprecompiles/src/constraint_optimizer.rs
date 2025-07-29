@@ -13,7 +13,7 @@ use powdr_constraint_solver::{
     indexed_constraint_system::IndexedConstraintSystem,
     inliner,
     journaling_constraint_system::JournalingConstraintSystem,
-    solver::solve_system,
+    solver::Solver,
 };
 use powdr_number::FieldElement;
 
@@ -42,24 +42,27 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 ///   from the constraint system.
 pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     constraint_system: JournalingConstraintSystem<P, V>,
+    solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
-    let constraint_system =
-        solver_based_optimization(constraint_system, bus_interaction_handler.clone())?;
+    let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
-        remove_free_variables(constraint_system, bus_interaction_handler.clone());
+        remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing free variables", &constraint_system);
 
     let constraint_system =
-        remove_disconnected_columns(constraint_system, bus_interaction_handler.clone());
+        remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
+    // TODO should we remove inlined columns in the solver?
+    // TODO should we inline here at all during solving (instead if only inside the solver)?
     let constraint_system =
         inliner::replace_constrained_witness_columns(constraint_system, should_inline);
+    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().cloned());
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
@@ -79,9 +82,9 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T>,
+    solver: &mut impl Solver<T, V>,
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
-    let assignments = solve_system(constraint_system.system().clone(), bus_interaction_handler)?;
+    let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
     for (var, value) in assignments.iter() {
         log::trace!("  {var} = {value}");
@@ -92,6 +95,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 
 fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
     let all_variables = constraint_system
@@ -153,7 +157,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         .cloned()
         .collect::<HashSet<_>>();
 
-    // solver.retain_variables(&variables_to_keep);
+    solver.retain_variables(&variables_to_keep);
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
@@ -180,8 +184,9 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 /// them is safe.
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
-fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> JournalingConstraintSystem<T, V> {
     let initial_variables = variables_in_stateful_bus_interactions(
@@ -190,6 +195,8 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Hash + Display>
     )
     .cloned();
     let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
+
+    solver.retain_variables(&variables_to_keep);
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint

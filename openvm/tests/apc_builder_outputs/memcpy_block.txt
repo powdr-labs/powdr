@@ -40,7 +40,7 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4
 mult=is_valid * 1, args=[b__0_0, 3, b__0_0 + 3 - 2 * b__0_1, 1]
 mult=diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1, args=[diff_val_1 - 1, 0, 0, 0]
 mult=diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2, args=[diff_val_2 - 1, 0, 0, 0]
-mult=is_valid * 1, args=[b_msb_f_2, b__0_3 + c__0_3 - 2 * b__0_3 * c__0_3, 0, 0]
+mult=is_valid * 1, args=[b__0_3 + c__0_3 - 2 * b__0_3 * c__0_3, b_msb_f_2, 0, 0]
 
 // Algebraic constraints:
 b__0_3 * (b__0_3 - 1) = 0
