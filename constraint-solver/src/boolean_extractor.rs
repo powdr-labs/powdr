@@ -23,6 +23,11 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     mut var_dispenser: impl FnMut() -> V,
 ) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
+
+    if right.is_affine() && right.referenced_unknown_variables().count() <= 1 {
+        // The resulting expression is not much simpler than the original one.
+        return None;
+    }
     // `constr = 0` is equivalent to `left * right = 0`
     let offset = left - right;
     // We only do the transformation if `offset` is known, because
