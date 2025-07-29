@@ -213,16 +213,13 @@ where
         loop {
             let mut progress = false;
             // Try solving constraints in isolation.
-            println!("11");
             progress |= self.solve_in_isolation()?;
             // Try to find equivalent variables using quadratic constraints.
-            println!("22");
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
-                println!("22");
                 progress |= self.exhaustive_search()?;
             }
 
@@ -256,16 +253,13 @@ where
 
     /// Tries to find equivalent variables using quadratic constraints.
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
-        println!("111");
         let equivalences = quadratic_equivalences::find_quadratic_equalities(
             self.constraint_system.system().algebraic_constraints(),
             &*self,
         );
-        println!("222 {}", equivalences.len());
         for (x, y) in &equivalences {
             self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
         }
-        println!("333");
         !equivalences.is_empty()
     }
 
@@ -326,14 +320,11 @@ where
 
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
-        println!("1111");
         self.constraint_system.substitute_by_unknown(variable, expr);
-        println!("2222");
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
         // TODO we could check if the variable already has an assignment,
         // but usually it should not be in the system once it has been assigned.
-        println!("3333");
         true
     }
 }
