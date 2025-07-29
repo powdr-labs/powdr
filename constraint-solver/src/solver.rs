@@ -59,8 +59,6 @@ pub trait Solver<T: RuntimeConstant, V: Ord + Clone + Eq>:
     /// assignments. Does not return the same assignments again if called more than once.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
 
-    fn system(&self) -> &ConstraintSystem<T, V>;
-
     /// Adds a new algebraic constraint to the system.
     fn add_algebraic_constraints(
         &mut self,
@@ -168,10 +166,6 @@ where
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.loop_until_no_progress()?;
         Ok(std::mem::take(&mut self.assignments_to_return))
-    }
-
-    fn system(&self) -> &ConstraintSystem<T, V> {
-        self.constraint_system.system().system()
     }
 
     fn add_algebraic_constraints(
