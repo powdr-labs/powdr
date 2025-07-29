@@ -14,5 +14,5 @@ openvm-stark-backend = { workspace = true }
 openvm-stark-sdk = { workspace = true }
 powdr-openvm-hints-transpiler = { workspace = true }
 eyre = "0.6.12"
-crypto-bigint = "0.6.1"
-elliptic-curve = "0.13.8"
+elliptic-curve = { version = "0.13.8", default-features = false, features = ["arithmetic"] }
+crypto-bigint = { version = "0.6.1", default-features = false }
