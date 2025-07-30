@@ -89,6 +89,7 @@ pub fn hint_reverse_bytes(val: u32) -> u32 {
 }
 
 // Inverse of field element in SECP256k1 modulus (if not zero).
+// The caller is responsible for handling the zero input case, and the returned value is zero in that case.
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
     insn_k256_inverse_field(sec1_bytes.as_ptr() as *const u8);
@@ -101,6 +102,7 @@ pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
 
 // Inverse of field element in SECP256k1 modulus (if not zero).
 // Takes in the raw 32-bit architecture representation of the field element from k256 (`FieldElement10x26`).
+// The caller is responsible for handling the zero input case, and the returned value is undefined in that case.
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
     insn_k256_inverse_field_10x26(elem.as_ptr() as *const u8);
