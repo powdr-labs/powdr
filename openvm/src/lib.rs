@@ -319,7 +319,8 @@ fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
     let pgo_program_pc_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_pc_count, _) | PgoConfig::Instruction(pgo_program_pc_count) => {
+        PgoConfig::Cell(pgo_program_pc_count, _, _)
+        | PgoConfig::Instruction(pgo_program_pc_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
             pgo_program_pc_count
@@ -963,7 +964,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoConfig::Cell(pgo_data, None, None),
             None,
         );
     }
@@ -1055,7 +1056,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoConfig::Cell(pgo_data.clone(), None, None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1141,7 +1142,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoConfig::Cell(pgo_data, None, None),
             None,
         );
     }
@@ -1220,7 +1221,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoConfig::Cell(pgo_data.clone(), None, None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1294,7 +1295,7 @@ mod tests {
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
+        let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _, _));
         let compiled_program = compile_guest(
             guest.name,
             GuestOptions::default(),
@@ -1407,7 +1408,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None, None),
                 name: GUEST,
                 apc: GUEST_APC,
                 skip: GUEST_SKIP_PGO,
@@ -1483,7 +1484,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None, None),
                 name: GUEST_SHA256,
                 apc: GUEST_SHA256_APC_PGO,
                 skip: GUEST_SHA256_SKIP,
@@ -1618,7 +1619,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None, None),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1669,7 +1670,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
+                pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS), None),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC_PGO_LARGE,
                 skip: GUEST_KECCAK_SKIP,

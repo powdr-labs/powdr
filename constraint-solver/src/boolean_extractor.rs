@@ -18,7 +18,7 @@ use powdr_number::FieldElement;
 /// @param constraint The quadratic constraint to transform.
 /// @param var_dispenser A function that returns a new variable that is assumed to be boolean-constrained.
 /// It will only be called if the transformation is performed.
-pub fn extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     constraint: &GroupedExpression<T, V>,
     mut var_dispenser: impl FnMut() -> V,
 ) -> Option<GroupedExpression<T, V>> {
@@ -63,7 +63,7 @@ where
         .into_iter()
         .map(|constr| {
             let constr = constr.transform_var_type(&mut |v| v.into());
-            extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
+            try_extract_boolean(&constr, &mut var_dispenser).unwrap_or(constr)
         })
         .collect_vec()
 }
@@ -134,7 +134,7 @@ mod tests {
     fn test_extract_boolean() {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b") + constant(10));
-        let result = extract_boolean(&expr, &mut var_dispenser);
+        let result = try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(result.to_string(), "a + b - 10 * z + 10");

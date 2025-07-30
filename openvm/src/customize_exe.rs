@@ -170,7 +170,7 @@ pub fn customize(
     };
 
     let max_total_apc_columns: Option<usize> = match pgo_config {
-        PgoConfig::Cell(_, max_total_columns) => max_total_columns.map(|max_total_columns| {
+        PgoConfig::Cell(_, max_total_columns, _) => max_total_columns.map(|max_total_columns| {
             let total_non_apc_columns = original_config
                 .chip_inventory_air_metrics()
                 .values()
