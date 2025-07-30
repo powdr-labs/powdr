@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
@@ -230,9 +231,17 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    c.solve(&self.range_constraints)
+                    let effects = c
+                        .solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
-                        .effects
+                        .effects;
+                    if let Some(components) = c.try_split(&self.range_constraints) {
+                        println!(
+                            "Split constraint\n  {c}\ninto\n  {}",
+                            components.iter().format(", ")
+                        );
+                    }
+                    effects
                 }
                 ConstraintRef::BusInteraction(b) => b
                     .solve(&self.bus_interaction_handler, &self.range_constraints)
