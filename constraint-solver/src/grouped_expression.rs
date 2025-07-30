@@ -586,7 +586,7 @@ impl<
             .into_grouping_map()
             .sum()
             .into_iter()
-            // TODO  .sorted()
+            .sorted_by_key(|(c, _)| c.to_integer())
             .collect_vec();
         if components.len() < 2 {
             return None;
@@ -1944,9 +1944,9 @@ b + y"
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "-a + x
+            "-(a - x)
 b + y
--r + s
+-(r - s)
 w"
         );
     }
