@@ -103,13 +103,30 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
-    /// Returns true if exactly one value satisfying the range constraint is
-    /// equal to zero modulo `modulus` (in the integers).
-    pub fn has_unique_modular_solution(&self, modulus: T) -> bool {
+    /// Returns `Some(x)` if `x` is the only value in the constraint set
+    /// such that (in the integers) `x = offset (mod modulus).
+    /// In other words, there is a unique integer `k` and a unique
+    /// integer `x` in the allowed values seen as integers such that
+    /// `offset = k * modulus + x`.
+    pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
+        // TODO do this without loop.
+        if !modulus.is_in_lower_half()
+            || self.range_width() >= modulus.to_integer() + modulus.to_integer()
+        {
+            return None;
+        }
+        // We could have between zero and two solutions at this point.
+        if self.min <= self.max {
+            while offset > self.max {
+                offset -= modulus;
+            }
+        }
+
         // TODO refine this condition
         // TODO actually we should also return if the solution is e.g.
         // 0 or modulus or 2 * modulus etc.
-        if self.min <= self.max && self.max < modulus {
+        if self.min <= self.max && self.range_width() <= modulus.to_integer() {
+            let x = offset.to_integer() % modulus.to_integer();
             true
         } else if self.min > self.max && self.max < modulus && self.min > -modulus {
             true

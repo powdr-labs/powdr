@@ -563,11 +563,8 @@ impl<
         if self.is_quadratic() {
             return None;
         }
-        let constant = self.constant.try_to_number()?;
-        if constant != 0.into() {
-            // TODO can we solve this?
-            return None;
-        }
+        let mut constant = -self.constant.try_to_number()?;
+
         // Group the linear part by absolute coefficients.
         let mut components = self
             .linear
@@ -616,7 +613,7 @@ impl<
                 // We are done anyway.
                 continue;
             }
-            // The original constraint is equivalent to `candidate + rest = 0`.
+            // The original constraint is equivalent to `candidate + rest = constant`.
             // Now we try to extract the smallest coefficient in rest.
             let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
             assert_ne!(smallest_coeff, 0.into());
@@ -628,6 +625,7 @@ impl<
 
             let candidate_rc = candidate.range_constraint(range_constraints);
             // TODO do we need to compute the full range constraint of the complete expression?
+            // TODO what about `constant`?
             if candidate_rc.is_unconstrained()
                 || rest
                     .range_constraint(range_constraints)
@@ -636,17 +634,25 @@ impl<
             {
                 continue;
             }
-            // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`
-            // and the constraint can be equivalently evaluated in the integers.
+            // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`
+            // and the constraint can be equivalently be evaluated in the integers.
             // We now apply `x -> x % smallest_coeff` to the whole constraint.
             // If it was true before, it will be true afterwards.
             // So we get `candidate % smallest_coeff = 0`.
             // Now the only remaining task is to check that this new constraint has a unique solution
             // that does not require the use of the `%` operator.
 
-            if candidate_rc.has_unique_modular_solution(smallest_coeff) {
-                parts.push(candidate.clone());
+            if let Some(solution) =
+                candidate_rc.has_unique_modular_solution(constant, smallest_coeff)
+            {
+                // candidate % smallest_coeff == constant only if candidate = solution.
+                // Add `candidate = solution` to the parts
+                parts.push(candidate - solution);
+                // Substitute `candidate = solution` in our expression
+                // by replacing the component by zero and subtracting
+                // the solution from the constant.
                 components[index] = (Zero::zero(), Zero::zero());
+                constant -= solution;
             }
         }
         if parts.is_empty() {
@@ -658,13 +664,13 @@ impl<
                 .into_iter()
                 .filter(|(coeff, _)| *coeff != 0.into())
                 .collect_vec();
-            parts.push(match remaining.as_slice() {
-                [(_, expr)] => expr.clone(), // if there is only one component, we can ignore the coefficient
-                _ => remaining
+            parts.push(
+                remaining
                     .into_iter()
                     .map(|(coeff, expr)| expr * T::from(coeff))
-                    .sum(),
-            });
+                    .sum()
+                    - constant,
+            );
             Some(parts)
         }
     }
@@ -1969,6 +1975,8 @@ w"
         // (b__3_0 - b_msb_f_0) * (b_msb_f_0 + 256 - b__3_0) = 0
         // After boolean extraction:
         // b__3_0 - b_msb_f_0 + 256 * x = 0;
+        // or:
+        // b__3_0 - b_msb_f_0 + 256 * (1 - x) = 0;
 
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let bit_rc = RangeConstraint::from_mask(0x1u32);
@@ -1979,8 +1987,15 @@ w"
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
-        let expr = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
-        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        let expr1 = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
+        let items = expr1.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "b__3_0 - b_msb_f_0
+x"
+        );
+        let expr2 = var("b__3_0") - var("b_msb_f_0") + constant(256) * (var("x") - constant(1));
+        let items = expr2.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "b__3_0 - b_msb_f_0
