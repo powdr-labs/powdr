@@ -23,9 +23,20 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     mut var_dispenser: impl FnMut() -> V,
 ) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
-    // Try to align `left` and `right` so that at least one variable has the same coefficient.
-    // We multiply `left` by a nonzero factor, this does not change the constraint.
+    // We want to check if `left` and `right` differ by a constant offset.
+    // Since multiplying the whole constaint by a non-zero constant does
+    // not change the constraint, we also transform `left` by a constant
+    // (non-zero) factor.
+    // So we are looking for a offset `c` and a non-zero constant factor `f`
+    // such that `f * left = right + c`.
+    // Then we can write the original constraint `left * right = 0` as
+    // `(right + c) * right = 0` (we can just ignore `f`).
+    // This is in turn equivalent to `right + z * c = 0`, where `z` is
+    // a new boolean variable.
 
+    // First, try to find a good factor so that `left` and `right`
+    // likely cancel out except for a constant. For this to be the
+    // case, at least the coefficient of some variable needs to be the same.
     let factor = if right.is_affine() {
         if let Some((var, left_coeff)) = left.components().1.next() {
             let Some(right_coeff) = right.coefficient_of_variable(var) else {
