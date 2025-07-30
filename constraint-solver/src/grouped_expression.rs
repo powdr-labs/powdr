@@ -593,19 +593,19 @@ impl<
             return None;
         }
 
-        println!(
-            "Components: {}",
-            components
-                .iter()
-                .map(|(c, e)| format!("{c} * ({e})"))
-                .join(" + ")
-        );
+        // println!(
+        //     "Components: {}",
+        //     components
+        //         .iter()
+        //         .map(|(c, e)| format!("{c} * ({e})"))
+        //         .join(" + ")
+        // );
 
         // Now try to split out each one in turn.
         let mut parts = vec![];
         for index in 0..components.len() {
             let (candidate_coeff, candidate) = &components[index];
-            println!("Trying to split out {candidate_coeff} * ({candidate})");
+            //println!("Trying to split out {candidate_coeff} * ({candidate})");
             let rest = components
                 .iter()
                 .enumerate()
@@ -627,8 +627,12 @@ impl<
                 .sum();
 
             let candidate_rc = candidate.range_constraint(range_constraints);
+            // TODO do we need to compute the full range constraint of the complete expression?
             if candidate_rc.is_unconstrained()
-                || rest.range_constraint(range_constraints).is_unconstrained()
+                || rest
+                    .range_constraint(range_constraints)
+                    .multiple(smallest_coeff)
+                    .is_unconstrained()
             {
                 continue;
             }
