@@ -6,5 +6,5 @@ edition = "2021"
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-k256 = {path = "https://github.com/ShuangWu121/elliptic-curves.git",rev="4302e69c31b01c44d79e9d52febd502269bbfb54",default-features = false,features=["expose-field","arithmetic"]}
+k256 = {git = "https://github.com/ShuangWu121/elliptic-curves.git",rev="4302e69c31b01c44d79e9d52febd502269bbfb54",default-features = false,features=["expose-field","arithmetic"]}
 hex-literal = "1.0.0"
