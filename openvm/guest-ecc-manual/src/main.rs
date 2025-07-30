@@ -11,59 +11,46 @@ openvm::init!();
 openvm::entry!(main);
 
 pub fn main() {
-    // Sample points got from https://asecuritysite.com/ecc/ecc_points2 and
-    // https://learnmeabitcoin.com/technical/cryptography/elliptic-curve/#add
-    let x1 = Secp256k1Coord::from_u32(1);
-    let y1 = Secp256k1Coord::from_le_bytes(&hex!(
-        "EEA7767E580D75BC6FDD7F58D2A84C2614FB22586068DB63B346C6E60AF21842"
-    ));
-    let x2 = Secp256k1Coord::from_u32(2);
-    let y2 = Secp256k1Coord::from_le_bytes(&hex!(
-        "D1A847A8F879E0AEE32544DA5BA0B3BD1703A1F52867A5601FF6454DD8180499"
-    ));
-    // This is the sum of (x1, y1) and (x2, y2).
-    let x3 = Secp256k1Coord::from_le_bytes(&hex!(
-        "BE675E31F8AC8200CBCC6B10CECCD6EB93FB07D99BB9E7C99CC9245C862D3AF2"
-    ));
-    let y3 = Secp256k1Coord::from_le_bytes(&hex!(
-        "B44573B48FD3416DD256A8C0E1BAD03E88A78BF176778682589B9CB478FC1D79"
-    ));
-    // This is the double of (x2, y2).
-    let x4 = Secp256k1Coord::from_le_bytes(&hex!(
-        "3BFFFFFF32333333333333333333333333333333333333333333333333333333"
-    ));
-    let y4 = Secp256k1Coord::from_le_bytes(&hex!(
-        "AC54ECC4254A4EDCAB10CC557A9811ED1EF7CB8AFDC64820C6803D2C5F481639"
-    ));
+    let x1 = Secp256k1Coord::from_be_bytes(&[
+                177, 205, 72, 85, 29, 179, 168, 198, 125, 68, 123, 98, 49, 165, 115, 23, 117, 100,
+                184, 12, 125, 99, 103, 18, 245, 130, 15, 91, 76, 105, 85, 20,
+            ]);
+    let y1 = Secp256k1Coord::from_be_bytes(&[
+                219, 130, 184, 163, 86, 144, 60, 160, 181, 38, 124, 67, 141, 79, 174, 63, 60, 188,
+                208, 206, 139, 94, 72, 251, 222, 58, 13, 159, 189, 75, 97, 12,
+            ]);
+    let x2 = Secp256k1Coord::from_be_bytes(&[
+                146, 161, 155, 83, 76, 248, 129, 31, 87, 66, 55, 228, 112, 251, 3, 121, 113, 60,
+                97, 168, 52, 94, 83, 10, 224, 229, 14, 231, 182, 207, 33, 28,
+            ]);
+    let y2 = Secp256k1Coord::from_be_bytes(&[
+                163, 84, 112, 69, 78, 54, 106, 228, 95, 24, 73, 7, 216, 178, 14, 141, 200, 150, 92,
+                72, 29, 246, 91, 179, 165, 11, 29, 36, 68, 96, 135, 19,
+            ]);
 
-    let mut p1 = Secp256k1Point::from_xy(x1.clone(), y1.clone()).unwrap();
-    let mut p2 = Secp256k1Point::from_xy(x2, y2).unwrap();
-
-    // Generic add can handle equal or unequal points.
-    let p3 = &p1 + &p2;
-    assert_eq!(p3.x(), &x3);
-    assert_eq!(p3.y(), &y3);
-
-
-    // double assign
-
-    p2.double_assign();
-    assert_eq!(p2.x(), &x4);
-    assert_eq!(p2.y(), &y4);
-
-
-    // Ec Mul
     let p1 = Secp256k1Point::from_xy(x1, y1).unwrap();
-    let scalar = Secp256k1Scalar::from_u32(12345678);
-    // Calculated with https://learnmeabitcoin.com/technical/cryptography/elliptic-curve/#ec-multiply-tool
-    let x5 = Secp256k1Coord::from_le_bytes(&hex!(
-        "194A93387F790803D972AF9C4A40CB89D106A36F58EE2F31DC48A41768216D6D"
-    ));
-    let y5 = Secp256k1Coord::from_le_bytes(&hex!(
-        "9E272F746DA7BED171E522610212B6AEEAAFDB2AD9F4B530B8E1B27293B19B2C"
-    ));
-    let result = msm(&[scalar], &[p1]);
+    let p2 = Secp256k1Point::from_xy(x2, y2).unwrap();
 
-    assert_eq!(result.x(), &x5);
-    assert_eq!(result.y(), &y5);
+    
+
+
+    let scalar_1 = Secp256k1Scalar::from_be_bytes(&hex!(
+        "BFD5D7FA526B6954945C980C6C804E0E19840F2DA009C8B0C9A511189FB466BF"
+    ));
+    let scalar_2 = Secp256k1Scalar::from_be_bytes(&hex!(
+        "369E07A2FC32462DD74AB67CE7D7595EC91FC11CC90A3C15A94B57A21E878614"
+    ));
+    // Calculated with https://learnmeabitcoin.com/technical/cryptography/elliptic-curve/#ec-multiply-tool
+    let result_x = Secp256k1Coord::from_be_bytes(&[
+                112, 170, 75, 207, 229, 212, 237, 2, 131, 65, 143, 232, 168, 46, 48, 240, 56, 164,
+                245, 167, 23, 29, 43, 132, 130, 181, 145, 207, 3, 49, 25, 48,
+            ]);
+    let result_y = Secp256k1Coord::from_be_bytes(&[
+                225, 222, 233, 182, 14, 157, 47, 22, 177, 249, 107, 145, 57, 77, 133, 68, 6, 102,
+                101, 78, 5, 249, 10, 81, 202, 112, 204, 76, 117, 7, 231, 160,
+            ]);
+    let result = msm(&[scalar_1, scalar_2], &[p1, p2]);
+
+    assert_eq!(result.x(), &result_x);
+    assert_eq!(result.y(), &result_y);
 }
