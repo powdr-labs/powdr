@@ -586,20 +586,30 @@ impl<
             .into_grouping_map()
             .sum()
             .into_iter()
+            .filter(|(_, expr)| !expr.is_zero())
             .sorted_by_key(|(c, _)| c.to_integer())
             .collect_vec();
         if components.len() < 2 {
             return None;
         }
 
+        println!(
+            "Components: {}",
+            components
+                .iter()
+                .map(|(c, e)| format!("{c} * ({e})"))
+                .join(" + ")
+        );
+
         // Now try to split out each one in turn.
         let mut parts = vec![];
         for index in 0..components.len() {
             let (candidate_coeff, candidate) = &components[index];
+            println!("Trying to split out {candidate_coeff} * ({candidate})");
             let rest = components
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| *i != index && components[*i].0 != 0.into())
+                .filter(|(i, component)| *i != index && component.0 != Zero::zero())
                 .map(|(_, (coeff, expr))| (*coeff / *candidate_coeff, expr.clone()))
                 .collect_vec();
             if rest.is_empty() {
@@ -609,30 +619,28 @@ impl<
             // The original constraint is equivalent to `candidate + rest = 0`.
             // Now we try to extract the smallest coefficient in rest.
             let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
-
-            let candidate_rc = candidate.range_constraint(range_constraints);
-            if !candidate_rc.is_disjoint(
-                &candidate_rc.combine_sum(&RangeConstraint::from_value(smallest_coeff)),
-            ) {
-                continue;
-            }
-
-            // If `rest` changes by one, the result will "step over" the range constraint of
-            // the candidate. Now what remains is to check that the others do not wrap.
+            assert_ne!(smallest_coeff, 0.into());
 
             let rest: GroupedExpression<_, _> = rest
                 .into_iter()
                 .map(|(coeff, expr)| expr * &T::from(coeff / smallest_coeff))
                 .sum();
-            // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`.
 
-            if !rest
-                .range_constraint(range_constraints)
-                .multiple(smallest_coeff)
-                .is_unconstrained()
+            let candidate_rc = candidate.range_constraint(range_constraints);
+            if candidate_rc.is_unconstrained()
+                || rest.range_constraint(range_constraints).is_unconstrained()
             {
-                // `candidate` has to be zero regardless of the value of `rest`,
-                // we can split it out into its own constraint.
+                continue;
+            }
+            // The original constraint is equivalent to `candidate + smallest_coeff * rest = 0`
+            // and the constraint can be equivalently evaluated in the integers.
+            // We now apply `x -> x % smallest_coeff` to the whole constraint.
+            // If it was true before, it will be true afterwards.
+            // So we get `candidate % smallest_coeff = 0`.
+            // Now the only remaining task is to check that this new constraint has a unique solution
+            // that does not require the use of the `%` operator.
+
+            if candidate_rc.has_unique_modular_solution(smallest_coeff) {
                 parts.push(candidate.clone());
                 components[index] = (Zero::zero(), Zero::zero());
             }
@@ -1962,19 +1970,17 @@ w"
         let bit_rc = RangeConstraint::from_mask(0x1u32);
         let rcs = [
             ("b__3_0", byte_rc.clone()),
-            ("b__msb_f_0", byte_rc.clone()),
+            ("b_msb_f_0", byte_rc.clone()),
             ("x", bit_rc.clone()),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
-        let expr = var("b__3_0") - var("b__msb_f_0") + constant(256) * var("x");
+        let expr = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "-(a - x)
-b + y
--(r - s)
-w"
+            "b__3_0 - b_msb_f_0
+x"
         );
     }
 

@@ -103,6 +103,21 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
+    /// Returns true if exactly one value satisfying the range constraint is
+    /// equal to zero modulo `modulus` (in the integers).
+    pub fn has_unique_modular_solution(&self, modulus: T) -> bool {
+        // TODO refine this condition
+        // TODO actually we should also return if the solution is e.g.
+        // 0 or modulus or 2 * modulus etc.
+        if self.min <= self.max && self.max < modulus {
+            true
+        } else if self.min > self.max && self.max < modulus && self.min > -modulus {
+            true
+        } else {
+            false
+        }
+    }
+
     /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
     /// The two ranges will be disjoint, and the union of the two will be the same as the original range
     /// (or at least include the original range).
