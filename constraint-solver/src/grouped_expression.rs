@@ -1950,6 +1950,34 @@ b + y
 w"
         );
     }
+
+    #[test]
+    fn split_seqz() {
+        // From the seqz instruction:
+        // (b__3_0 - b_msb_f_0) * (b_msb_f_0 + 256 - b__3_0) = 0
+        // After boolean extraction:
+        // b__3_0 - b_msb_f_0 + 256 * x = 0;
+
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let bit_rc = RangeConstraint::from_mask(0x1u32);
+        let rcs = [
+            ("b__3_0", byte_rc.clone()),
+            ("b__msb_f_0", byte_rc.clone()),
+            ("x", bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("b__3_0") - var("b__msb_f_0") + constant(256) * var("x");
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-(a - x)
+b + y
+-(r - s)
+w"
+        );
+    }
+
     #[test]
     fn combine_removing_zeros() {
         let a = var("x") * var("y") + var("z") * constant(3);
