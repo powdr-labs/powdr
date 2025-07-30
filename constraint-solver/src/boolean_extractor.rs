@@ -24,8 +24,11 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
 ) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
 
+    // If the rhs is affine and only contains a single variable,
+    // the resulting expression is not much simpler than the original one.
+    // We only need to do this on `right` because some lines down we will
+    // check if `right` and `left` only differ by a constant.
     if right.is_affine() && right.referenced_unknown_variables().count() <= 1 {
-        // The resulting expression is not much simpler than the original one.
         return None;
     }
     // `constr = 0` is equivalent to `left * right = 0`
