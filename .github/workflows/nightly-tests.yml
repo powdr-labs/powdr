@@ -150,6 +150,7 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           pip install -r openvm/scripts/requirements.txt
+          pip install -r autoprecompiles/scripts/requirements.txt
 
       - name: Remove old results if present
         run: |
@@ -160,6 +161,7 @@ jobs:
         run: |
           source .venv/bin/activate
           bash ./openvm/scripts/run_guest_benches.sh
+          bash ./autoprecompiles/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
@@ -196,7 +198,7 @@ jobs:
 
           python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
-          python ../openvm/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
+          python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
 
