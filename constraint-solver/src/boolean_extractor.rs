@@ -23,9 +23,32 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     mut var_dispenser: impl FnMut() -> V,
 ) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
+    // We want to check if `left` and `right` differ by a constant offset.
+    // Since multiplying the whole constraint by a non-zero constant does
+    // not change the constraint, we also transform `left` by a constant
+    // (non-zero) factor.
+    // So we are looking for a offset `c` and a non-zero constant factor `f`
+    // such that `f * left = right + c`.
+    // Then we can write the original constraint `left * right = 0` as
+    // `(right + c) * right = 0` (we can just ignore `f`).
+    // This is in turn equivalent to `right + z * c = 0`, where `z` is
+    // a new boolean variable.
+
+    // For example, if the constraint was `(2 * a + 2 * b) * (a + b + 10) = 0`, we would
+    // set `factor = 1 / 2`, such that `left * factor - right` is a constant.
+
+    // First, try to find a good factor so that `left` and `right`
+    // likely cancel out except for a constant. As a good guess,
+    // we try to match the coefficient of the first variable.
+    let factor = match (left.components().1.next(), right.components().1.next()) {
+        (Some((left_var, left_coeff)), Some((right_var, right_coeff))) if left_var == right_var => {
+            right_coeff.field_div(left_coeff)
+        }
+        _ => T::one(),
+    };
 
     // `constr = 0` is equivalent to `left * right = 0`
-    let offset = left - right;
+    let offset = &(left.clone() * &factor) - right;
     // We only do the transformation if `offset` is known, because
     // otherwise the constraint stays quadratic.
     let offset = offset.try_to_known()?;

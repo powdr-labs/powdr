@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
-    utils::algebraic_to_symbolic,
+    utils::algebraic_to_symbolic, ExtendedVmConfig,
 };
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
@@ -18,7 +18,6 @@ use openvm_circuit::{
     system::memory::OfflineMemory,
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
-use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::{
     air_builders::symbolic::{
         symbolic_expression::{SymbolicEvaluator, SymbolicExpression},
@@ -54,7 +53,7 @@ impl<F: PrimeField32> PowdrChip<F> {
         precompile: PowdrPrecompile<F>,
         original_airs: OriginalAirs<F>,
         memory: Arc<Mutex<OfflineMemory<F>>>,
-        base_config: SdkVmConfig,
+        base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {

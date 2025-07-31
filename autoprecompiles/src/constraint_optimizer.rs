@@ -2,12 +2,13 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::once,
 };
 
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteractionHandler, ConstraintSystem},
+    constraint_system::{BusInteractionHandler, ConstraintRef, ConstraintSystem},
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner,
@@ -50,6 +51,10 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system =
+        remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
+    stats_logger.log("removing free variables", &constraint_system);
+
+    let constraint_system =
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
@@ -86,6 +91,98 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     }
     constraint_system.apply_substitutions(assignments);
     Ok(constraint_system)
+}
+
+/// Removes free variables from the constraint system, under some conditions.
+///
+/// Motivation: Suppose there is a constraint `2 * foo = bar` and `foo` only appears in this constraint.
+/// Then, if we assume that all constraints are satisfiable, the prover would be able to satisfy it for
+/// any value of `bar` by solving for `foo`. Therefore, the constraint can be removed.
+/// The same would be true for a *stateless* bus interaction, e.g. `[foo * bar] in [BYTES]`.
+///
+/// This function removes *some* constraints like this (see TODOs below).
+fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
+    bus_interaction_handler: impl IsBusStateful<T> + Clone,
+) -> JournalingConstraintSystem<T, V> {
+    let all_variables = constraint_system
+        .system()
+        .expressions()
+        .flat_map(|expr| expr.referenced_unknown_variables())
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let variables_to_delete = all_variables
+        .iter()
+        // Find variables that are referenced in exactly one constraint
+        .filter_map(|variable| {
+            constraint_system
+                .indexed_system()
+                .constraints_referencing_variables(once(variable.clone()))
+                .exactly_one()
+                .ok()
+                .map(|constraint| (variable.clone(), constraint))
+        })
+        .filter(|(variable, constraint)| match constraint {
+            // TODO: These constraints could be removed also if they are linear in the free variable.
+            // The problem with this currently is that this removes constraints like
+            // `writes_aux__prev_data__3_0 - BusInteractionField(15, 7)` (`writes_aux__prev_data__3_0` is a free variable)
+            // which causes `remove_bus_interaction_variables` to fail, because it doesn't know the definition of the
+            // bus interaction variable.
+            ConstraintRef::AlgebraicConstraint(..) => false,
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+                // Only stateless bus interactions can be removed.
+                let is_stateless = !bus_interaction_handler.is_stateful(bus_id);
+                // TODO: This is overly strict.
+                // We assume that the bus interaction is satisfiable. Given that it is, there
+                // will be at least one assignment of the payload fields that satisfies it.
+                // If the prover has the freedom to choose each payload field, it can always find
+                // a satisfying assignment.
+                // This could be generalized to multiple unknown fields, but it would be more complicated,
+                // because *each* field would need a *different* free variable.
+                let has_one_unknown_field = bus_interaction
+                    .payload
+                    .iter()
+                    .filter(|field| field.try_to_number().is_none())
+                    .count()
+                    == 1;
+                // If the expression is linear in the free variable, the prover would be able to solve for it
+                // to satisfy the constraint. Otherwise, this is not necessarily the case.
+                // Note that if the above check is true, there will only be one field of degree > 0.
+                let all_degrees_at_most_one = bus_interaction
+                    .payload
+                    .iter()
+                    .all(|field| field.degree_of_variable(variable) <= 1);
+                is_stateless && has_one_unknown_field && all_degrees_at_most_one
+            }
+        })
+        .map(|(variable, _constraint)| variable.clone())
+        .collect::<HashSet<_>>();
+
+    let variables_to_keep = all_variables
+        .difference(&variables_to_delete)
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    solver.retain_variables(&variables_to_keep);
+
+    constraint_system.retain_algebraic_constraints(|constraint| {
+        constraint
+            .referenced_variables()
+            .all(|var| variables_to_keep.contains(var))
+    });
+
+    constraint_system.retain_bus_interactions(|bus_interaction| {
+        let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+        bus_interaction_handler.is_stateful(bus_id)
+            || bus_interaction
+                .referenced_variables()
+                .all(|var| variables_to_keep.contains(var))
+    });
+
+    constraint_system
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),

@@ -11,6 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
+use crate::ExtendedVmConfig;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -19,7 +20,6 @@ use openvm_circuit::{
 };
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
-use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_air::BaseAir;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
@@ -51,7 +51,7 @@ impl<F: PrimeField32> PlonkChip<F> {
         precompile: PowdrPrecompile<F>,
         original_airs: OriginalAirs<F>,
         memory: Arc<Mutex<OfflineMemory<F>>>,
-        base_config: SdkVmConfig,
+        base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
         copy_constraint_bus_id: u16,

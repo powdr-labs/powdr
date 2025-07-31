@@ -27,6 +27,8 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
+use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -145,7 +147,7 @@ impl InitFileGenerator for SpecializedConfig {
 #[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
 pub enum SpecializedExecutor<F: PrimeField32> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<F>),
+    SdkExecutor(ExtendedVmConfigExecutor<F>),
     #[any_enum]
     PowdrExecutor(PowdrExecutor<F>),
 }
@@ -153,7 +155,7 @@ pub enum SpecializedExecutor<F: PrimeField32> {
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
 pub enum MyPeriphery<F: PrimeField32> {
     #[any_enum]
-    SdkPeriphery(SdkVmConfigPeriphery<F>),
+    SdkPeriphery(ExtendedVmConfigPeriphery<F>),
     #[any_enum]
     PowdrPeriphery(PowdrPeriphery<F>),
 }
@@ -263,10 +265,17 @@ pub fn compile_openvm(
         Default::default(),
     )?;
 
-    // Transpile the ELF into a VmExe. Note that this happens using the sdk transpiler only, our extension does not use a transpiler.
-    let exe = sdk.transpile(elf, sdk_vm_config.transpiler())?;
+    // Transpile the ELF into a VmExe.
+    let mut transpiler = sdk_vm_config.transpiler();
 
-    Ok(OriginalCompiledProgram { exe, sdk_vm_config })
+    // Add our custom transpiler extensions
+    transpiler = transpiler.with_extension(HintsTranspilerExtension {});
+
+    let exe = sdk.transpile(elf, transpiler)?;
+
+    let vm_config = ExtendedVmConfig { sdk_vm_config };
+
+    Ok(OriginalCompiledProgram { exe, vm_config })
 }
 
 /// Determines how the precompile (a circuit with algebraic gates and bus interactions)
@@ -409,7 +418,70 @@ pub struct CompiledProgram {
 #[derive(Clone)]
 pub struct OriginalCompiledProgram {
     pub exe: VmExe<BabyBear>,
+    pub vm_config: ExtendedVmConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// SdkVmConfig plus custom openvm extensions, before autoprecompile transformations.
+// For now, only includes custom hints.
+pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
+}
+
+impl VmConfig<BabyBear> for ExtendedVmConfig {
+    type Executor = ExtendedVmConfigExecutor<BabyBear>;
+    type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
+
+    fn system(&self) -> &SystemConfig {
+        &self.sdk_vm_config.system.config
+    }
+
+    fn system_mut(&mut self) -> &mut SystemConfig {
+        &mut self.sdk_vm_config.system.config
+    }
+
+    fn create_chip_complex(
+        &self,
+    ) -> std::result::Result<
+        VmChipComplex<BabyBear, Self::Executor, Self::Periphery>,
+        VmInventoryError,
+    > {
+        let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
+        complex = complex.extend(&HintsExtension)?;
+        Ok(complex)
+    }
+}
+
+impl InitFileGenerator for ExtendedVmConfig {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.sdk_vm_config.generate_init_file_contents()
+    }
+
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> eyre::Result<()> {
+        self.sdk_vm_config
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
+}
+
+#[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+#[allow(clippy::large_enum_variant)]
+pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
+    #[any_enum]
+    Sdk(SdkVmConfigExecutor<F>),
+    #[any_enum]
+    Hints(HintsExecutor<F>),
+}
+
+#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
+pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
+    #[any_enum]
+    Sdk(SdkVmConfigPeriphery<F>),
+    #[any_enum]
+    Hints(HintsPeriphery<F>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -520,6 +592,7 @@ pub fn prove(
         vm_config
             .sdk_config
             .config_mut()
+            .sdk_vm_config
             .system
             .config
             .segmentation_strategy = Arc::new(
@@ -613,14 +686,14 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
     // prepare for execute
     let sdk = Sdk::default();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs.clone())
+        sdk.execute(exe.clone(), vm_config.clone(), inputs.clone())
             .unwrap();
     })
 }
@@ -739,6 +812,8 @@ mod tests {
     const GUEST_SHA256_APC_PGO: u64 = 10;
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
+
+    const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
     #[test]
     fn guest_prove_simple() {
@@ -1165,6 +1240,23 @@ mod tests {
         tracing::debug!(
             "Proving sha256 with PgoConfig::Instruction took {:?}",
             elapsed
+        );
+    }
+
+    #[test]
+    /// check that the hints test guest compiles and proves successfully
+    fn hints_test_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_HINTS_TEST);
+        let config = default_powdr_openvm_config(0, 0);
+
+        prove_simple(
+            GUEST_SHA256,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
         );
     }
 
