@@ -9,7 +9,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 pub trait KnapsackItem {
     /// Cost of the item, used for sorting and knapsack algorithm.
     fn cost(&self) -> usize;
-    /// Value of the item, used for sorting and knapsack algorithm.
+    /// Value of the item, used for sorting and knapsack algorithm. Should be much larger than `cost` to avoid ties.
     fn value(&self) -> usize;
     /// Tie breaker for the case when two candidates have the same cost and value. When a tie occurs, the item with higher value of this function is chosen.
     fn tie_breaker(&self) -> usize;
