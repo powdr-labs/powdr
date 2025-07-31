@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::{cmp, ops};
 
+use itertools::Itertools;
 use num_traits::Zero;
 
 use powdr_number::{log2_exact, FieldElement, LargeInt};
@@ -105,11 +106,15 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// Returns `Some(x)` if `x` is the only value in the set of values
     /// allowed by the range constraint such that (in the integers)
-    /// `x = offset (mod modulus).
+    /// `x = offset (mod modulus)`.
     /// In other words, there is a unique integer `k` and a unique
     /// integer `x` in the allowed values seen as integers such that
     /// `offset = k * modulus + x`.
     pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
+        println!(
+            "has_unique_modular_solution on self = {self}: offset = {}, modulus = {}",
+            offset, modulus
+        );
         // If the modulus is larger than half the field, the mapping to integers
         // is not obvious. Also, if the number of values in the range constraint
         // is at least two times the modulus, there are always at least to solutions.
@@ -126,21 +131,20 @@ impl<T: FieldElement> RangeConstraint<T> {
         let offset = offset.to_integer().try_into_u64()?;
         let offset = offset % modulus;
 
-        if self.min.is_in_lower_half() && self.min <= self.max {
+        let first_candidate = if self.min.is_in_lower_half() && self.min <= self.max {
             let min = self.min.to_integer().try_into_u64()?;
-            let x = T::from(offset + (min / modulus) * modulus);
-            if self.allows_value(x) && !self.allows_value(x + T::from(modulus)) {
-                Some(x)
-            } else if !self.allows_value(x) && self.allows_value(x + T::from(modulus)) {
-                Some(x + T::from(modulus))
-            } else {
-                None
-            }
+            T::from(offset + (min / modulus) * modulus)
         } else if (-self.min).is_in_lower_half() && self.min > self.max {
-            None
+            let min = (-self.min).to_integer().try_into_u64()?;
+            T::from(offset) - T::from((min / modulus) * modulus) - T::from(modulus)
         } else {
-            None
-        }
+            return None;
+        };
+        (0..3)
+            .map(|i| first_candidate + T::from(i * modulus))
+            .filter(|x| self.allows_value(*x))
+            .exactly_one()
+            .ok()
     }
 
     /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.

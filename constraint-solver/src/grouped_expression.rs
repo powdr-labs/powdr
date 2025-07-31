@@ -2,8 +2,8 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
-    iter::Sum,
     iter::once,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -679,13 +679,17 @@ impl<
                 .into_iter()
                 .filter(|(coeff, _)| *coeff != 0.into())
                 .collect_vec();
-            parts.push(
-                remaining
-                    .into_iter()
-                    .map(|(coeff, expr)| expr * T::from(coeff))
-                    .sum::<GroupedExpression<_, _>>()
-                    - GroupedExpression::from_number(constant),
-            );
+            let constant = GroupedExpression::from_number(constant);
+            parts.push(match remaining.as_slice() {
+                [(coeff, expr)] => expr - &(constant * T::one().field_div(&T::from(*coeff))), // if there is only one component, we normalize
+                _ => {
+                    remaining
+                        .into_iter()
+                        .map(|(coeff, expr)| expr * T::from(coeff))
+                        .sum::<GroupedExpression<_, _>>()
+                        - constant
+                }
+            });
             Some(parts)
         }
     }
@@ -2014,7 +2018,7 @@ x"
         assert_eq!(
             items,
             "b__3_0 - b_msb_f_0
-x"
+x - 1"
         );
     }
 
