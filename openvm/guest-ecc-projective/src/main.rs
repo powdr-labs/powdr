@@ -56,7 +56,7 @@ pub fn main() {
     ]);
 
     let result_point = AffinePoint::from_encoded_point(&EncodedPoint::from_affine_coordinates(
-        rusult_x, rusult_y, false,
+        result_x, result_y, false,
     ))
     .expect("AffinePoint should be valid");
 
