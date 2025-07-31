@@ -815,6 +815,10 @@ mod tests {
 
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
+    const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
+    const GUEST_ECC_APC_PGO: u64 = 10;
+    const GUEST_ECC_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1258,6 +1262,61 @@ mod tests {
             PgoConfig::None,
             None,
         );
+    }
+
+    #[test]
+    fn ecc_with_hint_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_HINTS);
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_HINTS);
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None, None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving ecc with PgoConfig::Cell took {:?}", elapsed);
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving ecc with PgoConfig::Instruction took {:?}", elapsed);
     }
 
     // #[test]
