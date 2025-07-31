@@ -48,6 +48,7 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
             T::one()
         }
     } else {
+        // Complicated, we try to keep `left` as is.
         T::one()
     };
 
