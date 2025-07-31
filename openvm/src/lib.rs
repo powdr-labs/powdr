@@ -819,6 +819,10 @@ mod tests {
     const GUEST_ECC_APC_PGO: u64 = 100;
     const GUEST_ECC_SKIP: u64 = 0;
 
+    const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
+    const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 100;
+    const GUEST_ECC_PROJECTIVE_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1337,6 +1341,95 @@ mod tests {
         );
     }
 
+    #[test]
+    fn ecc_projective_prove() {
+        let stdin = StdIn::default();
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_projective_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None, None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc projective point implementation with PgoConfig::Cell took {:?}",
+            elapsed
+        );
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc projective point implementation with PgoConfig::Instruction took {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_projective_prove_recursion() {
+        let stdin = StdIn::default();
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+        prove_recursion(
+            GUEST_ECC_PROJECTIVE,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
     // #[test]
     // #[ignore = "Too much RAM"]
     // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
@@ -1702,6 +1795,82 @@ mod tests {
                         preprocessed: 0,
                         main: 19972,
                         log_up: 16264,
+                    },
+                }
+            "#]]),
+        );
+    }
+
+    #[test]
+    fn ecc_projective_machine_pgo() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_PROJECTIVE, GuestOptions::default(), stdin);
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                name: GUEST_ECC_PROJECTIVE,
+                apc: GUEST_ECC_PROJECTIVE_APC_PGO,
+                skip: GUEST_ECC_PROJECTIVE_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 38879,
+                            log_up: 30552,
+                        },
+                        constraints: 24814,
+                        bus_interactions: 25866,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    100
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            None,
+        );
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None, None),
+                name: GUEST_ECC_PROJECTIVE,
+                apc: GUEST_ECC_PROJECTIVE_APC_PGO,
+                skip: GUEST_ECC_PROJECTIVE_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 27162,
+                            log_up: 21712,
+                        },
+                        constraints: 12587,
+                        bus_interactions: 19169,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    100
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 161854,
+                        log_up: 116656,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 27162,
+                        log_up: 21712,
                     },
                 }
             "#]]),
