@@ -24,7 +24,7 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
 ) -> Option<GroupedExpression<T, V>> {
     let (left, right) = constraint.try_as_single_product()?;
     // We want to check if `left` and `right` differ by a constant offset.
-    // Since multiplying the whole constaint by a non-zero constant does
+    // Since multiplying the whole constraint by a non-zero constant does
     // not change the constraint, we also transform `left` by a constant
     // (non-zero) factor.
     // So we are looking for a offset `c` and a non-zero constant factor `f`
