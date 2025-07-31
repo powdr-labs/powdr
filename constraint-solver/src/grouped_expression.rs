@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
     hash::Hash,
     iter::Sum,
+    iter::once,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -232,7 +233,9 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
 
-    /// Computes the degree of a GroupedExpression (as it is contsructed) in the unknown variables.
+    /// Computes the degree of a GroupedExpression in the unknown variables.
+    /// Note that it might overestimate the degree if the expression contains
+    /// terms that cancel each other out, e.g. `a * (b + 1) - a * b - a`.
     /// Variables inside runtime constants are ignored.
     pub fn degree(&self) -> usize {
         self.quadratic
@@ -241,6 +244,18 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             .chain((!self.linear.is_empty()).then_some(1))
             .max()
             .unwrap_or(0)
+    }
+
+    /// Computes the degree of a variable in this expression.
+    /// Variables inside runtime constants are ignored.
+    pub fn degree_of_variable(&self, var: &V) -> usize {
+        let linear_degree = if self.linear.contains_key(var) { 1 } else { 0 };
+        self.quadratic
+            .iter()
+            .map(|(l, r)| l.degree_of_variable(var) + r.degree_of_variable(var))
+            .chain(once(linear_degree))
+            .max()
+            .unwrap()
     }
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.

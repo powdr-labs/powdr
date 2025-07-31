@@ -9,7 +9,7 @@ use crate::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
     },
-    Instr,
+    ExtendedVmConfig, Instr,
 };
 
 use super::{
@@ -28,7 +28,6 @@ use openvm_circuit::{
     },
 };
 use openvm_native_circuit::CastFExtension;
-use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
 };
@@ -55,6 +54,7 @@ mod inventory;
 mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
+use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
@@ -72,7 +72,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         air_by_opcode_id: OriginalAirs<F>,
         is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<F>>>,
-        base_config: SdkVmConfig,
+        base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
@@ -388,7 +388,7 @@ fn global_index<F>(
 fn create_chip_complex_with_memory<F: PrimeField32>(
     memory: Arc<Mutex<OfflineMemory<F>>>,
     shared_chips: SharedPeripheryChips,
-    base_config: SdkVmConfig,
+    base_config: ExtendedVmConfig,
 ) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
     use openvm_keccak256_circuit::Keccak256;
     use openvm_native_circuit::Native;
@@ -396,7 +396,12 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     use openvm_sha256_circuit::Sha256;
 
     let this = base_config;
-    let mut complex: DummyChipComplex<F> = this.system.config.create_chip_complex()?.transmute();
+    let mut complex: DummyChipComplex<F> = this
+        .sdk_vm_config
+        .system
+        .config
+        .create_chip_complex()?
+        .transmute();
 
     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
     complex.base.memory_controller.offline_memory = memory.clone();
@@ -407,28 +412,28 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     complex = complex.extend(&shared_chips)?;
     // END CHANGE
 
-    if this.rv32i.is_some() {
+    if this.sdk_vm_config.rv32i.is_some() {
         complex = complex.extend(&Rv32I)?;
     }
-    if this.io.is_some() {
+    if this.sdk_vm_config.io.is_some() {
         complex = complex.extend(&Rv32Io)?;
     }
-    if this.keccak.is_some() {
+    if this.sdk_vm_config.keccak.is_some() {
         complex = complex.extend(&Keccak256)?;
     }
-    if this.sha256.is_some() {
+    if this.sdk_vm_config.sha256.is_some() {
         complex = complex.extend(&Sha256)?;
     }
-    if this.native.is_some() {
+    if this.sdk_vm_config.native.is_some() {
         complex = complex.extend(&Native)?;
     }
-    if this.castf.is_some() {
+    if this.sdk_vm_config.castf.is_some() {
         complex = complex.extend(&CastFExtension)?;
     }
 
-    if let Some(rv32m) = this.rv32m {
+    if let Some(rv32m) = this.sdk_vm_config.rv32m {
         let mut rv32m = rv32m;
-        if let Some(ref bigint) = this.bigint {
+        if let Some(ref bigint) = this.sdk_vm_config.bigint {
             rv32m.range_tuple_checker_sizes[0] =
                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
             rv32m.range_tuple_checker_sizes[1] =
@@ -436,9 +441,9 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&rv32m)?;
     }
-    if let Some(bigint) = this.bigint {
+    if let Some(bigint) = this.sdk_vm_config.bigint {
         let mut bigint = bigint;
-        if let Some(ref rv32m) = this.rv32m {
+        if let Some(ref rv32m) = this.sdk_vm_config.rv32m {
             bigint.range_tuple_checker_sizes[0] =
                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
             bigint.range_tuple_checker_sizes[1] =
@@ -446,18 +451,21 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&bigint)?;
     }
-    if let Some(ref modular) = this.modular {
+    if let Some(ref modular) = this.sdk_vm_config.modular {
         complex = complex.extend(modular)?;
     }
-    if let Some(ref fp2) = this.fp2 {
+    if let Some(ref fp2) = this.sdk_vm_config.fp2 {
         complex = complex.extend(fp2)?;
     }
-    if let Some(ref pairing) = this.pairing {
+    if let Some(ref pairing) = this.sdk_vm_config.pairing {
         complex = complex.extend(pairing)?;
     }
-    if let Some(ref ecc) = this.ecc {
+    if let Some(ref ecc) = this.sdk_vm_config.ecc {
         complex = complex.extend(ecc)?;
     }
+
+    // add custom extensions
+    complex = complex.extend(&HintsExtension)?;
 
     Ok(complex)
 }

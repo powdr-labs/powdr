@@ -402,7 +402,21 @@ impl<T: FieldElement> ops::Neg for RangeConstraint<T> {
 
 impl<T: FieldElement> Display for RangeConstraint<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}, {}] & 0x{:x}", self.min, self.max, self.mask)
+        write!(
+            f,
+            "[{}, {}] & 0x{:x}",
+            format_negated(self.min),
+            format_negated(self.max),
+            self.mask()
+        )
+    }
+}
+
+fn format_negated<T: FieldElement>(value: T) -> String {
+    if value.is_in_lower_half() {
+        value.to_string()
+    } else {
+        format!("-{}", -value)
     }
 }
 
