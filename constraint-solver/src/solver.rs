@@ -11,6 +11,7 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
+use crate::utils::possible_concrete_values;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::{HashMap, HashSet};
@@ -32,7 +33,8 @@ where
         + ReferencedSymbols<Variable<V>>
         + Display
         + ExpressionConvertible<T::FieldType, Variable<V>>
-        + Substitutable<Variable<V>>,
+        + Substitutable<Variable<V>>
+        + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
     new_solver(constraint_system, bus_interaction_handler).solve()
@@ -50,7 +52,8 @@ where
         + ReferencedSymbols<Variable<V>>
         + Display
         + ExpressionConvertible<T::FieldType, Variable<V>>
-        + Substitutable<Variable<V>>,
+        + Substitutable<Variable<V>>
+        + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
     let solver = SolverImpl::new(bus_interaction_handler);
@@ -89,6 +92,16 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType>;
+
+    /// Returns `true` if `a` and `b` are different for all satisfying assignments.
+    /// In other words, `a - b` does not allow the value zero.
+    /// If this function returns `false`, it does not mean that `a` and `b` are equal,
+    /// i.e. a function always returning `false` here satisfies the trait.
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool;
 }
 
 /// An error occurred while solving the constraint system.
@@ -284,6 +297,16 @@ where
         let expr = expr.transform_var_type(&mut |v| v.clone().into());
         self.solver.range_constraint_for_expression(&expr)
     }
+
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool {
+        let a = a.transform_var_type(&mut |v| v.clone().into());
+        let b = b.transform_var_type(&mut |v| v.clone().into());
+        self.solver.are_expressions_known_to_be_different(&a, &b)
+    }
 }
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
@@ -299,6 +322,8 @@ struct SolverImpl<T: RuntimeConstant, V, BusInterHandler> {
     /// that do not occur in the constraints any more.
     /// This is cleared with every call to `solve()`.
     assignments_to_return: Vec<VariableAssignment<T, V>>,
+    /// A cache of expressions that are equivalent to a given expression.
+    equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
 }
 
 impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> SolverImpl<T, V, B> {
@@ -307,6 +332,7 @@ impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> SolverImpl<T
             constraint_system: Default::default(),
             range_constraints: Default::default(),
             assignments_to_return: Default::default(),
+            equivalent_expressions_cache: Default::default(),
             bus_interaction_handler,
         }
     }
@@ -334,13 +360,15 @@ impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V>
     for SolverImpl<T, V, BusInter>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant
+    T: Hash
+        + RuntimeConstant
         + ReferencedSymbols<V>
         + Display
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+        self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
         Ok(std::mem::take(&mut self.assignments_to_return))
     }
@@ -349,6 +377,7 @@ where
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
+        self.equivalent_expressions_cache.clear();
         self.constraint_system
             .add_algebraic_constraints(constraints);
     }
@@ -357,15 +386,18 @@ where
         &mut self,
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
     ) {
+        self.equivalent_expressions_cache.clear();
         self.constraint_system
             .add_bus_interactions(bus_interactions);
     }
 
     fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
+        self.equivalent_expressions_cache.clear();
         self.apply_range_constraint_update(variable, constraint);
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
+        self.equivalent_expressions_cache.clear();
         assert!(self.assignments_to_return.is_empty());
         self.constraint_system.retain_algebraic_constraints(|c| {
             c.referenced_variables()
@@ -393,6 +425,25 @@ where
     ) -> RangeConstraint<T::FieldType> {
         expr.range_constraint(self)
     }
+
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool {
+        if let (Some(a), Some(b)) = (a.try_to_known(), b.try_to_known()) {
+            return (a.clone() - b.clone()).is_known_nonzero();
+        }
+        let equivalent_to_a = self.equivalent_expressions(a);
+        let equivalent_to_b = self.equivalent_expressions(b);
+        equivalent_to_a
+            .iter()
+            .cartesian_product(&equivalent_to_b)
+            .any(|(a_eq, b_eq)| {
+                possible_concrete_values(&(a_eq - b_eq), self, 20)
+                    .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
+            })
+    }
 }
 
 impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> SolverImpl<T, V, BusInter>
@@ -402,7 +453,8 @@ where
         + ReferencedSymbols<V>
         + Display
         + ExpressionConvertible<T::FieldType, V>
-        + Substitutable<V>,
+        + Substitutable<V>
+        + Hash,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
@@ -475,6 +527,41 @@ where
         }
 
         Ok(progress)
+    }
+
+    /// Returns a vector of expressions that are equivalent to `expression`.
+    /// The vector is always non-empty, it returns at least `expression` itself.
+    fn equivalent_expressions(
+        &mut self,
+        expression: &GroupedExpression<T, V>,
+    ) -> Vec<GroupedExpression<T, V>> {
+        if expression.is_quadratic() {
+            // This case is too complicated.
+            return vec![expression.clone()];
+        }
+        if let Some(equiv) = self.equivalent_expressions_cache.get(expression) {
+            return equiv.clone();
+        }
+
+        // Go through the constraints related to this expression
+        // and try to solve for the expression
+        let mut exprs = self
+            .constraint_system
+            .system()
+            .constraints_referencing_variables(expression.referenced_unknown_variables().cloned())
+            .filter_map(|constr| match constr {
+                ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
+                ConstraintRef::BusInteraction(_) => None,
+            })
+            .flat_map(|constr| constr.try_solve_for_expr(expression))
+            .collect_vec();
+        if exprs.is_empty() {
+            // If we cannot solve for the expression, we just take the expression unmodified.
+            exprs.push(expression.clone());
+        }
+        self.equivalent_expressions_cache
+            .insert(expression.clone(), exprs.clone());
+        exprs
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
