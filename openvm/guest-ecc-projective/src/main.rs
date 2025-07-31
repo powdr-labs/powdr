@@ -46,11 +46,11 @@ pub fn main() {
         hex!("369E07A2FC32462DD74AB67CE7D7595EC91FC11CC90A3C15A94B57A21E878614").as_ref(),
     ));
 
-    let rusult_x = FieldBytes::from_slice(&[
+    let result_x = FieldBytes::from_slice(&[
         112, 170, 75, 207, 229, 212, 237, 2, 131, 65, 143, 232, 168, 46, 48, 240, 56, 164, 245,
         167, 23, 29, 43, 132, 130, 181, 145, 207, 3, 49, 25, 48,
     ]);
-    let rusult_y = FieldBytes::from_slice(&[
+    let result_y = FieldBytes::from_slice(&[
         225, 222, 233, 182, 14, 157, 47, 22, 177, 249, 107, 145, 57, 77, 133, 68, 6, 102, 101, 78,
         5, 249, 10, 81, 202, 112, 204, 76, 117, 7, 231, 160,
     ]);
