@@ -575,6 +575,7 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<GroupedExpression<T, V>>> {
+        println!("Trying to split {self}");
         if self.is_quadratic() {
             return None;
         }
@@ -638,6 +639,8 @@ impl<
                 .map(|(coeff, expr)| expr * &T::from(coeff / smallest_coeff))
                 .sum();
 
+            println!("Trying candidate {candidate} with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
+
             let candidate_rc = candidate.range_constraint(range_constraints);
             // TODO do we need to compute the full range constraint of the complete expression?
             // TODO what about `constant`?
@@ -650,24 +653,33 @@ impl<
                 continue;
             }
             // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`
-            // and the constraint can be equivalently be evaluated in the integers.
+            // and the constraint can equivalently be evaluated in the integers.
             // We now apply `x -> x % smallest_coeff` to the whole constraint.
             // If it was true before, it will be true afterwards.
-            // So we get `candidate % smallest_coeff = 0`.
+            // So we get `candidate % smallest_coeff = constant % smallest_coeff`.
             // Now the only remaining task is to check that this new constraint has a unique solution
             // that does not require the use of the `%` operator.
 
             if let Some(solution) =
                 candidate_rc.has_unique_modular_solution(constant, smallest_coeff)
             {
+                // TODO do we need to modify constant in some way?
+
                 // candidate % smallest_coeff == constant only if candidate = solution.
                 // Add `candidate = solution` to the parts
                 parts.push(candidate - &GroupedExpression::from_number(solution));
+                println!("Split out {}", parts.last().unwrap());
                 // Substitute `candidate = solution` in our expression
                 // by replacing the component by zero and subtracting
                 // the solution from the constant.
                 components[index] = (Zero::zero(), Zero::zero());
+                println!(
+                    "Adjusting constant from {constant} to {}",
+                    constant - solution
+                );
                 constant -= solution;
+                // TODO correct?
+                constant = constant.field_div(&smallest_coeff);
             }
         }
         if parts.is_empty() {
