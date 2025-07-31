@@ -487,7 +487,10 @@ pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
 pub struct AirMetrics {
+    /// The main AIR statistics (i.e., number of main columns, constraints, and bus interactions)
     pub air_stats: AirStats,
+    /// The width of the AIR, including OpenVM specific columns
+    /// (i.e., preprocessed and log_up, in addition to the main columns)
     pub widths: AirWidths,
 }
 
