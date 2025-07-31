@@ -113,22 +113,23 @@ pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
     }
 }
 
-// Square root of a field element in SECP256k1 modulus (if exists).
+// If Square root of a field element in SECP256k1 modulus.
+// If the element is a square, returns true and the square root in the same representation.
+// If the element is non-square, returns false and the square root of the element times a pre-defined non-quadratic residue.
 #[cfg(target_os = "zkvm")]
-pub fn hint_k256_sqrt_field_10x26(elem: [u32; 10]) -> Option<[u32; 10]> {
+pub fn hint_k256_sqrt_field_10x26(elem: [u32; 10]) -> (bool, [u32; 10]) {
     insn_k256_sqrt_field_10x26(elem.as_ptr() as *const u8);
-    // read "boolean" result of whether the square root exists
-    let has_sqrt = core::mem::MaybeUninit::<u32>::uninit();
-    unsafe {
+    // read the "boolean" result
+    let has_sqrt = unsafe {
+        let has_sqrt = core::mem::MaybeUninit::<u32>::uninit();
         openvm_rv32im_guest::hint_store_u32!(has_sqrt.as_ptr() as *const u32);
-        if has_sqrt.assume_init() == 0 {
-            return None;
-        }
-    }
-    // read actual square root value
-    let sqrt = core::mem::MaybeUninit::<[u32; 10]>::uninit();
-    unsafe {
+        has_sqrt.assume_init() != 0
+    };
+    // read the square root value
+    let sqrt = unsafe {
+        let sqrt = core::mem::MaybeUninit::<[u32; 10]>::uninit();
         openvm_rv32im_guest::hint_buffer_u32!(sqrt.as_ptr() as *const u8, 10);
-        Some(sqrt.assume_init())
-    }
+        sqrt.assume_init()
+    };
+    (has_sqrt, sqrt)
 }
