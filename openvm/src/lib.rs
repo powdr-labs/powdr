@@ -1393,13 +1393,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 48,
+                            constraints: 22,
+                            bus_interactions: 30,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 48,
                             log_up: 36,
                         },
-                        constraints: 22,
-                        bus_interactions: 30,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1421,13 +1424,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 48,
+                            constraints: 22,
+                            bus_interactions: 30,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 48,
                             log_up: 36,
                         },
-                        constraints: 22,
-                        bus_interactions: 30,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1469,13 +1475,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 14676,
+                            constraints: 4143,
+                            bus_interactions: 11642,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14676,
                             log_up: 11976,
                         },
-                        constraints: 4143,
-                        bus_interactions: 11642,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1497,13 +1506,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 14656,
+                            constraints: 4127,
+                            bus_interactions: 11632,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14656,
                             log_up: 11956,
                         },
-                        constraints: 4127,
-                        bus_interactions: 11632,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1579,13 +1591,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 2010,
+                            constraints: 166,
+                            bus_interactions: 1782,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2010,
                             log_up: 1788,
                         },
-                        constraints: 166,
-                        bus_interactions: 1782,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1607,13 +1622,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 2010,
+                            constraints: 166,
+                            bus_interactions: 1782,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2010,
                             log_up: 1788,
                         },
-                        constraints: 166,
-                        bus_interactions: 1782,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1635,13 +1653,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 2010,
+                            constraints: 166,
+                            bus_interactions: 1782,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2010,
                             log_up: 1788,
                         },
-                        constraints: 166,
-                        bus_interactions: 1782,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1686,13 +1707,16 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
+                        air_stats: AirStats {
+                            main_columns: 4843,
+                            constraints: 958,
+                            bus_interactions: 3817,
+                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 4843,
                             log_up: 3952,
                         },
-                        constraints: 958,
-                        bus_interactions: 3817,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
