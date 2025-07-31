@@ -7,18 +7,29 @@ import matplotlib.colors as mcolors
 import argparse
 import numpy as np
 
-def load_apc_data(json_path):
+def load_apc_data(json_path, effectiveness_type='cost'):
     """Load APC candidates and compute effectiveness."""
     with open(json_path, 'r') as f:
         data = json.load(f)
     
+    def calculate_effectiveness(item, eff_type):
+        if eff_type == 'cost':
+            return item['cost_before'] / item['cost_after']
+        elif eff_type == 'main_columns':
+            return item['stats']['before']['main_columns'] / item['stats']['after']['main_columns']
+        elif eff_type == 'constraints':
+            return item['stats']['before']['constraints'] / item['stats']['after']['constraints']
+        elif eff_type == 'bus_interactions':
+            return item['stats']['before']['bus_interactions'] / item['stats']['after']['bus_interactions']
+        else:
+            raise ValueError(f"Unknown effectiveness type: {eff_type}")
+    
     return pd.DataFrame([{
-        'start_pc': item['start_pc'],
-        'effectiveness': item['total_width_before'] / item['total_width_after'],
+        'start_pc': item['original_block']['start_pc'],
+        'effectiveness': calculate_effectiveness(item, effectiveness_type),
         'instructions': len(item['original_block']['statements']),
-        'software_version_cells': item['total_width_before'] * item['execution_frequency'],
-        'total_width_before': item['total_width_before'],
-        'total_width_after': item['total_width_after']
+        'software_version_cells': item['width_before'] * item['execution_frequency'],
+        'width_before': item['width_before']
     } for item in data])
 
 def format_cell_count(count):
@@ -32,16 +43,16 @@ def format_cell_count(count):
     else:
         return f"{count:.0f}"
 
-def plot_effectiveness(json_path, filename=None):
+def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     """Generate bar plot of effectiveness data."""
-    df = load_apc_data(json_path)
+    df = load_apc_data(json_path, effectiveness_type)
     total_cells = df['software_version_cells'].sum()
     
     # Print top 10 basic blocks
-    top10 = df.nlargest(10, 'software_version_cells')[['start_pc', 'software_version_cells', 'effectiveness', 'instructions', 'total_width_before', 'total_width_after']]
+    top10 = df.nlargest(10, 'software_version_cells')[['start_pc', 'software_version_cells', 'effectiveness', 'instructions', 'width_before']]
     top10['software_version_cells'] = top10['software_version_cells'].apply(format_cell_count)
-    top10.columns = ['Start PC', 'Trace Cells', 'Effectiveness', 'Instructions', 'Width Before', 'Width After']
-    print("\nTop 10 Basic Blocks by Trace Cells:")
+    top10.columns = ['Start PC', 'Trace Cells', 'Effectiveness', 'Instructions', 'Width Before']
+    print(f"\nTop 10 Basic Blocks by Trace Cells (Effectiveness: {effectiveness_type}):")
     print(top10.to_string(index=False))
     print()
     
@@ -104,7 +115,7 @@ def plot_effectiveness(json_path, filename=None):
     # Formatting
     ax.set_xlabel('Cumulative instruction trace cells (software version)', fontsize=12)
     ax.set_ylabel('Effectiveness', fontsize=12)
-    ax.set_title("Effectiveness by Basic Block", fontsize=14)
+    ax.set_title(f"Effectiveness by Basic Block (reduction in {effectiveness_type})", fontsize=14)
     ax.grid(True, alpha=0.3, axis='y')
     ax.axhline(mean_effectiveness, color='red', linestyle='--', linewidth=2, alpha=0.7)
     
@@ -137,6 +148,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot effectiveness analysis from APC candidates JSON file.")
     parser.add_argument("json_path", help="Path to the APC candidates JSON file")
     parser.add_argument("-o", "--output", help="Optional file name to save the plot", default=None)
+    parser.add_argument("-e", "--effectiveness", 
+                       choices=['cost', 'main_columns', 'constraints', 'bus_interactions'],
+                       default='cost',
+                       help="Type of effectiveness calculation (default: cost_before/cost_after)")
     args = parser.parse_args()
     
-    plot_effectiveness(args.json_path, args.output)
+    plot_effectiveness(args.json_path, args.output, args.effectiveness)

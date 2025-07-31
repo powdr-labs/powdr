@@ -67,22 +67,20 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
 
 #[derive(Serialize, Deserialize)]
 pub struct ApcCandidateJsonExport<I> {
-    // start_pc
-    pub start_pc: u64,
     // execution_frequency
     pub execution_frequency: usize,
     // original instructions
     pub original_block: BasicBlock<I>,
     // before and after optimization stats
     pub stats: EvaluationResult,
-    // total width before optimisation
-    pub total_width_before: usize,
-    // total width after optimisation
-    pub total_width_after: usize,
+    // width before optimisation, used for software version cells in effectiveness plot
+    pub width_before: usize,
     // value used in ranking of candidates
     pub value: usize,
-    // cost used in ranking of candidates
-    pub cost: usize,
+    // cost before optimisation, used for effectiveness calculation
+    pub cost_before: f64,
+    // cost after optimization, used for effectiveness calculation and ranking of candidates
+    pub cost_after: f64,
     // path to the apc candidate file
     pub apc_candidate_file: String,
 }

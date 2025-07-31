@@ -389,14 +389,13 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         apc_candidates_dir_path: &Path,
     ) -> ApcCandidateJsonExport<Instr<BabyBear>> {
         ApcCandidateJsonExport {
-            start_pc: self.apc.start_pc(),
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
             stats: self.stats,
-            total_width_before: self.widths.before.total(),
-            total_width_after: self.widths.after.total(),
+            width_before: self.widths.before.total(),
             value: self.value(),
-            cost: self.cost(),
+            cost_before: self.widths.before.total() as f64,
+            cost_after: self.widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.start_pc()))
                 .display()
