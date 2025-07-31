@@ -26,7 +26,7 @@ plot_cells() {
 }
 
 plot_effectiveness() {
-    python3 $SCRIPTS_DIR/plot_effectiveness.py $1 --output effectiveness.png
+    python3 $SCRIPTS_DIR/../../autoprecompiles/scripts/plot_effectiveness.py $1 --output effectiveness.png
 }
 
 # usage: run_bench guest guest_manual_pcp apc_num input
