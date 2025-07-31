@@ -103,20 +103,39 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
-    /// Returns `Some(x)` if `x` is the only value in the constraint set
-    /// such that (in the integers) `x = offset (mod modulus).
+    /// Returns `Some(x)` if `x` is the only value in the set of values
+    /// allowed by the range constraint such that (in the integers)
+    /// `x = offset (mod modulus).
     /// In other words, there is a unique integer `k` and a unique
     /// integer `x` in the allowed values seen as integers such that
     /// `offset = k * modulus + x`.
     pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
-        // TODO do this without loop.
+        // If the modulus is larger than half the field, the mapping to integers
+        // is not obvious. Also, if the number of values in the range constraint
+        // is at least two times the modulus, there are always at least to solutions.
         if !modulus.is_in_lower_half()
             || self.range_width() >= modulus.to_integer() + modulus.to_integer()
         {
             return None;
         }
-        // We could have between zero and two solutions at this point.
+        if !offset.is_in_lower_half() {
+            // TODO
+            return todo!(); //self.has_unique_modular_solution(-offset, modulus);
+        }
+        let modulus = modulus.to_integer();
+        let offset = offset.to_integer() % modulus;
+        // TODO what about min not being in the lower half?
         if self.min <= self.max {
+            let mut x = offset + (self.min.to_integer() / modulus) * modulus;
+
+            if offset >= self.min {
+                // min = 0:
+                let x = offset % modulus;
+                let x = self.min.to_integer()
+                    + ((offset.to_integer() - self.min.to_integer()) / modulus.to_integer())
+                        * modulus.to_integer();
+            }
+            // (min + x) % modulus == (offset - min) % modulus
             while offset > self.max {
                 offset -= modulus;
             }

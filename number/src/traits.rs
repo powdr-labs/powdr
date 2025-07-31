@@ -38,6 +38,8 @@ pub trait LargeInt:
     + Shl<usize, Output = Self>
     + Shr<usize, Output = Self>
     + BitXor<Output = Self>
+    + Rem<Output = Self>
+    + Div<Output = Self>
     + Zero
     + ConstZero
     + fmt::LowerHex

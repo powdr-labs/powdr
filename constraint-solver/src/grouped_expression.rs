@@ -647,7 +647,7 @@ impl<
             {
                 // candidate % smallest_coeff == constant only if candidate = solution.
                 // Add `candidate = solution` to the parts
-                parts.push(candidate - solution);
+                parts.push(candidate - &GroupedExpression::from_number(solution));
                 // Substitute `candidate = solution` in our expression
                 // by replacing the component by zero and subtracting
                 // the solution from the constant.
