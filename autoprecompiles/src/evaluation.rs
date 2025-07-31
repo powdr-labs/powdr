@@ -69,7 +69,7 @@ pub fn evaluate_apc<
     let before = basic_block
         .iter()
         .map(|instruction| {
-            *instruction_handler
+            instruction_handler
                 .get_instruction_air_stats(instruction)
                 .unwrap()
         })

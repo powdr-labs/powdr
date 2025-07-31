@@ -41,27 +41,21 @@ use crate::utils::symbolic_to_algebraic;
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
 
-#[derive(Clone, Serialize, Deserialize)]
-struct MachineWithMetrics<F> {
-    symbolic_machine: SymbolicMachine<F>,
-    metrics: AirMetrics,
-}
-
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
     opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, MachineWithMetrics<F>>,
+    air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
 impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
     fn get_instruction_air(&self, instruction: &Instr<F>) -> Option<&SymbolicMachine<F>> {
-        self.get_instruction_machine_with_metrics(instruction)
-            .map(|machine| &machine.symbolic_machine)
-    }
-
-    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> Option<&AirStats> {
-        self.get_instruction_machine_with_metrics(instruction)
-            .map(|machine| &machine.metrics.air_stats)
+        self.opcode_to_air
+            .get(&instruction.0.opcode)
+            .and_then(|air_name| {
+                self.air_name_to_machine
+                    .get(air_name)
+                    .map(|(machine, _)| machine)
+            })
     }
 
     fn is_allowed(&self, instruction: &Instr<F>) -> bool {
@@ -70,6 +64,11 @@ impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
 
     fn is_branching(&self, instruction: &Instr<F>) -> bool {
         branch_opcodes_set().contains(&instruction.0.opcode)
+    }
+
+    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> Option<AirStats> {
+        self.get_instruction_metrics(instruction.0.opcode)
+            .map(|metrics| metrics.clone().into())
     }
 }
 
@@ -87,11 +86,7 @@ impl<F> OriginalAirs<F> {
         }
         // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
-            let (symbolic_machine, metrics) = machine()?;
-            let machine_instance = MachineWithMetrics {
-                symbolic_machine,
-                metrics,
-            };
+            let machine_instance = machine()?;
             self.air_name_to_machine
                 .insert(air_name.clone(), machine_instance);
         }
@@ -100,20 +95,11 @@ impl<F> OriginalAirs<F> {
         Ok(())
     }
 
-    fn get_instruction_machine_with_metrics(
-        &self,
-        instruction: &Instr<F>,
-    ) -> Option<&MachineWithMetrics<F>> {
-        self.opcode_to_air
-            .get(&instruction.0.opcode)
-            .and_then(|air_name| self.air_name_to_machine.get(air_name))
-    }
-
     pub fn get_instruction_metrics(&self, opcode: VmOpcode) -> Option<&AirMetrics> {
         self.opcode_to_air.get(&opcode).and_then(|air_name| {
             self.air_name_to_machine
                 .get(air_name)
-                .map(|machine| &machine.metrics)
+                .map(|(_, metrics)| metrics)
         })
     }
 
@@ -404,16 +390,13 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
         * EXT_DEGREE;
 
     AirMetrics {
-        air_stats: AirStats {
-            main_columns: main,
-            constraints: constraints.len(),
-            bus_interactions: interactions.len(),
-        },
         widths: AirWidths {
             preprocessed,
             main,
             log_up,
         },
+        constraints: constraints.len(),
+        bus_interactions: interactions.len(),
     }
 }
 

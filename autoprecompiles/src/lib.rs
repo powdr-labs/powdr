@@ -281,7 +281,7 @@ pub trait InstructionHandler<T, I> {
     fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
 
     /// Returns the AIR stats for the given instruction.
-    fn get_instruction_air_stats(&self, instruction: &I) -> Option<&AirStats>;
+    fn get_instruction_air_stats(&self, instruction: &I) -> Option<AirStats>;
 
     /// Returns whether the given instruction is allowed in an autoprecompile.
     fn is_allowed(&self, instruction: &I) -> bool;

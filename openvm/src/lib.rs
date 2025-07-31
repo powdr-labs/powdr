@@ -487,11 +487,19 @@ pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
 pub struct AirMetrics {
-    /// The main AIR statistics (i.e., number of main columns, constraints, and bus interactions)
-    pub air_stats: AirStats,
-    /// The width of the AIR, including OpenVM specific columns
-    /// (i.e., preprocessed and log_up, in addition to the main columns)
     pub widths: AirWidths,
+    pub constraints: usize,
+    pub bus_interactions: usize,
+}
+
+impl From<AirMetrics> for AirStats {
+    fn from(metrics: AirMetrics) -> Self {
+        AirStats {
+            main_columns: metrics.widths.main,
+            constraints: metrics.constraints,
+            bus_interactions: metrics.bus_interactions,
+        }
+    }
 }
 
 impl Add for AirMetrics {
@@ -499,8 +507,9 @@ impl Add for AirMetrics {
 
     fn add(self, rhs: AirMetrics) -> AirMetrics {
         AirMetrics {
-            air_stats: self.air_stats + rhs.air_stats,
             widths: self.widths + rhs.widths,
+            constraints: self.constraints + rhs.constraints,
+            bus_interactions: self.bus_interactions + rhs.bus_interactions,
         }
     }
 }
@@ -1365,16 +1374,13 @@ mod tests {
 
     const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 18;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
-        air_stats: AirStats {
-            main_columns: 797,
-            constraints: 604,
-            bus_interactions: 252,
-        },
         widths: AirWidths {
             preprocessed: 5,
             main: 797,
             log_up: 388,
         },
+        constraints: 604,
+        bus_interactions: 252,
     };
 
     #[test]
@@ -1393,16 +1399,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 48,
-                            constraints: 22,
-                            bus_interactions: 30,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 48,
                             log_up: 36,
                         },
+                        constraints: 22,
+                        bus_interactions: 30,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1424,16 +1427,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 48,
-                            constraints: 22,
-                            bus_interactions: 30,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 48,
                             log_up: 36,
                         },
+                        constraints: 22,
+                        bus_interactions: 30,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1475,16 +1475,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 14676,
-                            constraints: 4143,
-                            bus_interactions: 11642,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14676,
                             log_up: 11976,
                         },
+                        constraints: 4143,
+                        bus_interactions: 11642,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1506,16 +1503,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 14656,
-                            constraints: 4127,
-                            bus_interactions: 11632,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14656,
                             log_up: 11956,
                         },
+                        constraints: 4127,
+                        bus_interactions: 11632,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1561,16 +1555,13 @@ mod tests {
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {
-                air_stats: AirStats {
-                    main_columns: 26,
-                    constraints: 1,
-                    bus_interactions: 16,
-                },
                 widths: AirWidths {
                     preprocessed: 0,
                     main: 26,
                     log_up: 20,
                 },
+                constraints: 1,
+                bus_interactions: 16,
             }
         );
     }
@@ -1591,16 +1582,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 2010,
-                            constraints: 166,
-                            bus_interactions: 1782,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2010,
                             log_up: 1788,
                         },
+                        constraints: 166,
+                        bus_interactions: 1782,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1622,16 +1610,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 2010,
-                            constraints: 166,
-                            bus_interactions: 1782,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2010,
                             log_up: 1788,
                         },
+                        constraints: 166,
+                        bus_interactions: 1782,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1653,16 +1638,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 2010,
-                            constraints: 166,
-                            bus_interactions: 1782,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2010,
                             log_up: 1788,
                         },
+                        constraints: 166,
+                        bus_interactions: 1782,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1707,16 +1689,13 @@ mod tests {
             MachineTestMetrics {
                 powdr_expected_sum: expect![[r#"
                     AirMetrics {
-                        air_stats: AirStats {
-                            main_columns: 4843,
-                            constraints: 958,
-                            bus_interactions: 3817,
-                        },
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 4843,
                             log_up: 3952,
                         },
+                        constraints: 958,
+                        bus_interactions: 3817,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
