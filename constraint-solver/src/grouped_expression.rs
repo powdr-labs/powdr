@@ -668,8 +668,8 @@ impl<
                 remaining
                     .into_iter()
                     .map(|(coeff, expr)| expr * T::from(coeff))
-                    .sum()
-                    - constant,
+                    .sum::<GroupedExpression<_, _>>()
+                    - GroupedExpression::from_number(constant),
             );
             Some(parts)
         }

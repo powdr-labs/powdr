@@ -119,38 +119,27 @@ impl<T: FieldElement> RangeConstraint<T> {
             return None;
         }
         if !offset.is_in_lower_half() {
-            // TODO
-            return todo!(); //self.has_unique_modular_solution(-offset, modulus);
+            return None;
         }
-        let modulus = modulus.to_integer();
-        let offset = offset.to_integer() % modulus;
-        // TODO what about min not being in the lower half?
-        if self.min <= self.max {
-            let mut x = offset + (self.min.to_integer() / modulus) * modulus;
+        // This routine is essentially only implemented for fields that fit 64 bits.
+        let modulus = modulus.to_integer().try_into_u64()?;
+        let offset = offset.to_integer().try_into_u64()?;
+        let offset = offset % modulus;
 
-            if offset >= self.min {
-                // min = 0:
-                let x = offset % modulus;
-                let x = self.min.to_integer()
-                    + ((offset.to_integer() - self.min.to_integer()) / modulus.to_integer())
-                        * modulus.to_integer();
+        if self.min.is_in_lower_half() && self.min <= self.max {
+            let min = self.min.to_integer().try_into_u64()?;
+            let x = T::from(offset + (min / modulus) * modulus);
+            if self.allows_value(x) && !self.allows_value(x + T::from(modulus)) {
+                Some(x)
+            } else if !self.allows_value(x) && self.allows_value(x + T::from(modulus)) {
+                Some(x + T::from(modulus))
+            } else {
+                None
             }
-            // (min + x) % modulus == (offset - min) % modulus
-            while offset > self.max {
-                offset -= modulus;
-            }
-        }
-
-        // TODO refine this condition
-        // TODO actually we should also return if the solution is e.g.
-        // 0 or modulus or 2 * modulus etc.
-        if self.min <= self.max && self.range_width() <= modulus.to_integer() {
-            let x = offset.to_integer() % modulus.to_integer();
-            true
-        } else if self.min > self.max && self.max < modulus && self.min > -modulus {
-            true
+        } else if (-self.min).is_in_lower_half() && self.min > self.max {
+            None
         } else {
-            false
+            None
         }
     }
 
