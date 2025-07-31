@@ -34,22 +34,17 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     // This is in turn equivalent to `right + z * c = 0`, where `z` is
     // a new boolean variable.
 
+    // For example, if the constraint was `(2 * a + 2 * b) * (a + b + 10) = 0`, we would
+    // set `factor = 1 / 2`, such that `left * factor - right` is a constant.
+
     // First, try to find a good factor so that `left` and `right`
-    // likely cancel out except for a constant. For this to be the
-    // case, at least the coefficient of some variable needs to be the same.
-    let factor = if right.is_affine() {
-        if let Some((var, left_coeff)) = left.components().1.next() {
-            let Some(right_coeff) = right.coefficient_of_variable(var) else {
-                // `right` does not have that variable, so this method does not work.
-                return None;
-            };
+    // likely cancel out except for a constant. As a good guess,
+    // we try to match the coefficient of the first variable.
+    let factor = match (left.components().1.next(), right.components().1.next()) {
+        (Some((left_var, left_coeff)), Some((right_var, right_coeff))) if left_var == right_var => {
             right_coeff.field_div(left_coeff)
-        } else {
-            T::one()
         }
-    } else {
-        // Complicated, we try to keep `left` as is.
-        T::one()
+        _ => T::one(),
     };
 
     // `constr = 0` is equivalent to `left * right = 0`
