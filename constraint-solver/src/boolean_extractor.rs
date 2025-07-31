@@ -12,7 +12,7 @@ use powdr_number::FieldElement;
 /// constraint that makes use of a new boolean variable.
 /// NOTE: The boolean constraint is not part of the output.
 ///
-/// For example `(a + b) * (a + b + 10) = 0` can be transformed into
+/// For example `(a + b) * (a + b - 10) = 0` can be transformed into
 /// `a + b + z * 10 = 0`, where `z` is a new boolean variable.
 ///
 /// @param constraint The quadratic constraint to transform.
@@ -41,7 +41,7 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
 /// constraints that make use of a new variable that is assumed to be boolean constrained.
 /// NOTE: The boolean constraint is not part of the output.
 ///
-/// For example `(a + b) * (a + b + 10) = 0` can be transformed into
+/// For example `(a + b) * (a + b - 10) = 0` can be transformed into
 /// `a + b + z * 10 = 0`, where `z` is a new boolean variable.
 ///
 /// The constraints in the output use a new variable type that can be converted from
