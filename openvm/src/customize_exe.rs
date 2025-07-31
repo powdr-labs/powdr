@@ -395,6 +395,8 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             stats: self.stats,
             total_width_before: self.widths.before.total(),
             total_width_after: self.widths.after.total(),
+            value: self.value(),
+            cost: self.cost(),
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.start_pc()))
                 .display()

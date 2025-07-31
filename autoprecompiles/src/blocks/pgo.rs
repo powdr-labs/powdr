@@ -79,6 +79,10 @@ pub struct ApcCandidateJsonExport<I> {
     pub total_width_before: usize,
     // total width after optimisation
     pub total_width_after: usize,
+    // value used in ranking of candidates
+    pub value: usize,
+    // cost used in ranking of candidates
+    pub cost: usize,
     // path to the apc candidate file
     pub apc_candidate_file: String,
 }
