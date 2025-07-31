@@ -1365,13 +1365,16 @@ mod tests {
 
     const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 18;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
+        air_stats: AirStats {
+            main_columns: 797,
+            constraints: 604,
+            bus_interactions: 252,
+        },
         widths: AirWidths {
             preprocessed: 5,
             main: 797,
             log_up: 388,
         },
-        constraints: 604,
-        bus_interactions: 252,
     };
 
     #[test]
@@ -1546,13 +1549,16 @@ mod tests {
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {
+                air_stats: AirStats {
+                    main_columns: 26,
+                    constraints: 1,
+                    bus_interactions: 16,
+                },
                 widths: AirWidths {
                     preprocessed: 0,
                     main: 26,
                     log_up: 20,
                 },
-                constraints: 1,
-                bus_interactions: 16,
             }
         );
     }
