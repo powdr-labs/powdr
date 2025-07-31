@@ -53,7 +53,7 @@ pub struct OriginalAirs<F> {
     air_name_to_machine: BTreeMap<String, MachineWithMetrics<F>>,
 }
 
-impl<F: Clone + Ord + std::fmt::Display> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
+impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
     fn get_instruction_air(&self, instruction: &Instr<F>) -> Option<&SymbolicMachine<F>> {
         self.get_instruction_machine_with_metrics(instruction)
             .map(|machine| &machine.symbolic_machine)
@@ -73,7 +73,7 @@ impl<F: Clone + Ord + std::fmt::Display> InstructionHandler<F, Instr<F>> for Ori
     }
 }
 
-impl<F: Clone + Ord + std::fmt::Display> OriginalAirs<F> {
+impl<F> OriginalAirs<F> {
     /// Insert a new opcode, generating the air if it does not exist
     /// Panics if the opcode already exists
     pub fn insert_opcode(
