@@ -5,7 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import argparse
-import numpy as np
 
 def load_apc_data(json_path, effectiveness_type='cost'):
     """Load APC candidates and compute effectiveness."""
