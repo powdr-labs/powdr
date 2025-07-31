@@ -1,0 +1,15 @@
+[package]
+name = "powdr-openvm-hints-guest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[target.'cfg(target_os = "zkvm")'.dependencies]
+openvm-platform = { workspace = true, features = ["rust-runtime"] }
+openvm-rv32im-guest.workspace = true
+openvm-custom-insn.workspace = true
+
+[dependencies]
+strum_macros = "0.27"

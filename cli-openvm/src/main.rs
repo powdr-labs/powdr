@@ -41,6 +41,10 @@ enum Commands {
         #[clap(long)]
         max_columns: Option<usize>,
 
+        /// When `--pgo-mode cell`, the optional max number of instructions per block
+        #[arg(long)]
+        max_block_instructions: Option<usize>,
+
         #[arg(long)]
         input: Option<u32>,
 
@@ -64,6 +68,10 @@ enum Commands {
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
         max_columns: Option<usize>,
+
+        /// When `--pgo-mode cell`, the optional max number of instructions per block
+        #[arg(long)]
+        max_block_instructions: Option<usize>,
 
         #[arg(long)]
         input: Option<u32>,
@@ -96,6 +104,10 @@ enum Commands {
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
         max_columns: Option<usize>,
+
+        /// When `--pgo-mode cell`, the optional max number of instructions per block
+        #[arg(long)]
+        max_block_instructions: Option<usize>,
 
         #[arg(long)]
         input: Option<u32>,
@@ -131,6 +143,7 @@ fn run_command(command: Commands) {
             skip,
             pgo,
             max_columns,
+            max_block_instructions,
             input,
             apc_candidates_dir,
         } => {
@@ -138,7 +151,14 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
+            let pgo_config = pgo_config(
+                guest.clone(),
+                guest_opts.clone(),
+                pgo,
+                max_columns,
+                max_block_instructions,
+                input,
+            );
             let program = powdr_openvm::compile_guest(
                 &guest,
                 guest_opts,
@@ -156,6 +176,7 @@ fn run_command(command: Commands) {
             skip,
             pgo,
             max_columns,
+            max_block_instructions,
             input,
             apc_candidates_dir,
         } => {
@@ -163,7 +184,14 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
+            let pgo_config = pgo_config(
+                guest.clone(),
+                guest_opts.clone(),
+                pgo,
+                max_columns,
+                max_block_instructions,
+                input,
+            );
             let program = powdr_openvm::compile_guest(
                 &guest,
                 guest_opts,
@@ -183,6 +211,7 @@ fn run_command(command: Commands) {
             recursion,
             pgo,
             max_columns,
+            max_block_instructions,
             input,
             metrics,
             apc_candidates_dir,
@@ -191,7 +220,14 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
+            let pgo_config = pgo_config(
+                guest.clone(),
+                guest_opts.clone(),
+                pgo,
+                max_columns,
+                max_block_instructions,
+                input,
+            );
             let program = powdr_openvm::compile_guest(
                 &guest,
                 guest_opts,
@@ -235,6 +271,7 @@ fn pgo_config(
     guest_opts: GuestOptions,
     pgo: PgoType,
     max_columns: Option<usize>,
+    max_block_instructions: Option<usize>,
     input: Option<u32>,
 ) -> PgoConfig {
     match pgo {
@@ -248,7 +285,7 @@ fn pgo_config(
                 cli_max_columns.is_none(),
                 "cli --pgo can't parse Cell(Option<usize>), input must be wrong"
             );
-            PgoConfig::Cell(pc_idx_count, max_columns)
+            PgoConfig::Cell(pc_idx_count, max_columns, max_block_instructions)
         }
         PgoType::Instruction => {
             let pc_idx_count = powdr_openvm::execution_profile_from_guest(

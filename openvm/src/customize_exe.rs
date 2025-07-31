@@ -143,17 +143,14 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 }
 
 pub fn customize(
-    OriginalCompiledProgram {
-        mut exe,
-        sdk_vm_config,
-    }: OriginalCompiledProgram,
+    OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
-    let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
+    let original_config = OriginalVmConfig::new(vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
@@ -173,7 +170,7 @@ pub fn customize(
     };
 
     let max_total_apc_columns: Option<usize> = match pgo_config {
-        PgoConfig::Cell(_, max_total_columns) => max_total_columns.map(|max_total_columns| {
+        PgoConfig::Cell(_, max_total_columns, _) => max_total_columns.map(|max_total_columns| {
             let total_non_apc_columns = original_config
                 .chip_inventory_air_metrics()
                 .values()

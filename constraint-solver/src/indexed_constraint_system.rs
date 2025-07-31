@@ -359,9 +359,7 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
         });
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
-        .into_group_map()
-        .into_iter()
-        .map(|(variable, occurrences)| (variable, occurrences.into_iter().collect::<BTreeSet<_>>()))
+        .into_grouping_map()
         .collect()
 }
 
