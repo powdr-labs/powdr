@@ -25,6 +25,7 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
@@ -486,9 +487,8 @@ pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
 pub struct AirMetrics {
+    pub air_stats: AirStats,
     pub widths: AirWidths,
-    pub constraints: usize,
-    pub bus_interactions: usize,
 }
 
 impl Add for AirMetrics {
@@ -496,9 +496,8 @@ impl Add for AirMetrics {
 
     fn add(self, rhs: AirMetrics) -> AirMetrics {
         AirMetrics {
+            air_stats: self.air_stats + rhs.air_stats,
             widths: self.widths + rhs.widths,
-            constraints: self.constraints + rhs.constraints,
-            bus_interactions: self.bus_interactions + rhs.bus_interactions,
         }
     }
 }
