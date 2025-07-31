@@ -21,7 +21,8 @@ pub enum PgoConfig {
     /// value = cells saved per apc * times executed
     /// cost = number of columns in the apc
     /// constraint of max total columns
-    Cell(HashMap<u64, u32>, Option<usize>),
+    /// constraint of max number of instructions per block
+    Cell(HashMap<u64, u32>, Option<usize>, Option<usize>),
     /// value = instruction per apc * times executed
     Instruction(HashMap<u64, u32>),
     /// value = instruction per apc
@@ -33,7 +34,7 @@ impl PgoConfig {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(pc_count, _) | PgoConfig::Instruction(pc_count) => {
+            PgoConfig::Cell(pc_count, _, _) | PgoConfig::Instruction(pc_count) => {
                 pc_count.get(&pc).copied()
             }
             PgoConfig::None => None,
@@ -69,12 +70,22 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     pgo_program_pc_count: HashMap<u64, u32>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
+    max_block_instructions: Option<usize>,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<(AdapterApc<A>, ApcStats<A>)> {
+    if config.autoprecompiles == 0 {
+        return vec![];
+    }
+
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
     blocks.retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
+
+    // drop any block with more than max_block_instructions instructions
+    if let Some(max_block_instructions) = max_block_instructions {
+        blocks.retain(|b| b.statements.len() <= max_block_instructions);
+    }
 
     tracing::debug!(
         "Retained {} basic blocks after filtering by pc_idx_count",
@@ -199,16 +210,19 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res: Vec<_> = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _) => create_apcs_with_cell_pgo::<A>(
-            blocks,
-            pgo_program_idx_count,
-            config,
-            max_total_apc_columns,
-            vm_config,
-        )
-        .into_iter()
-        .map(|(apc, apc_stats)| (apc, Some(apc_stats)))
-        .collect(),
+        PgoConfig::Cell(pgo_program_idx_count, _, max_block_instructions) => {
+            create_apcs_with_cell_pgo::<A>(
+                blocks,
+                pgo_program_idx_count,
+                config,
+                max_total_apc_columns,
+                max_block_instructions,
+                vm_config,
+            )
+            .into_iter()
+            .map(|(apc, apc_stats)| (apc, Some(apc_stats)))
+            .collect()
+        }
         PgoConfig::Instruction(pgo_program_idx_count) => {
             create_apcs_with_instruction_pgo::<A>(blocks, pgo_program_idx_count, config, vm_config)
                 .into_iter()

@@ -369,12 +369,18 @@ fn introduce_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
                 |(field_index, expr)| {
                     let transformed_expr =
                         expr.transform_var_type(&mut |v| Variable::Variable(v.clone()));
-                    let v = Variable::BusInteractionField(bus_interaction_index, field_index);
-                    new_constraints.push(
-                        transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
-                    );
-                    bus_interaction_vars.insert(v.clone(), expr.clone());
-                    GroupedExpression::from_unknown_variable(v)
+                    if transformed_expr.is_affine()
+                        && transformed_expr.referenced_unknown_variables().count() <= 1
+                    {
+                        transformed_expr
+                    } else {
+                        let v = Variable::BusInteractionField(bus_interaction_index, field_index);
+                        new_constraints.push(
+                            transformed_expr - GroupedExpression::from_unknown_variable(v.clone()),
+                        );
+                        bus_interaction_vars.insert(v.clone(), expr.clone());
+                        GroupedExpression::from_unknown_variable(v)
+                    }
                 },
             ))
         })
