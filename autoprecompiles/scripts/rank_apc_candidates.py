@@ -42,30 +42,29 @@ def main():
     candidates_with_densitys = []
     
     for i, candidate in enumerate(data):
-        start_pc = candidate["start_pc"]
+        start_pc = candidate["original_block"]["start_pc"]
         freq = candidate["execution_frequency"]
         num_statements = len(candidate["original_block"]["statements"])
         
         # Get optimization stats
         before_constraints = candidate["stats"]["before"]["constraints"]
         after_constraints = candidate["stats"]["after"]["constraints"]
-        before_total_columns = candidate["total_width_before"]
-        after_total_columns = candidate["total_width_after"]
+        before_main_columns = candidate["stats"]["before"]["main_columns"]
+        after_main_columns = candidate["stats"]["after"]["main_columns"]
         before_bus_interactions = candidate["stats"]["before"]["bus_interactions"]
         after_bus_interactions = candidate["stats"]["after"]["bus_interactions"]
         value = candidate["value"]
-        cost = candidate["cost"]
+        cost_before = candidate["cost_before"]
+        cost_after = candidate["cost_after"]
         
         # Calculate improvements as factors (before/after ratios)
+        cost_improvement_factor = cost_before / cost_after
         constraint_improvement_factor = before_constraints / after_constraints
-        total_columns_improvement_factor = before_total_columns / after_total_columns
+        main_columns_improvement_factor = before_main_columns / after_main_columns
         bus_interactions_improvement_factor = before_bus_interactions / after_bus_interactions
-        
-        # Calculate cells saved: freq * (before_total_columns - after_total_columns)
-        cells_saved = freq * (before_total_columns - after_total_columns)
 
         # Calculate density used for ranking candidates
-        density = value / cost
+        density = value / cost_after
         
         candidates_with_densitys.append({
             'index': i + 1,
@@ -74,17 +73,18 @@ def main():
             'num_statements': num_statements,
             'before_constraints': before_constraints,
             'after_constraints': after_constraints,
-            'before_total_columns': before_total_columns,
-            'after_total_columns': after_total_columns,
+            'before_main_columns': before_main_columns,
+            'after_main_columns': after_main_columns,
             'before_bus_interactions': before_bus_interactions,
             'after_bus_interactions': after_bus_interactions,
+            'cost_improvement_factor': cost_improvement_factor,
             'constraint_improvement_factor': constraint_improvement_factor,
-            'total_columns_improvement_factor': total_columns_improvement_factor,
+            'main_columns_improvement_factor': main_columns_improvement_factor,
             'bus_interactions_improvement_factor': bus_interactions_improvement_factor,
             'value': value,
-            'cost': cost,
+            'cost_before': cost_before,
+            'cost_after': cost_after,
             'density': density,
-            'cells_saved': cells_saved
         })
     
     # Sort by descending density
@@ -99,13 +99,17 @@ def main():
     total_candidates = len(data)
     total_statements = sum(len(c["original_block"]["statements"]) for c in data)
     
+    total_cost_before = sum(c["cost_before"] for c in data)
+    total_cost_after = sum(c["cost_after"] for c in data)
+    total_cost_improvement_factor = total_cost_before / total_cost_after
+    
     total_before_constraints = sum(c["stats"]["before"]["constraints"] for c in data)
     total_after_constraints = sum(c["stats"]["after"]["constraints"] for c in data)
     total_constraint_improvement_factor = total_before_constraints / total_after_constraints
     
-    total_before_total_columns = sum(c["total_width_before"] for c in data)
-    total_after_total_columns = sum(c["total_width_after"] for c in data)
-    total_columns_improvement_factor = total_before_total_columns / total_after_total_columns
+    total_before_main_columns = sum(c["stats"]["before"]["main_columns"] for c in data)
+    total_after_main_columns = sum(c["stats"]["after"]["main_columns"] for c in data)
+    main_columns_improvement_factor = total_before_main_columns / total_after_main_columns
     
     total_before_bus_interactions = sum(c["stats"]["before"]["bus_interactions"] for c in data)
     total_after_bus_interactions = sum(c["stats"]["after"]["bus_interactions"] for c in data)
@@ -115,8 +119,9 @@ def main():
     output_lines.append(f"Total statements: {total_statements}")
     output_lines.append(f"Average statements per candidate: {total_statements / total_candidates:.1f}")
     output_lines.append("")
+    output_lines.append(f"Total Cost: {total_cost_before} → {total_cost_after} ({total_cost_improvement_factor:.2f}x reduction)")
+    output_lines.append(f"Total Main Columns: {total_before_main_columns} → {total_after_main_columns} ({main_columns_improvement_factor:.2f}x reduction)")
     output_lines.append(f"Total Constraints: {total_before_constraints} → {total_after_constraints} ({total_constraint_improvement_factor:.2f}x reduction)")
-    output_lines.append(f"Total Columns: {total_before_total_columns} → {total_after_total_columns} ({total_columns_improvement_factor:.2f}x reduction)")
     output_lines.append(f"Total Bus Interactions: {total_before_bus_interactions} → {total_after_bus_interactions} ({total_bus_interactions_improvement_factor:.2f}x reduction)")
     
     # Statement count distribution
@@ -152,15 +157,15 @@ def main():
     output_lines.append("=" * 120)
     
     for i, candidate in enumerate(candidates_with_densitys):
-        output_lines.append(f"{i+1:3d}. PC: {candidate['start_pc']:10d} | "
+        output_lines.append(f"{i+1:3d}. PC: {candidate['start_pc']:10.0f} | "
               f"Statements: {candidate['num_statements']:2d} | "
               f"Freq: {candidate['freq']:2d}x | "
-              f"Total Cols: {candidate['before_total_columns']:3d} → {candidate['after_total_columns']:3d} "
-              f"({candidate['total_columns_improvement_factor']:.1f}x reduction) | "
-              f"Cells Saved: {candidate['cells_saved']:6d} | "
-              f"Value: {candidate['value']:6d} | "
-              f"Cost: {candidate['cost']:6d} | "
-              f"Density: {candidate['density']:6.2f} | "
+              f"Value: {candidate['value']:6.0f} | "
+              f"Cost: {candidate['cost_before']:6.0f} → {candidate['cost_after']:6.0f} | "
+              f"Density (Value/Cost After): {candidate['density']:6.2f} | "
+              f"({candidate['cost_improvement_factor']:.1f}x reduction) | "
+              f"Main Cols: {candidate['before_main_columns']:3d} → {candidate['after_main_columns']:3d} "
+              f"({candidate['main_columns_improvement_factor']:.1f}x reduction) | "
               f"Constraints: {candidate['before_constraints']:3d} → {candidate['after_constraints']:3d} "
               f"({candidate['constraint_improvement_factor']:.1f}x reduction) | "
               f"Bus Int: {candidate['before_bus_interactions']:3d} → {candidate['after_bus_interactions']:3d} "
