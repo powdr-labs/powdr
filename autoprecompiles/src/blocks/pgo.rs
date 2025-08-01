@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     adapter::{Adapter, AdapterApc, AdapterVmConfig, ApcStats},
     blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
+    evaluation::EvaluationResult,
     BasicBlock, PowdrConfig,
 };
 
@@ -45,7 +46,6 @@ impl PgoConfig {
 /// Trait for autoprecompile candidates.
 /// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
 pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
-    type JsonExport: Serialize + for<'de> Deserialize<'de> + Send;
     type ApcStats;
 
     /// Try to create an autoprecompile candidate from a block.
@@ -56,13 +56,34 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
+    fn to_json_export(
+        &self,
+        apc_candidates_dir_path: &Path,
+    ) -> ApcCandidateJsonExport<A::Instruction>;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> (AdapterApc<A>, Self::ApcStats);
 }
 
-// pub trait ApcStats {}
+#[derive(Serialize, Deserialize)]
+pub struct ApcCandidateJsonExport<I> {
+    // execution_frequency
+    pub execution_frequency: usize,
+    // original instructions
+    pub original_block: BasicBlock<I>,
+    // before and after optimization stats
+    pub stats: EvaluationResult,
+    // width before optimisation, used for software version cells in effectiveness plot
+    pub width_before: usize,
+    // value used in ranking of candidates
+    pub value: usize,
+    // cost before optimisation, used for effectiveness calculation
+    pub cost_before: f64,
+    // cost after optimization, used for effectiveness calculation and ranking of candidates
+    pub cost_after: f64,
+    // path to the apc candidate file
+    pub apc_candidate_file: String,
+}
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<A: Adapter>(

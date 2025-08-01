@@ -260,7 +260,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
     /// Panics if the expression is quadratic.
-    pub fn coefficient_of_variable(&self, var: &V) -> Option<&T> {
+    pub fn coefficient_of_variable<'a>(&'a self, var: &V) -> Option<&'a T> {
         assert!(!self.is_quadratic());
         self.linear.get(var)
     }
