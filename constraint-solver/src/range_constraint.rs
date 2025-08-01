@@ -124,7 +124,12 @@ impl<T: FieldElement> RangeConstraint<T> {
             return None;
         }
         if !offset.is_in_lower_half() {
-            return None;
+            if (modulus + offset).is_in_lower_half() {
+                return self.has_unique_modular_solution(modulus + offset, modulus);
+            } else {
+                // TODO this should still be solvable.
+                return None;
+            }
         }
         // This routine is essentially only implemented for fields that fit 64 bits.
         let modulus = modulus.to_integer().try_into_u64()?;
