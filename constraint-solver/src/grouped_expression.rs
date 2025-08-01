@@ -578,7 +578,7 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<GroupedExpression<T, V>>> {
-        println!("Trying to split {self}");
+        //        println!("Trying to split {self}");
         if self.is_quadratic() {
             return None;
         }
@@ -612,16 +612,16 @@ impl<
         // Now try to split out each one in turn.
         let mut parts = vec![];
         for index in 0..components.len() {
-            println!(
-                "Components: {} = {constant}",
-                components
-                    .iter()
-                    .map(|(c, e)| format!("{c} * ({e})"))
-                    .join(" + ")
-            );
+            // println!(
+            //     "Components: {} = {constant}",
+            //     components
+            //         .iter()
+            //         .map(|(c, e)| format!("{c} * ({e})"))
+            //         .join(" + ")
+            // );
 
             let (candidate_coeff, candidate) = &components[index];
-            println!("Trying to split out {candidate_coeff} * ({candidate})");
+            // println!("Trying to split out {candidate_coeff} * ({candidate})");
             let rest = components
                 .iter()
                 .enumerate()
@@ -643,7 +643,7 @@ impl<
                 .sum();
 
             let candidate_rc = candidate.range_constraint(range_constraints);
-            println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
+            // println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
             // TODO do we need to compute the full range constraint of the complete expression?
             // TODO what about `constant`?
             if candidate_rc.is_unconstrained()
@@ -652,10 +652,10 @@ impl<
                     .multiple(smallest_coeff)
                     .is_unconstrained()
             {
-                println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
-                for var in candidate.referenced_unknown_variables() {
-                    println!("    {var} has rc {}", range_constraints.get(var));
-                }
+                // println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
+                // for var in candidate.referenced_unknown_variables() {
+                //     println!("    {var} has rc {}", range_constraints.get(var));
+                // }
                 continue;
             }
             // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`
@@ -675,11 +675,11 @@ impl<
                 // candidate % smallest_coeff == constant only if candidate = solution.
                 // Add `candidate = solution` to the parts
                 parts.push(candidate - &GroupedExpression::from_number(solution));
-                println!("Split out {}", parts.last().unwrap());
-                println!(
-                    "Adjusting constant from {constant} to {}",
-                    constant - solution * *candidate_coeff
-                );
+                // println!("Split out {}", parts.last().unwrap());
+                // println!(
+                //     "Adjusting constant from {constant} to {}",
+                //     constant - solution * *candidate_coeff
+                // );
                 constant -= solution * *candidate_coeff;
                 // Substitute `candidate = solution` in our expression
                 // by replacing the component by zero and subtracting
