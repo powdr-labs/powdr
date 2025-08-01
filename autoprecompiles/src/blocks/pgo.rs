@@ -57,7 +57,7 @@ pub enum PgoType {
     None,
 }
 
-pub fn get_pgo_config(
+pub fn pgo_config(
     pgo: PgoType,
     max_columns: Option<usize>,
     max_block_instructions: Option<usize>,

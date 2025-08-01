@@ -3,7 +3,7 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_autoprecompiles::{get_pgo_config, PgoType};
+use powdr_autoprecompiles::{pgo_config, PgoType};
 use powdr_openvm::{
     default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
 };
@@ -157,7 +157,7 @@ fn run_command(command: Commands) {
                 stdin_from(input),
             );
             let pgo_config =
-                get_pgo_config(pgo, max_columns, max_block_instructions, execution_profile);
+                pgo_config(pgo, max_columns, max_block_instructions, execution_profile);
             let program = powdr_openvm::compile_guest(
                 &guest,
                 guest_opts,
@@ -189,7 +189,7 @@ fn run_command(command: Commands) {
                 stdin_from(input),
             );
             let pgo_config =
-                get_pgo_config(pgo, max_columns, max_block_instructions, execution_profile);
+                pgo_config(pgo, max_columns, max_block_instructions, execution_profile);
             let program = powdr_openvm::compile_guest(
                 &guest,
                 guest_opts,
@@ -224,7 +224,7 @@ fn run_command(command: Commands) {
                 stdin_from(input),
             );
             let pgo_config =
-                get_pgo_config(pgo, max_columns, max_block_instructions, execution_profile);
+                pgo_config(pgo, max_columns, max_block_instructions, execution_profile);
             let program = powdr_openvm::compile_guest(
                 &guest,
                 guest_opts,

@@ -10,7 +10,7 @@ mod selection;
 
 pub use detection::collect_basic_blocks;
 pub use pgo::{generate_apcs_with_pgo, ApcCandidateJsonExport, Candidate};
-pub use pgo::{get_pgo_config, PgoConfig, PgoType};
+pub use pgo::{pgo_config, PgoConfig, PgoType};
 pub use selection::KnapsackItem;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
