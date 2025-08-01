@@ -441,6 +441,9 @@ where
                             "Split constraint\n  {c}\ninto\n  {}",
                             components.iter().format(", ")
                         );
+                        // TODO actually store these as constraints
+                        // But for most of them, it will not help much
+                        // as long as we don't inline here in the solver!
                     }
                     effects
                 }
