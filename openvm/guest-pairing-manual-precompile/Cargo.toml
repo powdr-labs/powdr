@@ -1,0 +1,16 @@
+[package]
+name = "openvm-pairing-example"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", features = ["std"] }
+
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false  }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", default-features = false  }
+openvm-pairing = { git = "https://github.com/powdr-labs/openvm.git", default-features = false, features = ["bn254"] }
+
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
