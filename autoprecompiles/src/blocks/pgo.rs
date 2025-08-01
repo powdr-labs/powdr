@@ -17,28 +17,44 @@ use crate::{
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
 /// The inner HashMap contains number of time a pc is executed.
-#[derive(Default)]
 pub enum PgoConfig {
     /// value = cells saved per apc * times executed
     /// cost = number of columns in the apc
-    /// constraint of max total columns
-    /// constraint of max number of instructions per block
-    Cell(HashMap<u64, u32>, Option<usize>, Option<usize>),
+    Cell {
+        execution_profile: HashMap<u64, u32>,
+        max_columns: Option<usize>,
+        max_block_instructions: Option<usize>,
+    },
     /// value = instruction per apc * times executed
-    Instruction(HashMap<u64, u32>),
+    Instruction {
+        execution_profile: HashMap<u64, u32>,
+        max_block_instructions: Option<usize>,
+    },
     /// value = instruction per apc
-    #[default]
-    None,
+    None {
+        max_block_instructions: Option<usize>,
+    },
+}
+
+impl Default for PgoConfig {
+    fn default() -> Self {
+        PgoConfig::None {
+            max_block_instructions: None,
+        }
+    }
 }
 
 impl PgoConfig {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(pc_count, _, _) | PgoConfig::Instruction(pc_count) => {
-                pc_count.get(&pc).copied()
+            PgoConfig::Cell {
+                execution_profile, ..
             }
-            PgoConfig::None => None,
+            | PgoConfig::Instruction {
+                execution_profile, ..
+            } => execution_profile.get(&pc).copied(),
+            PgoConfig::None { .. } => None,
         }
     }
 }
@@ -165,6 +181,7 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     pgo_program_pc_count: HashMap<u64, u32>,
     config: &PowdrConfig,
+    max_block_instructions: Option<usize>,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApc<A>> {
     // drop any block whose start index cannot be found in pc_idx_count,
@@ -196,13 +213,14 @@ fn create_apcs_with_instruction_pgo<A: Adapter>(
         );
     }
 
-    create_apcs_for_all_blocks::<A>(blocks, config, vm_config)
+    create_apcs_for_all_blocks::<A>(blocks, config, vm_config, max_block_instructions)
 }
 
 fn create_apcs_with_no_pgo<A: Adapter>(
     mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
+    max_block_instructions: Option<usize>,
 ) -> Vec<AdapterApc<A>> {
     // cost = number_of_original_instructions
     blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
@@ -216,7 +234,7 @@ fn create_apcs_with_no_pgo<A: Adapter>(
         );
     }
 
-    create_apcs_for_all_blocks::<A>(blocks, config, vm_config)
+    create_apcs_for_all_blocks::<A>(blocks, config, vm_config, max_block_instructions)
 }
 
 pub fn generate_apcs_with_pgo<A: Adapter>(
@@ -231,26 +249,37 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
     // 3. if PgoConfig::None, cost = number_of_instructions
     let res: Vec<_> = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, _, max_block_instructions) => {
-            create_apcs_with_cell_pgo::<A>(
-                blocks,
-                pgo_program_idx_count,
-                config,
-                max_total_apc_columns,
-                max_block_instructions,
-                vm_config,
-            )
-            .into_iter()
-            .map(|(apc, apc_stats)| (apc, Some(apc_stats)))
-            .collect()
-        }
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo::<A>(blocks, pgo_program_idx_count, config, vm_config)
-                .into_iter()
-                .map(|apc| (apc, None))
-                .collect()
-        }
-        PgoConfig::None => create_apcs_with_no_pgo::<A>(blocks, config, vm_config)
+        PgoConfig::Cell {
+            execution_profile,
+            max_columns: _,
+            max_block_instructions,
+        } => create_apcs_with_cell_pgo::<A>(
+            blocks,
+            execution_profile,
+            config,
+            max_total_apc_columns,
+            max_block_instructions,
+            vm_config,
+        )
+        .into_iter()
+        .map(|(apc, apc_stats)| (apc, Some(apc_stats)))
+        .collect(),
+        PgoConfig::Instruction {
+            execution_profile,
+            max_block_instructions,
+        } => create_apcs_with_instruction_pgo::<A>(
+            blocks,
+            execution_profile,
+            config,
+            max_block_instructions,
+            vm_config,
+        )
+        .into_iter()
+        .map(|apc| (apc, None))
+        .collect(),
+        PgoConfig::None {
+            max_block_instructions,
+        } => create_apcs_with_no_pgo::<A>(blocks, config, vm_config, max_block_instructions)
             .into_iter()
             .map(|apc| (apc, None))
             .collect(),
@@ -264,12 +293,17 @@ pub fn generate_apcs_with_pgo<A: Adapter>(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<A: Adapter>(
-    blocks: Vec<BasicBlock<A::Instruction>>,
+    mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
+    max_block_instructions: Option<usize>,
 ) -> Vec<AdapterApc<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
+
+    if let Some(max_block_instructions) = max_block_instructions {
+        blocks.retain(|b| b.statements.len() <= max_block_instructions);
+    }
 
     blocks
         .into_par_iter()

@@ -285,7 +285,11 @@ fn pgo_config(
                 cli_max_columns.is_none(),
                 "cli --pgo can't parse Cell(Option<usize>), input must be wrong"
             );
-            PgoConfig::Cell(pc_idx_count, max_columns, max_block_instructions)
+            PgoConfig::Cell {
+                execution_profile: pc_idx_count,
+                max_columns,
+                max_block_instructions,
+            }
         }
         PgoType::Instruction => {
             let pc_idx_count = powdr_openvm::execution_profile_from_guest(
@@ -293,9 +297,12 @@ fn pgo_config(
                 guest_opts.clone(),
                 stdin_from(input),
             );
-            PgoConfig::Instruction(pc_idx_count)
+            PgoConfig::Instruction {
+                execution_profile: pc_idx_count,
+                max_block_instructions,
+            }
         }
-        PgoType::None => PgoConfig::None,
+        PgoType::None => PgoConfig::default(),
     }
 }
 
