@@ -222,7 +222,6 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
                 .into_iter()
                 .chain(bytes)
                 .map(|b| F::from_canonical_u8(b))
-                .into_iter()
                 .collect();
         }
 
