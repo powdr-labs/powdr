@@ -154,7 +154,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
 
 /// Pre-defined non-quadratic residue for k256.
 /// The same value should be used by the guest to check the non-square case.
-const NON_QUADRATIC_RESIDUE: field10x26_k256::FieldElement10x26 =
+const K256_NON_QUADRATIC_RESIDUE: field10x26_k256::FieldElement10x26 =
     field10x26_k256::FieldElement10x26([3, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
 /// Takes as input a pointer to the inner representation of a k256 coordinate field element (in 32-bit architectures).
@@ -212,7 +212,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
         } else {
             // Number is not square.
             // Find the square root of the number times the predefined non-quadratic residue
-            let res = (elem.mul(&NON_QUADRATIC_RESIDUE)).sqrt().unwrap();
+            let res = (elem.mul(&K256_NON_QUADRATIC_RESIDUE)).sqrt().unwrap();
             let bytes: [u8; FIELD10X26_BYTES] = unsafe {
                 // safe to transmute into u8 array
                 std::mem::transmute(res.0)
