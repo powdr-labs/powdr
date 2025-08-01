@@ -41,7 +41,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use strum::{Display, EnumString};
 
 pub use crate::customize_exe::Prog;
 use tracing::Level;
@@ -101,24 +100,6 @@ pub mod instruction_formatter;
 pub mod memory_bus_interaction;
 
 mod plonk;
-
-#[derive(Copy, Clone, Debug, EnumString, Display)]
-#[strum(serialize_all = "lowercase")]
-pub enum PgoType {
-    /// cost = cells saved per apc * times executed
-    /// max total columns
-    Cell(Option<usize>),
-    /// cost = instruction per apc * times executed
-    Instruction,
-    /// cost = instruction per apc
-    None,
-}
-
-impl Default for PgoType {
-    fn default() -> Self {
-        PgoType::Cell(None)
-    }
-}
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]

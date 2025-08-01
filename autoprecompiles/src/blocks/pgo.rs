@@ -7,6 +7,7 @@ use std::{
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 use crate::{
     adapter::{Adapter, AdapterApc, AdapterVmConfig, ApcStats},
@@ -40,6 +41,32 @@ impl PgoConfig {
             }
             PgoConfig::None => None,
         }
+    }
+}
+
+/// CLI enum for PGO mode
+#[derive(Copy, Clone, Debug, EnumString, Display, Default)]
+#[strum(serialize_all = "lowercase")]
+pub enum PgoType {
+    /// cost = cells saved per apc * times executed
+    #[default]
+    Cell,
+    /// cost = instruction per apc * times executed
+    Instruction,
+    /// cost = instruction per apc
+    None,
+}
+
+pub fn get_pgo_config(
+    pgo: PgoType,
+    max_columns: Option<usize>,
+    max_block_instructions: Option<usize>,
+    execution_profile: HashMap<u64, u32>,
+) -> PgoConfig {
+    match pgo {
+        PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns, max_block_instructions),
+        PgoType::Instruction => PgoConfig::Instruction(execution_profile),
+        PgoType::None => PgoConfig::None,
     }
 }
 
