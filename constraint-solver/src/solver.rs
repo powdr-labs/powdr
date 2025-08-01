@@ -441,9 +441,11 @@ where
                             "Split constraint\n  {c}\ninto\n  {}",
                             components.iter().format(", ")
                         );
+                        self.add_algebraic_constraints(components);
                         // TODO actually store these as constraints
                         // But for most of them, it will not help much
                         // as long as we don't inline here in the solver!
+                        // TODO we should alse prevent an existing constraint to be added to the system.
                     }
                     effects
                 }
