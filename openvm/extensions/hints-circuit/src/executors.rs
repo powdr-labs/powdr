@@ -211,7 +211,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
                 .collect();
         } else {
             // Number is not square.
-            // Find the square of the number times the predefined non-quadratic residue
+            // Find the square root of the number times the predefined non-quadratic residue
             let res = (elem.mul(&NON_QUADRATIC_RESIDUE)).sqrt().unwrap();
             let bytes: [u8; FIELD10X26_BYTES] = unsafe {
                 // safe to transmute into u8 array
