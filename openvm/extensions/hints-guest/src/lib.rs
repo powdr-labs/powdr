@@ -113,6 +113,11 @@ pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
     }
 }
 
+/// Pre-defined non-quadratic residue for k256.
+/// The guest should use this value to prove the non-square case.
+pub const NON_QUADRATIC_RESIDUE: [u32;10] = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+
 // If Square root of a field element in SECP256k1 modulus.
 // If the element is a square, returns true and the square root in the same representation.
 // If the element is non-square, returns false and the square root of the element times a pre-defined non-quadratic residue.
