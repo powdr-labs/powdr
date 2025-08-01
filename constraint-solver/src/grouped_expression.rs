@@ -606,19 +606,19 @@ impl<
             return None;
         }
 
-        // println!(
-        //     "Components: {}",
-        //     components
-        //         .iter()
-        //         .map(|(c, e)| format!("{c} * ({e})"))
-        //         .join(" + ")
-        // );
-
         // Now try to split out each one in turn.
         let mut parts = vec![];
         for index in 0..components.len() {
+            println!(
+                "Components: {} = {constant}",
+                components
+                    .iter()
+                    .map(|(c, e)| format!("{c} * ({e})"))
+                    .join(" + ")
+            );
+
             let (candidate_coeff, candidate) = &components[index];
-            //println!("Trying to split out {candidate_coeff} * ({candidate})");
+            println!("Trying to split out {candidate_coeff} * ({candidate})");
             let rest = components
                 .iter()
                 .enumerate()
@@ -660,8 +660,9 @@ impl<
             // Now the only remaining task is to check that this new constraint has a unique solution
             // that does not require the use of the `%` operator.
 
-            if let Some(solution) =
-                candidate_rc.has_unique_modular_solution(constant, smallest_coeff)
+            if let Some(solution) = candidate_rc
+                // TODO what if the field div here is not a division without remainder in the integers?
+                .has_unique_modular_solution(constant.field_div(candidate_coeff), smallest_coeff)
             {
                 // TODO do we need to modify constant in some way?
 
@@ -669,17 +670,17 @@ impl<
                 // Add `candidate = solution` to the parts
                 parts.push(candidate - &GroupedExpression::from_number(solution));
                 println!("Split out {}", parts.last().unwrap());
+                println!(
+                    "Adjusting constant from {constant} to {}",
+                    constant - solution * *candidate_coeff
+                );
+                constant -= solution * *candidate_coeff;
                 // Substitute `candidate = solution` in our expression
                 // by replacing the component by zero and subtracting
                 // the solution from the constant.
                 components[index] = (Zero::zero(), Zero::zero());
-                println!(
-                    "Adjusting constant from {constant} to {}",
-                    constant - solution
-                );
-                constant -= solution;
                 // TODO correct?
-                constant = constant.field_div(&smallest_coeff);
+                //constant = constant.field_div(&smallest_coeff);
             }
         }
         if parts.is_empty() {
@@ -2059,10 +2060,10 @@ x - 1"
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "-a + x + 6
-b + y - 1
--r + s + 5
-w + 31"
+            "-(a - x - 6)
+-(b - y + 1)
+-(r - s - 5)
+w - 5"
         );
     }
 
@@ -2086,10 +2087,10 @@ w + 31"
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "l0 + -4
-l1 + -3
-l2 + -2
-l3 + -1"
+            "l0 - 4
+l1 - 3
+l2 - 2
+l3 - 1"
         );
     }
 
