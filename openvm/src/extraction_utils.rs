@@ -24,6 +24,7 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
+use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
@@ -63,6 +64,11 @@ impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
 
     fn is_branching(&self, instruction: &Instr<F>) -> bool {
         branch_opcodes_set().contains(&instruction.0.opcode)
+    }
+
+    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> Option<AirStats> {
+        self.get_instruction_metrics(instruction.0.opcode)
+            .map(|metrics| metrics.clone().into())
     }
 }
 

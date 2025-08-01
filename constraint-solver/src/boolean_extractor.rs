@@ -51,14 +51,28 @@ pub fn try_extract_boolean<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
     let offset = &(left.clone() * &factor) - right;
     // We only do the transformation if `offset` is known, because
     // otherwise the constraint stays quadratic.
-    offset.try_to_known()?;
-    // `offset + right = left`
+    let offset = offset.try_to_known()?;
+    // We know that `offset + right = left` and thus
     // `constr = 0` is equivalent to `right * (right + offset) = 0`
+    // which is equivalent to `right + z * offset = 0` for a new
+    // boolean variable `z`.
 
-    let z = var_dispenser();
+    if offset.is_zero() {
+        // In this special case, we do not need a new variable.
+        Some(right.clone())
+    } else if (right.clone() * -T::one().field_div(offset))
+        .try_to_simple_unknown()
+        .is_some()
+    {
+        // In this case we don't gain anything because the new variable `z` will just
+        // be equivalent to the single variable in `right`.
+        return None;
+    } else {
+        let z = var_dispenser();
 
-    // We return `right + z * offset == 0`, which is equivalent to the original constraint.
-    Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
+        // We return `right + z * offset == 0`, which is equivalent to the original constraint.
+        Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
+    }
 }
 
 /// Tries to simplify a sequence of constraints by transforming them into affine
@@ -162,5 +176,27 @@ mod tests {
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(result.to_string(), "a + b - 10 * z + 10");
+    }
+
+    #[test]
+    fn test_extract_boolean_square() {
+        let mut var_dispenser = || "z";
+        let expr = (var("a") + var("b")) * (var("a") + var("b"));
+        let result = try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert_eq!(result.to_string(), "a + b");
+    }
+
+    #[test]
+    fn test_extract_boolean_useless() {
+        let mut var_dispenser = || "z";
+        let expr = (var("a") - constant(1)) * (var("a"));
+        let result = try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_none());
+
+        let expr = (constant(2) * var("a") - constant(2)) * (constant(2) * var("a"));
+        let result = try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_none());
     }
 }
