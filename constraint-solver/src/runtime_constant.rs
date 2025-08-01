@@ -92,7 +92,15 @@ pub trait VarTransformable<V1, V2> {
     type Transformed;
 
     /// Transforms `self` by applying the `var_transform` function to all variables.
-    fn transform_var_type(&self, var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed;
+    fn transform_var_type(&self, var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed {
+        self.try_transform_var_type(&mut |v| Some(var_transform(v)))
+            .unwrap()
+    }
+
+    fn try_transform_var_type(
+        &self,
+        var_transform: &mut impl FnMut(&V1) -> Option<V2>,
+    ) -> Option<Self::Transformed>;
 }
 
 impl<T: FieldElement> RuntimeConstant for T {
@@ -137,5 +145,13 @@ impl<T: FieldElement, V1, V2> VarTransformable<V1, V2> for T {
     fn transform_var_type(&self, _var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed {
         // No variables to transform.
         *self
+    }
+
+    fn try_transform_var_type(
+        &self,
+        _var_transform: &mut impl FnMut(&V1) -> Option<V2>,
+    ) -> Option<Self::Transformed> {
+        // No variables to transform.
+        Some(*self)
     }
 }

@@ -415,28 +415,31 @@ impl<T: RuntimeConstant + VarTransformable<V1, V2>, V1: Ord + Clone, V2: Ord + C
 {
     type Transformed = GroupedExpression<T::Transformed, V2>;
 
-    fn transform_var_type(&self, var_transform: &mut impl FnMut(&V1) -> V2) -> Self::Transformed {
-        GroupedExpression {
+    fn try_transform_var_type(
+        &self,
+        var_transform: &mut impl FnMut(&V1) -> Option<V2>,
+    ) -> Option<Self::Transformed> {
+        Some(GroupedExpression {
             quadratic: self
                 .quadratic
                 .iter()
                 .map(|(l, r)| {
-                    (
-                        l.transform_var_type(var_transform),
-                        r.transform_var_type(var_transform),
-                    )
+                    Some((
+                        l.try_transform_var_type(var_transform)?,
+                        r.try_transform_var_type(var_transform)?,
+                    ))
                 })
-                .collect(),
+                .collect::<Option<Vec<_>>>()?,
             linear: self
                 .linear
                 .iter()
                 .map(|(var, coeff)| {
-                    let new_var = var_transform(var);
-                    (new_var, coeff.transform_var_type(var_transform))
+                    let new_var = var_transform(var)?;
+                    Some((new_var, coeff.try_transform_var_type(var_transform)?))
                 })
-                .collect(),
-            constant: self.constant.transform_var_type(var_transform),
-        }
+                .collect::<Option<BTreeMap<_, _>>>()?,
+            constant: self.constant.try_transform_var_type(var_transform)?,
+        })
     }
 }
 
