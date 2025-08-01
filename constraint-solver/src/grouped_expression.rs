@@ -642,9 +642,8 @@ impl<
                 .map(|(coeff, expr)| expr * &T::from(coeff / smallest_coeff))
                 .sum();
 
-            println!("Trying candidate {candidate} with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
-
             let candidate_rc = candidate.range_constraint(range_constraints);
+            println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
             // TODO do we need to compute the full range constraint of the complete expression?
             // TODO what about `constant`?
             if candidate_rc.is_unconstrained()
@@ -653,6 +652,10 @@ impl<
                     .multiple(smallest_coeff)
                     .is_unconstrained()
             {
+                println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
+                for var in candidate.referenced_unknown_variables() {
+                    println!("    {var} has rc {}", range_constraints.get(var));
+                }
                 continue;
             }
             // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`

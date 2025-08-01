@@ -516,7 +516,7 @@ where
                 self.apply_assignment(variable, &GroupedExpression::from_number(value));
             } else {
                 // The range constraint was updated.
-                log::trace!("({variable}: {range_constraint})");
+                println!("RC update ({variable}: {range_constraint})");
                 self.constraint_system.variable_updated(variable);
             }
             true
