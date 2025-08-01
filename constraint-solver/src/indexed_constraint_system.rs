@@ -28,12 +28,21 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct IndexedConstraintSystem<T, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
     variable_occurrences: HashMap<V, BTreeSet<ConstraintSystemItem>>,
+}
+
+impl<T, V> Default for IndexedConstraintSystem<T, V> {
+    fn default() -> Self {
+        IndexedConstraintSystem {
+            constraint_system: ConstraintSystem::default(),
+            variable_occurrences: HashMap::new(),
+        }
+    }
 }
 
 /// Structure on top of [`IndexedConstraintSystem`] that
@@ -44,10 +53,19 @@ pub struct IndexedConstraintSystem<T, V> {
 /// and are put in a queue. Handling an item can cause an update to a variable,
 /// which causes all constraints referencing that variable to be put back into the
 /// queue.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct IndexedConstraintSystemWithQueue<T, V> {
     constraint_system: IndexedConstraintSystem<T, V>,
     queue: ConstraintSystemQueue,
+}
+
+impl<T, V> Default for IndexedConstraintSystemWithQueue<T, V> {
+    fn default() -> Self {
+        IndexedConstraintSystemWithQueue {
+            constraint_system: IndexedConstraintSystem::default(),
+            queue: ConstraintSystemQueue::default(),
+        }
+    }
 }
 
 /// A reference to an item in the constraint system.
@@ -113,6 +131,10 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
 
     pub fn bus_interactions(&self) -> &[BusInteraction<GroupedExpression<T, V>>] {
         &self.constraint_system.bus_interactions
+    }
+
+    pub fn variables(&self) -> impl Iterator<Item = &V> {
+        self.variable_occurrences.keys()
     }
 
     /// Returns all expressions that appear in the constraint system, i.e. all algebraic
@@ -192,6 +214,7 @@ fn retain<V, Item>(
             })
             .collect();
     });
+    occurrences.retain(|_, occurrences| !occurrences.is_empty());
 }
 
 impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
@@ -453,6 +476,23 @@ where
             .add_algebraic_constraints(constraints.into_iter().enumerate().map(|(i, c)| {
                 self.queue
                     .push(ConstraintSystemItem::AlgebraicConstraint(initial_len + i));
+                c
+            }));
+    }
+
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
+    ) {
+        let initial_len = self
+            .constraint_system
+            .constraint_system
+            .bus_interactions
+            .len();
+        self.constraint_system
+            .add_bus_interactions(bus_interactions.into_iter().enumerate().map(|(i, c)| {
+                self.queue
+                    .push(ConstraintSystemItem::BusInteraction(initial_len + i));
                 c
             }));
     }
