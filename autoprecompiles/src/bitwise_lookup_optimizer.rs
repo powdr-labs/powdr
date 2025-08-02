@@ -11,6 +11,41 @@ use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_number::FieldElement;
 
+use crate::bus_map::{BusMap, BusType};
+use crate::optimizer::CustomOptimizer;
+
+pub struct BitwiseLookupOptimizer;
+
+impl<T, V, C> CustomOptimizer<T, V, C> for BitwiseLookupOptimizer
+where
+    T: FieldElement,
+    V: Hash + Eq + Clone + Ord + Debug + Display,
+    C: PartialEq + Eq + Clone + Display,
+{
+    fn name(&self) -> &'static str {
+        "Bitwise Lookup Optimizer"
+    }
+
+    fn optimize(
+        &self,
+        system: ConstraintSystem<T, V>,
+        solver: &mut impl Solver<T, V>,
+        bus_map: &BusMap<C>,
+        bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
+    ) -> ConstraintSystem<T, V> {
+        if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
+            return optimize_bitwise_lookup(
+                system,
+                bitwise_bus_id,
+                solver,
+                bus_interaction_handler,
+            );
+        } else {
+            return system;
+        }
+    }
+}
+
 /// Optimize interactions with the bitwise lookup bus.
 /// It optimizes bitwise lookups of boolean-constrained inputs and optimizes (re-groups)
 /// the use of byte-range constraints.
