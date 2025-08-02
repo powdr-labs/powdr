@@ -34,8 +34,6 @@ use crate::{
 };
 
 pub trait CustomOptimizer<T: FieldElement, V: Ord + Clone + Eq, C> {
-    fn name(&self) -> &'static str;
-
     fn optimize(
         &self,
         system: ConstraintSystem<T, V>,
@@ -62,30 +60,30 @@ pub fn optimize<A: Adapter>(
     let constraint_system = introduce_bus_interaction_variables(constraint_system);
 
     // For now, hard-code BitwiseLookupOptimizer
-    let custom_optimizers = vec![Box::new(BitwiseLookupOptimizer)];
+    let custom_optimizer = Option::Some(BitwiseLookupOptimizer);
 
     // Run the optimizer while avoiding inlining bus interaction field variables
     let constraint_system =
-        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
+        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>, _>(
             constraint_system,
             bus_interaction_handler.clone(),
             only_inline_degree_one_and_no_bus_field_vars,
             &mut stats_logger,
             bus_map,
-            custom_optimizers.as_slice(),
+            custom_optimizer.clone(),
         )?;
 
     // Now remove the bus interaction field variables and run the optimizer,
     // allowing all inlining below the degree bound.
     let constraint_system = remove_bus_interaction_variables(constraint_system);
     let constraint_system =
-        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
+        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>, _>(
             constraint_system,
             bus_interaction_handler.clone(),
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map,
-            &custom_optimizers,
+            custom_optimizer.clone(),
         )?;
 
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
@@ -124,25 +122,26 @@ fn run_optimization_loop_until_no_change<
     V: Ord + Clone + Eq + Hash + Debug + Display,
     C: PartialEq + Eq + Clone + Display,
     M: MemoryBusInteraction<P, V>,
+    CO: CustomOptimizer<P, V, C> + Clone,
 >(
     mut constraint_system: ConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
-    custom_optimizers: &[Box<dyn CustomOptimizer<P, V, C>>],
+    custom_optimizer: Option<CO>,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, _, _, M>(
+        constraint_system = optimization_loop_iteration::<_, _, _, M, CO>(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
             &should_inline,
             stats_logger,
             bus_map,
-            custom_optimizers,
+            custom_optimizer.clone(),
         )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             return Ok(constraint_system);
@@ -155,6 +154,7 @@ fn optimization_loop_iteration<
     V: Ord + Clone + Eq + Hash + Debug + Display,
     C: PartialEq + Eq + Clone + Display,
     M: MemoryBusInteraction<P, V>,
+    CO: CustomOptimizer<P, V, C>,
 >(
     constraint_system: ConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
@@ -162,7 +162,7 @@ fn optimization_loop_iteration<
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
-    custom_optimizers: &[Box<dyn CustomOptimizer<P, V, C>>],
+    custom_optimizer: Option<CO>,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
@@ -190,17 +190,14 @@ fn optimization_loop_iteration<
         constraint_system
     };
 
-    for optimizer in custom_optimizers {
+    if let Some(optimizer) = custom_optimizer {
         let system = optimizer.optimize(
             constraint_system.clone(),
             solver,
             bus_map,
             bus_interaction_handler.clone(),
         );
-        stats_logger.log(
-            &format!("custom optimization ({})", optimizer.name()),
-            &system,
-        );
+        stats_logger.log("custom optimization", &system);
         constraint_system = system;
     }
 

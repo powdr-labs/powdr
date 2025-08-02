@@ -14,6 +14,7 @@ use powdr_number::FieldElement;
 use crate::bus_map::{BusMap, BusType};
 use crate::optimizer::CustomOptimizer;
 
+#[derive(Clone)]
 pub struct BitwiseLookupOptimizer;
 
 impl<T, V, C> CustomOptimizer<T, V, C> for BitwiseLookupOptimizer
@@ -22,10 +23,6 @@ where
     V: Hash + Eq + Clone + Ord + Debug + Display,
     C: PartialEq + Eq + Clone + Display,
 {
-    fn name(&self) -> &'static str {
-        "Bitwise Lookup Optimizer"
-    }
-
     fn optimize(
         &self,
         system: ConstraintSystem<T, V>,
@@ -34,14 +31,9 @@ where
         bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
     ) -> ConstraintSystem<T, V> {
         if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
-            return optimize_bitwise_lookup(
-                system,
-                bitwise_bus_id,
-                solver,
-                bus_interaction_handler,
-            );
+            optimize_bitwise_lookup(system, bitwise_bus_id, solver, bus_interaction_handler)
         } else {
-            return system;
+            system
         }
     }
 }
