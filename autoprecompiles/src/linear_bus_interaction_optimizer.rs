@@ -56,6 +56,7 @@ impl<
             if let Some(replacement) = replacement {
                 // TODO: Also add range constraints
                 new_constraints.push(replacement.polynomial_constraint);
+                return false;
             }
             true
         });
