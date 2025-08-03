@@ -16,7 +16,7 @@
 
 # powdr SDK Reference Guide
 <!-- markdown-link-check-disable-next-line -->
-- [CLI](./cli/README.md)
+- [CLI](../../cli-openvm/README.md)
 - [asm](./asm/README.md)
     - [Modules](./asm/modules.md)
     - [Declarations](./asm/declarations.md)
