@@ -1,12 +1,11 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
-use num_traits::Zero;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::runtime_constant::VarTransformable;
+use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
@@ -66,28 +65,53 @@ impl<
         system
     }
 
+    /// Some well-known multilinear functions that are tested against the input-output pairs.
+    fn hypotheses(num_inputs: usize) -> Vec<Hypothesis<T, V>> {
+        match num_inputs {
+            1 => vec![
+                // Identity function
+                Box::new(|inputs| inputs[0].clone()),
+                // Logical not (8 bit)
+                Box::new(|inputs| {
+                    GroupedExpression::from_number(T::from_u64(0xff)) - inputs[0].clone()
+                }),
+                // Logical not (16 bit)
+                Box::new(|inputs| {
+                    GroupedExpression::from_number(T::from_u64(0xffff)) - inputs[0].clone()
+                }),
+            ],
+            2 => vec![
+                // Identity on x
+                Box::new(|inputs| inputs[0].clone()),
+                // Identity on y
+                Box::new(|inputs| inputs[1].clone()),
+                // x + y
+                Box::new(|inputs| inputs[0].clone() + inputs[1].clone()),
+                // AND on bits:
+                Box::new(|inputs| inputs[0].clone() * inputs[1].clone()),
+                // OR on bits:
+                Box::new(|inputs| {
+                    inputs[0].clone() + inputs[1].clone() - (inputs[0].clone() * inputs[1].clone())
+                }),
+                // XOR on bits:
+                Box::new(|inputs| {
+                    inputs[0].clone() + inputs[1].clone()
+                        - GroupedExpression::from_number(T::from_u64(2))
+                            * (inputs[0].clone() * inputs[1].clone())
+                }),
+            ],
+            _ => panic!("Unexpected number of inputs: {num_inputs}"),
+        }
+    }
+
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Option<Replacement<T, V>> {
         for input_output_pair in self.possible_input_output_pairs(bus_interaction) {
-            // - Enumerate all possible input assignments
-            // - Sample 2^{num_inputs} inputs, interpolate multilinear polynomial
-            // - Check all inputs: If the input assignment is set, is the output:
-            //   - Unique (i.e., a concrete number)?
-            //   - Equal to the multilinear polynomial?
-            // - If yes, return the replacement:
-            //   - Polynomial constraint: output = polynomial(inputs)
-            //   - Range constraints for all inputs and outputs
-
-            let mut all_possible_assignments =
+            let all_possible_assignments =
                 self.all_possible_assignments(bus_interaction, &input_output_pair);
-            let Ok(hypothesis) = self.interpolate_polynomial(
-                input_output_pair.inputs.len(),
-                &mut all_possible_assignments,
-            ) else {
-                continue;
-            };
+            let mut hypotheses = Self::hypotheses(input_output_pair.inputs.len());
 
             // Test the hypothesis on all remaining assignments.
             let mut has_error = false;
@@ -96,12 +120,15 @@ impl<
                     has_error = true;
                     break;
                 };
-                let mut hypothesis_evaluation = hypothesis.clone();
-                for (i, input) in inputs.iter().enumerate() {
-                    hypothesis_evaluation.substitute_by_known(&i, input);
-                }
-                if hypothesis_evaluation.try_to_number().unwrap() != output {
-                    // The hypothesis does not hold for this assignment.
+                let inputs = inputs
+                    .into_iter()
+                    .map(|value| GroupedExpression::from_number(value))
+                    .collect::<Vec<_>>();
+                hypotheses.retain(|hypothesis| {
+                    let hypothesis_evaluation = hypothesis(inputs.clone());
+                    hypothesis_evaluation.try_to_number().unwrap() == output
+                });
+                if hypotheses.is_empty() {
                     has_error = true;
                     break;
                 }
@@ -112,25 +139,15 @@ impl<
             }
 
             // If we got this far, the hypothesis is correct!
-            #[derive(Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-            enum Var<V> {
-                Input(usize),
-                Var(V),
-            }
-            let mut multilinear_extension =
-                hypothesis.transform_var_type(&mut |input_index| Var::Input(*input_index));
-
-            for (i, input) in input_output_pair.inputs.iter().enumerate() {
-                let input_expression = input
-                    .expression
-                    .transform_var_type(&mut |var| Var::Var(var.clone()));
-                multilinear_extension.substitute_by_unknown(&Var::Input(i), &input_expression);
-            }
-            let multilinear_extension =
-                multilinear_extension.transform_var_type(&mut |var| match var {
-                    Var::Input(..) => unreachable!(),
-                    Var::Var(v) => v.clone(),
-                });
+            let multilinear_extension = hypotheses.into_iter().exactly_one().unwrap_or_else(|_| {
+                panic!("Expected exactly one multilinear extension, but got multiple.")
+            });
+            let symbolic_inputs = input_output_pair
+                .inputs
+                .into_iter()
+                .map(|input| input.expression)
+                .collect::<Vec<_>>();
+            let multilinear_extension = multilinear_extension(symbolic_inputs);
             let polynomial_constraint =
                 input_output_pair.output.expression.clone() - multilinear_extension;
             // TODO: Check degree
@@ -229,40 +246,18 @@ impl<
         input_output_pair: &'b InputOutputPair<T, V>,
     ) -> impl Iterator<Item = Result<(Vec<T>, T), ()>> + 'b {
         let bus_interaction = bus_interaction.to_range_constraints(&self.solver);
-        let num_inputs = input_output_pair.inputs.len();
-        let assignments_per_variable = input_output_pair
+        input_output_pair
             .inputs
             .iter()
+            // Map to (index, range constraint) pairs
             .map(move |input| {
                 (
                     input.index,
                     input.range_constraint.allowed_values().collect_vec(),
                 )
             })
-            .collect_vec();
-
-        let mut rectangle = Vec::new();
-        for i in 0..(1 << num_inputs) {
-            let mut assignment = Vec::new();
-            for (j, (index, variable_assignments)) in assignments_per_variable.iter().enumerate() {
-                let value = if i & (1 << (num_inputs - 1 - j)) != 0 {
-                    variable_assignments[1]
-                } else {
-                    variable_assignments[0]
-                };
-                assignment.push((*index, value));
-            }
-            rectangle.push(assignment);
-        }
-
-        let all_assignments = assignments_per_variable
-            .into_iter()
             .map(|(index, values)| values.into_iter().map(move |value| (index, value)))
-            .multi_cartesian_product();
-
-        rectangle
-            .into_iter()
-            .chain(all_assignments)
+            .multi_cartesian_product()
             .map(move |assignment| {
                 let mut bus_interaction = bus_interaction.clone();
                 for (i, value) in assignment.iter() {
@@ -290,98 +285,9 @@ impl<
                 Ok((inputs, output))
             })
     }
-
-    fn interpolate_polynomial(
-        &self,
-        num_inputs: usize,
-        assignments: &mut impl Iterator<Item = Result<(Vec<T>, T), ()>>,
-    ) -> Result<GroupedExpression<T, usize>, ()> {
-        let assignments = assignments
-            .take(1 << num_inputs)
-            .collect::<Result<Vec<_>, ()>>()?;
-        let mut rectangle_coordinates = vec![BTreeSet::new(); num_inputs];
-        for (inputs, _output) in assignments.iter() {
-            for (i, input) in inputs.iter().enumerate() {
-                rectangle_coordinates[i].insert(*input);
-            }
-        }
-
-        let rectangle_coordinates = rectangle_coordinates
-            .into_iter()
-            .map(|set| set.into_iter().collect_vec())
-            .collect_vec();
-        for (i, assignment) in assignments.iter().enumerate() {
-            for (j, assignment) in assignment.0.iter().enumerate() {
-                let expected_value_index = if i & (1 << (num_inputs - 1 - j)) != 0 {
-                    1
-                } else {
-                    0
-                };
-                let expected_value = rectangle_coordinates[j][expected_value_index];
-                assert_eq!(
-                    *assignment, expected_value,
-                    "Expected value for input {j} at assignment {i} to be {expected_value}, but got {assignment}."
-                );
-            }
-        }
-
-        let var: fn(usize) -> GroupedExpression<T, usize> =
-            |var| GroupedExpression::from_unknown_variable(var);
-        let constant: fn(T) -> GroupedExpression<T, usize> =
-            |value| GroupedExpression::from_number(value);
-
-        let lagrange_polynomials = match num_inputs {
-            1 => {
-                // Simplification of the num_inputs == 2 case.
-                let x = var(0);
-                let x0 = rectangle_coordinates[0][0];
-                let x1 = rectangle_coordinates[0][1];
-
-                let lx0 = (x.clone() - constant(x1)) * constant(T::one() / (x0 - x1));
-                let lx1 = (x.clone() - constant(x0)) * constant(T::one() / (x1 - x0));
-
-                vec![lx0, lx1]
-            }
-            2 => {
-                let x = var(0);
-                let y = var(1);
-                let x0 = rectangle_coordinates[0][0];
-                let x1 = rectangle_coordinates[0][1];
-                let y0 = rectangle_coordinates[1][0];
-                let y1 = rectangle_coordinates[1][1];
-
-                // According to ChatGPT:
-                // let lx0 = |x: F| (x - x1) / (x0 - x1);
-                // let lx1 = |x: F| (x - x0) / (x1 - x0);
-                // let ly0 = |y: F| (y - y1) / (y0 - y1);
-                // let ly1 = |y: F| (y - y0) / (y1 - y0);
-                // p(x,y) = z00*lx0(x)*ly0(y) + z10*lx1(x)*ly0(y)
-                //     + z01*lx0(x)*ly1(y) + z11*lx1(x)*ly1(y);
-
-                let lx0 = (x.clone() - constant(x1)) * constant(T::one() / (x0 - x1));
-                let lx1 = (x.clone() - constant(x0)) * constant(T::one() / (x1 - x0));
-                let ly0 = (y.clone() - constant(y1)) * constant(T::one() / (y0 - y1));
-                let ly1 = (y.clone() - constant(y0)) * constant(T::one() / (y1 - y0));
-
-                vec![
-                    lx0.clone() * ly0.clone(), // (x0,y0)  -> z00
-                    lx0.clone() * ly1.clone(), // (x0,y1)  -> z01
-                    lx1.clone() * ly0,         // (x1,y0)  -> z10
-                    lx1 * ly1,                 // (x1,y1)  -> z11
-                ]
-            }
-            _ => panic!("Unexpected number of inputs: {num_inputs}"),
-        };
-
-        Ok(lagrange_polynomials
-            .into_iter()
-            .zip_eq(assignments)
-            .map(|(lagrange_polynomial, (_inputs, output))| {
-                lagrange_polynomial * GroupedExpression::from_number(output)
-            })
-            .fold(GroupedExpression::zero(), |acc, expr| acc + expr))
-    }
 }
+
+type Hypothesis<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> GroupedExpression<T, V>>;
 
 const MAX_INPUTS: usize = 2;
 const MAX_DOMAIN_SIZE: u64 = 256;
@@ -517,7 +423,7 @@ mod tests {
         };
         assert_eq!(
             replacement.polynomial_constraint.to_string(),
-            "(x - 1) * (y) + (x) * (y - 1) + z"
+            "(2 * x) * (y) - x - y + z"
         );
     }
 
@@ -535,11 +441,9 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        // This looks complicated, but it is correct:
-        // -((16 * x - 16) * (125829120 * y) + (x) * (125829120 * y + 1) - (17 * x) * (125829120 * y) - z)
-        // = -(16 * 125829120 * x * y - 16 * 125829120 * y + 125829120 * x * y + x - 17 * 125829120 * x * y - z)
-        // = -(-16 * 125829120 * y + x - z)
-        // = -(y + x - z)
-        assert_eq!(replacement.polynomial_constraint.to_string(), "-((16 * x - 16) * (125829120 * y) + (x) * (125829120 * y + 1) - (17 * x) * (125829120 * y) - z)");
+        assert_eq!(
+            replacement.polynomial_constraint.to_string(),
+            "-(x + y - z)"
+        );
     }
 }
