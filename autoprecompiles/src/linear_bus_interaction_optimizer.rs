@@ -347,9 +347,9 @@ mod tests {
                     BusInteraction {
                         bus_id: bus_interaction.bus_id,
                         payload: vec![
-                            RangeConstraint::from_value(BabyBearField::from(x)),
-                            RangeConstraint::from_value(BabyBearField::from(y)),
-                            RangeConstraint::from_value(BabyBearField::from(z)),
+                            RangeConstraint::from_value(x),
+                            RangeConstraint::from_value(y),
+                            RangeConstraint::from_value(z),
                         ],
                         multiplicity: bus_interaction.multiplicity,
                     }
