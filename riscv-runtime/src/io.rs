@@ -51,7 +51,10 @@ impl ProverDataReader {
                 slice::from_raw_parts(data_start, data_end.offset_from(data_start) as usize);
 
             // The first word of the prover data section is the total number of words the user wrote.
-            let (&total_words, remaining_data) = prover_data_section.split_first().unwrap();
+            let (&total_words, remaining_data) = match prover_data_section.split_first() {
+                Some(split) => split,
+                None => panic!("Prover data section is empty"),
+            };
 
             let remaining_data = &remaining_data[..total_words as usize];
             Self { remaining_data }
@@ -72,7 +75,10 @@ impl Iterator for ProverDataReader {
             return None;
         }
 
-        let (&len_bytes, remaining) = self.remaining_data.split_first().unwrap();
+        let (&len_bytes, remaining) = match self.remaining_data.split_first() {
+            Some(split) => split,
+            None => return None, // No more data to read
+        };
         let len_words = (len_bytes + 3) / 4;
         let (data, remaining) = remaining.split_at(len_words as usize);
         self.remaining_data = remaining;
