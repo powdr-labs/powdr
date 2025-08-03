@@ -9,7 +9,7 @@ pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
     unsafe {
         ecall!(Syscall::NativeHash, in("a0") data);
     }
-    data[..4].try_into().unwrap()
+    data[..4].try_into().expect("Failed to convert hash output to array")
 }
 
 /// Calls the low level Poseidon PIL machine, where the last 4 elements are the
@@ -21,7 +21,7 @@ pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
     unsafe {
         ecall!(Syscall::PoseidonGL, in("a0") data);
     }
-    data[..4].try_into().unwrap()
+    data[..4].try_into().expect("Failed to convert Poseidon output to array")
 }
 
 /// Perform one Poseidon2 permutation with 8 Goldilocks field elements in-place.
