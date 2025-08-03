@@ -428,9 +428,9 @@ mod tests {
     }
 
     #[test]
-    fn test_try_replace_bus_interaction_distinct_masks() {
+    fn test_try_replace_bus_interaction_disjoint_masks() {
         let mut solver = new_solver(ConstraintSystem::default(), XorBusHandler);
-        // Because the masks are distinct, there is a multilinear extension: z = x + y.
+        // Because the masks are disjoint, there is a multilinear extension: z = x + y.
         solver.add_range_constraint(&"x", RangeConstraint::from_mask(0x0fu32));
         solver.add_range_constraint(&"y", RangeConstraint::from_mask(0xf0u32));
         let bus_interaction = BusInteraction {
