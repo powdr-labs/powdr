@@ -1459,10 +1459,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14672,
-                            log_up: 11976,
+                            log_up: 11928,
                         },
-                        constraints: 4147,
-                        bus_interactions: 11642,
+                        constraints: 4143,
+                        bus_interactions: 11604,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1487,10 +1487,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14652,
-                            log_up: 11956,
+                            log_up: 11908,
                         },
-                        constraints: 4131,
-                        bus_interactions: 11632,
+                        constraints: 4127,
+                        bus_interactions: 11594,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1509,7 +1509,7 @@ mod tests {
                     after: AirWidths {
                         preprocessed: 0,
                         main: 14652,
-                        log_up: 11956,
+                        log_up: 11908,
                     },
                 }
             "#]]),
@@ -1594,10 +1594,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 1810,
-                            log_up: 1796,
+                            log_up: 1596,
                         },
-                        constraints: 366,
-                        bus_interactions: 1791,
+                        constraints: 166,
+                        bus_interactions: 1591,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1622,10 +1622,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 1810,
-                            log_up: 1796,
+                            log_up: 1596,
                         },
-                        constraints: 366,
-                        bus_interactions: 1791,
+                        constraints: 166,
+                        bus_interactions: 1591,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1644,7 +1644,7 @@ mod tests {
                     after: AirWidths {
                         preprocessed: 0,
                         main: 1810,
-                        log_up: 1796,
+                        log_up: 1596,
                     },
                 }
             "#]]),
@@ -1672,11 +1672,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 4743,
-                            log_up: 4052,
+                            main: 4871,
+                            log_up: 3936,
                         },
-                        constraints: 1195,
-                        bus_interactions: 3900,
+                        constraints: 1018,
+                        bus_interactions: 3787,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1689,13 +1689,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 39368,
-                        log_up: 27212,
+                        main: 39811,
+                        log_up: 27540,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 4743,
-                        log_up: 4052,
+                        main: 4871,
+                        log_up: 3936,
                     },
                 }
             "#]]),
