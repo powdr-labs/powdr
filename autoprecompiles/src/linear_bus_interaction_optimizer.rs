@@ -158,7 +158,7 @@ impl<
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
 
-        if unknown_fields.is_empty() || unknown_fields.len() > MAX_INPUTS + 1 {
+        if unknown_fields.len() > 1 || unknown_fields.len() > MAX_INPUTS + 1 {
             std::iter::empty()
         } else {
             unknown_fields
