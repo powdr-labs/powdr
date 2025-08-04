@@ -3,7 +3,7 @@ use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
-pub use blocks::{BasicBlock, PgoConfig};
+pub use blocks::{pgo_config, BasicBlock, PgoConfig, PgoType};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;

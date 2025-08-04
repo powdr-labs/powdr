@@ -18,6 +18,7 @@ itertools = "0.13"
 log = "0.4.27"
 raki = "0.1.4"
 thiserror = "1.0"
+tracing = "0.1.40"
 
 [lints]
 workspace = true
