@@ -301,8 +301,7 @@ fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
     let pgo_program_pc_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_pc_count, _, _)
-        | PgoConfig::Instruction(pgo_program_pc_count) => {
+        PgoConfig::Cell(pgo_program_pc_count, _) | PgoConfig::Instruction(pgo_program_pc_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
             pgo_program_pc_count
