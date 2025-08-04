@@ -480,11 +480,12 @@ where
             // println!("Inlining {var} := {expr}\n   from: {constraint}");
             let var_count = expr.referenced_unknown_variables().count();
             // TODO var count can have duplicates
-            if var_count == 1 && expr.is_affine() && expr.components().2.is_known_zero() {
-                self.have_inlined.insert(var.clone());
-                self.apply_assignment(&var, &expr);
-                progress |= true;
-            } else if var_count <= 4 {
+            // if var_count == 1 && expr.is_affine() && expr.components().2.is_known_zero() {
+            //     self.have_inlined.insert(var.clone());
+            //     self.apply_assignment(&var, &expr);
+            //     progress |= true;
+            // } else
+            if var_count <= 4 {
                 self.have_inlined.insert(var.clone());
                 let constraints_to_add = self
                     .constraint_system

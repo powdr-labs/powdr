@@ -8,7 +8,7 @@ use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_constraint_solver::indexed_constraint_system::{
     apply_substitutions, IndexedConstraintSystem,
 };
-use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
+use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
@@ -54,8 +54,7 @@ pub fn optimize<A: Adapter>(
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
-            |_, _, _| false,
-            //only_inline_degree_one_and_no_bus_field_vars,
+            only_inline_degree_one_and_no_bus_field_vars,
             &mut stats_logger,
             bus_map,
         )?;
