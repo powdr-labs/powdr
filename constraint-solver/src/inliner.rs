@@ -114,6 +114,7 @@ fn find_inlinable_variables<
 ) -> Vec<(V, GroupedExpression<T, V>)> {
     let (_, linear, _) = constraint.components();
     linear
+        .rev()
         .filter_map(|(target_var, _)| {
             let rhs_expr = constraint.try_solve_for(target_var)?;
             assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
