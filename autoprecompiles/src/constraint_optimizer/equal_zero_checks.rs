@@ -26,7 +26,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     let binary_variables = constraint_system
         .indexed_system()
         .unknown_variables()
-        .filter(|v| (&solver).get(v) == binary_range_constraint)
+        .filter(|v| solver.get(v) == binary_range_constraint)
         .cloned()
         .collect::<BTreeSet<_>>();
     for var in binary_variables {
