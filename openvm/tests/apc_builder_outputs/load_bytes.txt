@@ -1,98 +1,39 @@
+Instructions:
+  SLL rd_ptr = 8, rs1_ptr = 8, rs2 = 8, rs2_as = 0
+  OR rd_ptr = 8, rs1_ptr = 8, rs2 = 9, rs2_as = 0
+  SLL rd_ptr = 10, rs1_ptr = 10, rs2 = 16, rs2_as = 0
+  SLL rd_ptr = 11, rs1_ptr = 11, rs2 = 24, rs2_as = 0
+  OR rd_ptr = 10, rs1_ptr = 11, rs2 = 10, rs2_as = 0
+  OR rd_ptr = 8, rs1_ptr = 10, rs2 = 8, rs2_as = 0
+
+APC advantage:
+  - Main columns: 267 -> 22 (12.14x reduction)
+  - Bus interactions: 132 -> 16 (8.25x reduction)
+  - Constraints: 294 -> 1 (294.00x reduction)
+
+// Symbolic machine using 22 unique main columns
+
 // Bus 0 (EXECUTION_BRIDGE):
-mult=-is_valid, args=[from_state__pc_0, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 31]
-mult=is_valid, args=[from_state__pc_0 + 44, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 + 2]
+mult=is_valid * -1, args=[0, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 - 16]
+mult=is_valid * 1, args=[24, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 + 2]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 2, rs1_data__0_10, rs1_data__1_10, rs1_data__2_10, rs1_data__3_10, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0 + 32)]
-mult=is_valid * -1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - (opcode_loadb_flag1_0 + 2 * shift_most_sig_bit_0), shift_most_sig_bit_0 * shifted_read_data__2_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__0_0, shift_most_sig_bit_0 * shifted_read_data__3_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__1_0, shift_most_sig_bit_0 * shifted_read_data__0_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__2_0, shift_most_sig_bit_0 * shifted_read_data__1_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__3_0, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0 + 31)]
-mult=is_valid * 1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - (opcode_loadb_flag1_0 + 2 * shift_most_sig_bit_0), shift_most_sig_bit_0 * shifted_read_data__2_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__0_0, shift_most_sig_bit_0 * shifted_read_data__3_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__1_0, shift_most_sig_bit_0 * shifted_read_data__0_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__2_0, shift_most_sig_bit_0 * shifted_read_data__1_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__3_0, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 30]
-mult=is_valid * -1, args=[1, 8, prev_data__0_0, prev_data__1_0, prev_data__2_0, prev_data__3_0, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (write_base_aux__timestamp_lt_aux__lower_decomp__0_0 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_0 + 30)]
-mult=is_valid * -1, args=[2, mem_ptr_limbs__0_1 + 65536 * mem_ptr_limbs__1_1 - (opcode_loadb_flag1_1 + 2 * shift_most_sig_bit_1), shift_most_sig_bit_1 * shifted_read_data__2_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__0_1, shift_most_sig_bit_1 * shifted_read_data__3_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__1_1, shift_most_sig_bit_1 * shifted_read_data__0_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__2_1, shift_most_sig_bit_1 * shifted_read_data__1_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__3_1, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_1 + 28)]
-mult=is_valid * 1, args=[2, mem_ptr_limbs__0_1 + 65536 * mem_ptr_limbs__1_1 - (opcode_loadb_flag1_1 + 2 * shift_most_sig_bit_1), shift_most_sig_bit_1 * shifted_read_data__2_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__0_1, shift_most_sig_bit_1 * shifted_read_data__3_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__1_1, shift_most_sig_bit_1 * shifted_read_data__0_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__2_1, shift_most_sig_bit_1 * shifted_read_data__1_1 + (1 - shift_most_sig_bit_1) * shifted_read_data__3_1, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 27]
-mult=is_valid * -1, args=[1, 9, prev_data__0_1, prev_data__1_1, prev_data__2_1, prev_data__3_1, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (write_base_aux__timestamp_lt_aux__lower_decomp__0_1 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_1 + 27)]
-mult=is_valid * 1, args=[1, 9, (1 - opcode_loadb_flag1_1) * shifted_read_data__0_1 + opcode_loadb_flag1_1 * shifted_read_data__1_1, 255 * data_most_sig_bit_1, 255 * data_most_sig_bit_1, 255 * data_most_sig_bit_1, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 26]
-mult=is_valid * -1, args=[2, mem_ptr_limbs__0_2 + 65536 * mem_ptr_limbs__1_2 - (opcode_loadb_flag1_2 + 2 * shift_most_sig_bit_2), shift_most_sig_bit_2 * shifted_read_data__2_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__0_2, shift_most_sig_bit_2 * shifted_read_data__3_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__1_2, shift_most_sig_bit_2 * shifted_read_data__0_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__2_2, shift_most_sig_bit_2 * shifted_read_data__1_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__3_2, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_2 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_2 + 25)]
-mult=is_valid * 1, args=[2, mem_ptr_limbs__0_2 + 65536 * mem_ptr_limbs__1_2 - (opcode_loadb_flag1_2 + 2 * shift_most_sig_bit_2), shift_most_sig_bit_2 * shifted_read_data__2_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__0_2, shift_most_sig_bit_2 * shifted_read_data__3_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__1_2, shift_most_sig_bit_2 * shifted_read_data__0_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__2_2, shift_most_sig_bit_2 * shifted_read_data__1_2 + (1 - shift_most_sig_bit_2) * shifted_read_data__3_2, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 24]
-mult=is_valid * -1, args=[1, 10, prev_data__0_2, prev_data__1_2, prev_data__2_2, prev_data__3_2, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (write_base_aux__timestamp_lt_aux__lower_decomp__0_2 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_2 + 24)]
-mult=is_valid * -1, args=[2, mem_ptr_limbs__0_3 + 65536 * mem_ptr_limbs__1_3 - (opcode_loadb_flag1_3 + 2 * shift_most_sig_bit_3), shift_most_sig_bit_3 * shifted_read_data__2_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__0_3, shift_most_sig_bit_3 * shifted_read_data__3_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__1_3, shift_most_sig_bit_3 * shifted_read_data__0_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__2_3, shift_most_sig_bit_3 * shifted_read_data__1_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__3_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (read_data_aux__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_3 + 22)]
-mult=is_valid * 1, args=[2, mem_ptr_limbs__0_3 + 65536 * mem_ptr_limbs__1_3 - (opcode_loadb_flag1_3 + 2 * shift_most_sig_bit_3), shift_most_sig_bit_3 * shifted_read_data__2_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__0_3, shift_most_sig_bit_3 * shifted_read_data__3_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__1_3, shift_most_sig_bit_3 * shifted_read_data__0_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__2_3, shift_most_sig_bit_3 * shifted_read_data__1_3 + (1 - shift_most_sig_bit_3) * shifted_read_data__3_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 21]
-mult=is_valid * -1, args=[1, 11, prev_data__0_3, prev_data__1_3, prev_data__2_3, prev_data__3_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - (write_base_aux__timestamp_lt_aux__lower_decomp__0_3 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_3 + 21)]
-mult=is_valid * 1, args=[1, 11, 0, 0, 0, (1 - opcode_loadb_flag1_3) * shifted_read_data__0_3 + opcode_loadb_flag1_3 * shifted_read_data__1_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 7]
-mult=is_valid * 1, args=[1, 10, 10, 0, 0, (1 - opcode_loadb_flag1_3) * shifted_read_data__0_3 + opcode_loadb_flag1_3 * shifted_read_data__1_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 4]
-mult=is_valid * 1, args=[1, 2, rs1_data__0_10, rs1_data__1_10, rs1_data__2_10, rs1_data__3_10, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 - 1]
-mult=is_valid * 1, args=[1, 8, 10, 0, 0, (1 - opcode_loadb_flag1_3) * shifted_read_data__0_3 + opcode_loadb_flag1_3 * shifted_read_data__1_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10]
-mult=is_valid * -1, args=[2, mem_ptr_limbs__0_10 + 65536 * mem_ptr_limbs__1_10, prev_data__0_10, prev_data__1_10, prev_data__2_10, prev_data__3_10, write_base_aux__prev_timestamp_10]
-mult=is_valid * 1, args=[2, mem_ptr_limbs__0_10 + 65536 * mem_ptr_limbs__1_10, 10, 0, 0, (1 - opcode_loadb_flag1_3) * shifted_read_data__0_3 + opcode_loadb_flag1_3 * shifted_read_data__1_3, write_base_aux__prev_timestamp_10 + write_base_aux__timestamp_lt_aux__lower_decomp__0_10 + 131072 * write_base_aux__timestamp_lt_aux__lower_decomp__1_10 + 1]
-
-// Bus 2 (PC_LOOKUP):
-mult=is_valid, args=[from_state__pc_0, 4351, 0, 0, 0, 0, 0, 0, 0]
+mult=is_valid * -1, args=[1, 8, writes_aux__prev_data__1_5, writes_aux__prev_data__2_5, writes_aux__prev_data__3_5, b__3_0, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 17)]
+mult=is_valid * -1, args=[1, 10, writes_aux__prev_data__2_4, writes_aux__prev_data__3_4, b__2_2, b__3_2, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2 + 11)]
+mult=is_valid * -1, args=[1, 11, b__3_5, b__1_3, b__2_3, b__3_3, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 - (reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_3 + 8)]
+mult=is_valid * 1, args=[1, 11, 0, 0, 0, b__3_5, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 - 4]
+mult=is_valid * 1, args=[1, 10, 10, 0, 0, b__3_5, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 - 1]
+mult=is_valid * 1, args=[1, 8, 10, 0, 0, b__3_5, writes_aux__base__prev_timestamp_5 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_5 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_5 + 1]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[shifted_read_data__0_0 * (1 - opcode_loadb_flag1_0) + shifted_read_data__1_0 * opcode_loadb_flag1_0 + 773725726 * writes_aux__prev_data__3_9, 7]
-mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0, 12]
-mult=is_valid * 1, args=[503316480 * opcode_loadb_flag1_0 + 1006632960 * shift_most_sig_bit_0 - 503316480 * mem_ptr_limbs__0_0, 14]
-mult=is_valid * 1, args=[mem_ptr_limbs__1_0, 13]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_0, 12]
-mult=is_valid * 1, args=[shifted_read_data__0_1 * (1 - opcode_loadb_flag1_1) + shifted_read_data__1_1 * opcode_loadb_flag1_1 - 128 * data_most_sig_bit_1, 7]
-mult=is_valid * 1, args=[503316480 * opcode_loadb_flag1_1 + 1006632960 * shift_most_sig_bit_1 - 503316480 * mem_ptr_limbs__0_1, 14]
-mult=is_valid * 1, args=[mem_ptr_limbs__1_1, 13]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_1, 12]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_1, 12]
-mult=is_valid * 1, args=[shifted_read_data__0_2 * (1 - opcode_loadb_flag1_2) + shifted_read_data__1_2 * opcode_loadb_flag1_2 + 773725726 * writes_aux__prev_data__3_8, 7]
-mult=is_valid * 1, args=[503316480 * opcode_loadb_flag1_2 + 1006632960 * shift_most_sig_bit_2 - 503316480 * mem_ptr_limbs__0_2, 14]
-mult=is_valid * 1, args=[mem_ptr_limbs__1_2, 13]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_2, 12]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_2, 12]
-mult=is_valid * 1, args=[shifted_read_data__0_3 * (1 - opcode_loadb_flag1_3) + shifted_read_data__1_3 * opcode_loadb_flag1_3 + 773725726 * b__3_7, 7]
-mult=is_valid * 1, args=[503316480 * opcode_loadb_flag1_3 + 1006632960 * shift_most_sig_bit_3 - 503316480 * mem_ptr_limbs__0_3, 14]
-mult=is_valid * 1, args=[mem_ptr_limbs__1_3, 13]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_3, 12]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_3, 12]
-mult=is_valid * 1, args=[-(503316480 * mem_ptr_limbs__0_10), 14]
-mult=is_valid * 1, args=[mem_ptr_limbs__1_10, 13]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_10, 17]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__1_10, 12]
-
-// Bus 6 (BITWISE_LOOKUP):
-mult=is_valid * 1, args=[(1 - opcode_loadb_flag1_0) * shifted_read_data__0_0 + opcode_loadb_flag1_0 * shifted_read_data__1_0, writes_aux__prev_data__3_9, 0, 0]
-mult=is_valid * 1, args=[(1 - opcode_loadb_flag1_2) * shifted_read_data__0_2 + opcode_loadb_flag1_2 * shifted_read_data__1_2, writes_aux__prev_data__3_8, 0, 0]
-mult=is_valid * 1, args=[(1 - opcode_loadb_flag1_3) * shifted_read_data__0_3 + opcode_loadb_flag1_3 * shifted_read_data__1_3, 0, 0, 0]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2, 17]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2, 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3, 17]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_3, 12]
+mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_5, 17]
+mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_5, 12]
 
 // Algebraic constraints:
--((1 - opcode_loadb_flag1_0) * opcode_loadb_flag1_0) = 0
-opcode_loadb_flag1_0 * (opcode_loadb_flag1_0 - 1) = 0
-465814468 * writes_aux__prev_data__3_9 * (465814468 * writes_aux__prev_data__3_9 - 1) = 0
-shift_most_sig_bit_0 * (shift_most_sig_bit_0 - 1) = 0
-(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18739200 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18739201)) = 0
-(30720 * mem_ptr_limbs__1_0 + 943718400 * rs1_data__0_10 - (943718400 * mem_ptr_limbs__0_0 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10 + 125829406 * is_valid)) * (30720 * mem_ptr_limbs__1_0 + 943718400 * rs1_data__0_10 - (943718400 * mem_ptr_limbs__0_0 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10 + 125829407)) = 0
--((1 - opcode_loadb_flag1_1) * opcode_loadb_flag1_1) = 0
-opcode_loadb_flag1_1 * (opcode_loadb_flag1_1 - 1) = 0
-data_most_sig_bit_1 * (data_most_sig_bit_1 - 1) = 0
-shift_most_sig_bit_1 * (shift_most_sig_bit_1 - 1) = 0
-(30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18708480 * is_valid)) * (30720 * mem_ptr_limbs__0_1 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18708481)) = 0
-(30720 * mem_ptr_limbs__1_1 + 943718400 * rs1_data__0_10 + 943718115 * is_valid - (943718400 * mem_ptr_limbs__0_1 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10)) * (30720 * mem_ptr_limbs__1_1 + 943718400 * rs1_data__0_10 + 943718114 - (943718400 * mem_ptr_limbs__0_1 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10)) = 0
--((1 - opcode_loadb_flag1_2) * opcode_loadb_flag1_2) = 0
-opcode_loadb_flag1_2 * (opcode_loadb_flag1_2 - 1) = 0
-465814468 * writes_aux__prev_data__3_8 * (465814468 * writes_aux__prev_data__3_8 - 1) = 0
-shift_most_sig_bit_2 * (shift_most_sig_bit_2 - 1) = 0
-(30720 * mem_ptr_limbs__0_2 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18769920 * is_valid)) * (30720 * mem_ptr_limbs__0_2 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18769921)) = 0
-(30720 * mem_ptr_limbs__1_2 + 943718400 * rs1_data__0_10 + 817888994 * is_valid - (943718400 * mem_ptr_limbs__0_2 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10)) * (30720 * mem_ptr_limbs__1_2 + 943718400 * rs1_data__0_10 + 817888993 - (943718400 * mem_ptr_limbs__0_2 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10)) = 0
--((1 - opcode_loadb_flag1_3) * opcode_loadb_flag1_3) = 0
-opcode_loadb_flag1_3 * (opcode_loadb_flag1_3 - 1) = 0
-465814468 * b__3_7 * (465814468 * b__3_7 - 1) = 0
-shift_most_sig_bit_3 * (shift_most_sig_bit_3 - 1) = 0
-(30720 * mem_ptr_limbs__0_3 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18800640 * is_valid)) * (30720 * mem_ptr_limbs__0_3 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 18800641)) = 0
-(30720 * mem_ptr_limbs__1_3 + 943718400 * rs1_data__0_10 - (943718400 * mem_ptr_limbs__0_3 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10 + 251658527 * is_valid)) * (30720 * mem_ptr_limbs__1_3 + 943718400 * rs1_data__0_10 - (943718400 * mem_ptr_limbs__0_3 + 120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10 + 251658528)) = 0
-(30720 * mem_ptr_limbs__0_10 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 10813440 * is_valid)) * (30720 * mem_ptr_limbs__0_10 - (30720 * rs1_data__0_10 + 7864320 * rs1_data__1_10 + 10813441)) = 0
-(943718400 * rs1_data__0_10 + 30720 * mem_ptr_limbs__1_10 + 30556 * is_valid - (120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10 + 943718400 * mem_ptr_limbs__0_10)) * (943718400 * rs1_data__0_10 + 30720 * mem_ptr_limbs__1_10 + 30555 - (120 * rs1_data__1_10 + 30720 * rs1_data__2_10 + 7864320 * rs1_data__3_10 + 943718400 * mem_ptr_limbs__0_10)) = 0
 is_valid * (is_valid - 1) = 0
