@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::try_extract_boolean;
@@ -409,6 +410,8 @@ where
             let mut progress = false;
             // Try solving constraints in isolation.
             progress |= self.solve_in_isolation()?;
+            // Inlines all variables that depend affinely on other variables.
+            progress |= self.inline_affine_constraints()?;
             // Try to find equivalent variables using quadratic constraints.
             progress |= self.try_solve_quadratic_equivalences();
 
@@ -442,6 +445,29 @@ where
             for effect in effects {
                 progress |= self.apply_effect(effect);
             }
+        }
+        Ok(progress)
+    }
+
+    fn inline_affine_constraints(&mut self) -> Result<bool, Error> {
+        let mut progress = false;
+        for i in 0..self
+            .constraint_system
+            .system()
+            .algebraic_constraints()
+            .len()
+        {
+            let constraint = &self.constraint_system.system().algebraic_constraints()[i];
+            if !constraint.is_affine() {
+                continue;
+            }
+            let Some(var) = constraint.referenced_variables().sorted().next().cloned() else {
+                continue;
+            };
+            let Some(expr) = constraint.try_solve_for(&var) else {
+                continue;
+            };
+            progress |= self.apply_assignment(&var, &expr);
         }
         Ok(progress)
     }
