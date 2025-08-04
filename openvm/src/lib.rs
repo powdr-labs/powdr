@@ -1384,7 +1384,7 @@ mod tests {
                             main: 45,
                             log_up: 36,
                         },
-                        constraints: 23,
+                        constraints: 22,
                         bus_interactions: 30,
                     }
                 "#]],
@@ -1412,7 +1412,7 @@ mod tests {
                             main: 45,
                             log_up: 36,
                         },
-                        constraints: 23,
+                        constraints: 22,
                         bus_interactions: 30,
                     }
                 "#]],
@@ -1431,7 +1431,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 48,
+                        main: 45,
                         log_up: 36,
                     },
                 }

@@ -1,3 +1,11 @@
+Instructions:
+  BEQ 8 0 2 1 1
+
+APC advantage:
+  - Main columns: 26 -> 11 (2.36x reduction)
+  - Bus interactions: 11 -> 10 (1.10x reduction)
+  - Constraints: 11 -> 6 (1.83x reduction)
+
 // Symbolic machine using 11 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -17,7 +25,6 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Algebraic constraints:
--((1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0))) = 0
 (1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__0_0 = 0
 (1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__1_0 = 0
 (1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__2_0 = 0

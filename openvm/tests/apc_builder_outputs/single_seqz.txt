@@ -1,3 +1,11 @@
+Instructions:
+  SLTU rd_ptr = 116, rs1_ptr = 116, rs2 = 1, rs2_as = 0
+
+APC advantage:
+  - Main columns: 37 -> 11 (3.36x reduction)
+  - Bus interactions: 18 -> 8 (2.25x reduction)
+  - Constraints: 28 -> 2 (14.00x reduction)
+
 // Symbolic machine using 11 unique main columns
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -15,6 +23,5 @@ mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Algebraic constraints:
--((1 - new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0))) = 0
 (1 - new_var_40 * (b__0_0 + b__1_0 + b__2_0 + b__3_0)) * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
 is_valid * (is_valid - 1) = 0
