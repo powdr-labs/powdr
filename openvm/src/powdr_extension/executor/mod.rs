@@ -9,7 +9,7 @@ use crate::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
     },
-    OpenVmField,
+    ExtendedVmConfig, Instr,
 };
 
 use super::{
@@ -28,12 +28,10 @@ use openvm_circuit::{
     },
 };
 use openvm_native_circuit::CastFExtension;
-use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
 };
 
-use crate::IntoOpenVm;
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
@@ -47,7 +45,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionMachineHandler, SymbolicBusInteraction,
+    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -56,24 +54,25 @@ mod inventory;
 mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
+use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<P: IntoOpenVm> {
-    instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    air_by_opcode_id: OriginalAirs<P>,
+pub struct PowdrExecutor<F: PrimeField32> {
+    instructions: Vec<OriginalInstruction<F>>,
+    air_by_opcode_id: OriginalAirs<F>,
     is_valid_poly_id: u64,
-    inventory: DummyInventory<OpenVmField<P>>,
+    inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
 }
 
-impl<P: IntoOpenVm> PowdrExecutor<P> {
+impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        air_by_opcode_id: OriginalAirs<P>,
+        instructions: Vec<OriginalInstruction<F>>,
+        air_by_opcode_id: OriginalAirs<F>,
         is_valid_column: AlgebraicReference,
-        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
-        base_config: SdkVmConfig,
+        memory: Arc<Mutex<OfflineMemory<F>>>,
+        base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
@@ -98,7 +97,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
 
     pub fn execute(
         &mut self,
-        memory: &mut MemoryController<OpenVmField<P>>,
+        memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // save the next available `RecordId`
@@ -152,17 +151,16 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<P>],
-    ) -> RowMajorMatrix<OpenVmField<P>>
+        bus_interactions: &[SymbolicBusInteraction<F>],
+    ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
-        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain:
-            PolynomialSpace<Val = OpenVmField<P>>,
+        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <OpenVmField<P> as FieldAlgebra>::zero_vec(height * width);
+        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
         let air_name_by_opcode = self
@@ -282,9 +280,9 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .instructions
             .iter()
             .map(|instruction| {
-                let opcode_id = instruction.opcode().as_usize();
                 self.air_by_opcode_id
-                    .get_instruction_air(opcode_id)
+                    // TODO: avoid cloning the instruction
+                    .get_instruction_air(&Instr(instruction.instruction.clone()))
                     .unwrap()
                     .bus_interactions
                     .iter()
@@ -339,7 +337,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
                 }
 
                 // Set the is_valid column to 1
-                row_slice[is_valid_index] = OpenVmField::<P>::ONE;
+                row_slice[is_valid_index] = F::ONE;
 
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
@@ -390,7 +388,7 @@ fn global_index<F>(
 fn create_chip_complex_with_memory<F: PrimeField32>(
     memory: Arc<Mutex<OfflineMemory<F>>>,
     shared_chips: SharedPeripheryChips,
-    base_config: SdkVmConfig,
+    base_config: ExtendedVmConfig,
 ) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
     use openvm_keccak256_circuit::Keccak256;
     use openvm_native_circuit::Native;
@@ -398,7 +396,12 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     use openvm_sha256_circuit::Sha256;
 
     let this = base_config;
-    let mut complex: DummyChipComplex<F> = this.system.config.create_chip_complex()?.transmute();
+    let mut complex: DummyChipComplex<F> = this
+        .sdk_vm_config
+        .system
+        .config
+        .create_chip_complex()?
+        .transmute();
 
     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
     complex.base.memory_controller.offline_memory = memory.clone();
@@ -409,28 +412,28 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     complex = complex.extend(&shared_chips)?;
     // END CHANGE
 
-    if this.rv32i.is_some() {
+    if this.sdk_vm_config.rv32i.is_some() {
         complex = complex.extend(&Rv32I)?;
     }
-    if this.io.is_some() {
+    if this.sdk_vm_config.io.is_some() {
         complex = complex.extend(&Rv32Io)?;
     }
-    if this.keccak.is_some() {
+    if this.sdk_vm_config.keccak.is_some() {
         complex = complex.extend(&Keccak256)?;
     }
-    if this.sha256.is_some() {
+    if this.sdk_vm_config.sha256.is_some() {
         complex = complex.extend(&Sha256)?;
     }
-    if this.native.is_some() {
+    if this.sdk_vm_config.native.is_some() {
         complex = complex.extend(&Native)?;
     }
-    if this.castf.is_some() {
+    if this.sdk_vm_config.castf.is_some() {
         complex = complex.extend(&CastFExtension)?;
     }
 
-    if let Some(rv32m) = this.rv32m {
+    if let Some(rv32m) = this.sdk_vm_config.rv32m {
         let mut rv32m = rv32m;
-        if let Some(ref bigint) = this.bigint {
+        if let Some(ref bigint) = this.sdk_vm_config.bigint {
             rv32m.range_tuple_checker_sizes[0] =
                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
             rv32m.range_tuple_checker_sizes[1] =
@@ -438,9 +441,9 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&rv32m)?;
     }
-    if let Some(bigint) = this.bigint {
+    if let Some(bigint) = this.sdk_vm_config.bigint {
         let mut bigint = bigint;
-        if let Some(ref rv32m) = this.rv32m {
+        if let Some(ref rv32m) = this.sdk_vm_config.rv32m {
             bigint.range_tuple_checker_sizes[0] =
                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
             bigint.range_tuple_checker_sizes[1] =
@@ -448,18 +451,21 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&bigint)?;
     }
-    if let Some(ref modular) = this.modular {
+    if let Some(ref modular) = this.sdk_vm_config.modular {
         complex = complex.extend(modular)?;
     }
-    if let Some(ref fp2) = this.fp2 {
+    if let Some(ref fp2) = this.sdk_vm_config.fp2 {
         complex = complex.extend(fp2)?;
     }
-    if let Some(ref pairing) = this.pairing {
+    if let Some(ref pairing) = this.sdk_vm_config.pairing {
         complex = complex.extend(pairing)?;
     }
-    if let Some(ref ecc) = this.ecc {
+    if let Some(ref ecc) = this.sdk_vm_config.ecc {
         complex = complex.extend(ecc)?;
     }
+
+    // add custom extensions
+    complex = complex.extend(&HintsExtension)?;
 
     Ok(complex)
 }

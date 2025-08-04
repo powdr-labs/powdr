@@ -3,13 +3,18 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_openvm::{CompiledProgram, GuestOptions, PgoConfig, PgoType, PowdrConfig};
+use powdr_autoprecompiles::{pgo_config, PgoType};
+use powdr_openvm::{
+    default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
+};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use std::{io, path::PathBuf};
 use tracing::Level;
 use tracing_forest::ForestLayer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+
+const IMPLEMENTATION: PrecompileImplementation = PrecompileImplementation::SingleRowChip;
 
 #[derive(Parser)]
 #[command(name = "powdr-openvm", author, version, about, long_about = None)]
@@ -129,13 +134,24 @@ fn run_command(command: Commands) {
             input,
             apc_candidates_dir,
         } => {
-            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let execution_profile = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
+            let pgo_config = pgo_config(pgo, max_columns, execution_profile);
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                IMPLEMENTATION,
+                pgo_config,
+            )
+            .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -148,13 +164,24 @@ fn run_command(command: Commands) {
             input,
             apc_candidates_dir,
         } => {
-            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let execution_profile = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
+            let pgo_config = pgo_config(pgo, max_columns, execution_profile);
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                IMPLEMENTATION,
+                pgo_config,
+            )
+            .unwrap();
             powdr_openvm::execute(program, stdin_from(input)).unwrap();
         }
 
@@ -170,13 +197,24 @@ fn run_command(command: Commands) {
             metrics,
             apc_candidates_dir,
         } => {
-            let mut powdr_config = PowdrConfig::new(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            let pgo_config = pgo_config(guest.clone(), guest_opts.clone(), pgo, max_columns, input);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let execution_profile = powdr_openvm::execution_profile_from_guest(
+                &guest,
+                guest_opts.clone(),
+                stdin_from(input),
+            );
+            let pgo_config = pgo_config(pgo, max_columns, execution_profile);
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                IMPLEMENTATION,
+                pgo_config,
+            )
+            .unwrap();
             let prove =
                 || powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap();
             if let Some(metrics_path) = metrics {
@@ -205,38 +243,6 @@ fn stdin_from(input: Option<u32>) -> StdIn {
         s.write(&i)
     }
     s
-}
-
-fn pgo_config(
-    guest: String,
-    guest_opts: GuestOptions,
-    pgo: PgoType,
-    max_columns: Option<usize>,
-    input: Option<u32>,
-) -> PgoConfig {
-    match pgo {
-        PgoType::Cell(cli_max_columns) => {
-            let pc_idx_count = powdr_openvm::execution_profile_from_guest(
-                &guest,
-                guest_opts.clone(),
-                stdin_from(input),
-            );
-            assert!(
-                cli_max_columns.is_none(),
-                "cli --pgo can't parse Cell(Option<usize>), input must be wrong"
-            );
-            PgoConfig::Cell(pc_idx_count, max_columns)
-        }
-        PgoType::Instruction => {
-            let pc_idx_count = powdr_openvm::execution_profile_from_guest(
-                &guest,
-                guest_opts.clone(),
-                stdin_from(input),
-            );
-            PgoConfig::Instruction(pc_idx_count)
-        }
-        PgoType::None => PgoConfig::None,
-    }
 }
 
 fn setup_tracing_with_log_level(level: Level) {

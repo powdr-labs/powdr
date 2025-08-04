@@ -1,50 +1,129 @@
 use itertools::Itertools;
+use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    expression::AlgebraicExpression, powdr, BusMap, BusType, InstructionMachineHandler,
-    PcLookupBusInteraction, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicInstructionStatement, SymbolicMachine,
+    adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BasicBlock,
+    BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
+    SymbolicMachine,
 };
 
-pub fn statements_to_symbolic_machine<T: FieldElement>(
-    statements: &[SymbolicInstructionStatement<T>],
-    instruction_machine_handler: &impl InstructionMachineHandler<T>,
-    bus_map: &BusMap,
-) -> (SymbolicMachine<T>, Vec<Vec<u64>>) {
-    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
+pub fn convert_machine<T, U>(
+    machine: SymbolicMachine<T>,
+    convert: &impl Fn(T) -> U,
+) -> SymbolicMachine<U> {
+    SymbolicMachine {
+        constraints: machine
+            .constraints
+            .into_iter()
+            .map(|c| convert_symbolic_constraint(c, convert))
+            .collect(),
+        bus_interactions: machine
+            .bus_interactions
+            .into_iter()
+            .map(|i| convert_bus_interaction(i, convert))
+            .collect(),
+    }
+}
+
+fn convert_symbolic_constraint<T, U>(
+    constraint: SymbolicConstraint<T>,
+    convert: &impl Fn(T) -> U,
+) -> SymbolicConstraint<U> {
+    SymbolicConstraint {
+        expr: convert_expression(constraint.expr, convert),
+    }
+}
+
+fn convert_bus_interaction<T, U>(
+    constraint: SymbolicBusInteraction<T>,
+    convert: &impl Fn(T) -> U,
+) -> SymbolicBusInteraction<U> {
+    SymbolicBusInteraction {
+        id: constraint.id,
+        mult: convert_expression(constraint.mult, convert),
+        args: constraint
+            .args
+            .into_iter()
+            .map(|e| convert_expression(e, convert))
+            .collect(),
+    }
+}
+
+fn convert_expression<T, U>(
+    expr: AlgebraicExpression<T>,
+    convert: &impl Fn(T) -> U,
+) -> AlgebraicExpression<U> {
+    match expr {
+        AlgebraicExpression::Number(n) => AlgebraicExpression::Number(convert(n)),
+        AlgebraicExpression::Reference(r) => AlgebraicExpression::Reference(r),
+        AlgebraicExpression::BinaryOperation(algebraic_binary_operation) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                op: algebraic_binary_operation.op,
+                left: Box::new(convert_expression(
+                    *algebraic_binary_operation.left,
+                    convert,
+                )),
+                right: Box::new(convert_expression(
+                    *algebraic_binary_operation.right,
+                    convert,
+                )),
+            })
+        }
+        AlgebraicExpression::UnaryOperation(algebraic_unary_operation) => {
+            AlgebraicExpression::UnaryOperation(powdr_expression::AlgebraicUnaryOperation {
+                op: algebraic_unary_operation.op,
+                expr: Box::new(convert_expression(*algebraic_unary_operation.expr, convert)),
+            })
+        }
+    }
+}
+
+pub fn statements_to_symbolic_machine<A: Adapter>(
+    block: &BasicBlock<A::Instruction>,
+    instruction_handler: &A::InstructionHandler,
+    bus_map: &BusMap<A::CustomBusTypes>,
+) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
+    let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
+    let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 3;
 
-    for (i, instr) in statements.iter().enumerate() {
-        let machine = instruction_machine_handler
-            .get_instruction_air(instr.opcode)
+    for (i, instr) in block.statements.iter().enumerate() {
+        let machine = instruction_handler
+            .get_instruction_air(instr)
             .unwrap()
             .clone();
+
+        let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
+            convert_machine(machine, &|x| A::from_field(x));
+
+        // It is sufficient to provide the initial PC, because the PC update should be
+        // deterministic within a basic block. Therefore, all future PCs can be derived
+        // by the solver.
+        let pc = (i == 0).then_some(block.start_pc);
+        let pc_lookup_row = instr
+            .pc_lookup_row(pc)
+            .into_iter()
+            .map(|x| x.map(|f| A::from_field(f)))
+            .collect::<Vec<_>>();
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;
 
-        let pc_lookup: PcLookupBusInteraction<T> = machine
+        let pc_lookup = machine
             .bus_interactions
             .iter()
-            .filter_map(|bus_int| {
-                PcLookupBusInteraction::try_from_symbolic_bus_interaction(
-                    bus_int,
-                    bus_map.get_bus_id(&BusType::PcLookup).unwrap(),
-                )
-                .ok()
-            })
+            .filter(|bus_int| bus_int.id == bus_map.get_bus_id(&BusType::PcLookup).unwrap())
             .exactly_one()
             .expect("Expected single pc lookup");
 
-        let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+        let mut local_constraints: Vec<SymbolicConstraint<_>> = Vec::new();
 
         // To simplify constraint solving, we constrain `is_valid` to be 1, which effectively
         // removes the column. The optimized precompile will then have to be guarded by a new
         // `is_valid` column.
-        let minus_is_valid: AlgebraicExpression<T> = exec_receive(
+        let minus_is_valid: AlgebraicExpression<_> = exec_receive(
             &machine,
             bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap(),
         )
@@ -53,19 +132,15 @@ pub fn statements_to_symbolic_machine<T: FieldElement>(
         let one = AlgebraicExpression::Number(1u64.into());
         local_constraints.push((minus_is_valid.clone() + one).into());
 
-        // Constrain the opcode expression to equal the actual opcode.
-        let opcode_constant = AlgebraicExpression::Number((instr.opcode as u64).into());
-        local_constraints.push((pc_lookup.op.clone() - opcode_constant).into());
-
-        assert_eq!(instr.args.len(), pc_lookup.args.len());
-        instr
-            .args
-            .iter()
-            .zip_eq(&pc_lookup.args)
-            .for_each(|(instr_arg, pc_arg)| {
-                let arg = AlgebraicExpression::Number(*instr_arg);
-                local_constraints.push((arg - pc_arg.clone()).into());
-            });
+        // Constrain the pc lookup to the current instruction.
+        local_constraints.extend(
+            pc_lookup
+                .args
+                .iter()
+                .zip_eq(pc_lookup_row)
+                .filter_map(|(l, r)| r.map(|r| (l, r)))
+                .map(|(l, r)| (l.clone() - r.into()).into()),
+        );
 
         constraints.extend(
             machine

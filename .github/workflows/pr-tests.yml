@@ -137,11 +137,10 @@ jobs:
           toolchain: nightly
           override: true
 
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
       - name: Run cargo-udeps
-        uses: aig787/cargo-udeps-action@v1
-        with:
-          version: "latest"
-          args: "--all-targets"
+        run: cargo udeps --all-targets
 
   test_apc_reth_compilation:
     runs-on: warp-ubuntu-2404-x64-8x
@@ -162,7 +161,7 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev d730a36 cargo-openvm
+        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev acbd2ba cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4

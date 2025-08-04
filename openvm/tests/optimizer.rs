@@ -1,6 +1,7 @@
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
+use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
 };
@@ -22,7 +23,7 @@ fn load_machine_cbor() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [23838, 13167, 22998]
+        [27194, 13167, 27689]
     );
 }
 
@@ -32,10 +33,9 @@ fn test_optimize() {
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
 
-    let machine = optimize(
+    let machine = optimize::<BabyBearOpenVmApcAdapter>(
         machine,
         OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
-        0x10ff,
         DegreeBound {
             identities: 5,
             bus_interactions: 5,
@@ -59,6 +59,6 @@ fn test_optimize() {
             machine.bus_interactions.len(),
             machine.constraints.len()
         ],
-        [2010, 1783, 165]
+        [2009, 1782, 165]
     );
 }

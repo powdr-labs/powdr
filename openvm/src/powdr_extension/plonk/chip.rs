@@ -2,6 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use crate::bus_map::BusMap;
 use crate::extraction_utils::OriginalAirs;
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
@@ -10,7 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{BusMap, IntoOpenVm, OpenVmField};
+use crate::ExtendedVmConfig;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -19,7 +20,6 @@ use openvm_circuit::{
 };
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
-use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_air::BaseAir;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
@@ -36,22 +36,22 @@ use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<P: IntoOpenVm> {
+pub struct PlonkChip<F: PrimeField32> {
     name: String,
     opcode: PowdrOpcode,
-    air: Arc<PlonkAir<OpenVmField<P>>>,
-    executor: PowdrExecutor<P>,
-    machine: SymbolicMachine<P>,
+    air: Arc<PlonkAir<F>>,
+    executor: PowdrExecutor<F>,
+    machine: SymbolicMachine<F>,
     bus_map: BusMap,
 }
 
-impl<P: IntoOpenVm> PlonkChip<P> {
+impl<F: PrimeField32> PlonkChip<F> {
     #[allow(dead_code)]
     pub(crate) fn new(
-        precompile: PowdrPrecompile<P>,
-        original_airs: OriginalAirs<P>,
-        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
-        base_config: SdkVmConfig,
+        precompile: PowdrPrecompile<F>,
+        original_airs: OriginalAirs<F>,
+        memory: Arc<Mutex<OfflineMemory<F>>>,
+        base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
         copy_constraint_bus_id: u16,
@@ -62,6 +62,7 @@ impl<P: IntoOpenVm> PlonkChip<P> {
             name,
             opcode,
             machine,
+            ..
         } = precompile;
         let air = PlonkAir {
             copy_constraint_bus_id,
@@ -88,11 +89,11 @@ impl<P: IntoOpenVm> PlonkChip<P> {
     }
 }
 
-impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PlonkChip<P> {
+impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<OpenVmField<P>>,
-        instruction: &Instruction<OpenVmField<P>>,
+        memory: &mut MemoryController<F>,
+        instruction: &Instruction<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -108,7 +109,7 @@ impl<P: IntoOpenVm> InstructionExecutor<OpenVmField<P>> for PlonkChip<P> {
     }
 }
 
-impl<P: IntoOpenVm> ChipUsageGetter for PlonkChip<P> {
+impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
     fn air_name(&self) -> String {
         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -121,7 +122,7 @@ impl<P: IntoOpenVm> ChipUsageGetter for PlonkChip<P> {
     }
 }
 
-impl<SC: StarkGenericConfig, P: IntoOpenVm<Field = Val<SC>>> Chip<SC> for PlonkChip<P>
+impl<SC: StarkGenericConfig> Chip<SC> for PlonkChip<Val<SC>>
 where
     Val<SC>: PrimeField32,
 {
@@ -172,18 +173,18 @@ where
                     d: gate.d.clone(),
                     e: gate.e.clone(),
 
-                    q_bitwise: gate.q_bitwise.into_openvm_field(),
-                    q_memory: gate.q_memory.into_openvm_field(),
-                    q_execution: gate.q_execution.into_openvm_field(),
-                    q_pc: gate.q_pc.into_openvm_field(),
-                    q_range_tuple: gate.q_range_tuple.into_openvm_field(),
-                    q_range_check: gate.q_range_check.into_openvm_field(),
+                    q_bitwise: gate.q_bitwise,
+                    q_memory: gate.q_memory,
+                    q_execution: gate.q_execution,
+                    q_pc: gate.q_pc,
+                    q_range_tuple: gate.q_range_tuple,
+                    q_range_check: gate.q_range_check,
 
-                    q_l: gate.q_l.into_openvm_field(),
-                    q_r: gate.q_r.into_openvm_field(),
-                    q_o: gate.q_o.into_openvm_field(),
-                    q_mul: gate.q_mul.into_openvm_field(),
-                    q_const: gate.q_const.into_openvm_field(),
+                    q_l: gate.q_l,
+                    q_r: gate.q_r,
+                    q_o: gate.q_o,
+                    q_mul: gate.q_mul,
+                    q_const: gate.q_const,
                 };
 
                 // TODO: These should be pre-processed columns (for soundness and efficiency).
@@ -221,12 +222,7 @@ where
             }
         }
 
-        generate_permutation_columns::<Val<SC>, P>(
-            &mut values,
-            &plonk_circuit,
-            number_of_calls,
-            width,
-        );
+        generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
         AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
     }
