@@ -118,6 +118,11 @@ impl<T: FieldElement> RangeConstraint<T> {
         // If the modulus is larger than half the field, the mapping to integers
         // is not obvious. Also, if the number of values in the range constraint
         // is at least two times the modulus, there are always at least to solutions.
+        if !modulus.is_in_lower_half() {
+            return self
+                .has_unique_modular_solution(offset, -modulus)
+                .map(|x| -x);
+        }
         if !modulus.is_in_lower_half()
             || self.range_width() >= modulus.to_integer() + modulus.to_integer()
         {

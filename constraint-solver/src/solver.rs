@@ -441,7 +441,22 @@ where
                             "Split constraint\n  {c}\ninto\n  {}",
                             components.iter().format(", ")
                         );
+                        for c in &components {
+                            if c.is_affine() {
+                                let var = c.referenced_variables().next().unwrap();
+                                let expr = c.try_solve_for(var).unwrap();
+                                if expr.components().2.is_known_zero() {
+                                    self.apply_assignment(var, &expr);
+                                }
+                            }
+                            // We need to add the components as new constraints
+                            // so that they can be solved in isolation.
+                            self.constraint_system
+                                .add_algebraic_constraints(std::iter::once(c.clone()));
+                        }
                         self.add_algebraic_constraints(components);
+                        progress |= true;
+
                         // TODO actually store these as constraints
                         // But for most of them, it will not help much
                         // as long as we don't inline here in the solver!
