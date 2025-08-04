@@ -25,8 +25,11 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
+use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
+use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -38,7 +41,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use strum::{Display, EnumString};
 
 pub use crate::customize_exe::Prog;
 use tracing::Level;
@@ -99,24 +101,6 @@ pub mod memory_bus_interaction;
 
 mod plonk;
 
-#[derive(Copy, Clone, Debug, EnumString, Display)]
-#[strum(serialize_all = "lowercase")]
-pub enum PgoType {
-    /// cost = cells saved per apc * times executed
-    /// max total columns
-    Cell(Option<usize>),
-    /// cost = instruction per apc * times executed
-    Instruction,
-    /// cost = instruction per apc
-    None,
-}
-
-impl Default for PgoType {
-    fn default() -> Self {
-        PgoType::Cell(None)
-    }
-}
-
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
@@ -145,7 +129,7 @@ impl InitFileGenerator for SpecializedConfig {
 #[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
 pub enum SpecializedExecutor<F: PrimeField32> {
     #[any_enum]
-    SdkExecutor(SdkVmConfigExecutor<F>),
+    SdkExecutor(ExtendedVmConfigExecutor<F>),
     #[any_enum]
     PowdrExecutor(PowdrExecutor<F>),
 }
@@ -153,7 +137,7 @@ pub enum SpecializedExecutor<F: PrimeField32> {
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
 pub enum MyPeriphery<F: PrimeField32> {
     #[any_enum]
-    SdkPeriphery(SdkVmConfigPeriphery<F>),
+    SdkPeriphery(ExtendedVmConfigPeriphery<F>),
     #[any_enum]
     PowdrPeriphery(PowdrPeriphery<F>),
 }
@@ -263,10 +247,17 @@ pub fn compile_openvm(
         Default::default(),
     )?;
 
-    // Transpile the ELF into a VmExe. Note that this happens using the sdk transpiler only, our extension does not use a transpiler.
-    let exe = sdk.transpile(elf, sdk_vm_config.transpiler())?;
+    // Transpile the ELF into a VmExe.
+    let mut transpiler = sdk_vm_config.transpiler();
 
-    Ok(OriginalCompiledProgram { exe, sdk_vm_config })
+    // Add our custom transpiler extensions
+    transpiler = transpiler.with_extension(HintsTranspilerExtension {});
+
+    let exe = sdk.transpile(elf, transpiler)?;
+
+    let vm_config = ExtendedVmConfig { sdk_vm_config };
+
+    Ok(OriginalCompiledProgram { exe, vm_config })
 }
 
 /// Determines how the precompile (a circuit with algebraic gates and bus interactions)
@@ -408,7 +399,70 @@ pub struct CompiledProgram {
 #[derive(Clone)]
 pub struct OriginalCompiledProgram {
     pub exe: VmExe<BabyBear>,
+    pub vm_config: ExtendedVmConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// SdkVmConfig plus custom openvm extensions, before autoprecompile transformations.
+// For now, only includes custom hints.
+pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
+}
+
+impl VmConfig<BabyBear> for ExtendedVmConfig {
+    type Executor = ExtendedVmConfigExecutor<BabyBear>;
+    type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
+
+    fn system(&self) -> &SystemConfig {
+        &self.sdk_vm_config.system.config
+    }
+
+    fn system_mut(&mut self) -> &mut SystemConfig {
+        &mut self.sdk_vm_config.system.config
+    }
+
+    fn create_chip_complex(
+        &self,
+    ) -> std::result::Result<
+        VmChipComplex<BabyBear, Self::Executor, Self::Periphery>,
+        VmInventoryError,
+    > {
+        let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
+        complex = complex.extend(&HintsExtension)?;
+        Ok(complex)
+    }
+}
+
+impl InitFileGenerator for ExtendedVmConfig {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.sdk_vm_config.generate_init_file_contents()
+    }
+
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> eyre::Result<()> {
+        self.sdk_vm_config
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
+}
+
+#[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+#[allow(clippy::large_enum_variant)]
+pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
+    #[any_enum]
+    Sdk(SdkVmConfigExecutor<F>),
+    #[any_enum]
+    Hints(HintsExecutor<F>),
+}
+
+#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
+pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
+    #[any_enum]
+    Sdk(SdkVmConfigPeriphery<F>),
+    #[any_enum]
+    Hints(HintsPeriphery<F>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -416,6 +470,16 @@ pub struct AirMetrics {
     pub widths: AirWidths,
     pub constraints: usize,
     pub bus_interactions: usize,
+}
+
+impl From<AirMetrics> for AirStats {
+    fn from(metrics: AirMetrics) -> Self {
+        AirStats {
+            main_columns: metrics.widths.main,
+            constraints: metrics.constraints,
+            bus_interactions: metrics.bus_interactions,
+        }
+    }
 }
 
 impl Add for AirMetrics {
@@ -519,6 +583,7 @@ pub fn prove(
         vm_config
             .sdk_config
             .config_mut()
+            .sdk_vm_config
             .system
             .config
             .segmentation_strategy = Arc::new(
@@ -612,14 +677,14 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, sdk_vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
     // prepare for execute
     let sdk = Sdk::default();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute(exe.clone(), sdk_vm_config.clone(), inputs.clone())
+        sdk.execute(exe.clone(), vm_config.clone(), inputs.clone())
             .unwrap();
     })
 }
@@ -628,6 +693,7 @@ pub fn execution_profile_from_guest(
 mod tests {
     use super::*;
     use expect_test::{expect, Expect};
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     #[allow(clippy::too_many_arguments)]
@@ -737,6 +803,8 @@ mod tests {
     const GUEST_SHA256_APC_PGO: u64 = 10;
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
+
+    const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
     #[test]
     fn guest_prove_simple() {
@@ -1166,6 +1234,23 @@ mod tests {
         );
     }
 
+    #[test]
+    /// check that the hints test guest compiles and proves successfully
+    fn hints_test_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_HINTS_TEST);
+        let config = default_powdr_openvm_config(0, 0);
+
+        prove_simple(
+            GUEST_SHA256,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
+    }
+
     // #[test]
     // #[ignore = "Too much RAM"]
     // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
@@ -1375,7 +1460,7 @@ mod tests {
                             main: 14676,
                             log_up: 11976,
                         },
-                        constraints: 4213,
+                        constraints: 4143,
                         bus_interactions: 11642,
                     }
                 "#]],
@@ -1403,7 +1488,7 @@ mod tests {
                             main: 14656,
                             log_up: 11956,
                         },
-                        constraints: 4195,
+                        constraints: 4127,
                         bus_interactions: 11632,
                     }
                 "#]],
@@ -1589,7 +1674,7 @@ mod tests {
                             main: 4843,
                             log_up: 3952,
                         },
-                        constraints: 969,
+                        constraints: 958,
                         bus_interactions: 3817,
                     }
                 "#]],

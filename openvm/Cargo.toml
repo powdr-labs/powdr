@@ -44,6 +44,9 @@ powdr-riscv-elf.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true
 
+powdr-openvm-hints-transpiler.workspace = true
+powdr-openvm-hints-circuit.workspace = true
+
 eyre = "0.6.12"
 serde = "1.0.217"
 derive_more = { version = "2.0.1", default-features = false, features = [
@@ -65,7 +68,7 @@ toml = "0.8.14"
 rustc-demangle = "0.1.25"
 
 [dev-dependencies]
-test-log = { version = "0.2.17", features = ["trace"] }
+test-log = "0.2.12"
 tempfile = "3.20.0"
 pretty_assertions = "1.4.0"
 openvm-ecc-circuit.workspace = true
@@ -75,6 +78,11 @@ openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
 serde_cbor = "0.11.2"
 expect-test = "1.5.1"
+criterion = { version = "0.4", features = ["html_reports"] }
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
+
+[[bench]]
+name = "optimizer_benchmark"
+harness = false

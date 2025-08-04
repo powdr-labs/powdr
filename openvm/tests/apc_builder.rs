@@ -8,6 +8,7 @@ use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
+use powdr_openvm::ExtendedVmConfig;
 use powdr_openvm::Instr;
 use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND};
 use pretty_assertions::assert_eq;
@@ -23,7 +24,9 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         .io(Default::default())
         .build();
 
-    let original_config = OriginalVmConfig::new(sdk_vm_config);
+    let ext_vm_config = ExtendedVmConfig { sdk_vm_config };
+
+    let original_config = OriginalVmConfig::new(ext_vm_config);
 
     let airs = original_config.airs().unwrap();
     let bus_map = original_config.bus_map();
@@ -97,6 +100,7 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
 mod single_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     // ALU Chip instructions
     #[test]
@@ -313,6 +317,7 @@ mod single_instruction_tests {
 mod complex_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     #[test]
     fn guest_top_block() {
@@ -350,11 +355,28 @@ mod complex_tests {
 
         assert_machine_output(program.to_vec(), "memcpy_block");
     }
+
+    #[test]
+    fn stack_accesses() {
+        // The memory optimizer should realize that [x2 + 24] is accessed twice,
+        // with the same value of x2. Therefore, we can reduce it to just one access.
+        let program = [
+            // Load [x2 + 20] into x8
+            loadw(8, 2, 20, 2, 1, 0),
+            // Load [x2 + 24] into x9
+            loadw(9, 2, 24, 2, 1, 0),
+            // Store [x8] into [x2 + 24]
+            storew(8, 2, 24, 2, 1, 0),
+        ];
+
+        assert_machine_output(program.to_vec(), "stack_accesses");
+    }
 }
 
 mod pseudo_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     // Arithmetic pseudo instructions
     #[test]

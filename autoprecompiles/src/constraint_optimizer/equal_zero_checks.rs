@@ -8,7 +8,7 @@ use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstr
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_constraint_solver::solver::{self, VariableAssignment};
+use powdr_constraint_solver::solver::{self, Solver, VariableAssignment};
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::reachability::reachable_variables_except_blocked;
@@ -18,12 +18,10 @@ use crate::constraint_optimizer::{variables_in_stateful_bus_interactions, IsBusS
 /// and replaces the involved constraints by a more efficient version.
 pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     new_var: &mut impl FnMut() -> V,
 ) -> JournalingConstraintSystem<T, V> {
-    let mut solver = solver::Solver::new(constraint_system.system().clone())
-        .with_bus_interaction_handler(bus_interaction_handler.clone());
-    solver.solve().unwrap();
     let binary_range_constraint = RangeConstraint::from_mask(1);
     let binary_variables = constraint_system
         .indexed_system()
@@ -36,7 +34,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
             try_replace_equal_zero_check(
                 &mut constraint_system,
                 bus_interaction_handler.clone(),
-                &&solver,
+                solver,
                 new_var,
                 var.clone(),
                 value,

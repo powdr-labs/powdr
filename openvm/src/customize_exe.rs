@@ -26,12 +26,15 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{Adapter, AdapterApc, AdapterVmConfig};
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
+use powdr_autoprecompiles::blocks::{
+    collect_basic_blocks, ApcCandidateJsonExport, Instruction, Program,
+};
 use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
+use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
-use powdr_autoprecompiles::{BasicBlock, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
@@ -143,17 +146,14 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 }
 
 pub fn customize(
-    OriginalCompiledProgram {
-        mut exe,
-        sdk_vm_config,
-    }: OriginalCompiledProgram,
+    OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,
     implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
-    let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
+    let original_config = OriginalVmConfig::new(vm_config.clone());
     let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
@@ -224,18 +224,9 @@ pub fn customize(
         vm_config,
     );
 
-    let program = &mut exe.program.instructions_and_debug_infos;
-
-    let noop = OpenVmInstruction {
-        opcode: VmOpcode::from_usize(0xdeadaf),
-        a: BabyBear::ZERO,
-        b: BabyBear::ZERO,
-        c: BabyBear::ZERO,
-        d: BabyBear::ZERO,
-        e: BabyBear::ZERO,
-        f: BabyBear::ZERO,
-        g: BabyBear::ZERO,
-    };
+    let pc_base = exe.program.pc_base;
+    let pc_step = exe.program.step;
+    let program = &mut exe.program;
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -249,47 +240,13 @@ pub fn customize(
                 subs,
             } = apc;
             let opcode = POWDR_OPCODE + i;
-            // Create a new instruction that will be used to replace the original instructions in the block.
-            // Note that this instruction is never actually looked up, because our APCs do not contain any
-            // PC lookup (instead, they hardcode a PC in the execution bridge receive).
-            // Replacing the instruction here has the effect that the prover is forced to use the APC.
-            // We could also skip this to allow the prover to take either the software or APC path.
-            // This does complicate witgen though, because which executor should be run is no longer deterministic.
-            let new_instr = OpenVmInstruction {
-                opcode: VmOpcode::from_usize(opcode),
-                a: BabyBear::ZERO,
-                b: BabyBear::ZERO,
-                c: BabyBear::ZERO,
-                d: BabyBear::ZERO,
-                e: BabyBear::ZERO,
-                f: BabyBear::ZERO,
-                g: BabyBear::ZERO,
-            };
-
-            let start_index = ((block.start_pc - exe.program.pc_base as u64)
-                / exe.program.step as u64)
+            let start_index = ((block.start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
-            let n_acc = block.statements.len();
-            let (acc, new_instrs): (Vec<_>, Vec<_>) = program[start_index..start_index + n_acc]
-                .iter()
-                .enumerate()
-                .map(|(i, x)| {
-                    let instr = x.as_ref().unwrap();
-                    let instr = instr.0.clone();
-                    if i == 0 {
-                        (instr, new_instr.clone())
-                    } else {
-                        (instr, noop.clone())
-                    }
-                })
-                .collect();
 
-            let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
-
-            let len_before = program.len();
-            program.splice(start_index..start_index + n_acc, new_instrs);
-            assert_eq!(program.len(), len_before);
+            // We encode in the program that the prover should execute the apc instruction instead of the original software version.
+            // This is only for witgen: the program in the program chip is left unchanged.
+            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             let is_valid_column = machine
                 .main_columns()
@@ -302,9 +259,11 @@ pub fn customize(
                     class_offset: opcode,
                 },
                 machine,
-                acc.into_iter()
+                block
+                    .statements
+                    .into_iter()
                     .zip_eq(subs)
-                    .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
+                    .map(|(instruction, subs)| OriginalInstruction::new(instruction.0, subs))
                     .collect(),
                 is_valid_column,
                 apc_stats,
@@ -369,6 +328,7 @@ pub struct OpenVmApcCandidate<F, I> {
     apc: Apc<F, I>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
+    stats: EvaluationResult,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -383,7 +343,6 @@ impl OvmApcStats {
 }
 
 impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
-    type JsonExport = OpenVmApcCandidateJsonExport<Instr<BabyBear>>;
     type ApcStats = OvmApcStats;
 
     fn create(
@@ -407,6 +366,12 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             })
             .sum();
 
+        let stats = evaluate_apc(
+            &apc.block.statements,
+            vm_config.instruction_handler,
+            apc.machine(),
+        );
+
         let execution_frequency =
             *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
 
@@ -414,6 +379,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             apc,
             execution_frequency,
             widths: AirWidthsDiff::new(width_before, width_after),
+            stats,
         }
     }
 
@@ -421,13 +387,15 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     fn to_json_export(
         &self,
         apc_candidates_dir_path: &Path,
-    ) -> OpenVmApcCandidateJsonExport<Instr<BabyBear>> {
-        OpenVmApcCandidateJsonExport {
-            start_pc: self.apc.start_pc(),
+    ) -> ApcCandidateJsonExport<Instr<BabyBear>> {
+        ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
             original_block: self.apc.block.clone(),
-            total_width_before: self.widths.before.total(),
-            total_width_after: self.widths.after.total(),
+            stats: self.stats,
+            width_before: self.widths.before.total(),
+            value: self.value(),
+            cost_before: self.widths.before.total() as f64,
+            cost_after: self.widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!("apc_{}.cbor", self.apc.start_pc()))
                 .display()
@@ -438,22 +406,6 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     fn into_apc_and_stats(self) -> (AdapterApc<BabyBearOpenVmApcAdapter<'a>>, Self::ApcStats) {
         (self.apc, OvmApcStats::new(self.widths))
     }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidateJsonExport<I> {
-    // start_pc
-    start_pc: u64,
-    // execution_frequency
-    execution_frequency: usize,
-    // original instructions
-    original_block: BasicBlock<I>,
-    // total width before optimisation
-    total_width_before: usize,
-    // total width after optimisation
-    total_width_after: usize,
-    // path to the apc candidate file
-    apc_candidate_file: String,
 }
 
 impl<P, I> OpenVmApcCandidate<P, I> {
