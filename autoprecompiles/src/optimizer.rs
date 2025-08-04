@@ -401,6 +401,7 @@ fn introduce_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
 fn remove_bus_interaction_variables<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     constraint_system: ConstraintSystem<T, Variable<V>>,
 ) -> ConstraintSystem<T, V> {
+    println!("Removing bus interaction variables from constraint system\n{constraint_system}");
     let bus_interaction_var_definitions = constraint_system
         .algebraic_constraints
         .iter()

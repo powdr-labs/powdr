@@ -461,7 +461,7 @@ where
             if !constraint.is_affine() {
                 continue;
             }
-            let Some(var) = constraint.referenced_variables().sorted().next().cloned() else {
+            let Some(var) = constraint.referenced_variables().sorted().last().cloned() else {
                 continue;
             };
             let Some(expr) = constraint.try_solve_for(&var) else {
