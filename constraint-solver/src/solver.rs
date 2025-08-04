@@ -14,6 +14,9 @@ use crate::runtime_constant::{
 use crate::utils::possible_concrete_values;
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
+
+use itertools::Itertools;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
