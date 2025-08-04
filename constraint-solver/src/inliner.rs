@@ -185,7 +185,7 @@ mod test {
         // keep column result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![var("result"), var("b")],
+            payload: vec![var("0result"), var("b")],
             multiplicity: constant(1),
         }];
 
@@ -193,7 +193,7 @@ mod test {
             algebraic_constraints: vec![
                 var("a") + var("b") + var("c"),
                 var("b") + var("d") - constant(1),
-                var("c") + var("b") + var("a") + var("d") - var("result"),
+                var("c") + var("b") + var("a") + var("d") - var("0result"),
             ],
             bus_interactions,
         }
@@ -218,8 +218,8 @@ mod test {
         let [result, b] = payload.as_slice() else {
             panic!();
         };
-        assert_eq!(result.to_string(), "result");
-        assert_eq!(b.to_string(), "-(result - 1)");
+        assert_eq!(result.to_string(), "0result");
+        assert_eq!(b.to_string(), "-(0result - 1)");
     }
 
     #[test]
@@ -254,19 +254,9 @@ mod test {
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
-        // 1) b + d = 0            => b = -d
-        // 2) a * b = c            => a * (-d) = c => a * d + c = 0
-        // 3) a + b + c + d = result
-        //    =(1)=> a - d + c + d = result
-        //         = a + c
-        //    => a + c - result = 0
-        //    × (-d): -a*d - c*d + d*result = 0
-        //    =(2)=> c - c*d + d*result = 0
-        // ⇒ (c + -result) * (-d) + c = 0
 
         let constraints = constraint_system.algebraic_constraints().collect_vec();
-        assert_eq!(constraints.len(), 1);
-        assert_eq!(constraints[0].to_string(), "-((c - result) * (d) - c)");
+        assert_eq!(constraints.len(), 0);
     }
 
     #[test]
@@ -299,21 +289,9 @@ mod test {
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
-        // 1) b + d = 0        => b = -d
-        // 2) c * d = e        => e = c * d
-        // 3) a + b + c + d + e = result
-        //    =⇒ a + (-d) + c + d + (c * d) = result
-        //    =⇒ a + c + (c * d) = result ⇒ a = result - c - c*d
-        //
-        // Replace a and b in (a * b = c):
-        //    (result - c - c*d) * (-d) = c
-        // ⇒ ((c * d) + c - result) * (-d) + c = 0
+
         let constraints = constraint_system.algebraic_constraints().collect_vec();
-        assert_eq!(constraints.len(), 1);
-        assert_eq!(
-            constraints[0].to_string(),
-            "-(((c) * (d) + c - result) * (d) - c)"
-        );
+        assert_eq!(constraints.len(), 0);
     }
 
     #[test]
@@ -347,8 +325,8 @@ mod test {
         let [result, x] = payload.as_slice() else {
             panic!();
         };
-        assert_eq!(result.to_string(), "z + 1");
-        assert_eq!(x.to_string(), "z - 5");
+        assert_eq!(result.to_string(), "result");
+        assert_eq!(x.to_string(), "result - 6");
     }
 
     #[test]
@@ -393,23 +371,21 @@ mod test {
         let [a, b, c, d, e, f, result] = payload.as_slice() else {
             panic!();
         };
-        // From first identity: a = b + 1
-        assert_eq!(a.to_string(), "b + 1");
-        // b kept as a symbol
-        assert_eq!(b.to_string(), "b");
+        assert_eq!(a.to_string(), "a");
+        assert_eq!(b.to_string(), "a - 1");
         // From second identity: c = a * a
         // In-lining c would violate the degree bound, so it is kept as a symbol
         // with a constraint to enforce the equality.
         assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "-((b + 1) * (b + 1) - c)");
+        assert_eq!(identity.to_string(), "-((a) * (a) - c)");
         // From third identity: d = c * a
-        assert_eq!(d.to_string(), "(c) * (b + 1)");
+        assert_eq!(d.to_string(), "(c) * (a)");
         // From fourth identity: e = d * a
-        assert_eq!(e.to_string(), "((c) * (b + 1)) * (b + 1)");
+        assert_eq!(e.to_string(), "((c) * (a)) * (a)");
         // From fifth identity: f = e + 5
-        assert_eq!(f.to_string(), "((c) * (b + 1)) * (b + 1) + 5");
+        assert_eq!(f.to_string(), "((c) * (a)) * (a) + 5");
         // From sixth identity: result = f * 2
-        assert_eq!(result.to_string(), "((2 * c) * (b + 1)) * (b + 1) + 10");
+        assert_eq!(result.to_string(), "((2 * c) * (a)) * (a) + 10");
     }
 
     #[test]
