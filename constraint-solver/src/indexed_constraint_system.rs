@@ -272,7 +272,7 @@ impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, 
         // TODO maybe use a better index here?
         let vars = constraint.referenced_unknown_variables();
         let candidates = vars
-            .map(|v| self.variable_occurrences.get(&v).unwrap())
+            .map(|v| self.variable_occurrences.get(v).unwrap())
             .fold(None, |acc: Option<BTreeSet<_>>, occurrences| {
                 if let Some(acc) = acc {
                     Some(acc.intersection(occurrences).cloned().collect())

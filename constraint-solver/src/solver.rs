@@ -452,10 +452,10 @@ where
     }
 
     fn inline_affine_constraints(&mut self) -> Result<bool, Error> {
-        println!(
-            "Inlining affine constraints on system:\n{}",
-            self.constraint_system
-        );
+        // println!(
+        //     "Inlining affine constraints on system:\n{}",
+        //     self.constraint_system
+        // );
         let mut progress = false;
         for i in 0..self
             .constraint_system
@@ -476,42 +476,42 @@ where
             if self.have_inlined.contains(&var) {
                 continue;
             }
-            self.have_inlined.insert(var.clone());
 
-            println!("Inlining {var} := {expr}\n   from: {constraint}");
-            if expr.referenced_unknown_variables().count() == 1
-                && expr.is_affine()
-                && expr.components().2.is_known_zero()
-            {
+            // println!("Inlining {var} := {expr}\n   from: {constraint}");
+            let var_count = expr.referenced_unknown_variables().count();
+            // TODO var count can have duplicates
+            if var_count == 1 && expr.is_affine() && expr.components().2.is_known_zero() {
+                self.have_inlined.insert(var.clone());
                 self.apply_assignment(&var, &expr);
                 progress |= true;
-            } else {
-                // let constraints_to_add = self
-                //     .constraint_system
-                //     .system()
-                //     .constraints_referencing_variables(std::iter::once(var.clone()))
-                //     .filter_map(|constr_ref| match constr_ref {
-                //         ConstraintRef::AlgebraicConstraint(c) => Some(c.clone()),
-                //         ConstraintRef::BusInteraction(_) => None,
-                //     })
-                //     .map(|mut constr| {
-                //         constr.substitute_by_unknown(&var, &expr);
-                //         constr
-                //     })
-                //     .filter(|constr| {
-                //         // We only add the constraint if it does not lead to a contradiction.
-                //         !self
-                //             .constraint_system
-                //             .system()
-                //             .has_algebraic_constraints(&constr)
-                //     })
-                //     .collect_vec();
+            } else if var_count <= 4 {
+                self.have_inlined.insert(var.clone());
+                let constraints_to_add = self
+                    .constraint_system
+                    .system()
+                    .constraints_referencing_variables(std::iter::once(var.clone()))
+                    .filter_map(|constr_ref| match constr_ref {
+                        ConstraintRef::AlgebraicConstraint(c) => Some(c.clone()),
+                        ConstraintRef::BusInteraction(_) => None,
+                    })
+                    .map(|mut constr| {
+                        constr.substitute_by_unknown(&var, &expr);
+                        constr
+                    })
+                    .filter(|constr| {
+                        // We only add the constraint if it does not lead to a contradiction.
+                        !self
+                            .constraint_system
+                            .system()
+                            .has_algebraic_constraints(&constr)
+                    })
+                    .collect_vec();
 
-                // self.constraint_system
-                //     .add_algebraic_constraints(constraints_to_add);
-                // // progress |= self.apply_assignment(&var, &expr);
-                // //            self.constraint_system.substitute_by_unknown(&var, &expr);
-                // progress |= true;
+                self.constraint_system
+                    .add_algebraic_constraints(constraints_to_add);
+                // progress |= self.apply_assignment(&var, &expr);
+                //            self.constraint_system.substitute_by_unknown(&var, &expr);
+                progress |= true;
             }
         }
         Ok(progress)
