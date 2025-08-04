@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::try_extract_boolean;
@@ -431,9 +432,37 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    c.solve(&self.range_constraints)
+                    let effects = c
+                        .solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
-                        .effects
+                        .effects;
+                    if let Some(components) = c.try_split(&self.range_constraints) {
+                        println!(
+                            "Split constraint\n  {c}\ninto\n  {}",
+                            components.iter().format(", ")
+                        );
+                        for c in &components {
+                            if c.is_affine() {
+                                let var = c.referenced_variables().next().unwrap();
+                                let expr = c.try_solve_for(var).unwrap();
+                                if expr.components().2.is_known_zero() {
+                                    self.apply_assignment(var, &expr);
+                                }
+                            }
+                            // We need to add the components as new constraints
+                            // so that they can be solved in isolation.
+                            self.constraint_system
+                                .add_algebraic_constraints(std::iter::once(c.clone()));
+                        }
+                        self.add_algebraic_constraints(components);
+                        progress |= true;
+
+                        // TODO actually store these as constraints
+                        // But for most of them, it will not help much
+                        // as long as we don't inline here in the solver!
+                        // TODO we should alse prevent an existing constraint to be added to the system.
+                    }
+                    effects
                 }
                 ConstraintRef::BusInteraction(b) => b
                     .solve(&self.bus_interaction_handler, &self.range_constraints)
@@ -504,7 +533,7 @@ where
                 self.apply_assignment(variable, &GroupedExpression::from_number(value));
             } else {
                 // The range constraint was updated.
-                log::trace!("({variable}: {range_constraint})");
+                // println!("RC update ({variable}: {range_constraint})");
                 self.constraint_system.variable_updated(variable);
             }
             true
