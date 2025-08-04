@@ -68,7 +68,7 @@ fn insn_k256_sqrt_field_10x26(bytes: *const u8) {
     );
 }
 
-// Just an example hint that reverses the bytes of a u32 value.
+/// Just an example hint that reverses the bytes of a u32 value.
 pub fn hint_reverse_bytes(val: u32) -> u32 {
     #[cfg(target_os = "zkvm")]
     {
@@ -88,8 +88,8 @@ pub fn hint_reverse_bytes(val: u32) -> u32 {
     }
 }
 
-// Inverse of field element in SECP256k1 modulus (if not zero).
-// The caller is responsible for handling the zero input case, and the returned value is zero in that case.
+/// Inverse of field element in SECP256k1 modulus (if not zero).
+/// The caller is responsible for handling the zero input case, and the returned value is zero in that case.
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
     insn_k256_inverse_field(sec1_bytes.as_ptr() as *const u8);
@@ -100,9 +100,9 @@ pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
     }
 }
 
-// Inverse of field element in SECP256k1 modulus (if not zero).
-// Takes in the raw 32-bit architecture representation of the field element from k256 (`FieldElement10x26`).
-// The caller is responsible for handling the zero input case, and the returned value is undefined in that case.
+/// Inverse of field element in SECP256k1 modulus (if not zero).
+/// Takes in the raw 32-bit architecture representation of the field element from k256 (`FieldElement10x26`).
+/// The caller is responsible for handling the zero input case, and the returned value is undefined in that case.
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
     insn_k256_inverse_field_10x26(elem.as_ptr() as *const u8);
@@ -117,9 +117,8 @@ pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
 /// The guest should use this value to prove the non-square case.
 pub const K256_NON_QUADRATIC_RESIDUE: [u32; 10] = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-// If Square root of a field element in SECP256k1 modulus.
-// If the element is a square, returns true and the square root in the same representation.
-// If the element is non-square, returns false and the square root of the element times a pre-defined non-quadratic residue.
+/// If the input is square, returns true and the square root in the same representation.
+/// If the input is non-square, returns false and the square root of the element times a pre-defined non-quadratic residue.
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_sqrt_field_10x26(elem: [u32; 10]) -> (bool, [u32; 10]) {
     insn_k256_sqrt_field_10x26(elem.as_ptr() as *const u8);
