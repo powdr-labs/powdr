@@ -5,12 +5,14 @@ use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, Instr, SpecializedExecutor, APP_LOG_BLOWUP};
+use crate::{
+    AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr,
+    SpecializedExecutor, APP_LOG_BLOWUP,
+};
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
-use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
@@ -22,6 +24,7 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
+use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
@@ -61,6 +64,11 @@ impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
 
     fn is_branching(&self, instruction: &Instr<F>) -> bool {
         branch_opcodes_set().contains(&instruction.0.opcode)
+    }
+
+    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> Option<AirStats> {
+        self.get_instruction_metrics(instruction.0.opcode)
+            .map(|metrics| metrics.clone().into())
     }
 }
 
@@ -109,8 +117,13 @@ fn to_option<T>(mut v: Vec<T>) -> Option<T> {
 }
 
 /// A lazy chip complex that is initialized on the first access
-type LazyChipComplex =
-    Option<VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>>;
+type LazyChipComplex = Option<
+    VmChipComplex<
+        BabyBear,
+        ExtendedVmConfigExecutor<BabyBear>,
+        ExtendedVmConfigPeriphery<BabyBear>,
+    >,
+>;
 
 /// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
@@ -121,8 +134,11 @@ pub struct ChipComplexGuard<'a> {
 }
 
 impl<'a> Deref for ChipComplexGuard<'a> {
-    type Target =
-        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>;
+    type Target = VmChipComplex<
+        BabyBear,
+        ExtendedVmConfigExecutor<BabyBear>,
+        ExtendedVmConfigPeriphery<BabyBear>,
+    >;
 
     fn deref(&self) -> &Self::Target {
         // Unwrap is safe here because we ensure that the chip complex is initialized
@@ -132,27 +148,27 @@ impl<'a> Deref for ChipComplexGuard<'a> {
     }
 }
 
-/// A wrapper around the `SdkVmConfig` that caches a chip complex.
+/// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OriginalVmConfig {
-    sdk_config: SdkVmConfig,
+    sdk_config: ExtendedVmConfig,
     #[serde(skip)]
     chip_complex: CachedChipComplex,
 }
 
 impl OriginalVmConfig {
-    pub fn new(sdk_config: SdkVmConfig) -> Self {
+    pub fn new(sdk_config: ExtendedVmConfig) -> Self {
         Self {
             sdk_config,
             chip_complex: Default::default(),
         }
     }
 
-    pub fn config(&self) -> &SdkVmConfig {
+    pub fn config(&self) -> &ExtendedVmConfig {
         &self.sdk_config
     }
 
-    pub fn config_mut(&mut self) -> &mut SdkVmConfig {
+    pub fn config_mut(&mut self) -> &mut ExtendedVmConfig {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
         *guard = None; // Invalidate cache
         &mut self.sdk_config
@@ -268,7 +284,11 @@ impl OriginalVmConfig {
     pub fn create_chip_complex(
         &self,
     ) -> Result<
-        VmChipComplex<BabyBear, SdkVmConfigExecutor<BabyBear>, SdkVmConfigPeriphery<BabyBear>>,
+        VmChipComplex<
+            BabyBear,
+            ExtendedVmConfigExecutor<BabyBear>,
+            ExtendedVmConfigPeriphery<BabyBear>,
+        >,
         VmInventoryError,
     > {
         // Clear the cache
@@ -490,7 +510,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::SdkSystemConfig;
+    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig};
 
     #[test]
     fn test_get_bus_map() {
@@ -524,7 +544,7 @@ mod tests {
             supported_curves.push(bls_config.clone());
             supported_pairing_curves.push(PairingCurve::Bls12_381);
         }
-        let vm_config = SdkVmConfig::builder()
+        let sdk_vm_config = SdkVmConfig::builder()
             .system(system_config.into())
             .rv32i(Default::default())
             .rv32m(rv32m)
@@ -538,17 +558,18 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = OriginalVmConfig::new(vm_config).bus_map();
+        let _ = OriginalVmConfig::new(ExtendedVmConfig { sdk_vm_config }).bus_map();
     }
 
     #[test]
     fn test_export_pil() {
         let writer = &mut Vec::new();
-        let base_config = OriginalVmConfig::new(
-            SdkVmConfig::builder()
+        let ext_config = ExtendedVmConfig {
+            sdk_vm_config: SdkVmConfig::builder()
                 .system(SdkSystemConfig::default())
                 .build(),
-        );
+        };
+        let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config = SpecializedConfig::new(
             base_config,
             vec![],

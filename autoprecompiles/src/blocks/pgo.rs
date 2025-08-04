@@ -7,10 +7,12 @@ use std::{
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 use crate::{
     adapter::{Adapter, AdapterApc, AdapterVmConfig, ApcStats},
     blocks::selection::{parallel_fractional_knapsack, KnapsackItem},
+    evaluation::EvaluationResult,
     BasicBlock, PowdrConfig,
 };
 
@@ -41,10 +43,34 @@ impl PgoConfig {
     }
 }
 
+/// CLI enum for PGO mode
+#[derive(Copy, Clone, Debug, EnumString, Display, Default)]
+#[strum(serialize_all = "lowercase")]
+pub enum PgoType {
+    /// cost = cells saved per apc * times executed
+    #[default]
+    Cell,
+    /// cost = instruction per apc * times executed
+    Instruction,
+    /// cost = instruction per apc
+    None,
+}
+
+pub fn pgo_config(
+    pgo: PgoType,
+    max_columns: Option<usize>,
+    execution_profile: HashMap<u64, u32>,
+) -> PgoConfig {
+    match pgo {
+        PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns),
+        PgoType::Instruction => PgoConfig::Instruction(execution_profile),
+        PgoType::None => PgoConfig::None,
+    }
+}
+
 /// Trait for autoprecompile candidates.
 /// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
 pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
-    type JsonExport: Serialize + for<'de> Deserialize<'de> + Send;
     type ApcStats;
 
     /// Try to create an autoprecompile candidate from a block.
@@ -55,13 +81,34 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> Self::JsonExport;
+    fn to_json_export(
+        &self,
+        apc_candidates_dir_path: &Path,
+    ) -> ApcCandidateJsonExport<A::Instruction>;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> (AdapterApc<A>, Self::ApcStats);
 }
 
-// pub trait ApcStats {}
+#[derive(Serialize, Deserialize)]
+pub struct ApcCandidateJsonExport<I> {
+    // execution_frequency
+    pub execution_frequency: usize,
+    // original instructions
+    pub original_block: BasicBlock<I>,
+    // before and after optimization stats
+    pub stats: EvaluationResult,
+    // width before optimisation, used for software version cells in effectiveness plot
+    pub width_before: usize,
+    // value used in ranking of candidates
+    pub value: usize,
+    // cost before optimisation, used for effectiveness calculation
+    pub cost_before: f64,
+    // cost after optimization, used for effectiveness calculation and ranking of candidates
+    pub cost_after: f64,
+    // path to the apc candidate file
+    pub apc_candidate_file: String,
+}
 
 // Note: This function can lead to OOM since it generates the apc for many blocks.
 fn create_apcs_with_cell_pgo<A: Adapter>(
@@ -71,6 +118,10 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
     max_total_apc_columns: Option<usize>,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<(AdapterApc<A>, ApcStats<A>)> {
+    if config.autoprecompiles == 0 {
+        return vec![];
+    }
+
     // drop any block whose start index cannot be found in pc_idx_count,
     // because a basic block might not be executed at all.
     // Also only keep basic blocks with more than one original instruction.
@@ -188,12 +239,15 @@ fn create_apcs_with_no_pgo<A: Adapter>(
 }
 
 pub fn generate_apcs_with_pgo<A: Adapter>(
-    blocks: Vec<BasicBlock<A::Instruction>>,
+    mut blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     max_total_apc_columns: Option<usize>,
     pgo_config: PgoConfig,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<(AdapterApc<A>, Option<ApcStats<A>>)> {
+    // filter out blocks that should be skipped according to the adapter
+    blocks.retain(|block| !A::should_skip_block(block));
+
     // sort basic blocks by:
     // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
     // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions

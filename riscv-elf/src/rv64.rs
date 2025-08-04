@@ -247,7 +247,7 @@ fn scan_for_jump_targets(
 
                         // Only log if it's not a standard return (jalr x0, x1, 0)
                         if !(insn.rd == Some(0) && insn.rs1 == Some(1) && imm == 0) {
-                            eprintln!(
+                            tracing::debug!(
                                 "Note: Dynamic jump at 0x{addr:x}: jalr {rd_str}, {rs1_str}, {imm}",
                             );
                         }

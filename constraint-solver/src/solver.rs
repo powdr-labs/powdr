@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::try_extract_boolean;
@@ -84,10 +83,8 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
     /// Adds a new range constraint for the variable.
     fn add_range_constraint(&mut self, var: &V, constraint: RangeConstraint<T::FieldType>);
 
-    /// Removes all variables except those in `variables_to_keep`.
-    /// The idea is that the outside system is not interested in the variables
-    /// any more. This should remove all constraints that include one of the variables
-    /// and also remove all variables derived from those variables.
+    /// Permits the solver to remove all variables except those in `variables_to_keep`.
+    /// This should only keep the constraints that reference at least one of the variables.
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>);
 
     /// Returns the best known range constraint for the given expression.
@@ -172,12 +169,10 @@ impl BooleanVarDispenser {
         self.next_boolean_id += 1;
         Variable::Boolean(id)
     }
-
-    fn latest_var<V>(&self) -> Option<Variable<V>> {
-        (self.next_boolean_id > 0).then(|| Variable::Boolean(self.next_boolean_id - 1))
-    }
 }
 
+/// An implementation of `Solver` that tries to introduce new boolean variables
+/// for certain quadratic constraints to make them affine.
 struct BooleanExtractedSolver<T, V, S> {
     solver: S,
     boolean_var_dispenser: BooleanVarDispenser,
@@ -244,23 +239,22 @@ where
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
-        let constraints = constraints
-            .into_iter()
-            .flat_map(|constr| {
+        let mut new_boolean_vars = vec![];
+        self.solver
+            .add_algebraic_constraints(constraints.into_iter().flat_map(|constr| {
                 let constr = constr.transform_var_type(&mut |v| v.clone().into());
-                let extracted =
-                    try_extract_boolean(&constr, &mut || self.boolean_var_dispenser.next_var())
-                        .inspect(|_| {
-                            // Make sure to range-constrain the variable
-                            self.solver.add_range_constraint(
-                                &self.boolean_var_dispenser.latest_var().unwrap(),
-                                RangeConstraint::from_mask(1),
-                            );
-                        });
+                let extracted = try_extract_boolean(&constr, &mut || {
+                    let v = self.boolean_var_dispenser.next_var();
+                    new_boolean_vars.push(v.clone());
+                    v
+                });
                 std::iter::once(constr).chain(extracted)
-            })
-            .collect_vec();
-        self.solver.add_algebraic_constraints(constraints);
+            }));
+        // We need to manually add the boolean range constraints for the new variables.
+        for v in new_boolean_vars {
+            self.solver
+                .add_range_constraint(&v, RangeConstraint::from_mask(1));
+        }
     }
 
     fn add_bus_interactions(
@@ -286,6 +280,9 @@ where
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
+        // We do not add boolean variables because we want constraints
+        // to be removed that only reference variables to be removed and
+        // boolean variables derived from them.
         let variables_to_keep = variables_to_keep
             .iter()
             .map(|v| Variable::from(v.clone()))
@@ -402,9 +399,6 @@ where
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
         self.equivalent_expressions_cache.clear();
         assert!(self.assignments_to_return.is_empty());
-        self.range_constraints
-            .range_constraints
-            .retain(|v, _| variables_to_keep.contains(v));
         self.constraint_system.retain_algebraic_constraints(|c| {
             c.referenced_variables()
                 .any(|v| variables_to_keep.contains(v))
@@ -415,6 +409,14 @@ where
                     .referenced_variables()
                     .any(|v| variables_to_keep.contains(v))
             });
+        let remaining_variables = self
+            .constraint_system
+            .system()
+            .variables()
+            .collect::<HashSet<_>>();
+        self.range_constraints
+            .range_constraints
+            .retain(|v, _| remaining_variables.contains(v));
     }
 
     fn range_constraint_for_expression(

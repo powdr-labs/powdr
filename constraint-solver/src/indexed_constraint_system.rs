@@ -133,6 +133,10 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         &self.constraint_system.bus_interactions
     }
 
+    pub fn variables(&self) -> impl Iterator<Item = &V> {
+        self.variable_occurrences.keys()
+    }
+
     /// Returns all expressions that appear in the constraint system, i.e. all algebraic
     /// constraints and all expressions in bus interactions.
     pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
@@ -210,6 +214,7 @@ fn retain<V, Item>(
             })
             .collect();
     });
+    occurrences.retain(|_, occurrences| !occurrences.is_empty());
 }
 
 impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
@@ -359,9 +364,7 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
         });
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
-        .into_group_map()
-        .into_iter()
-        .map(|(variable, occurrences)| (variable, occurrences.into_iter().collect::<BTreeSet<_>>()))
+        .into_grouping_map()
         .collect()
 }
 
