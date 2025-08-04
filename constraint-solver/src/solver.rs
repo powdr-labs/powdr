@@ -650,3 +650,64 @@ impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::constraint_system::DefaultBusInteractionHandler;
+
+    use super::*;
+
+    use powdr_number::GoldilocksField;
+
+    type Var = &'static str;
+    type Qse = GroupedExpression<GoldilocksField, Var>;
+
+    fn var(name: Var) -> Qse {
+        Qse::from_unknown_variable(name)
+    }
+
+    fn constant(value: u64) -> Qse {
+        Qse::from_number(GoldilocksField::from(value))
+    }
+
+    #[test]
+    fn is_known_to_by_nonzero() {
+        let mut solver =
+            SolverImpl::<GoldilocksField, Var, _>::new(DefaultBusInteractionHandler::default());
+        assert!(!solver.are_expressions_known_to_be_different(&constant(0), &constant(0)));
+        assert!(solver.are_expressions_known_to_be_different(&constant(1), &constant(0)));
+        assert!(solver.are_expressions_known_to_be_different(&constant(7), &constant(0)));
+        assert!(solver.are_expressions_known_to_be_different(&-constant(1), &constant(0)));
+
+        assert!(
+            !(solver.are_expressions_known_to_be_different(
+                &(constant(42) - constant(2) * var("a")),
+                &constant(0)
+            ))
+        );
+        assert!(
+            !(solver.are_expressions_known_to_be_different(&(var("a") - var("b")), &constant(0)))
+        );
+
+        solver.add_range_constraint(
+            &"a",
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4)),
+        );
+        solver.add_range_constraint(
+            &"b",
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4)),
+        );
+        assert!(solver.are_expressions_known_to_be_different(&(var("a")), &constant(0)));
+        assert!(solver.are_expressions_known_to_be_different(
+            // If we try all possible assignments of a and b, this expression
+            // can never be zero.
+            &(&(var("a") - constant(2) * var("b"))),
+            &constant(0)
+        ));
+        assert!(!solver.are_expressions_known_to_be_different(
+            // Can be zero for a = 4, b = 3.
+            &(constant(3) * var("a") - constant(4) * var("b")),
+            &constant(0)
+        ));
+    }
+}
