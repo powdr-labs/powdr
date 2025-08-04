@@ -6,7 +6,7 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    blocks::{Candidate, Instruction, Program},
+    blocks::{BasicBlock, Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     Apc, InstructionHandler, VmConfig,
@@ -32,6 +32,10 @@ pub trait Adapter: Sized {
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
+
+    fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
+        false
+    }
 }
 
 pub type ApcStats<A> = <<A as Adapter>::Candidate as Candidate<A>>::ApcStats;
