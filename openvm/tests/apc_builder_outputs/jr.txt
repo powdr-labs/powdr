@@ -7,8 +7,8 @@ APC advantage:
   - Constraints: 9 -> 1 (9.00x reduction)
 
 Symbolic machine using 2 unique main columns:
-  is_valid
   inner__from_state__timestamp_0
+  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, inner__from_state__timestamp_0]

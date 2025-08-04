@@ -11,44 +11,44 @@ APC advantage:
   - Constraints: 111 -> 34 (3.26x reduction)
 
 Symbolic machine using 38 unique main columns:
-  b__0_3
-  diff_marker__3_1
-  diff_val_1
-  diff_marker__2_1
-  diff_marker__1_1
-  diff_marker__0_1
-  is_valid
-  b__0_1
-  c__0_3
-  b__3_2
-  b_msb_f_2
-  diff_marker__3_2
-  diff_val_2
-  diff_marker__2_2
-  b__2_2
-  diff_marker__1_2
-  b__1_2
-  diff_marker__0_2
-  b__0_2
-  cmp_result_4
-  diff_inv_marker__0_4
-  b__0_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0
-  b__1_0
-  b__2_0
-  b__3_0
-  reads_aux__1__base__prev_timestamp_4
-  reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4
-  reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4
   writes_aux__base__timestamp_lt_aux__lower_decomp__0_0
   writes_aux__base__timestamp_lt_aux__lower_decomp__1_0
   writes_aux__prev_data__0_0
   writes_aux__prev_data__1_0
   writes_aux__prev_data__2_0
   writes_aux__prev_data__3_0
+  b__0_0
+  b__1_0
+  b__2_0
+  b__3_0
+  b__0_1
+  diff_marker__0_1
+  diff_marker__1_1
+  diff_marker__2_1
+  diff_marker__3_1
+  diff_val_1
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2
+  b__0_2
+  b__1_2
+  b__2_2
+  b__3_2
+  b_msb_f_2
+  diff_marker__0_2
+  diff_marker__1_2
+  diff_marker__2_2
+  diff_marker__3_2
+  diff_val_2
+  b__0_3
+  c__0_3
+  reads_aux__1__base__prev_timestamp_4
+  reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4
+  reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4
+  cmp_result_4
+  diff_inv_marker__0_4
+  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, reads_aux__1__base__prev_timestamp_4 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4 - 12]
