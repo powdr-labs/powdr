@@ -6,7 +6,25 @@ APC advantage:
   - Bus interactions: 11 -> 10 (1.10x reduction)
   - Constraints: 11 -> 6 (1.83x reduction)
 
-// Symbolic machine using 18 unique main columns
+Symbolic machine using 18 unique main columns:
+  b__0_0
+  a__0_0
+  diff_inv_marker__0_0
+  b__1_0
+  a__1_0
+  diff_inv_marker__1_0
+  b__2_0
+  a__2_0
+  diff_inv_marker__2_0
+  b__3_0
+  a__3_0
+  diff_inv_marker__3_0
+  is_valid
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0
+  reads_aux__1__base__prev_timestamp_0
+  reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
+  reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, reads_aux__1__base__prev_timestamp_0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0]
