@@ -341,7 +341,9 @@ pub fn build<A: Adapter>(
     // let mut machine = machine;
     // machine.constraints.remove(machine.constraints.len() - 1);
     // let _var_subs = smt::get_unique_vars(&machine, &var_names);
-    let redundant_sets = smt::detect_redundant_constraints(&machine);
+    let redundant_sets = smt::detect_redundant_constraints_ff(&machine);
+    // let redundant_sets = smt::detect_redundant_bus_interactions_int(&machine);
+    // let redundant_sets = smt::detect_redundant_constraints_int(&machine);
     println!("redundant sets: {redundant_sets:#?}");
 
     // add guards to constraints that are not satisfied by zeroes
