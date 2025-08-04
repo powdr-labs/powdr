@@ -18,6 +18,7 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 mod exhaustive_search;
+mod linearized;
 mod quadratic_equivalences;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
