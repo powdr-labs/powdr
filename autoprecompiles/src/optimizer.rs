@@ -8,7 +8,7 @@ use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_constraint_solver::indexed_constraint_system::{
     apply_substitutions, IndexedConstraintSystem,
 };
-use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
+use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
@@ -401,6 +401,7 @@ fn introduce_bus_interaction_variables<T: FieldElement, V: Clone + Ord>(
 fn remove_bus_interaction_variables<T: FieldElement, V: Clone + Ord + Hash + Eq + Display>(
     constraint_system: ConstraintSystem<T, Variable<V>>,
 ) -> ConstraintSystem<T, V> {
+    println!("Removing bus interaction variables from constraint system\n{constraint_system}");
     let bus_interaction_var_definitions = constraint_system
         .algebraic_constraints
         .iter()

@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::boolean_extractor::try_extract_boolean;
@@ -299,6 +300,7 @@ struct SolverImpl<T: RuntimeConstant, V, BusInterHandler> {
     /// that do not occur in the constraints any more.
     /// This is cleared with every call to `solve()`.
     assignments_to_return: Vec<VariableAssignment<T, V>>,
+    have_inlined: HashSet<V>,
 }
 
 impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> SolverImpl<T, V, B> {
@@ -307,6 +309,7 @@ impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> SolverImpl<T
             constraint_system: Default::default(),
             range_constraints: Default::default(),
             assignments_to_return: Default::default(),
+            have_inlined: Default::default(),
             bus_interaction_handler,
         }
     }
@@ -409,6 +412,8 @@ where
             let mut progress = false;
             // Try solving constraints in isolation.
             progress |= self.solve_in_isolation()?;
+            // Inlines all variables that depend affinely on other variables.
+            progress |= self.inline_affine_constraints()?;
             // Try to find equivalent variables using quadratic constraints.
             progress |= self.try_solve_quadratic_equivalences();
 
@@ -441,6 +446,73 @@ where
             };
             for effect in effects {
                 progress |= self.apply_effect(effect);
+            }
+        }
+        Ok(progress)
+    }
+
+    fn inline_affine_constraints(&mut self) -> Result<bool, Error> {
+        // println!(
+        //     "Inlining affine constraints on system:\n{}",
+        //     self.constraint_system
+        // );
+        let mut progress = false;
+        for i in 0..self
+            .constraint_system
+            .system()
+            .algebraic_constraints()
+            .len()
+        {
+            let constraint = &self.constraint_system.system().algebraic_constraints()[i];
+            if !constraint.is_affine() {
+                continue;
+            }
+            let Some(var) = constraint.referenced_variables().sorted().last().cloned() else {
+                continue;
+            };
+            let Some(expr) = constraint.try_solve_for(&var) else {
+                continue;
+            };
+            if self.have_inlined.contains(&var) {
+                continue;
+            }
+
+            // println!("Inlining {var} := {expr}\n   from: {constraint}");
+            let var_count = expr.referenced_unknown_variables().count();
+            // TODO var count can have duplicates
+            // if var_count == 1 && expr.is_affine() && expr.components().2.is_known_zero() {
+            //     self.have_inlined.insert(var.clone());
+            //     self.apply_assignment(&var, &expr);
+            //     progress |= true;
+            // } else
+            if var_count <= 4 {
+                self.have_inlined.insert(var.clone());
+                let constraints_to_add = self
+                    .constraint_system
+                    .system()
+                    .constraints_referencing_variables(std::iter::once(var.clone()))
+                    .filter_map(|constr_ref| match constr_ref {
+                        ConstraintRef::AlgebraicConstraint(c) => Some(c.clone()),
+                        ConstraintRef::BusInteraction(_) => None,
+                    })
+                    .map(|mut constr| {
+                        constr.substitute_by_unknown(&var, &expr);
+                        constr
+                    })
+                    .filter(|constr| {
+                        // We only add the constraint if it does not lead to a contradiction.
+                        !self
+                            .constraint_system
+                            .system()
+                            .has_algebraic_constraints(&constr)
+                    })
+                    .collect_vec();
+
+                self.constraint_system
+                    .add_algebraic_constraints(constraints_to_add);
+                // progress |= self.apply_assignment(&var, &expr);
+                //            self.constraint_system.substitute_by_unknown(&var, &expr);
+                progress |= true;
             }
         }
         Ok(progress)
