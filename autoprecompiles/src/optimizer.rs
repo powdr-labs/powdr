@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::{collections::BTreeMap, fmt::Display};
+use std::{
+    sync::Arc,
+    {collections::BTreeMap, fmt::Display},
+};
 
 use itertools::Itertools;
 use num_traits::Zero;
@@ -47,6 +50,9 @@ pub fn optimize<A: Adapter>(
     }
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut variable_dispenser =
+        VariableDispenser::new(constraint_system.unknown_variables().cloned());
+
     let constraint_system = introduce_bus_interaction_variables(constraint_system);
 
     // Run the optimizer while avoiding inlining bus interaction field variables
@@ -57,6 +63,7 @@ pub fn optimize<A: Adapter>(
             only_inline_degree_one_and_no_bus_field_vars,
             &mut stats_logger,
             bus_map,
+            &mut || Variable::Variable(variable_dispenser.next()),
         )?;
 
     // Now remove the bus interaction field variables and run the optimizer,
@@ -69,6 +76,7 @@ pub fn optimize<A: Adapter>(
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map,
+            &mut || variable_dispenser.next(),
         )?;
 
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
@@ -113,6 +121,7 @@ fn run_optimization_loop_until_no_change<
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
+    new_var: &mut impl FnMut() -> V,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
@@ -124,6 +133,7 @@ fn run_optimization_loop_until_no_change<
             &should_inline,
             stats_logger,
             bus_map,
+            new_var,
         )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             return Ok(constraint_system);
@@ -143,6 +153,7 @@ fn optimization_loop_iteration<
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
+    new_var: &mut impl FnMut() -> V,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
@@ -151,6 +162,7 @@ fn optimization_loop_iteration<
         bus_interaction_handler.clone(),
         should_inline,
         stats_logger,
+        new_var,
     )?;
     let constraint_system = constraint_system.system().clone();
     let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
@@ -460,4 +472,26 @@ fn try_solve_for_single_bus_interaction_variable<
         .clone();
     let solution = constraint.try_solve_for(&var)?;
     Some((var, solution))
+}
+
+struct VariableDispenser {
+    next_id: u64,
+}
+
+impl VariableDispenser {
+    fn new(existing_variables: impl Iterator<Item = AlgebraicReference>) -> Self {
+        Self {
+            next_id: existing_variables.map(|v| v.id).max().unwrap_or(0) + 1,
+        }
+    }
+
+    fn next(&mut self) -> AlgebraicReference {
+        // TODO do we care that the names are actually unique?
+        let var = AlgebraicReference {
+            name: Arc::new(format!("new_var_{}", self.next_id)),
+            id: self.next_id,
+        };
+        self.next_id += 1;
+        var
+    }
 }
