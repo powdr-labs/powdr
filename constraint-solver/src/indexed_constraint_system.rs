@@ -267,6 +267,31 @@ impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
 }
 
 impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
+    /// Returns true if the constraint already exists in the system.
+    pub fn has_algebraic_constraints(&self, constraint: &GroupedExpression<T, V>) -> bool {
+        // TODO maybe use a better index here?
+        let vars = constraint.referenced_unknown_variables();
+        let candidates = vars
+            .map(|v| self.variable_occurrences.get(&v).unwrap())
+            .fold(None, |acc: Option<BTreeSet<_>>, occurrences| {
+                if let Some(acc) = acc {
+                    Some(acc.intersection(occurrences).cloned().collect())
+                } else {
+                    Some(occurrences.clone())
+                }
+            })
+            .unwrap_or_default();
+        candidates
+            .iter()
+            .flat_map(|item| match item {
+                ConstraintSystemItem::AlgebraicConstraint(i) => {
+                    Some(&self.constraint_system.algebraic_constraints[*i])
+                }
+                ConstraintSystemItem::BusInteraction(_) => None,
+            })
+            .contains(&constraint)
+    }
+
     /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables<'a>(
         &'a self,

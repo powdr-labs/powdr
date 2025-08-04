@@ -300,6 +300,7 @@ struct SolverImpl<T: RuntimeConstant, V, BusInterHandler> {
     /// that do not occur in the constraints any more.
     /// This is cleared with every call to `solve()`.
     assignments_to_return: Vec<VariableAssignment<T, V>>,
+    have_inlined: HashSet<V>,
 }
 
 impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> SolverImpl<T, V, B> {
@@ -308,6 +309,7 @@ impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> SolverImpl<T
             constraint_system: Default::default(),
             range_constraints: Default::default(),
             assignments_to_return: Default::default(),
+            have_inlined: Default::default(),
             bus_interaction_handler,
         }
     }
@@ -450,6 +452,10 @@ where
     }
 
     fn inline_affine_constraints(&mut self) -> Result<bool, Error> {
+        println!(
+            "Inlining affine constraints on system:\n{}",
+            self.constraint_system
+        );
         let mut progress = false;
         for i in 0..self
             .constraint_system
@@ -461,13 +467,48 @@ where
             if !constraint.is_affine() {
                 continue;
             }
-            let Some(var) = constraint.referenced_variables().sorted().last().cloned() else {
+            let Some(var) = constraint.referenced_variables().sorted().next().cloned() else {
                 continue;
             };
             let Some(expr) = constraint.try_solve_for(&var) else {
                 continue;
             };
-            progress |= self.apply_assignment(&var, &expr);
+            if self.have_inlined.contains(&var) {
+                continue;
+            }
+            self.have_inlined.insert(var.clone());
+
+            println!("Inlining {var} := {expr}\n   from: {constraint}");
+            if expr.referenced_unknown_variables().count() == 1 {
+                self.apply_assignment(&var, &expr);
+            } else {
+                let constraints_to_add = self
+                    .constraint_system
+                    .system()
+                    .constraints_referencing_variables(std::iter::once(var.clone()))
+                    .filter_map(|constr_ref| match constr_ref {
+                        ConstraintRef::AlgebraicConstraint(c) => Some(c.clone()),
+                        ConstraintRef::BusInteraction(_) => None,
+                    })
+                    .map(|mut constr| {
+                        constr.substitute_by_unknown(&var, &expr);
+                        constr
+                    })
+                    .filter(|constr| {
+                        // We only add the constraint if it does not lead to a contradiction.
+                        !self
+                            .constraint_system
+                            .system()
+                            .has_algebraic_constraints(&constr)
+                    })
+                    .collect_vec();
+
+                self.constraint_system
+                    .add_algebraic_constraints(constraints_to_add);
+                // progress |= self.apply_assignment(&var, &expr);
+                //            self.constraint_system.substitute_by_unknown(&var, &expr);
+            }
+            progress |= true;
         }
         Ok(progress)
     }
