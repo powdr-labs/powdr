@@ -135,7 +135,9 @@ where
     fn retain_variables(&mut self, variables_to_keep: &HashSet<Variable<V>>) {
         // TODO We might want to keep those constraints that only contain
         // linearized variables that define the quadratic terms.
-        self.solver.retain_variables(variables_to_keep);
+        let mut variables_to_keep = variables_to_keep.clone();
+        variables_to_keep.extend((0..(self.next_var_id)).map(|i| Variable::Linearized(i)));
+        self.solver.retain_variables(&variables_to_keep);
     }
 
     fn range_constraint_for_expression(
