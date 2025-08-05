@@ -169,31 +169,31 @@ impl<T: FieldElement, S1: Ord + Clone, S2: Ord + Clone> VarTransformable<S1, S2>
 {
     type Transformed = SymbolicExpression<T, S2>;
 
-    fn transform_var_type(
+    fn try_transform_var_type(
         &self,
-        var_transform: &mut impl FnMut(&S1) -> S2,
-    ) -> SymbolicExpression<T, S2> {
-        match self {
+        var_transform: &mut impl FnMut(&S1) -> Option<S2>,
+    ) -> Option<SymbolicExpression<T, S2>> {
+        Some(match self {
             SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(*n),
             SymbolicExpression::Symbol(v, rc) => {
-                SymbolicExpression::from_symbol(var_transform(v), rc.clone())
+                SymbolicExpression::from_symbol(var_transform(v)?, rc.clone())
             }
             SymbolicExpression::BinaryOperation(lhs, op, rhs, rc) => {
                 SymbolicExpression::BinaryOperation(
-                    Arc::new(lhs.transform_var_type(var_transform)),
+                    Arc::new(lhs.try_transform_var_type(var_transform)?),
                     *op,
-                    Arc::new(rhs.transform_var_type(var_transform)),
+                    Arc::new(rhs.try_transform_var_type(var_transform)?),
                     rc.clone(),
                 )
             }
             SymbolicExpression::UnaryOperation(op, inner, rc) => {
                 SymbolicExpression::UnaryOperation(
                     *op,
-                    Arc::new(inner.transform_var_type(var_transform)),
+                    Arc::new(inner.try_transform_var_type(var_transform)?),
                     rc.clone(),
                 )
             }
-        }
+        })
     }
 }
 

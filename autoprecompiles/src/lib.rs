@@ -1,8 +1,9 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::bus_map::{BusMap, BusType};
+use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
-pub use blocks::{BasicBlock, PgoConfig};
+pub use blocks::{pgo_config, BasicBlock, PgoConfig, PgoType};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -180,9 +181,11 @@ impl<T: Display> Display for SymbolicMachine<T> {
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
+        let main_columns = self.main_columns().sorted().collect_vec();
         let mut output = format!(
-            "// Symbolic machine using {} unique main columns\n",
-            self.main_columns().count()
+            "Symbolic machine using {} unique main columns:\n  {}\n",
+            main_columns.len(),
+            main_columns.iter().join("\n  ")
         );
         let bus_interactions_by_bus = self
             .bus_interactions
@@ -276,8 +279,11 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
 }
 
 pub trait InstructionHandler<T, I> {
-    /// Returns the AIR for the given opcode.
+    /// Returns the AIR for the given instruction.
     fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+
+    /// Returns the AIR stats for the given instruction.
+    fn get_instruction_air_stats(&self, instruction: &I) -> Option<AirStats>;
 
     /// Returns whether the given instruction is allowed in an autoprecompile.
     fn is_allowed(&self, instruction: &I) -> bool;
