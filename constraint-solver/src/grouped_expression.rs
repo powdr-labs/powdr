@@ -228,7 +228,13 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     }
 
     /// Returns the quadratic, linear and constant components of this expression.
-    pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
+    pub fn components(
+        &self,
+    ) -> (
+        &[(Self, Self)],
+        impl DoubleEndedIterator<Item = (&V, &T)>,
+        &T,
+    ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
 
