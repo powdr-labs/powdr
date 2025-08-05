@@ -161,7 +161,6 @@ jobs:
         run: |
           source .venv/bin/activate
           bash ./openvm/scripts/run_guest_benches.sh
-          bash ./autoprecompiles/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
