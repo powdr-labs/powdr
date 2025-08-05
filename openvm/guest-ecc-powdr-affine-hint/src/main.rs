@@ -1,53 +1,40 @@
 #![cfg_attr(not(feature = "std"), no_main)]
 #![cfg_attr(not(feature = "std"), no_std)]
 use hex_literal::hex;
+use k256::elliptic_curve::sec1::FromEncodedPoint;
 use k256::elliptic_curve::PrimeField;
 use k256::PowdrAffinePoint;
-use k256::{FieldBytes, FieldElement, Scalar};
+use k256::{AffinePoint, EncodedPoint, FieldBytes, FieldElement, Scalar};
 
 openvm::entry!(main);
 
 pub fn main() {
-    let x1: FieldElement = FieldElement::from_bytes(
-        &FieldBytes::cast_slice_from_core(&[[
-            177, 205, 72, 85, 29, 179, 168, 198, 125, 68, 123, 98, 49, 165, 115, 23, 117, 100, 184,
-            12, 125, 99, 103, 18, 245, 130, 15, 91, 76, 105, 85, 20,
-        ]])[0],
-    )
-    .unwrap();
-    let y1: FieldElement = FieldElement::from_bytes(
-        &FieldBytes::cast_slice_from_core(&[[
-            219, 130, 184, 163, 86, 144, 60, 160, 181, 38, 124, 67, 141, 79, 174, 63, 60, 188, 208,
-            206, 139, 94, 72, 251, 222, 58, 13, 159, 189, 75, 97, 12,
-        ]])[0],
-    )
-    .unwrap();
+    let x1 = &FieldBytes::cast_slice_from_core(&[[
+        177, 205, 72, 85, 29, 179, 168, 198, 125, 68, 123, 98, 49, 165, 115, 23, 117, 100, 184, 12,
+        125, 99, 103, 18, 245, 130, 15, 91, 76, 105, 85, 20,
+    ]])[0];
+    let y1 = &FieldBytes::cast_slice_from_core(&[[
+        219, 130, 184, 163, 86, 144, 60, 160, 181, 38, 124, 67, 141, 79, 174, 63, 60, 188, 208,
+        206, 139, 94, 72, 251, 222, 58, 13, 159, 189, 75, 97, 12,
+    ]])[0];
 
-    let x2: FieldElement = FieldElement::from_bytes(
-        &FieldBytes::cast_slice_from_core(&[[
-            146, 161, 155, 83, 76, 248, 129, 31, 87, 66, 55, 228, 112, 251, 3, 121, 113, 60, 97,
-            168, 52, 94, 83, 10, 224, 229, 14, 231, 182, 207, 33, 28,
-        ]])[0],
-    )
-    .unwrap();
-    let y2: FieldElement = FieldElement::from_bytes(
-        &FieldBytes::cast_slice_from_core(&[[
-            163, 84, 112, 69, 78, 54, 106, 228, 95, 24, 73, 7, 216, 178, 14, 141, 200, 150, 92, 72,
-            29, 246, 91, 179, 165, 11, 29, 36, 68, 96, 135, 19,
-        ]])[0],
-    )
-    .unwrap();
+    let x2 = &FieldBytes::cast_slice_from_core(&[[
+        146, 161, 155, 83, 76, 248, 129, 31, 87, 66, 55, 228, 112, 251, 3, 121, 113, 60, 97, 168,
+        52, 94, 83, 10, 224, 229, 14, 231, 182, 207, 33, 28,
+    ]])[0];
+    let y2 = &FieldBytes::cast_slice_from_core(&[[
+        163, 84, 112, 69, 78, 54, 106, 228, 95, 24, 73, 7, 216, 178, 14, 141, 200, 150, 92, 72, 29,
+        246, 91, 179, 165, 11, 29, 36, 68, 96, 135, 19,
+    ]])[0];
 
-    let point1 = PowdrAffinePoint {
-        x: x1,
-        y: y1,
-        infinity: 0,
-    };
-    let point2 = PowdrAffinePoint {
-        x: x2,
-        y: y2,
-        infinity: 0,
-    };
+    let point1 = PowdrAffinePoint(
+        AffinePoint::from_encoded_point(&EncodedPoint::from_affine_coordinates(x1, y1, false))
+            .expect("AffinePoint should be valid"),
+    );
+    let point2 = PowdrAffinePoint(
+        AffinePoint::from_encoded_point(&EncodedPoint::from_affine_coordinates(x2, y2, false))
+            .expect("AffinePoint should be valid"),
+    );
 
     let result_x: FieldElement = FieldElement::from_bytes(
         &FieldBytes::cast_slice_from_core(&[[
@@ -83,6 +70,6 @@ pub fn main() {
 
     // Multi scalar multiplication
     let multiplication = k256::lincomb(&[(point1, scalar_1), (point2, scalar_2)]);
-    assert_eq!(multiplication.x, result_x);
-    assert_eq!(multiplication.y, result_y);
+    assert_eq!(multiplication.x(), result_x);
+    assert_eq!(multiplication.y(), result_y);
 }
