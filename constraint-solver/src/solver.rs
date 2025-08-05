@@ -701,7 +701,7 @@ mod tests {
         assert!(solver.are_expressions_known_to_be_different(
             // If we try all possible assignments of a and b, this expression
             // can never be zero.
-            &(&(var("a") - constant(2) * var("b"))),
+            (&(var("a") - constant(2) * var("b"))),
             &constant(0)
         ));
         assert!(!solver.are_expressions_known_to_be_different(
