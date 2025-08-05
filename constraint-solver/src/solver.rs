@@ -7,7 +7,8 @@ use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
 use crate::solver::base::BaseSolver;
-use crate::solver::boolean_extracted::{BooleanExtractedSolver, Variable};
+use crate::solver::boolean_extracted::BooleanExtractedSolver;
+use crate::solver::var_transformation::{VarTransformation, Variable};
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 use std::collections::HashSet;
@@ -18,6 +19,7 @@ mod base;
 mod boolean_extracted;
 mod exhaustive_search;
 mod quadratic_equivalences;
+mod var_transformation;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
@@ -52,11 +54,12 @@ where
         + Substitutable<Variable<V>>,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let solver = BaseSolver::new(bus_interaction_handler);
-    let mut boolean_extracted_solver = BooleanExtractedSolver::new(solver);
-    boolean_extracted_solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
-    boolean_extracted_solver.add_bus_interactions(constraint_system.bus_interactions);
-    boolean_extracted_solver
+    let mut solver = VarTransformation::new(BooleanExtractedSolver::new(BaseSolver::new(
+        bus_interaction_handler,
+    )));
+    solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
+    solver.add_bus_interactions(constraint_system.bus_interactions);
+    solver
 }
 
 pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> + Sized {
