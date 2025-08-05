@@ -6,7 +6,47 @@ APC advantage:
   - Bus interactions: 24 -> 22 (1.09x reduction)
   - Constraints: 76 -> 38 (2.00x reduction)
 
-// Symbolic machine using 40 unique main columns
+Symbolic machine using 40 unique main columns:
+  from_state__timestamp_0
+  reads_aux__0__base__prev_timestamp_0
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
+  reads_aux__1__base__prev_timestamp_0
+  reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__base__prev_timestamp_0
+  writes_aux__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__prev_data__0_0
+  writes_aux__prev_data__1_0
+  writes_aux__prev_data__2_0
+  writes_aux__prev_data__3_0
+  a__0_0
+  a__1_0
+  a__2_0
+  a__3_0
+  b__0_0
+  b__1_0
+  b__2_0
+  b__3_0
+  c__0_0
+  c__1_0
+  c__2_0
+  c__3_0
+  bit_multiplier_right_0
+  b_sign_0
+  bit_shift_marker__0_0
+  bit_shift_marker__1_0
+  bit_shift_marker__2_0
+  bit_shift_marker__3_0
+  bit_shift_marker__4_0
+  bit_shift_marker__5_0
+  bit_shift_marker__6_0
+  limb_shift_marker__0_0
+  limb_shift_marker__1_0
+  limb_shift_marker__2_0
+  bit_shift_carry__0_0
+  bit_shift_carry__1_0
+  bit_shift_carry__2_0
+  bit_shift_carry__3_0
+  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
