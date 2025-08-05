@@ -36,8 +36,6 @@ pub fn find_quadratic_equalities<T: RuntimeConstant, V: Ord + Clone + Hash + Eq 
 /// determined by a (the same) conditional assignment from
 /// `expr` or `expr + offset` (see [`QuadraticSymbolicExpression::solve_quadratic`]),
 /// then `X` and `Y` must be equal and are returned.
-///
-/// X
 fn process_quadratic_equality_candidate_pair<
     T: RuntimeConstant,
     V: Ord + Clone + Hash + Eq + Display,
