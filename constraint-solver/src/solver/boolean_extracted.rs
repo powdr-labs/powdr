@@ -2,12 +2,12 @@ use crate::boolean_extractor::try_extract_boolean;
 use crate::constraint_system::BusInteraction;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{RuntimeConstant, VarTransformable};
+use crate::runtime_constant::RuntimeConstant;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{Error, Solver, VariableAssignment};
 
 use std::collections::HashSet;
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::hash::Hash;
 
 struct BooleanVarDispenser {
@@ -127,11 +127,9 @@ where
 
     fn are_expressions_known_to_be_different(
         &mut self,
-        a: &GroupedExpression<T, V>,
-        b: &GroupedExpression<T, V>,
+        a: &GroupedExpression<T, Variable<V>>,
+        b: &GroupedExpression<T, Variable<V>>,
     ) -> bool {
-        let a = a.transform_var_type(&mut |v| v.clone().into());
-        let b = b.transform_var_type(&mut |v| v.clone().into());
-        self.solver.are_expressions_known_to_be_different(&a, &b)
+        self.solver.are_expressions_known_to_be_different(a, b)
     }
 }
