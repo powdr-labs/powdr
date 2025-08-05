@@ -42,11 +42,11 @@ run_bench() {
     if [ -n "$guest_manual" ]; then
         cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
     fi
-    # prove with no APCs
+    # prove with no APCs to obtain noapc.json for metrics comparison against case with APCs
     mkdir -p ${apcs}apc
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion --apc-candidates-dir ${apcs}apc
-    # proving with APCs and record memory usage
-    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion"
+    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion 
+    # prove with APCs and record memory usage; default Pgo::Cell mode also collects data on all APC candidates
+    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input $input --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion --apc-candidates-dir ${apcs}apc"
     # process results
     basic_metrics
     plot_cells ${apcs}apc.json
@@ -57,6 +57,6 @@ run_bench() {
 }
 
 # keccak for 10000 iterations, 100 apcs
-run_bench guest-keccak guest-keccak-manual-precompile 100 10000
+run_bench guest-keccak guest-keccak-manual-precompile 10 10
 
 # run_bench guest-matmul "" 100 0
