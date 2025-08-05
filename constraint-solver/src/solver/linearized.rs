@@ -4,6 +4,9 @@ use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
 
+use crate::constraint_system::ConstraintSystem;
+use crate::indexed_constraint_system::apply_substitutions;
+use crate::runtime_constant::Substitutable;
 use crate::solver::{Error, VariableAssignment};
 use crate::{
     constraint_system::BusInteraction,
@@ -94,14 +97,16 @@ where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
+        + Substitutable<Variable<V>>
         + Hash
         + Display,
     V: Ord + Clone + Eq + Hash + Display,
     S: Solver<T::Transformed, Variable<V>>,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+        assert!(self.linearizer.constraints_to_add.is_empty());
         let assignments = self.solver.solve()?;
-        // TODO apply the assignments to the expressions in the linearizer
+        self.linearizer.apply_assignments(&assignments);
         Ok(assignments
             .into_iter()
             .filter_map(|(v, expr)| {
@@ -319,6 +324,29 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
                 .get(expr)
                 .map(|var| GroupedExpression::from_unknown_variable(var.clone()))
         }
+    }
+}
+
+impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
+    /// Applies the assignments to the stored substitutions.
+    fn apply_assignments(&mut self, assignments: &[VariableAssignment<T, V>]) {
+        if assignments.is_empty() {
+            return;
+        }
+        let (exprs, vars): (Vec<_>, Vec<_>) = self.substitutions.drain().unzip();
+        let exprs = apply_substitutions(
+            ConstraintSystem {
+                algebraic_constraints: exprs,
+                bus_interactions: vec![],
+            },
+            assignments.iter().cloned(),
+        )
+        .algebraic_constraints;
+        self.substitutions = exprs
+            .into_iter()
+            .zip(vars)
+            .map(|(expr, var)| (expr, var.clone()))
+            .collect();
     }
 }
 
