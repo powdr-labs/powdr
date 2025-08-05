@@ -12,6 +12,7 @@ use crate::solver::linearized::LinearizedSolver;
 use crate::solver::var_transformation::{VarTransformation, Variable};
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
+
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -36,7 +37,8 @@ where
         + Display
         + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
-        + Substitutable<Variable<V>>,
+        + Substitutable<Variable<V>>
+        + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
     new_solver(constraint_system, bus_interaction_handler).solve()
@@ -55,7 +57,8 @@ where
         + Display
         + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
-        + Substitutable<Variable<V>>,
+        + Substitutable<Variable<V>>
+        + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
     let mut solver = VarTransformation::new(BooleanExtractedSolver::new(LinearizedSolver::new(
@@ -95,6 +98,16 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType>;
+
+    /// Returns `true` if `a` and `b` are different for all satisfying assignments.
+    /// In other words, `a - b` does not allow the value zero.
+    /// If this function returns `false`, it does not mean that `a` and `b` are equal,
+    /// i.e. a function always returning `false` here satisfies the trait.
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool;
 }
 
 /// An error occurred while solving the constraint system.

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::iter;
 use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
@@ -151,6 +152,17 @@ where
             .map(|expr| self.solver.range_constraint_for_expression(&expr))
             .unwrap_or_default();
         direct.conjunction(&substituted)
+    }
+
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, Variable<V>>,
+        b: &GroupedExpression<T, Variable<V>>,
+    ) -> bool {
+        let a = iter::once(a.clone()).chain(self.linearizer.try_linearize_existing(a.clone()));
+        let b = iter::once(b.clone()).chain(self.linearizer.try_linearize_existing(b.clone()));
+        a.cartesian_product(b)
+            .any(|(a, b)| self.solver.are_expressions_known_to_be_different(&a, &b))
     }
 }
 

@@ -151,6 +151,16 @@ where
         let expr = expr.transform_var_type(&mut |v| v.clone().into());
         self.solver.range_constraint_for_expression(&expr)
     }
+
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, V>,
+        b: &GroupedExpression<T, V>,
+    ) -> bool {
+        let a = transform(a);
+        let b = transform(b);
+        self.solver.are_expressions_known_to_be_different(&a, &b)
+    }
 }
 
 fn transform<T, V: Ord + Clone>(

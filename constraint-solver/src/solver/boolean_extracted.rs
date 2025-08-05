@@ -124,4 +124,12 @@ where
     ) -> RangeConstraint<T::FieldType> {
         self.solver.range_constraint_for_expression(expr)
     }
+
+    fn are_expressions_known_to_be_different(
+        &mut self,
+        a: &GroupedExpression<T, Variable<V>>,
+        b: &GroupedExpression<T, Variable<V>>,
+    ) -> bool {
+        self.solver.are_expressions_known_to_be_different(a, b)
+    }
 }
