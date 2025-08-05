@@ -186,7 +186,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
-        // we just reinterpret the bytes as a k256 field element. Can't use mem::transmute due to alighment requirements
+        // we just reinterpret the bytes as a k256 field element. Can't use mem::transmute due to alignment requirements
         let mut elem = [0u32; 10];
         unsafe {
             std::ptr::copy_nonoverlapping(

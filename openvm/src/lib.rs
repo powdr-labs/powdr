@@ -280,7 +280,7 @@ pub fn compile_guest(
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
 
-    // Optional tally of opcode freqency (only enabled for debug level logs)
+    // Optional tally of opcode frequency (only enabled for debug level logs)
     if tracing::enabled!(Level::DEBUG) {
         tally_opcode_frequency(&pgo_config, &original_program.exe);
     }

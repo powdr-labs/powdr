@@ -15,7 +15,7 @@ use std::machines::split::split_bb::SplitBB;
 // - 16 partial rounds
 // - S-Box: x^7
 //
-// The the number of rounds to get 128-bit security was taken from here:
+// The number of rounds to get 128-bit security was taken from here:
 // https://github.com/Plonky3/Plonky3/blob/2df15fd05e2181b31b39525361aef0213fc76144/poseidon2/src/round_numbers.rs#L42
 //
 // This version of the Poseidon machine receives memory pointers and interacts

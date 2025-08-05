@@ -40,7 +40,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
-    // The the number of rounds to get 128-bit security was taken from here:
+    // The number of rounds to get 128-bit security was taken from here:
     // https://github.com/Plonky3/Plonky3/blob/2df15fd05e2181b31b39525361aef0213fc76144/poseidon2/src/round_numbers.rs#L42
 
     // Number of field elements in the state
