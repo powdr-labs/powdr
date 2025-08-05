@@ -44,6 +44,12 @@ impl<V: Display> Display for Variable<V> {
     }
 }
 
+/// A Solver that turns algebraic constraints into affine constraints
+/// by introducing new variables for the non-affine parts.
+/// It also replaces bus interaction fields by new variables if they are
+/// not just variables or constants.
+///
+/// The original algebraic constraints are kept as well.
 pub struct LinearizedSolver<T, V, S> {
     solver: S,
     linearizer: Linearizer<T, V>,
@@ -96,14 +102,6 @@ where
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         let assignments = self.solver.solve()?;
         // TODO apply the assignments to the expressions in the linearizer
-
-        // TODO if we transform everything, it will not be able to
-        // use `GroupedExpression::solve_quadratic` and `quadratic_equivalences`
-        // Those only work on expressions without constant part. Of corse,
-        // the constant part could change over the course of solving.
-        // We can also extend the solver by searching for a definition
-        // of the variable.
-        // quadratic_equivalences could also work on boolean extracted expressions.
         Ok(assignments
             .into_iter()
             .filter_map(|(v, expr)| {
@@ -120,10 +118,20 @@ where
     ) {
         let mut constraints = constraints
             .into_iter()
-            .map(|constr| {
+            .flat_map(|constr| {
                 let constr = constr.transform_var_type(&mut |v| v.clone().into());
-                self.linearizer
-                    .linearize(constr, &mut || next_var(&mut self.next_var_id))
+
+                if constr.is_affine() {
+                    vec![constr]
+                } else {
+                    // Add both the original and the linearized constraint.
+                    vec![
+                        constr.clone(),
+                        self.linearizer
+                            .linearize(constr, &mut || next_var(&mut self.next_var_id)),
+                    ]
+                }
+                .into_iter()
             })
             .collect::<Vec<_>>();
         constraints.append(&mut self.linearizer.constraints_to_add);
@@ -174,9 +182,14 @@ where
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
-        // TODO linearize the expression
         let expr = expr.transform_var_type(&mut |v| v.clone().into());
-        self.solver.range_constraint_for_expression(&expr)
+        let direct = self.solver.range_constraint_for_expression(&expr);
+        let substituted = self
+            .linearizer
+            .try_linearize_existing(expr)
+            .map(|expr| self.solver.range_constraint_for_expression(&expr))
+            .unwrap_or_default();
+        direct.conjunction(&substituted)
     }
 }
 
@@ -229,6 +242,36 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         }
     }
 
+    /// Tries to linearize the expression according to already existing substitutions.
+    fn try_linearize_existing(
+        &self,
+        expr: GroupedExpression<T, V>,
+    ) -> Option<GroupedExpression<T, V>> {
+        if expr.is_affine() {
+            None
+        } else {
+            let (quadratic, linear, constant) = expr.into_components();
+            Some(
+                quadratic
+                    .into_iter()
+                    .map(|(l, r)| {
+                        let l =
+                            self.try_substitute_by_existing_var(&self.try_linearize_existing(l)?)?;
+                        let r =
+                            self.try_substitute_by_existing_var(&self.try_linearize_existing(r)?)?;
+                        self.try_substitute_by_existing_var(&(l * r))
+                    })
+                    .collect::<Option<Vec<_>>>()?
+                    .into_iter()
+                    .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
+                    .chain(std::iter::once(GroupedExpression::from_runtime_constant(
+                        constant,
+                    )))
+                    .sum(),
+            )
+        }
+    }
+
     /// Linearizes the expression and substitutes the expression by a single variable.
     /// The substitution is not performed if the expression is a constant or a single
     /// variable (without coefficient).
@@ -251,18 +294,30 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
     ) -> GroupedExpression<T, V> {
-        if let Some(c) = expr.try_to_known() {
-            GroupedExpression::from_runtime_constant(c.clone())
-        } else if let Some(var) = expr.try_to_simple_unknown() {
-            GroupedExpression::from_unknown_variable(var)
-        } else if let Some(var) = self.substitutions.get(&expr) {
-            GroupedExpression::from_unknown_variable(var.clone())
+        if let Some(var) = self.try_substitute_by_existing_var(&expr) {
+            var
         } else {
             let var = var_dispenser();
             self.substitutions.insert(expr.clone(), var.clone());
             let var = GroupedExpression::from_unknown_variable(var);
             self.constraints_to_add.push(expr - var.clone());
             var
+        }
+    }
+
+    /// Tries to substitute the given expression by an existing variable.
+    fn try_substitute_by_existing_var(
+        &self,
+        expr: &GroupedExpression<T, V>,
+    ) -> Option<GroupedExpression<T, V>> {
+        if let Some(c) = expr.try_to_known() {
+            Some(GroupedExpression::from_runtime_constant(c.clone()))
+        } else if let Some(var) = expr.try_to_simple_unknown() {
+            Some(GroupedExpression::from_unknown_variable(var))
+        } else {
+            self.substitutions
+                .get(expr)
+                .map(|var| GroupedExpression::from_unknown_variable(var.clone()))
         }
     }
 }
@@ -318,7 +373,9 @@ mod tests {
         // already linearized `x + y`.
         expect!([r#"
             Linearized solver:
+            ((x + y) * (z + 1)) * (x - 1) = 0
             lin_4 = 0
+            (a + b) * (c - 2) = 0
             lin_7 = 0
             x + y - lin_0 = 0
             z - lin_1 + 1 = 0
@@ -335,7 +392,9 @@ mod tests {
         assert!(assignments.is_empty());
         expect!([r#"
             Linearized solver:
+            ((x + y) * (z + 1)) * (x - 1) = 0
             0 = 0
+            (a + b) * (c - 2) = 0
             0 = 0
             x + y - lin_0 = 0
             z - lin_1 + 1 = 0
