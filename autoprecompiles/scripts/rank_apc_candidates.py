@@ -8,18 +8,20 @@ in a concise format.
 
 import json
 import sys
+import argparse
 from pathlib import Path
+from tabulate import tabulate
 
 
 def main():
     """Parse APC candidates and show key information."""
-    if len(sys.argv) != 3:
-        print("Usage: python rank_apc_candidates.py <path_to_apc_candidates.json> <output_file>")
-        print("Example: python rank_apc_candidates.py apc_candidates.json output.txt")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Parse APC candidates and show key information.")
+    parser.add_argument("json_file", help="Path to the APC candidates JSON file")
+    parser.add_argument("-o", "--output", help="Output file (default: stdout)", default=None)
+    args = parser.parse_args()
     
-    json_file = Path(sys.argv[1])
-    output_file = Path(sys.argv[2])
+    json_file = Path(args.json_file)
+    output_file = args.output
     
     if not json_file.exists():
         print(f"Error: File {json_file} not found!")
@@ -34,9 +36,6 @@ def main():
     
     # Capture output to write to file
     output_lines = []
-    
-    output_lines.append(f"Found {len(data)} APC candidates")
-    output_lines.append("=" * 120)
     
     # Process and calculate densitys for each candidate
     candidates_with_densitys = []
@@ -93,7 +92,7 @@ def main():
     # Summary statistics (moved to top)
     output_lines.append("")
     output_lines.append("=" * 120)
-    output_lines.append("SUMMARY STATISTICS")
+    output_lines.append(f"SUMMARY STATISTICS OVER ALL APC CANDIDATES")
     output_lines.append("=" * 120)
     
     total_candidates = len(data)
@@ -115,14 +114,14 @@ def main():
     total_after_bus_interactions = sum(c["stats"]["after"]["bus_interactions"] for c in data)
     total_bus_interactions_improvement_factor = total_before_bus_interactions / total_after_bus_interactions
     
-    output_lines.append(f"Total candidates: {total_candidates}")
-    output_lines.append(f"Total statements: {total_statements}")
-    output_lines.append(f"Average statements per candidate: {total_statements / total_candidates:.1f}")
+    output_lines.append(f"# of APC Candidates: {total_candidates}")
+    output_lines.append(f"Sum of Instructions: {total_statements}")
+    output_lines.append(f"Average Instructions per APC Candidate: {total_statements / total_candidates:.1f}")
     output_lines.append("")
-    output_lines.append(f"Total Cost: {total_cost_before} → {total_cost_after} ({total_cost_improvement_factor:.2f}x reduction)")
-    output_lines.append(f"Total Main Columns: {total_before_main_columns} → {total_after_main_columns} ({main_columns_improvement_factor:.2f}x reduction)")
-    output_lines.append(f"Total Constraints: {total_before_constraints} → {total_after_constraints} ({total_constraint_improvement_factor:.2f}x reduction)")
-    output_lines.append(f"Total Bus Interactions: {total_before_bus_interactions} → {total_after_bus_interactions} ({total_bus_interactions_improvement_factor:.2f}x reduction)")
+    output_lines.append(f"Sum of Cost: {total_cost_before} → {total_cost_after} ({total_cost_improvement_factor:.2f}x reduction)")
+    output_lines.append(f"Sum of Main Columns: {total_before_main_columns} → {total_after_main_columns} ({main_columns_improvement_factor:.2f}x reduction)")
+    output_lines.append(f"Sum of Constraints: {total_before_constraints} → {total_after_constraints} ({total_constraint_improvement_factor:.2f}x reduction)")
+    output_lines.append(f"Sum of Bus Interactions: {total_before_bus_interactions} → {total_after_bus_interactions} ({total_bus_interactions_improvement_factor:.2f}x reduction)")
     
     # Statement count distribution
     stmt_dist = {}
@@ -131,11 +130,16 @@ def main():
         stmt_dist[stmt_count] = stmt_dist.get(stmt_count, 0) + 1
     
     output_lines.append("")
-    output_lines.append("Statement count distribution:")
+    output_lines.append("# of Instructions Distribution:")
+    stmt_table_data = []
     for stmt_count in sorted(stmt_dist.keys()):
         count = stmt_dist[stmt_count]
         percentage = (count / total_candidates) * 100
-        output_lines.append(f"  {stmt_count:2d} statements: {count:3d} candidates ({percentage:5.1f}%)")
+        stmt_table_data.append([stmt_count, count, f"{percentage:.1f}%"])
+    
+    stmt_table_headers = ["Instructions", "# of Candidates", "Percentage"]
+    stmt_table_output = tabulate(stmt_table_data, headers=stmt_table_headers, tablefmt="grid")
+    output_lines.append(stmt_table_output)
     
     # Frequency distribution
     freq_dist = {}
@@ -144,39 +148,61 @@ def main():
         freq_dist[freq] = freq_dist.get(freq, 0) + 1
     
     output_lines.append("")
-    output_lines.append("Execution frequency distribution:")
+    output_lines.append("Execution Frequency Distribution:")
+    freq_table_data = []
     for freq in sorted(freq_dist.keys()):
         count = freq_dist[freq]
         percentage = (count / total_candidates) * 100
-        output_lines.append(f"  {freq:2d}x: {count:3d} candidates ({percentage:5.1f}%)")
+        freq_table_data.append([f"{freq}x", count, f"{percentage:.1f}%"])
     
-    # Show sorted candidates by density
+    freq_table_headers = ["Frequency", "# of Candidates", "Percentage"]
+    freq_table_output = tabulate(freq_table_data, headers=freq_table_headers, tablefmt="grid")
+    output_lines.append(freq_table_output)
+    
+    # Show sorted candidates by density using tabulate
     output_lines.append("")
     output_lines.append("=" * 120)
-    output_lines.append("CANDIDATES RANKED BY DENSITY")
+    output_lines.append("APC CANDIDATES RANKED BY DENSITY (VALUE / COST_AFTER)")
     output_lines.append("=" * 120)
     
-    for i, candidate in enumerate(candidates_with_densitys):
-        output_lines.append(f"{i+1:3d}. PC: {candidate['start_pc']:10.0f} | "
-              f"Statements: {candidate['num_statements']:2d} | "
-              f"Freq: {candidate['freq']:2d}x | "
-              f"Value: {candidate['value']:6.0f} | "
-              f"Cost: {candidate['cost_before']:6.0f} → {candidate['cost_after']:6.0f} | "
-              f"Density (Value/Cost After): {candidate['density']:6.2f} | "
-              f"({candidate['cost_improvement_factor']:.1f}x reduction) | "
-              f"Main Cols: {candidate['before_main_columns']:3d} → {candidate['after_main_columns']:3d} "
-              f"({candidate['main_columns_improvement_factor']:.1f}x reduction) | "
-              f"Constraints: {candidate['before_constraints']:3d} → {candidate['after_constraints']:3d} "
-              f"({candidate['constraint_improvement_factor']:.1f}x reduction) | "
-              f"Bus Int: {candidate['before_bus_interactions']:3d} → {candidate['after_bus_interactions']:3d} "
-              f"({candidate['bus_interactions_improvement_factor']:.1f}x reduction)")
+    # Prepare table data for tabulate
+    table_headers = [
+        "Rank", "Start PC", "# of Instr", "Freq", "Value", "Cost Before -> After (Redux)", 
+        "Density", "Main Cols Before -> After (Redux)",
+        "Constraints Before -> After (Redux)", "Bus Int Before -> After (Redux)"
+    ]
     
-    # Write output to file
+    table_data = []
+    for i, candidate in enumerate(candidates_with_densitys):
+        row = [
+            i + 1,
+            f"{candidate['start_pc']:.0f}",
+            candidate['num_statements'],
+            f"{candidate['freq']}x",
+            f"{candidate['value']:.0f}",
+            f"{candidate['cost_before']:.0f} -> {candidate['cost_after']:.0f} ({candidate['cost_improvement_factor']:.1f}x)",
+            f"{candidate['density']:.2f}",
+            f"{candidate['before_main_columns']} -> {candidate['after_main_columns']} ({candidate['main_columns_improvement_factor']:.1f}x)",
+            f"{candidate['before_constraints']} -> {candidate['after_constraints']} ({candidate['constraint_improvement_factor']:.1f}x)",
+            f"{candidate['before_bus_interactions']} -> {candidate['after_bus_interactions']} ({candidate['bus_interactions_improvement_factor']:.1f}x)"
+        ]
+        table_data.append(row)
+    
+    # Generate table using tabulate
+    table_output = tabulate(table_data, headers=table_headers, tablefmt="grid")
+    output_lines.append(table_output)
+    
+    # Write output to file or stdout
     try:
-        with open(output_file, 'w') as f:
+        if output_file:
+            with open(output_file, 'w') as f:
+                for line in output_lines:
+                    f.write(line + '\n')
+            print(f"Output written to: {output_file}")
+        else:
+            # Write to stdout
             for line in output_lines:
-                f.write(line + '\n')
-        print(f"Output written to: {output_file}")
+                print(line)
     except Exception as e:
         print(f"Error writing to output file: {e}")
         # Fallback to console output
