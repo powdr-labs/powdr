@@ -7,6 +7,7 @@ use itertools::Itertools;
 use crate::constraint_system::ConstraintSystem;
 use crate::indexed_constraint_system::apply_substitutions;
 use crate::runtime_constant::Substitutable;
+use crate::solver::var_transformation::Variable;
 use crate::solver::{Error, VariableAssignment};
 use crate::{
     constraint_system::BusInteraction,
@@ -15,37 +16,6 @@ use crate::{
     runtime_constant::{RuntimeConstant, VarTransformable},
     solver::Solver,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub enum Variable<V> {
-    Original(V),
-    Linearized(usize),
-}
-
-impl<V> From<V> for Variable<V> {
-    /// Converts a regular variable to a `Variable`.
-    fn from(v: V) -> Self {
-        Variable::Original(v)
-    }
-}
-
-impl<V: Clone> Variable<V> {
-    pub fn try_to_original(&self) -> Option<V> {
-        match self {
-            Variable::Original(v) => Some(v.clone()),
-            Variable::Linearized(_) => None,
-        }
-    }
-}
-
-impl<V: Display> Display for Variable<V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Variable::Original(v) => write!(f, "{v}"),
-            Variable::Linearized(i) => write!(f, "lin_{i}"),
-        }
-    }
-}
 
 /// A Solver that turns algebraic constraints into affine constraints
 /// by introducing new variables for the non-affine parts.
@@ -61,8 +31,7 @@ pub struct LinearizedSolver<T, V, S> {
 
 impl<T, V, S> LinearizedSolver<T, V, S>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>,
+    T: RuntimeConstant,
     V: Clone + Eq,
     S: Solver<T, V>,
 {
@@ -75,57 +44,46 @@ where
     }
 }
 
-impl<T, V, S> RangeConstraintProvider<T::FieldType, V> for LinearizedSolver<T, Variable<V>, S>
+impl<T, V, S> RangeConstraintProvider<T::FieldType, Variable<V>>
+    for LinearizedSolver<T, Variable<V>, S>
 where
     T: RuntimeConstant,
     S: RangeConstraintProvider<T::FieldType, Variable<V>>,
     V: Clone,
 {
-    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
-        self.solver.get(&Variable::from(var.clone()))
+    fn get(&self, var: &Variable<V>) -> RangeConstraint<T::FieldType> {
+        self.solver.get(var)
     }
 }
 
-impl<T: VarTransformable<V, Variable<V>>, V, S: Display> Display for LinearizedSolver<T, V, S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Linearized solver:\n{}", self.solver)
-    }
-}
-
-impl<T, V, S> Solver<T, V> for LinearizedSolver<T::Transformed, Variable<V>, S>
-where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>
-        + Substitutable<Variable<V>>
-        + Hash
-        + Display,
-    V: Ord + Clone + Eq + Hash + Display,
-    S: Solver<T::Transformed, Variable<V>>,
+impl<T: VarTransformable<V, Variable<V>>, V, S: Display> Display
+    for LinearizedSolver<T, Variable<V>, S>
 {
-    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.solver)
+    }
+}
+
+impl<T, V, S> Solver<T, Variable<V>> for LinearizedSolver<T, Variable<V>, S>
+where
+    T: RuntimeConstant + Substitutable<Variable<V>> + Display + Hash,
+    V: Ord + Clone + Eq + Hash + Display,
+    S: Solver<T, Variable<V>>,
+{
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, Variable<V>>>, Error> {
         assert!(self.linearizer.constraints_to_add.is_empty());
         let assignments = self.solver.solve()?;
         self.linearizer.apply_assignments(&assignments);
-        Ok(assignments
-            .into_iter()
-            .filter_map(|(v, expr)| {
-                let v = v.try_to_original()?;
-                let expr = expr.try_transform_var_type(&mut |v| v.try_to_original())?;
-                Some((v, expr))
-            })
-            .collect())
+        Ok(assignments)
     }
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = GroupedExpression<T, Variable<V>>>,
     ) {
         let mut constraints = constraints
             .into_iter()
             .flat_map(|constr| {
-                let constr = constr.transform_var_type(&mut |v| v.clone().into());
-
                 if constr.is_affine() {
                     vec![constr]
                 } else {
@@ -145,7 +103,7 @@ where
 
     fn add_bus_interactions(
         &mut self,
-        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, Variable<V>>>>,
     ) {
         let bus_interactions = bus_interactions
             .into_iter()
@@ -153,9 +111,8 @@ where
                 bus_interaction
                     .fields()
                     .map(|expr| {
-                        let expr = expr.transform_var_type(&mut |v| v.clone().into());
                         self.linearizer
-                            .linearize_and_substitute_by_var(expr, &mut || {
+                            .linearize_and_substitute_by_var(expr.clone(), &mut || {
                                 next_var(&mut self.next_var_id)
                             })
                     })
@@ -167,31 +124,28 @@ where
         self.solver.add_bus_interactions(bus_interactions);
     }
 
-    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
-        self.solver
-            .add_range_constraint(&variable.clone().into(), constraint);
+    fn add_range_constraint(
+        &mut self,
+        variable: &Variable<V>,
+        constraint: RangeConstraint<T::FieldType>,
+    ) {
+        self.solver.add_range_constraint(variable, constraint);
     }
 
-    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
-        // We do not add linearized variables because we want constraints
-        // to be removed that only reference variables to be removed and
-        // linearized variables derived from them.
-        let variables_to_keep = variables_to_keep
-            .iter()
-            .map(|v| Variable::from(v.clone()))
-            .collect::<HashSet<_>>();
-        self.solver.retain_variables(&variables_to_keep);
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<Variable<V>>) {
+        // TODO We might want to keep those constraints that only contain
+        // linearized variables that define the quadratic terms.
+        self.solver.retain_variables(variables_to_keep);
     }
 
     fn range_constraint_for_expression(
         &self,
-        expr: &GroupedExpression<T, V>,
+        expr: &GroupedExpression<T, Variable<V>>,
     ) -> RangeConstraint<T::FieldType> {
-        let expr = expr.transform_var_type(&mut |v| v.clone().into());
-        let direct = self.solver.range_constraint_for_expression(&expr);
+        let direct = self.solver.range_constraint_for_expression(expr);
         let substituted = self
             .linearizer
-            .try_linearize_existing(expr)
+            .try_linearize_existing(expr.clone())
             .map(|expr| self.solver.range_constraint_for_expression(&expr))
             .unwrap_or_default();
         direct.conjunction(&substituted)
@@ -353,20 +307,26 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> L
 #[cfg(test)]
 mod tests {
     use expect_test::expect;
+    use powdr_number::GoldilocksField;
 
     use super::*;
-    use crate::{
-        constraint_system::DefaultBusInteractionHandler,
-        solver::SolverImpl,
-        test_utils::{constant, var, Qse},
-    };
+    use crate::{constraint_system::DefaultBusInteractionHandler, solver::base::BaseSolver};
+
+    type Qse = GroupedExpression<GoldilocksField, Variable<&'static str>>;
+
+    fn var(name: &'static str) -> Qse {
+        GroupedExpression::from_unknown_variable(Variable::from(name))
+    }
+
+    fn constant(value: u64) -> Qse {
+        GroupedExpression::from_number(GoldilocksField::from(value))
+    }
 
     #[test]
     fn linearization() {
         let mut var_counter = 0usize;
         let mut linearizer = Linearizer::default();
         let expr = var("x") + var("y") * (var("z") + constant(1)) * (var("x") - constant(1));
-        let expr = expr.transform_var_type(&mut |v| (*v).into());
         let linearized = linearizer.linearize(expr, &mut || {
             let var = Variable::Linearized(var_counter);
             var_counter += 1;
@@ -386,7 +346,7 @@ mod tests {
     #[test]
     fn solver_transforms() {
         let mut solver =
-            LinearizedSolver::new(SolverImpl::new(DefaultBusInteractionHandler::default()));
+            LinearizedSolver::new(BaseSolver::new(DefaultBusInteractionHandler::default()));
         solver.add_algebraic_constraints(vec![
             (var("x") + var("y")) * (var("z") + constant(1)) * (var("x") - constant(1)),
             (var("a") + var("b")) * (var("c") - constant(2)),
@@ -400,7 +360,6 @@ mod tests {
         // `a` is not replaced and that the first payload re-uses the
         // already linearized `x + y`.
         expect!([r#"
-            Linearized solver:
             ((x + y) * (z + 1)) * (x - 1) = 0
             lin_4 = 0
             (a + b) * (c - 2) = 0
@@ -416,10 +375,18 @@ mod tests {
             -(a + lin_8) = 0
             BusInteraction { bus_id: 1, multiplicity: lin_1, payload: lin_0, lin_8, a }"#])
         .assert_eq(&solver.to_string());
-        let assignments: Vec<(&str, Qse)> = solver.solve().unwrap();
-        assert!(assignments.is_empty());
+        let assignments = solver.solve().unwrap();
         expect!([r#"
-            Linearized solver:
+            lin_4 = 0
+            lin_7 = 0"#])
+        .assert_eq(
+            &assignments
+                .iter()
+                .map(|(var, value)| format!("{var} = {value}"))
+                .join("\n"),
+        );
+
+        expect!([r#"
             ((x + y) * (z + 1)) * (x - 1) = 0
             0 = 0
             (a + b) * (c - 2) = 0

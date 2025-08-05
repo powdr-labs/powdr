@@ -2,12 +2,12 @@ use crate::boolean_extractor::try_extract_boolean;
 use crate::constraint_system::BusInteraction;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{RuntimeConstant, VarTransformable};
+use crate::runtime_constant::RuntimeConstant;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{Error, Solver, VariableAssignment};
 
 use std::collections::HashSet;
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::hash::Hash;
 
 struct BooleanVarDispenser {
