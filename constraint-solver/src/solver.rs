@@ -11,7 +11,6 @@ use crate::solver::boolean_extracted::{BooleanExtractedSolver, Variable};
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 
-
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
