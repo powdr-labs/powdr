@@ -1295,7 +1295,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None, None),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1374,7 +1374,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None, None),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1752,7 +1752,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None),
                 name: GUEST_ECC_HINTS,
                 apc: GUEST_ECC_APC_PGO,
                 skip: GUEST_ECC_SKIP,
@@ -1828,7 +1828,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None),
                 name: GUEST_ECC_PROJECTIVE,
                 apc: GUEST_ECC_PROJECTIVE_APC_PGO,
                 skip: GUEST_ECC_PROJECTIVE_SKIP,
