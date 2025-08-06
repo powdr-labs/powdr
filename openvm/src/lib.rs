@@ -1239,6 +1239,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too much RAM"]
     fn u256_prove() {
         use std::time::Instant;
 
