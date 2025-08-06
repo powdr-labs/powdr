@@ -579,10 +579,14 @@ impl<
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<GroupedExpression<T, V>>> {
         //        println!("Trying to split {self}");
+
+        // self = 0x100 * b1 + 0x10000 * b2 = 0xabcd00
+
         if self.is_quadratic() {
             return None;
         }
         let mut constant = -self.constant.try_to_number()?;
+        // constant = 0xabcd00
 
         // Group the linear part by absolute coefficients.
         let mut components = self
@@ -605,6 +609,7 @@ impl<
             .filter(|(_, expr)| !expr.is_zero())
             .sorted_by_key(|(c, _)| c.to_integer())
             .collect_vec();
+        // components = [(0x100, b1), (0x10000, b2)]
         if components.len() < 2 {
             return None;
         }
@@ -621,6 +626,7 @@ impl<
             // );
 
             let (candidate_coeff, candidate) = &components[index];
+            // candidate_coeff = 0x100, candidate = b1
             // println!("Trying to split out {candidate_coeff} * ({candidate})");
             let rest = components
                 .iter()
@@ -628,19 +634,22 @@ impl<
                 .filter(|(i, component)| *i != index && component.0 != Zero::zero())
                 .map(|(_, (coeff, expr))| (*coeff / *candidate_coeff, expr.clone()))
                 .collect_vec();
+            // rest = [(0x10000 / 0x100, b2)] = [(0x100, b2)]
             if rest.is_empty() {
                 // We are done anyway.
                 continue;
             }
-            // The original constraint is equivalent to `candidate + rest = constant`.
+            // The original constraint is equivalent to `candidate + rest = constant / candidate_coeff`.
             // Now we try to extract the smallest coefficient in rest.
             let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
+            // smallest_coeff = 0x100
             assert_ne!(smallest_coeff, 0.into());
 
             let rest: GroupedExpression<_, _> = rest
                 .into_iter()
                 .map(|(coeff, expr)| expr * &T::from(coeff / smallest_coeff))
                 .sum();
+            // rest = b2
 
             let candidate_rc = candidate.range_constraint(range_constraints);
             // println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
@@ -658,13 +667,18 @@ impl<
                 // }
                 continue;
             }
-            // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`
-            // and the constraint can equivalently be evaluated in the integers.
+            // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant / candidate_coeff`
+            // and the constraint can equivalently be evaluated in the integers. (! assuming all divisions were integer divisions)
             // We now apply `x -> x % smallest_coeff` to the whole constraint.
             // If it was true before, it will be true afterwards.
             // So we get `candidate % smallest_coeff = constant % smallest_coeff`.
             // Now the only remaining task is to check that this new constraint has a unique solution
             // that does not require the use of the `%` operator.
+
+            // => The original constraint is: 0x100 * b1 + 0x10000 * b2 = 0xabcd00
+            // => Dividing by `candidate_coeff` gives us: b1 + 0x100 * b2 = 0xabcd
+            // => If this constraint holds, it also holds mod `smallest_coeff`: b1 % 0x100 == 0xcd
+            // => Because `b1` cannot be >= 0x100, we can remove the `%` operator: b1 == 0xcd
 
             if let Some(solution) = candidate_rc
                 // TODO what if the field div here is not a division without remainder in the integers?
@@ -1970,12 +1984,28 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
+        // x - a + 255 * (y + b) = 0
         let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "-(a - x)
 b + y"
+        );
+    }
+
+    #[test]
+    fn split_byte_decomposition() {
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let rcs = [("b1", byte_rc.clone()), ("b2", byte_rc.clone())]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        let expr = var("b1") + var("b2") * constant(255) - constant(0x0102);
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "b1 - 2
+b2 - 1"
         );
     }
 
@@ -1993,6 +2023,9 @@ b + y"
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
+        // x + y * 50 - a + b * 50 - r * 6000 + s * 6000 + w * 1200000 = 0
+        // x - a + 50 * (y + b) - 6000 * (r - s) + 1200000 * w = 0
+        // Is it important that all coefficients have common factors?
         let expr = var("x") + var("y") * constant(50) - var("a") + var("b") * constant(50)
             - var("r") * constant(6000)
             + var("s") * constant(6000)
@@ -2025,6 +2058,7 @@ w"
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
+        // b__3_0 - b_msb_f_0 + 256 * x = 0
         let expr1 = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
         let items = expr1.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
@@ -2032,6 +2066,7 @@ w"
             "b__3_0 - b_msb_f_0
 x"
         );
+        // b__3_0 - b_msb_f_0 + 256 * (x - 1) = 0
         let expr2 = var("b__3_0") - var("b_msb_f_0") + constant(256) * (var("x") - constant(1));
         let items = expr2.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
