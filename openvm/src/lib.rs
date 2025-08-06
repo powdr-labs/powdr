@@ -1457,11 +1457,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14668,
-                            log_up: 11972,
+                            main: 14656,
+                            log_up: 11952,
                         },
                         constraints: 4134,
-                        bus_interactions: 11642,
+                        bus_interactions: 11630,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
