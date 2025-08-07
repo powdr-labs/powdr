@@ -13,12 +13,12 @@ use powdr_number::FieldElement;
 pub type RangeConstraintMap<T, V> = BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>;
 
 pub trait PureRangeConstraintHandler<T: FieldElement> {
-    fn pure_range_constraints<V: Ord + Clone + Eq>(
+    fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Option<RangeConstraintMap<T, V>>;
 
-    fn make_range_constraints<V: Ord + Clone + Eq>(
+    fn make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         range_constraints: RangeConstraintMap<T, V>,
     ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
