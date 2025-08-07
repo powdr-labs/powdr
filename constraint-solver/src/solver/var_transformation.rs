@@ -27,6 +27,13 @@ impl<V> From<V> for Variable<V> {
     }
 }
 
+impl<V: Clone> From<&V> for Variable<V> {
+    /// Converts a regular variable to a `Variable`.
+    fn from(v: &V) -> Self {
+        Variable::Original(v.clone())
+    }
+}
+
 impl<V: Clone> Variable<V> {
     pub fn try_to_original(&self) -> Option<V> {
         match self {
@@ -74,7 +81,7 @@ where
     V: Clone,
 {
     fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
-        self.solver.get(&Variable::from(var.clone()))
+        self.solver.get(&Variable::from(var))
     }
 }
 
@@ -128,18 +135,15 @@ where
 
     fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
         self.solver
-            .add_range_constraint(&variable.clone().into(), constraint);
+            .add_range_constraint(&variable.into(), constraint);
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
-        // This will cause constraints to be deleted if the
+        // This will cause constraints to be deleted if they
         // only contain newly added variables.
-        // TODO we should re-visit this for the linearized solver
-        // where we have constraints that connect three new variables
-        // for each quadratic term.
         let variables_to_keep = variables_to_keep
             .iter()
-            .map(|v| Variable::from(v.clone()))
+            .map(From::from)
             .collect::<HashSet<_>>();
         self.solver.retain_variables(&variables_to_keep);
     }
@@ -148,8 +152,8 @@ where
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
-        let expr = expr.transform_var_type(&mut |v| v.clone().into());
-        self.solver.range_constraint_for_expression(&expr)
+        self.solver
+            .range_constraint_for_expression(&transform(expr))
     }
 
     fn are_expressions_known_to_be_different(
@@ -169,5 +173,5 @@ fn transform<T, V: Ord + Clone>(
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>>,
 {
-    expr.transform_var_type(&mut |v| v.clone().into())
+    expr.transform_var_type(&mut |v| v.into())
 }
