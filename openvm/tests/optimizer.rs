@@ -1,5 +1,8 @@
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{constraint_optimizer, SymbolicMachine};
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
+use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_number::BabyBearField;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::{
@@ -61,4 +64,75 @@ fn test_optimize() {
         ],
         [2007, 1780, 165]
     );
+}
+
+#[test]
+fn test_linearizer() {
+    fn v(name: &'static str) -> GroupedExpression<BabyBearField, &'static str> {
+        GroupedExpression::from_unknown_variable(name)
+    }
+    fn c(value: u32) -> GroupedExpression<BabyBearField, &'static str> {
+        GroupedExpression::from_number(value.into())
+    }
+    let algebraic_constraints = vec![v("opcode_beq_flag_0") * (v("opcode_beq_flag_0") - c(1))];
+    BusInteraction{bus_id: 3, multiplicity
+    let bus_interactions = vec![
+        BusInt
+    // BusInteraction { bus_id: 3, multiplicity: BusInteractionField(0, 1), payload: reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17 }
+    // BusInteraction { bus_id: 3, multiplicity: BusInteractionField(1, 1), payload: reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12 }
+    // BusInteraction { bus_id: 1, multiplicity: BusInteractionField(2, 1), payload: 1, rs1_ptr_0, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0 }
+    // BusInteraction { bus_id: 1, multiplicity: BusInteractionField(3, 1), payload: 1, rs1_ptr_0, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0 }
+    // BusInteraction { bus_id: 3, multiplicity: BusInteractionField(4, 1), payload: reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0, 17 }
+    // BusInteraction { bus_id: 3, multiplicity: BusInteractionField(5, 1), payload: reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0, 12 }
+    // BusInteraction { bus_id: 1, multiplicity: BusInteractionField(6, 1), payload: 1, rs2_ptr_0, b__0_0, b__1_0, b__2_0, b__3_0, reads_aux__1__base__prev_timestamp_0 }
+    // BusInteraction { bus_id: 1, multiplicity: BusInteractionField(7, 1), payload: 1, rs2_ptr_0, b__0_0, b__1_0, b__2_0, b__3_0, from_state__timestamp_0 + 1 }
+    // BusInteraction { bus_id: 2, multiplicity: BusInteractionField(8, 1), payload: from_state__pc_0, opcode_bne_flag_0 + 544, rs1_ptr_0, rs2_ptr_0, imm_0, 1, 1, 0, 0 }
+    // BusInteraction { bus_id: 0, multiplicity: BusInteractionField(9, 1), payload: from_state__pc_0, from_state__timestamp_0 }
+    // BusInteraction { bus_id: 0, multiplicity: BusInteractionField(10, 1), payload: BusInteractionField(10, 2), from_state__timestamp_0 + 2 }
+
+    let assignments = new_solver(
+        ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions,
+        },
+        OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
+    )
+    .solve()
+    .unwrap();
+    for (var, value) in assignments {
+        println!("{var} = {value}");
+    }
+    // (opcode_beq_flag_0) * (opcode_beq_flag_0 - 1) = 0
+    // (opcode_bne_flag_0) * (opcode_bne_flag_0 - 1) = 0
+    // (opcode_beq_flag_0 + opcode_bne_flag_0) * (opcode_beq_flag_0 + opcode_bne_flag_0 - 1) = 0
+    // (cmp_result_0) * (cmp_result_0 - 1) = 0
+    // ((cmp_result_0) * (opcode_beq_flag_0) - (cmp_result_0 - 1) * (opcode_bne_flag_0)) * (a__0_0 - b__0_0) = 0
+    // ((cmp_result_0) * (opcode_beq_flag_0) - (cmp_result_0 - 1) * (opcode_bne_flag_0)) * (a__1_0 - b__1_0) = 0
+    // ((cmp_result_0) * (opcode_beq_flag_0) - (cmp_result_0 - 1) * (opcode_bne_flag_0)) * (a__2_0 - b__2_0) = 0
+    // ((cmp_result_0) * (opcode_beq_flag_0) - (cmp_result_0 - 1) * (opcode_bne_flag_0)) * (a__3_0 - b__3_0) = 0
+    // (opcode_beq_flag_0 + opcode_bne_flag_0) * ((cmp_result_0) * (opcode_beq_flag_0) - (cmp_result_0 - 1) * (opcode_bne_flag_0) + (a__0_0 - b__0_0) * (diff_inv_marker__0_0) + (a__1_0 - b__1_0) * (diff_inv_marker__1_0) + (a__2_0 - b__2_0) * (diff_inv_marker__2_0) + (a__3_0 - b__3_0) * (diff_inv_marker__3_0) - 1) = 0
+    // (opcode_beq_flag_0 + opcode_bne_flag_0) * (from_state__timestamp_0 - reads_aux__0__base__prev_timestamp_0 - reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 - 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 - 1) = 0
+    // (opcode_beq_flag_0 + opcode_bne_flag_0) * (from_state__timestamp_0 - reads_aux__1__base__prev_timestamp_0 - reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0) = 0
+    // -(opcode_beq_flag_0 + opcode_bne_flag_0 - 1) = 0
+    // from_state__pc_0 = 0
+    // opcode_bne_flag_0 - 1 = 0
+    // rs1_ptr_0 - 5 = 0
+    // rs2_ptr_0 = 0
+    // imm_0 - 8 = 0
+    // 0 = 0
+    // 0 = 0
+    // 0 = 0
+    // 0 = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(0, 1) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(1, 1) = 0
+    // -(opcode_beq_flag_0 + opcode_bne_flag_0 + BusInteractionField(2, 1)) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(3, 1) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(4, 1) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(5, 1) = 0
+    // -(opcode_beq_flag_0 + opcode_bne_flag_0 + BusInteractionField(6, 1)) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(7, 1) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(8, 1) = 0
+    // -(opcode_beq_flag_0 + opcode_bne_flag_0 + BusInteractionField(9, 1)) = 0
+    // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(10, 1) = 0
+    // (cmp_result_0) * (imm_0) + from_state__pc_0 - 4 * cmp_result_0 - BusInteractionField(10, 2) + 4 = 0
 }
