@@ -104,61 +104,47 @@ fn test_linearizer() {
     // opcode_beq_flag_0 + opcode_bne_flag_0 - BusInteractionField(10, 1) = 0
     // (cmp_result_0) * (imm_0) + from_state__pc_0 - 4 * cmp_result_0 - BusInteractionField(10, 2) + 4 = 0
     let algebraic_constraints = vec![
-        v("opcode_beq_flag_0") * (v("opcode_beq_flag_0") - c(1)),
         v("opcode_bne_flag_0") * (v("opcode_bne_flag_0") - c(1)),
-        (v("opcode_beq_flag_0") + v("opcode_bne_flag_0"))
-            * ((v("opcode_beq_flag_0") + v("opcode_bne_flag_0")) - c(1)),
         v("cmp_result_0") * (v("cmp_result_0") - c(1)),
-        ((v("cmp_result_0") * v("opcode_beq_flag_0"))
-            - ((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0")))
-            * (v("a__0_0") - v("b__0_0")),
-        ((v("cmp_result_0") * v("opcode_beq_flag_0"))
-            - ((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0")))
-            * (v("a__1_0") - v("b__1_0")),
-        ((v("cmp_result_0") * v("opcode_beq_flag_0"))
-            - ((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0")))
-            * (v("a__2_0") - v("b__2_0")),
-        ((v("cmp_result_0") * v("opcode_beq_flag_0"))
-            - ((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0")))
-            * (v("a__3_0") - v("b__3_0")),
-        (v("opcode_beq_flag_0") + v("opcode_bne_flag_0"))
-            * (v("cmp_result_0") * v("opcode_beq_flag_0")
-                - (v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0")
+        (-((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0"))) * (v("a__0_0") - v("b__0_0")),
+        (-((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0"))) * (v("a__1_0") - v("b__1_0")),
+        (-((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0"))) * (v("a__2_0") - v("b__2_0")),
+        (-((v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0"))) * (v("a__3_0") - v("b__3_0")),
+        (v("opcode_bne_flag_0"))
+            * (c(0) - (v("cmp_result_0") - c(1)) * v("opcode_bne_flag_0")
                 + (v("a__0_0") - v("b__0_0")) * v("diff_inv_marker__0_0")
                 + (v("a__1_0") - v("b__1_0")) * v("diff_inv_marker__1_0")
                 + (v("a__2_0") - v("b__2_0")) * v("diff_inv_marker__2_0")
                 + (v("a__3_0") - v("b__3_0")) * v("diff_inv_marker__3_0")
                 - c(1)),
-        v("opcode_beq_flag_0")
-            + v("opcode_bne_flag_0")
-                * (v("from_state__timestamp_0")
-                    - v("reads_aux__0__base__prev_timestamp_0")
-                    - v("reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0")
-                    - c(131072) * v("reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0")
-                    - c(1)),
-        v("opcode_beq_flag_0")
-            + v("opcode_bne_flag_0")
-                * (v("from_state__timestamp_0")
-                    - v("reads_aux__1__base__prev_timestamp_0")
-                    - v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0")
-                    - c(131072) * v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0")),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - c(1),
+        v("opcode_bne_flag_0")
+            * (v("from_state__timestamp_0")
+                - v("reads_aux__0__base__prev_timestamp_0")
+                - v("reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0")
+                - c(131072) * v("reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0")
+                - c(1)),
+        v("opcode_bne_flag_0")
+            * (v("from_state__timestamp_0")
+                - v("reads_aux__1__base__prev_timestamp_0")
+                - v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0")
+                - c(131072) * v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0")),
+        v("opcode_bne_flag_0") - c(1),
         v("from_state__pc_0") - c(0),
         v("opcode_bne_flag_0") - c(1),
         v("rs1_ptr_0") - c(5),
         v("rs2_ptr_0") - c(0),
         v("imm_0") - c(8),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(0, 1)"),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(1, 1)"),
-        -(v("opcode_beq_flag_0") + v("opcode_bne_flag_0") + v("BusInteractionField(2, 1)")),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(3, 1)"),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(4, 1)"),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(5, 1)"),
-        -(v("opcode_beq_flag_0") + v("opcode_bne_flag_0") + v("BusInteractionField(6, 1)")),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(7, 1)"),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(8, 1)"),
-        -(v("opcode_beq_flag_0") + v("opcode_bne_flag_0") + v("BusInteractionField(9, 1)")),
-        v("opcode_beq_flag_0") + v("opcode_bne_flag_0") - v("BusInteractionField(10, 1)"),
+        v("opcode_bne_flag_0") - v("BusInteractionField(0, 1)"),
+        v("opcode_bne_flag_0") - v("BusInteractionField(1, 1)"),
+        -(v("opcode_bne_flag_0") + v("BusInteractionField(2, 1)")),
+        v("opcode_bne_flag_0") - v("BusInteractionField(3, 1)"),
+        v("opcode_bne_flag_0") - v("BusInteractionField(4, 1)"),
+        v("opcode_bne_flag_0") - v("BusInteractionField(5, 1)"),
+        -(v("opcode_bne_flag_0") + v("BusInteractionField(6, 1)")),
+        v("opcode_bne_flag_0") - v("BusInteractionField(7, 1)"),
+        v("opcode_bne_flag_0") - v("BusInteractionField(8, 1)"),
+        -(v("opcode_bne_flag_0") + v("BusInteractionField(9, 1)")),
+        v("opcode_bne_flag_0") - v("BusInteractionField(10, 1)"),
         v("cmp_result_0") * v("imm_0") + v("from_state__pc_0")
             - c(4) * v("cmp_result_0")
             - v("BusInteractionField(10, 2)")
@@ -303,8 +289,8 @@ fn test_linearizer() {
     .unwrap();
     println!("\n===============\n");
     for (var, value) in assignments {
-        if var == "cmp_result_0" {
-            println!("cmp_result_0: {value}");
-        }
+        //if var == "cmp_result_0" {
+        println!("{var}: {value}");
+        //}
     }
 }
