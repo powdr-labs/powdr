@@ -8,6 +8,7 @@ use crate::runtime_constant::{
 };
 use crate::solver::base::BaseSolver;
 use crate::solver::boolean_extracted::BooleanExtractedSolver;
+use crate::solver::linearized::LinearizedSolver;
 use crate::solver::var_transformation::{VarTransformation, Variable};
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
@@ -19,6 +20,7 @@ use std::hash::Hash;
 mod base;
 mod boolean_extracted;
 mod exhaustive_search;
+mod linearized;
 mod quadratic_equivalences;
 mod var_transformation;
 
@@ -28,11 +30,12 @@ pub fn solve_system<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
         + Display
+        + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
         + Substitutable<Variable<V>>
         + Hash,
@@ -47,18 +50,19 @@ pub fn new_solver<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> impl Solver<T, V>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
         + Display
+        + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
         + Substitutable<Variable<V>>
         + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let mut solver = VarTransformation::new(BooleanExtractedSolver::new(BaseSolver::new(
-        bus_interaction_handler,
+    let mut solver = VarTransformation::new(BooleanExtractedSolver::new(LinearizedSolver::new(
+        BaseSolver::new(bus_interaction_handler),
     )));
     solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
     solver.add_bus_interactions(constraint_system.bus_interactions);
