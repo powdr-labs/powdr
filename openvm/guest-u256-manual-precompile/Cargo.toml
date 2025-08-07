@@ -1,0 +1,16 @@
+[package]
+name = "u256-example"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", features = [
+    "std",
+] }
+openvm-ruint = { git = "https://github.com/powdr-labs/openvm.git", package = "ruint" }
+
+[features]
+default = []
