@@ -112,11 +112,11 @@ where
                 bus_interaction
                     .fields()
                     .map(|expr| {
-                        expr.clone()
-                        // self.linearizer
-                        //     .linearize_and_substitute_by_var(expr.clone(), &mut || {
-                        //         next_var(&mut self.next_var_id)
-                        //     })
+                        // expr.clone()
+                        self.linearizer
+                            .linearize_and_substitute_by_var(expr.clone(), &mut || {
+                                next_var(&mut self.next_var_id)
+                            })
                     })
                     .collect::<BusInteraction<_>>()
             })
@@ -207,6 +207,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
                     let l = self.linearize_and_substitute_by_var(l, var_dispenser);
                     let r = self.linearize_and_substitute_by_var(r, var_dispenser);
                     self.substitute_by_var(l * r, var_dispenser)
+                    //l * r
                 })
                 .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
                 .chain(std::iter::once(GroupedExpression::from_runtime_constant(
