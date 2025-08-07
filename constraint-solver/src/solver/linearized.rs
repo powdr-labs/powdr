@@ -91,8 +91,8 @@ where
                     // Add both the original and the linearized constraint.
                     vec![
                         constr.clone(),
-                        // self.linearizer
-                        //     .linearize(constr, &mut || next_var(&mut self.next_var_id)),
+                        self.linearizer
+                            .linearize(constr, &mut || next_var(&mut self.next_var_id)),
                     ]
                 }
                 .into_iter()
