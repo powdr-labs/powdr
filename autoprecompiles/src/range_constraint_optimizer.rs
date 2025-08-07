@@ -101,6 +101,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     system
 }
 
+/// If the range constraints is the range 0..(2^bits - 1), returns Some(bits).
 pub fn range_constraint_to_num_bits<T: FieldElement>(
     range_constraint: &RangeConstraint<T>,
 ) -> Option<usize> {
@@ -110,6 +111,8 @@ pub fn range_constraint_to_num_bits<T: FieldElement>(
     })
 }
 
+/// Given a a set of range constraints, filters out those which can be checked via a
+/// byte constraint.
 pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display>(
     range_constraints: &mut RangeConstraintMap<T, V>,
 ) -> Vec<GroupedExpression<T, V>> {
