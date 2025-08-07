@@ -178,9 +178,6 @@ impl<
             .zip_eq(range_constraints.fields())
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
-                // if expr.referenced_unknown_variables().next().is_some() {
-                //     println!("Got rc {rc} for expr {expr}");
-                // }
                 expr.referenced_unknown_variables().filter_map(|var| {
                     // `k * var + e` is in range rc <=>
                     // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
@@ -190,7 +187,6 @@ impl<
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    // println!("Got rc {rc} for var {var} in expr {expr} with k = {k}");
                     (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
             })
