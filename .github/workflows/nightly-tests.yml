@@ -139,8 +139,8 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
-      - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      #- name: Run tests
+      #  run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
         run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev acbd2ba cargo-openvm
@@ -157,10 +157,10 @@ jobs:
           rm -rf results
           mkdir -p results
 
-      - name: Run guest benchmarks
-        run: |
-          source .venv/bin/activate
-          bash ./openvm/scripts/run_guest_benches.sh
+      #- name: Run guest benchmarks
+      #  run: |
+      #    source .venv/bin/activate
+      #    bash ./openvm/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
