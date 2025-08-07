@@ -682,13 +682,14 @@ impl<
         if let Some(e1_value) = e1_rc.has_unique_modular_solution(constant, gcd.into()) {
             log::trace!("{e1} % {gcd} = {constant} % {gcd} <==> {e1} = {e1_value}");
             let split_expr = e1 - GroupedExpression::from_number(e1_value);
-            let remaining_expression = (&normalized - &split_expr).normalize_constraint();
+            let remaining_expression = &normalized - &split_expr;
             // Recursively try to split the remaining expression. At this point, this will
             // return None iff. the constraint is already minimal (i.e., there is only one
-            // component). In that case, we leave the remaining expression as is.
+            // component). In that case, we normalize the remaining expression and otherwise
+            // leave it as is.
             let remaining_expressions = remaining_expression
                 .try_split(range_constraints)
-                .unwrap_or(vec![remaining_expression]);
+                .unwrap_or(vec![remaining_expression.normalize_constraint()]);
             Some(once(split_expr).chain(remaining_expressions).collect())
         } else {
             log::trace!("Returning None: No unique solution found");
