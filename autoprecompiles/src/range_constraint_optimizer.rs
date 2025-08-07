@@ -18,7 +18,7 @@ pub trait PureRangeConstraintHandler<T: FieldElement> {
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Option<RangeConstraintMap<T, V>>;
 
-    fn make_range_constraints<V>(
+    fn make_range_constraints<V: Ord + Clone + Eq>(
         &self,
         range_constraints: RangeConstraintMap<T, V>,
     ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
