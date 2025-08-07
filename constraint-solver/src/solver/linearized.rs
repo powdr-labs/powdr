@@ -91,8 +91,8 @@ where
                     // Add both the original and the linearized constraint.
                     vec![
                         constr.clone(),
-                        self.linearizer
-                            .linearize(constr, &mut || next_var(&mut self.next_var_id)),
+                        // self.linearizer
+                        //     .linearize(constr, &mut || next_var(&mut self.next_var_id)),
                     ]
                 }
                 .into_iter()
@@ -112,10 +112,11 @@ where
                 bus_interaction
                     .fields()
                     .map(|expr| {
-                        self.linearizer
-                            .linearize_and_substitute_by_var(expr.clone(), &mut || {
-                                next_var(&mut self.next_var_id)
-                            })
+                        expr.clone()
+                        // self.linearizer
+                        //     .linearize_and_substitute_by_var(expr.clone(), &mut || {
+                        //         next_var(&mut self.next_var_id)
+                        //     })
                     })
                     .collect::<BusInteraction<_>>()
             })
