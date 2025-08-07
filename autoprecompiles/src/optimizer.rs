@@ -21,7 +21,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
 use crate::memory_optimizer::MemoryBusInteraction;
-use crate::range_constraint_optimizer::{optimize_range_constraints, PureRangeConstraintHandler};
+use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -72,8 +72,11 @@ pub fn optimize<A: Adapter>(
             bus_map,
         )?;
 
-    let constraint_system =
-        optimize_range_constraints(constraint_system, bus_interaction_handler.clone());
+    let constraint_system = optimize_range_constraints(
+        constraint_system,
+        bus_interaction_handler.clone(),
+        degree_bound,
+    );
     stats_logger.log("optimizing range constraints", &constraint_system);
 
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
@@ -115,7 +118,7 @@ fn run_optimization_loop_until_no_change<
 >(
     mut constraint_system: ConstraintSystem<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P>
-        + PureRangeConstraintHandler<P>
+        + RangeConstraintHandler<P>
         + IsBusStateful<P>
         + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
@@ -148,7 +151,7 @@ fn optimization_loop_iteration<
     constraint_system: ConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P>
-        + PureRangeConstraintHandler<P>
+        + RangeConstraintHandler<P>
         + IsBusStateful<P>
         + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,

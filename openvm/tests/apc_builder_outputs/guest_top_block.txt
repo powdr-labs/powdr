@@ -50,14 +50,14 @@ mult=is_valid * 1, args=[2, mem_ptr_limbs__0_1 + 65536 * mem_ptr_limbs__1_1, rea
 mult=is_valid * 1, args=[1, 4, 8, 0, 0, 0, from_state__timestamp_0 + 7]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_1 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 46080), 12]
+mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_1 + 15360 * write_base_aux__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 61440), 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17]
 mult=is_valid * 1, args=[-(503316480 * mem_ptr_limbs__0_1), 14]
 mult=is_valid * 1, args=[mem_ptr_limbs__1_1, 13]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_1 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 46080), 12]
 mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_1 + 15360 * write_base_aux__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 61440), 12]
 
 // Bus 6 (OPENVM_BITWISE_LOOKUP):
 mult=is_valid * 1, args=[a__0_0, a__1_0, 0, 0]

@@ -9,7 +9,7 @@ use crate::{
     blocks::{BasicBlock, Candidate, Instruction, Program},
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
-    range_constraint_optimizer::PureRangeConstraintHandler,
+    range_constraint_optimizer::RangeConstraintHandler,
     Apc, InstructionHandler, VmConfig,
 };
 
@@ -20,7 +20,7 @@ pub trait Adapter: Sized {
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>
-        + PureRangeConstraintHandler<Self::PowdrField>
+        + RangeConstraintHandler<Self::PowdrField>
         + Sync;
     type Candidate: Candidate<Self> + Send;
     type Program: Program<Self::Instruction> + Send;

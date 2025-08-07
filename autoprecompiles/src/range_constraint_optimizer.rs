@@ -7,31 +7,49 @@ use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::inliner::DegreeBound;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_number::FieldElement;
 
 pub type RangeConstraintMap<T, V> = BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>;
 
-pub trait PureRangeConstraintHandler<T: FieldElement> {
+pub trait RangeConstraintHandler<T: FieldElement> {
+    /// If the bus interaction *only* enforces range constraints,
+    /// returns them as a map of expressions to range constraints.
     fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Option<RangeConstraintMap<T, V>>;
 
-    fn make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+    /// Given a set of range constraints, returns a list of bus interactions
+    /// that implements them. The implementation is free to implement multiple
+    /// range constraints using a single bus interaction.
+    /// As all input range constraints are unconditional, the multiplicity of
+    /// the returned bus interactions should be 1.
+    fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         range_constraints: RangeConstraintMap<T, V>,
     ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
 }
 
+/// Optimizes range constraints, minimizing bus interactions. This step removes range constraints
+/// that are already implied by existing constraints, and it implements bit constraints via polynomial
+/// constraints, if the degree bound allows.
 pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     mut system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + PureRangeConstraintHandler<T> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + RangeConstraintHandler<T> + Clone,
+    degree_bound: DegreeBound,
 ) -> ConstraintSystem<T, V> {
     // Remove all pure range constraints, but collect what was removed.
     let mut to_constrain = BTreeMap::new();
     system.bus_interactions.retain(|bus_int| {
+        if bus_int.multiplicity != GroupedExpression::from_number(T::one()) {
+            // Most range constraints are unconditional in practice, it's probably not
+            // worth dealing with the conditional ones.
+            return true;
+        }
+
         match bus_interaction_handler.pure_range_constraints(bus_int) {
             Some(range_constraints) => {
                 for (expr, rc) in range_constraints {
@@ -46,9 +64,10 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         }
     });
 
+    // Filter range constraints that are already implied by existing constraints.
+    // TODO: They could also be implied by each other.
     let mut solver = new_solver(system.clone(), bus_interaction_handler.clone());
     solver.solve().unwrap();
-
     let to_constrain = to_constrain
         .into_iter()
         .filter(|(expr, rc)| {
@@ -57,11 +76,12 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         })
         .collect::<BTreeMap<_, _>>();
 
+    // Implement bit constraints via polynomial constraints, if the degree bound allows.
     let mut bit_constraints = Vec::new();
     let to_constrain = to_constrain
         .into_iter()
         .filter(|(expr, rc)| {
-            if rc == &RangeConstraint::from_mask(1) && expr.degree() == 1 {
+            if rc == &RangeConstraint::from_mask(1) && expr.degree() < degree_bound.identities {
                 bit_constraints.push(expr.clone() * (expr.clone() - GroupedExpression::one()));
                 false
             } else {
@@ -70,9 +90,37 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         })
         .collect();
 
-    let range_constraints = bus_interaction_handler.make_range_constraints(to_constrain);
+    // Create all range constraints in batch and add them to the system.
+    let range_constraints = bus_interaction_handler.batch_make_range_constraints(to_constrain);
+    for bus_interaction in &range_constraints {
+        assert_eq!(bus_interaction.multiplicity.try_to_number(), Some(T::one()));
+    }
     system.bus_interactions.extend(range_constraints);
     system.algebraic_constraints.extend(bit_constraints);
 
     system
+}
+
+pub fn range_constraint_to_num_bits<T: FieldElement>(
+    range_constraint: &RangeConstraint<T>,
+) -> Option<usize> {
+    (0..30).find(|num_bits| {
+        let mask = (1u64 << num_bits) - 1;
+        range_constraint == &RangeConstraint::from_mask(mask)
+    })
+}
+
+pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display>(
+    range_constraints: &mut RangeConstraintMap<T, V>,
+) -> Vec<GroupedExpression<T, V>> {
+    let mut byte_constraints = Vec::new();
+    range_constraints.retain(|expr, rc| match range_constraint_to_num_bits(rc) {
+        Some(bits) if bits <= 8 => {
+            let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
+            byte_constraints.push(expr.clone() * factor.clone());
+            false
+        }
+        _ => true,
+    });
+    byte_constraints
 }
