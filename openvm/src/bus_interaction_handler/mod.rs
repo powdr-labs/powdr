@@ -1,8 +1,15 @@
+use std::collections::BTreeMap;
+
 use bitwise_lookup::handle_bitwise_lookup;
 use memory::handle_memory;
-use powdr_autoprecompiles::{bus_map::BusType, constraint_optimizer::IsBusStateful};
+use powdr_autoprecompiles::{
+    bus_map::BusType,
+    constraint_optimizer::IsBusStateful,
+    range_constraint_optimizer::{PureRangeConstraintHandler, RangeConstraintMap},
+};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
+    grouped_expression::GroupedExpression,
     range_constraint::RangeConstraint,
 };
 use powdr_number::{FieldElement, LargeInt};
@@ -88,6 +95,38 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::Other(OpenVmBusType::VariableRangeChecker) => false,
             BusType::Other(OpenVmBusType::TupleRangeChecker) => false,
         }
+    }
+}
+
+impl<T: FieldElement> PureRangeConstraintHandler<T> for OpenVmBusInteractionHandler<T> {
+    fn pure_range_constraints<V: Ord + Clone + Eq>(
+        &self,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+    ) -> Option<RangeConstraintMap<T, V>> {
+        let bus_id = bus_interaction
+            .bus_id
+            .try_to_number()
+            .unwrap()
+            .to_integer()
+            .try_into_u64()
+            .unwrap();
+        match self.bus_map.bus_type(bus_id) {
+            BusType::ExecutionBridge | BusType::Memory | BusType::PcLookup => None,
+            // TODO
+            BusType::OpenVmBitwiseLookup => None,
+            BusType::Other(OpenVmBusType::VariableRangeChecker) => None,
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => None,
+        }
+    }
+
+    fn make_range_constraints<V>(
+        &self,
+        bus_interaction: BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>,
+    ) -> Vec<BusInteraction<GroupedExpression<T, V>>> {
+        if bus_interaction.is_empty() {
+            return vec![];
+        }
+        todo!()
     }
 }
 

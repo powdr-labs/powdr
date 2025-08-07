@@ -65,7 +65,7 @@ pub enum Error {
 /// (some kinds of) equations.
 ///
 /// The name is derived from the fact that it groups linear terms by variable.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GroupedExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are grouped expressions that

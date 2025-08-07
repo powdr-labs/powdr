@@ -21,6 +21,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
 use crate::memory_optimizer::MemoryBusInteraction;
+use crate::range_constraint_optimizer::{optimize_range_constraints, PureRangeConstraintHandler};
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -109,7 +110,10 @@ fn run_optimization_loop_until_no_change<
     M: MemoryBusInteraction<P, V>,
 >(
     mut constraint_system: ConstraintSystem<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + PureRangeConstraintHandler<P>
+        + IsBusStateful<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
@@ -139,7 +143,10 @@ fn optimization_loop_iteration<
 >(
     constraint_system: ConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + PureRangeConstraintHandler<P>
+        + IsBusStateful<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
@@ -166,20 +173,25 @@ fn optimization_loop_iteration<
         constraint_system
     };
 
-    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
-        let system = optimize_bitwise_lookup(
-            constraint_system,
-            bitwise_bus_id,
-            solver,
-            bus_interaction_handler.clone(),
-        );
-        stats_logger.log("optimizing bitwise lookup", &system);
-        system
-    } else {
-        constraint_system
-    };
+    let constraint_system =
+        if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
+            let constraint_system = optimize_bitwise_lookup(
+                constraint_system,
+                bitwise_bus_id,
+                solver,
+                bus_interaction_handler.clone(),
+            );
+            stats_logger.log("optimizing bitwise lookup", &constraint_system);
+            constraint_system
+        } else {
+            constraint_system
+        };
 
-    Ok(system)
+    let constraint_system =
+        optimize_range_constraints(constraint_system, bus_interaction_handler.clone());
+    stats_logger.log("optimizing range constraints", &constraint_system);
+
+    Ok(constraint_system)
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
