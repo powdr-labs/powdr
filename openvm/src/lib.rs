@@ -804,6 +804,10 @@ mod tests {
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
+    const GUEST_U256: &str = "guest-u256";
+    const GUEST_U256_APC_PGO: u64 = 10;
+    const GUEST_U256_SKIP: u64 = 0;
+
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
     #[test]
@@ -1232,6 +1236,30 @@ mod tests {
             "Proving sha256 with PgoConfig::Instruction took {:?}",
             elapsed
         );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn u256_prove() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_U256, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_U256,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving U256 with PgoConfig::Cell took {:?}", elapsed);
     }
 
     #[test]
