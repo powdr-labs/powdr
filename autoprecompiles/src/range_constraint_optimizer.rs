@@ -45,12 +45,18 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         }
     });
 
-    let range_constraints = bus_interaction_handler.make_range_constraints(to_constrain);
-    let mut solver = new_solver(system.clone(), bus_interaction_handler);
+    let mut solver = new_solver(system.clone(), bus_interaction_handler.clone());
     solver.solve().unwrap();
 
-    // TODO: Filter redundant range constraints.
+    let to_constrain = to_constrain
+        .into_iter()
+        .filter(|(expr, rc)| {
+            let current_rc = solver.range_constraint_for_expression(expr);
+            current_rc != current_rc.conjunction(&rc)
+        })
+        .collect();
 
+    let range_constraints = bus_interaction_handler.make_range_constraints(to_constrain);
     system.bus_interactions.extend(range_constraints);
 
     system
