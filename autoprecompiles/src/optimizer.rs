@@ -72,6 +72,10 @@ pub fn optimize<A: Adapter>(
             bus_map,
         )?;
 
+    let constraint_system =
+        optimize_range_constraints(constraint_system, bus_interaction_handler.clone());
+    stats_logger.log("optimizing range constraints", &constraint_system);
+
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
     assert!(
@@ -186,10 +190,6 @@ fn optimization_loop_iteration<
         } else {
             constraint_system
         };
-
-    let constraint_system =
-        optimize_range_constraints(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log("optimizing range constraints", &constraint_system);
 
     Ok(constraint_system)
 }
