@@ -193,11 +193,13 @@ jobs:
           echo "done running without apc"
           mv metrics.json $RES_DIR/noapc.json
           echo 111
-          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
-          echo 222
           # prove with 100 APCs, recording mem usage
-          #MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
-          #mv metrics.json $RES_DIR/100apc.json
+          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+          echo 222
+          mv metrics.json $RES_DIR/100apc.json
+          echo 222333
+          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
+          echo 222444
 
           python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
           echo 333
