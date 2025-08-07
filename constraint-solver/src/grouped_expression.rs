@@ -2073,7 +2073,7 @@ x - 1"
             - var("r") * constant(65536)
             + var("s") * constant(65536)
             + var("w") * constant(0x1000000)
-            - constant(5 * 0x1000000 - 6 + 1 * 64 - 5 * 65536);
+            - constant(5 * 0x1000000 - 6 + 64 - 5 * 65536);
 
         let items = expr.try_split(&rcs).unwrap().iter().join("\n");
         assert_eq!(
