@@ -301,7 +301,10 @@ fn test_linearizer() {
     )
     .solve()
     .unwrap();
+    println!("\n===============\n");
     for (var, value) in assignments {
-        println!("{var} = {value}");
+        if var == "cmp_result_0" {
+            println!("cmp_result_0: {value}");
+        }
     }
 }
