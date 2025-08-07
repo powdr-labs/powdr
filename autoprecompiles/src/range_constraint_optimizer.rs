@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
 
+use num_traits::One;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
@@ -52,12 +53,26 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         .into_iter()
         .filter(|(expr, rc)| {
             let current_rc = solver.range_constraint_for_expression(expr);
-            current_rc != current_rc.conjunction(&rc)
+            current_rc != current_rc.conjunction(rc)
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut bit_constraints = Vec::new();
+    let to_constrain = to_constrain
+        .into_iter()
+        .filter(|(expr, rc)| {
+            if rc == &RangeConstraint::from_mask(1) && expr.degree() == 1 {
+                bit_constraints.push(expr.clone() * (expr.clone() - GroupedExpression::one()));
+                false
+            } else {
+                true
+            }
         })
         .collect();
 
     let range_constraints = bus_interaction_handler.make_range_constraints(to_constrain);
     system.bus_interactions.extend(range_constraints);
+    system.algebraic_constraints.extend(bit_constraints);
 
     system
 }
