@@ -108,7 +108,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
 
 /// Utility functions useful for implementing `batch_make_range_constraints`.
 pub mod utils {
-    use std::fmt::Display;
+    use std::{collections::BTreeSet, fmt::Display};
 
     use powdr_constraint_solver::{
         grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
@@ -131,12 +131,12 @@ pub mod utils {
     /// byte constraint.
     pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display>(
         range_constraints: &mut RangeConstraintMap<T, V>,
-    ) -> Vec<GroupedExpression<T, V>> {
-        let mut byte_constraints = Vec::new();
+    ) -> BTreeSet<GroupedExpression<T, V>> {
+        let mut byte_constraints = BTreeSet::new();
         range_constraints.retain(|expr, rc| match range_constraint_to_num_bits(rc) {
             Some(bits) if bits <= 8 => {
                 let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
-                byte_constraints.push(expr.clone() * factor.clone());
+                byte_constraints.insert(expr.clone() * factor.clone());
                 false
             }
             _ => true,

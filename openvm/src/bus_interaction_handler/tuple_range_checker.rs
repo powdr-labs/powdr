@@ -7,7 +7,7 @@ use powdr_number::FieldElement;
 /// The ranges for the two elements in the tuple range checker.
 /// see https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/extension.rs#L125
 // TODO: This should be configurable
-fn ranges<T: FieldElement>() -> (RangeConstraint<T>, RangeConstraint<T>) {
+pub fn tuple_range_checker_ranges<T: FieldElement>() -> (RangeConstraint<T>, RangeConstraint<T>) {
     (
         RangeConstraint::from_range(T::from(0u64), T::from((1u64 << 8) - 1)),
         RangeConstraint::from_range(T::from(0u64), T::from((8 * (1 << 8)) - 1)),
@@ -23,7 +23,7 @@ pub fn handle_tuple_range_checker<T: FieldElement>(
         panic!("Expected arguments (x, y)");
     };
 
-    let (x_rc, y_rc) = ranges();
+    let (x_rc, y_rc) = tuple_range_checker_ranges();
     vec![x_rc, y_rc]
 }
 
@@ -35,7 +35,7 @@ pub fn tuple_range_checker_pure_range_constraints<T: FieldElement, V: Ord + Clon
     let [x, y] = payload else {
         panic!("Expected arguments (x, y)");
     };
-    let (x_rc, y_rc) = ranges();
+    let (x_rc, y_rc) = tuple_range_checker_ranges();
     Some([(x.clone(), x_rc), (y.clone(), y_rc)].into())
 }
 
@@ -69,7 +69,7 @@ mod tests {
         let y = default();
         let result = run(x, y);
         assert_eq!(result.len(), 2);
-        let (x_rc, y_rc) = ranges();
+        let (x_rc, y_rc) = tuple_range_checker_ranges();
         assert_eq!(result[0], x_rc);
         assert_eq!(result[1], y_rc);
     }
