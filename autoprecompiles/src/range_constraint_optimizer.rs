@@ -26,6 +26,7 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     /// - On the other hand, if `b` is known, it is a pure range constraint.
     ///
     /// Any stateful bus interaction is not a pure range constraint.
+    /// This function will only be called with bus interactions with multiplicity 1.
     fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
