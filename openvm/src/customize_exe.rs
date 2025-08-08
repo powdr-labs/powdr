@@ -166,9 +166,17 @@ pub fn customize(
 
     let program = Prog(&exe.program);
 
+    let range_tuple_checker_sizes = vm_config
+        .sdk_vm_config
+        .rv32m
+        .unwrap()
+        .range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(
+            bus_map.clone(),
+            range_tuple_checker_sizes,
+        ),
         bus_map: bus_map.clone(),
     };
 

@@ -21,7 +21,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
             |machine| {
                 optimize::<BabyBearOpenVmApcAdapter>(
                     black_box(machine),
-                    OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
+                    OpenVmBusInteractionHandler::default(),
                     DegreeBound {
                         identities: 5,
                         bus_interactions: 5,

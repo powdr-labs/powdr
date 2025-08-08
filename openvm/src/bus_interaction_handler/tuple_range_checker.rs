@@ -4,39 +4,53 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-/// The ranges for the two elements in the tuple range checker.
-/// see https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/extension.rs#L125
-// TODO: This should be configurable
-pub fn tuple_range_checker_ranges<T: FieldElement>() -> (RangeConstraint<T>, RangeConstraint<T>) {
-    (
-        RangeConstraint::from_range(T::from(0u64), T::from((1u64 << 8) - 1)),
-        RangeConstraint::from_range(T::from(0u64), T::from((8 * (1 << 8)) - 1)),
-    )
+#[derive(Clone)]
+pub struct TupleRangeCheckerHandler {
+    range_tuple_checker_sizes: [u32; 2],
 }
 
-pub fn handle_tuple_range_checker<T: FieldElement>(
-    payload: &[RangeConstraint<T>],
-) -> Vec<RangeConstraint<T>> {
-    // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
-    // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
-    let [_x, _y] = payload else {
-        panic!("Expected arguments (x, y)");
-    };
+impl TupleRangeCheckerHandler {
+    pub fn new(range_tuple_checker_sizes: [u32; 2]) -> Self {
+        Self {
+            range_tuple_checker_sizes,
+        }
+    }
 
-    let (x_rc, y_rc) = tuple_range_checker_ranges();
-    vec![x_rc, y_rc]
-}
+    pub fn tuple_range_checker_ranges<T: FieldElement>(
+        &self,
+    ) -> (RangeConstraint<T>, RangeConstraint<T>) {
+        (
+            RangeConstraint::from_range(T::zero(), T::from(self.range_tuple_checker_sizes[0])),
+            RangeConstraint::from_range(T::zero(), T::from(self.range_tuple_checker_sizes[1])),
+        )
+    }
 
-pub fn tuple_range_checker_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
-    payload: &[GroupedExpression<T, V>],
-) -> Option<RangeConstraints<T, V>> {
-    // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
-    // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
-    let [x, y] = payload else {
-        panic!("Expected arguments (x, y)");
-    };
-    let (x_rc, y_rc) = tuple_range_checker_ranges();
-    Some([(x.clone(), x_rc), (y.clone(), y_rc)].into())
+    pub fn handle_bus_interaction<T: FieldElement>(
+        &self,
+        payload: &[RangeConstraint<T>],
+    ) -> Vec<RangeConstraint<T>> {
+        // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
+        // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
+        let [_x, _y] = payload else {
+            panic!("Expected arguments (x, y)");
+        };
+
+        let (x_rc, y_rc) = self.tuple_range_checker_ranges();
+        vec![x_rc, y_rc]
+    }
+
+    pub fn pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
+        &self,
+        payload: &[GroupedExpression<T, V>],
+    ) -> Option<RangeConstraints<T, V>> {
+        // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
+        // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
+        let [x, y] = payload else {
+            panic!("Expected arguments (x, y)");
+        };
+        let (x_rc, y_rc) = self.tuple_range_checker_ranges();
+        Some([(x.clone(), x_rc), (y.clone(), y_rc)].into())
+    }
 }
 
 #[cfg(test)]
@@ -44,7 +58,8 @@ mod tests {
     use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler};
 
     use super::*;
-    use crate::bus_map::{default_openvm_bus_map, DEFAULT_TUPLE_RANGE_CHECKER};
+    use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
+    use openvm_rv32im_circuit::Rv32M;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 
@@ -52,7 +67,7 @@ mod tests {
         x: RangeConstraint<BabyBearField>,
         y: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(default_openvm_bus_map());
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::default();
 
         let bus_interaction = BusInteraction {
             bus_id: RangeConstraint::from_value(DEFAULT_TUPLE_RANGE_CHECKER.into()),
@@ -69,7 +84,17 @@ mod tests {
         let y = default();
         let result = run(x, y);
         assert_eq!(result.len(), 2);
-        let (x_rc, y_rc) = tuple_range_checker_ranges();
+        let range_tuple_checker_sizes = Rv32M::default().range_tuple_checker_sizes;
+        let (x_rc, y_rc) = (
+            RangeConstraint::from_range(
+                BabyBearField::from(0),
+                BabyBearField::from(range_tuple_checker_sizes[0]),
+            ),
+            RangeConstraint::from_range(
+                BabyBearField::from(0),
+                BabyBearField::from(range_tuple_checker_sizes[1]),
+            ),
+        );
         assert_eq!(result[0], x_rc);
         assert_eq!(result[1], y_rc);
     }
