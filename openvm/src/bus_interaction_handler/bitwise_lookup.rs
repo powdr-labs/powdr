@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraintMap;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -67,7 +67,7 @@ pub fn handle_bitwise_lookup<T: FieldElement>(
 
 pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
     payload: &[GroupedExpression<T, V>],
-) -> Option<RangeConstraintMap<T, V>> {
+) -> Option<RangeConstraints<T, V>> {
     // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/bitwise_op_lookup/bus.rs
     // Expects (x, y, z, op), where:
     // - if op == 0, x & y are bytes, z = 0

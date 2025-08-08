@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraintMap;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -34,7 +34,7 @@ pub fn handle_variable_range_checker<T: FieldElement>(
 
 pub fn variable_range_checker_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
     payload: &[GroupedExpression<T, V>],
-) -> Option<RangeConstraintMap<T, V>> {
+) -> Option<RangeConstraints<T, V>> {
     // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/var_range/bus.rs
     // Expects (x, bits), where `x` is in the range [0, 2^bits - 1]
     let [x, bits] = payload else {

@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraintMap;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -29,7 +29,7 @@ pub fn handle_tuple_range_checker<T: FieldElement>(
 
 pub fn tuple_range_checker_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
     payload: &[GroupedExpression<T, V>],
-) -> Option<RangeConstraintMap<T, V>> {
+) -> Option<RangeConstraints<T, V>> {
     // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
     // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
     let [x, y] = payload else {
