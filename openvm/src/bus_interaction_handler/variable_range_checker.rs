@@ -1,4 +1,7 @@
-use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
+use powdr_constraint_solver::{
+    grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
+};
 use powdr_number::{FieldElement, LargeInt};
 
 /// The maximum number of bits that can be checked by the variable range checker.
@@ -27,6 +30,23 @@ pub fn handle_variable_range_checker<T: FieldElement>(
             ]
         }
     }
+}
+
+pub fn variable_range_checker_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
+    payload: &[GroupedExpression<T, V>],
+) -> Option<RangeConstraints<T, V>> {
+    // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/var_range/bus.rs
+    // Expects (x, bits), where `x` is in the range [0, 2^bits - 1]
+    let [x, bits] = payload else {
+        panic!("Expected arguments (x, bits)");
+    };
+    bits.try_to_number().map(|bits| {
+        [(
+            x.clone(),
+            RangeConstraint::from_mask((1u64 << bits.to_degree()) - 1),
+        )]
+        .into()
+    })
 }
 
 #[cfg(test)]
