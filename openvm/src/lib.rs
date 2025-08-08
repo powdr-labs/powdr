@@ -1283,15 +1283,21 @@ mod tests {
         );
     }
 
-    // #[test]
-    // #[ignore = "Too much RAM"]
-    // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
-    // #[should_panic = "No such file or directory"]
-    // fn keccak_prove_recursion() {
-    //     let mut stdin = StdIn::default();
-    //     stdin.write(&GUEST_KECCAK_ITER);
-    //     prove_recursion(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
-    // }
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn keccak_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_recursion(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
+    }
 
     // The following are compilation tests only
 
