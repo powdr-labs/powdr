@@ -149,7 +149,7 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
             RangeConstraint::from_mask(0xffu64),
         );
 
-        // The tuple range checker bus can range-checks two expressions at the same time.
+        // The tuple range checker bus can range-check two expressions at the same time.
         // We assume the first range is a byte range (see assertion above). From the remaining
         // range constraints, we find all that happen to require the second range and zip them
         // with the byte constraints.
