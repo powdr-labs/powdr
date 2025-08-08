@@ -37,6 +37,9 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     /// range constraints using a single bus interaction.
     /// As all input range constraints are unconditional, the multiplicity of
     /// the returned bus interactions should be 1.
+    /// Note that only range constraints returned from `pure_range_constraints`
+    /// are passed here, so the implementation should always be able to construct
+    /// a valid bus interaction from them.
     fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         range_constraints: RangeConstraints<T, V>,
