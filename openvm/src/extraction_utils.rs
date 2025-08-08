@@ -7,12 +7,14 @@ use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{
     AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr,
-    SpecializedExecutor, APP_LOG_BLOWUP,
+    SpecializedExecutor,
 };
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
+use openvm_sdk::config::DEFAULT_APP_LOG_BLOWUP;
+
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
@@ -371,7 +373,7 @@ pub fn get_constraints(
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
-    let max_degree = (1 << APP_LOG_BLOWUP) + 1;
+    let max_degree = (1 << DEFAULT_APP_LOG_BLOWUP) + 1;
 
     let main = air.width();
 
@@ -501,8 +503,6 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
 
 #[cfg(test)]
 mod tests {
-    use crate::APP_LOG_BLOWUP;
-
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
     use openvm_bigint_circuit::Int256;
@@ -510,7 +510,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig};
+    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig, DEFAULT_APP_LOG_BLOWUP};
 
     #[test]
     fn test_get_bus_map() {
@@ -519,7 +519,7 @@ mod tests {
 
         let system_config = SystemConfig::default()
             .with_continuations()
-            .with_max_constraint_degree((1 << APP_LOG_BLOWUP) + 1)
+            .with_max_constraint_degree((1 << DEFAULT_APP_LOG_BLOWUP) + 1)
             .with_public_values(32);
         let int256 = Int256::default();
         let bn_config = PairingCurve::Bn254.curve_config();
