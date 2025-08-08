@@ -18,10 +18,13 @@ pub type RangeConstraints<T, V> = Vec<(GroupedExpression<T, V>, RangeConstraint<
 pub trait RangeConstraintHandler<T: FieldElement> {
     /// If the bus interaction *only* enforces range constraints, returns them
     /// as a map of expressions to range constraints.
-    /// For example, if a bus interaction takes two arguments `a` and `b` and
-    /// enforces the range constraints `0 <= a < 2^b`, it is *not* a pure range
-    /// constraint if both values are unknown (because the allowed values of `a`
-    /// depend on `b`), but it is a pure range constraint if `b` is known.
+    ///
+    /// For example:
+    /// - If a bus interaction takes two arguments `a` and `b` and enforces the
+    ///   range constraints `0 <= a < 2^b`, it is *not* a pure range constraint if
+    ///   both values are unknown (because the allowed values of `a` depend on `b`)
+    /// - On the other hand, if `b` is known, it is a pure range constraint.
+    ///
     /// Any stateful bus interaction is not a pure range constraint.
     fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
