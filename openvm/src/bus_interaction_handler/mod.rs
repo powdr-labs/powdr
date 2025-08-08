@@ -150,7 +150,7 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
         );
 
         // The tuple range checker bus can range-checks two expressions at the same time.
-        // We assume the first range is a byte range (see assertion above. From the remaining
+        // We assume the first range is a byte range (see assertion above). From the remaining
         // range constraints, we find all that happen to require the second range and zip them
         // with the byte constraints.
         let tuple_range_checker_args = range_constraints
