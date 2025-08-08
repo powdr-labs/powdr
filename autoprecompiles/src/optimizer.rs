@@ -72,6 +72,8 @@ pub fn optimize<A: Adapter>(
             bus_map,
         )?;
 
+    // Note that the rest of the optimization does not benefit from optimizing range constraints,
+    // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
@@ -180,21 +182,20 @@ fn optimization_loop_iteration<
         constraint_system
     };
 
-    let constraint_system =
-        if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
-            let constraint_system = optimize_bitwise_lookup(
-                constraint_system,
-                bitwise_bus_id,
-                solver,
-                bus_interaction_handler.clone(),
-            );
-            stats_logger.log("optimizing bitwise lookup", &constraint_system);
-            constraint_system
-        } else {
-            constraint_system
-        };
+    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
+        let system = optimize_bitwise_lookup(
+            constraint_system,
+            bitwise_bus_id,
+            solver,
+            bus_interaction_handler.clone(),
+        );
+        stats_logger.log("optimizing bitwise lookup", &system);
+        system
+    } else {
+        constraint_system
+    };
 
-    Ok(constraint_system)
+    Ok(system)
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
