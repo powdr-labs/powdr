@@ -139,6 +139,15 @@ mod single_instruction_tests {
         assert_machine_output(program.to_vec(), "single_xor");
     }
 
+    #[test]
+    fn single_mul() {
+        let program = [
+            // [x8] = [x7] * [x5]
+            mul(8, 7, 5, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_mul");
+    }
+
     // Load/Store Chip instructions
     // `needs_write` can be 0 iff `rd=0` for load, but must be 1 if store.
     #[test]
