@@ -42,9 +42,12 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
 }
 
-/// Optimizes range constraints, minimizing the number of bus interactions. This step removes range
-/// constraints that are already implied by existing constraints, and it implements bit constraints
-/// via polynomial constraints, if the degree bound allows.
+/// Optimizes range constraints, minimizing the number of bus interactions.
+///
+/// This step:
+/// - removes range constraints that are already implied by existing constraints
+/// - batches several range constraints into one bus interaction, if possible
+/// - implements bit constraints via polynomial constraints, if the degree bound allows
 pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     mut system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + RangeConstraintHandler<T> + Clone,
