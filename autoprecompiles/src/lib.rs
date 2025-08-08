@@ -33,6 +33,7 @@ pub mod linear_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
+pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
@@ -182,9 +183,11 @@ impl<T: Display> Display for SymbolicMachine<T> {
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
+        let main_columns = self.main_columns().sorted().collect_vec();
         let mut output = format!(
-            "// Symbolic machine using {} unique main columns\n",
-            self.main_columns().count()
+            "Symbolic machine using {} unique main columns:\n  {}\n",
+            main_columns.len(),
+            main_columns.iter().join("\n  ")
         );
         let bus_interactions_by_bus = self
             .bus_interactions

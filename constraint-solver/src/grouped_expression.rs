@@ -65,7 +65,7 @@ pub enum Error {
 /// (some kinds of) equations.
 ///
 /// The name is derived from the fact that it groups linear terms by variable.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GroupedExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are grouped expressions that
@@ -228,7 +228,13 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     }
 
     /// Returns the quadratic, linear and constant components of this expression.
-    pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
+    pub fn components(
+        &self,
+    ) -> (
+        &[(Self, Self)],
+        impl DoubleEndedIterator<Item = (&V, &T)>,
+        &T,
+    ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
     }
 

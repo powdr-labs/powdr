@@ -301,8 +301,7 @@ fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
     let pgo_program_pc_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_pc_count, _, _)
-        | PgoConfig::Instruction(pgo_program_pc_count) => {
+        PgoConfig::Cell(pgo_program_pc_count, _) | PgoConfig::Instruction(pgo_program_pc_count) => {
             // If execution count of each pc is available, we tally the opcode execution frequency
             tracing::debug!("Opcode execution frequency:");
             pgo_program_pc_count
@@ -805,6 +804,10 @@ mod tests {
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
 
+    const GUEST_U256: &str = "guest-u256";
+    const GUEST_U256_APC_PGO: u64 = 10;
+    const GUEST_U256_SKIP: u64 = 0;
+
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
     #[test]
@@ -956,7 +959,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Cell(pgo_data, None, None),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1048,7 +1051,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None, None),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1134,7 +1137,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Cell(pgo_data, None, None),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1213,7 +1216,7 @@ mod tests {
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None, None),
+            PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
@@ -1233,6 +1236,30 @@ mod tests {
             "Proving sha256 with PgoConfig::Instruction took {:?}",
             elapsed
         );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn u256_prove() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_U256, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_U256,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving U256 with PgoConfig::Cell took {:?}", elapsed);
     }
 
     #[test]
@@ -1287,7 +1314,7 @@ mod tests {
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
-        let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _, _));
+        let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let compiled_program = compile_guest(
             guest.name,
             GuestOptions::default(),
@@ -1400,7 +1427,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None),
                 name: GUEST,
                 apc: GUEST_APC,
                 skip: GUEST_SKIP_PGO,
@@ -1458,11 +1485,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14672,
-                            log_up: 11928,
+                            main: 14660,
+                            log_up: 10200,
                         },
-                        constraints: 4143,
-                        bus_interactions: 11604,
+                        constraints: 4351,
+                        bus_interactions: 9877,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1476,7 +1503,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None),
                 name: GUEST_SHA256,
                 apc: GUEST_SHA256_APC_PGO,
                 skip: GUEST_SHA256_SKIP,
@@ -1486,11 +1513,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14652,
-                            log_up: 11908,
+                            main: 14640,
+                            log_up: 10180,
                         },
-                        constraints: 4127,
-                        bus_interactions: 11594,
+                        constraints: 4335,
+                        bus_interactions: 9867,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1508,8 +1535,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 14652,
-                        log_up: 11908,
+                        main: 14640,
+                        log_up: 10180,
                     },
                 }
             "#]]),
@@ -1565,11 +1592,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1810,
-                            log_up: 1596,
+                            main: 1808,
+                            log_up: 1416,
                         },
-                        constraints: 166,
-                        bus_interactions: 1591,
+                        constraints: 234,
+                        bus_interactions: 1411,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1593,11 +1620,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1810,
-                            log_up: 1596,
+                            main: 1808,
+                            log_up: 1416,
                         },
-                        constraints: 166,
-                        bus_interactions: 1591,
+                        constraints: 234,
+                        bus_interactions: 1411,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1611,7 +1638,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None, None),
+                pgo_config: PgoConfig::Cell(pgo_data, None),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1621,11 +1648,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1810,
-                            log_up: 1596,
+                            main: 1808,
+                            log_up: 1416,
                         },
-                        constraints: 166,
-                        bus_interactions: 1591,
+                        constraints: 234,
+                        bus_interactions: 1411,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1643,8 +1670,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 1810,
-                        log_up: 1596,
+                        main: 1808,
+                        log_up: 1416,
                     },
                 }
             "#]]),
@@ -1662,7 +1689,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS), None),
+                pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC_PGO_LARGE,
                 skip: GUEST_KECCAK_SKIP,
@@ -1672,15 +1699,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 4871,
-                            log_up: 3936,
+                            main: 4967,
+                            log_up: 3824,
                         },
-                        constraints: 1018,
-                        bus_interactions: 3787,
+                        constraints: 1164,
+                        bus_interactions: 3658,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    21
+                    23
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1689,13 +1716,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 39811,
-                        log_up: 27540,
+                        main: 40249,
+                        log_up: 27856,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 4871,
-                        log_up: 3936,
+                        main: 4967,
+                        log_up: 3824,
                     },
                 }
             "#]]),
