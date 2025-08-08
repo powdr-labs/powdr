@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
 
+use itertools::Itertools;
 use num_traits::One;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
@@ -60,12 +61,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
 
         match bus_interaction_handler.pure_range_constraints(bus_int) {
             Some(new_range_constraints) => {
-                to_constrain.extend(
-                    new_range_constraints
-                        .iter()
-                        .filter(|(expr, _)| !range_constraints.contains_key(expr))
-                        .map(|(expr, _)| expr.clone()),
-                );
+                to_constrain.extend(new_range_constraints.iter().map(|(expr, _)| expr.clone()));
                 for (expr, rc) in new_range_constraints {
                     let existing_rc = range_constraints
                         .entry(expr)
@@ -84,6 +80,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     solver.solve().unwrap();
     let to_constrain = to_constrain
         .into_iter()
+        .unique()
         .map(|expr| {
             let rc = range_constraints.remove(&expr).unwrap();
             (expr, rc)

@@ -153,20 +153,20 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
         // We assume the first range is a byte range (see assertion above). From the remaining
         // range constraints, we find all that happen to require the second range and zip them
         // with the byte constraints.
-        let tuple_range_checker_args = range_constraints
-            .iter()
-            .filter(|(_expr, rc)| rc == &tuple_range_checker_ranges.1)
-            // If one of the two lists is exhausted, we stop.
-            .zip(byte_constraints.iter())
-            .map(|((expr, _rc), byte_constraint_expr)| (byte_constraint_expr.clone(), expr.clone()))
-            .collect::<Vec<_>>();
-        let tuple_range_checker_constraints = tuple_range_checker_args
-            .into_iter()
-            .map(|(byte_expr, expr2)| {
-                // TODO: Pretty inefficient
-                byte_constraints.retain(|e| e != &byte_expr);
-                range_constraints.retain(|(e, _)| e != &expr2);
+        let (mut tuple_range_checker_second_args, mut range_constraints): (Vec<_>, Vec<_>) =
+            range_constraints
+                .into_iter()
+                .partition(|(_expr, rc)| rc == &tuple_range_checker_ranges.1);
+        if tuple_range_checker_second_args.len() > byte_constraints.len() {
+            range_constraints
+                .extend(tuple_range_checker_second_args.drain(byte_constraints.len()..));
+        }
+        let num_variable_range_checker_interactions = tuple_range_checker_second_args.len();
 
+        let tuple_range_checker_constraints = byte_constraints
+            .drain(..num_variable_range_checker_interactions)
+            .zip_eq(tuple_range_checker_second_args)
+            .map(|(byte_expr, (expr2, _rc))| {
                 // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
                 // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
                 let bus_id = self
