@@ -20,8 +20,8 @@ impl TupleRangeCheckerHandler {
         &self,
     ) -> (RangeConstraint<T>, RangeConstraint<T>) {
         (
-            RangeConstraint::from_range(T::zero(), T::from(self.range_tuple_checker_sizes[0])),
-            RangeConstraint::from_range(T::zero(), T::from(self.range_tuple_checker_sizes[1])),
+            RangeConstraint::from_range(T::zero(), T::from(self.range_tuple_checker_sizes[0] - 1)),
+            RangeConstraint::from_range(T::zero(), T::from(self.range_tuple_checker_sizes[1] - 1)),
         )
     }
 
@@ -88,11 +88,11 @@ mod tests {
         let (x_rc, y_rc) = (
             RangeConstraint::from_range(
                 BabyBearField::from(0),
-                BabyBearField::from(range_tuple_checker_sizes[0]),
+                BabyBearField::from(range_tuple_checker_sizes[0] - 1),
             ),
             RangeConstraint::from_range(
                 BabyBearField::from(0),
-                BabyBearField::from(range_tuple_checker_sizes[1]),
+                BabyBearField::from(range_tuple_checker_sizes[1] - 1),
             ),
         );
         assert_eq!(result[0], x_rc);
