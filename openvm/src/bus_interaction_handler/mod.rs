@@ -3,6 +3,7 @@ use std::fmt::Display;
 use bitwise_lookup::handle_bitwise_lookup;
 use itertools::Itertools;
 use memory::handle_memory;
+use openvm_rv32im_circuit::Rv32M;
 use powdr_autoprecompiles::{
     bus_map::BusType,
     constraint_optimizer::IsBusStateful,
@@ -18,18 +19,15 @@ use powdr_constraint_solver::{
 };
 use powdr_number::{FieldElement, LargeInt};
 use std::hash::Hash;
-use tuple_range_checker::handle_tuple_range_checker;
 use variable_range_checker::handle_variable_range_checker;
 
 use crate::{
     bus_interaction_handler::{
         bitwise_lookup::bitwise_lookup_pure_range_constraints,
-        tuple_range_checker::{
-            tuple_range_checker_pure_range_constraints, tuple_range_checker_ranges,
-        },
+        tuple_range_checker::TupleRangeCheckerHandler,
         variable_range_checker::variable_range_checker_pure_range_constraints,
     },
-    bus_map::{BusMap, OpenVmBusType},
+    bus_map::{default_openvm_bus_map, BusMap, OpenVmBusType},
 };
 
 mod bitwise_lookup;
@@ -40,13 +38,24 @@ mod variable_range_checker;
 #[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
     bus_map: BusMap,
+    tuple_range_checker_handler: TupleRangeCheckerHandler,
     _phantom: std::marker::PhantomData<T>,
 }
 
+impl<T: FieldElement> Default for OpenVmBusInteractionHandler<T> {
+    fn default() -> Self {
+        Self::new(
+            default_openvm_bus_map(),
+            Rv32M::default().range_tuple_checker_sizes,
+        )
+    }
+}
+
 impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
-    pub fn new(bus_map: BusMap) -> Self {
+    pub fn new(bus_map: BusMap, range_tuple_checker_sizes: [u32; 2]) -> Self {
         Self {
             bus_map,
+            tuple_range_checker_handler: TupleRangeCheckerHandler::new(range_tuple_checker_sizes),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -83,9 +92,9 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 handle_variable_range_checker(&bus_interaction.payload)
             }
-            BusType::Other(OpenVmBusType::TupleRangeChecker) => {
-                handle_tuple_range_checker(&bus_interaction.payload)
-            }
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => self
+                .tuple_range_checker_handler
+                .handle_bus_interaction(&bus_interaction.payload),
         };
         BusInteraction {
             payload: payload_constraints,
@@ -132,9 +141,9 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 variable_range_checker_pure_range_constraints(&bus_interaction.payload)
             }
-            BusType::Other(OpenVmBusType::TupleRangeChecker) => {
-                tuple_range_checker_pure_range_constraints(&bus_interaction.payload)
-            }
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => self
+                .tuple_range_checker_handler
+                .pure_range_constraints(&bus_interaction.payload),
         }
     }
 
@@ -143,7 +152,9 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
         mut range_constraints: RangeConstraints<T, V>,
     ) -> Vec<BusInteraction<GroupedExpression<T, V>>> {
         let mut byte_constraints = filter_byte_constraints(&mut range_constraints);
-        let tuple_range_checker_ranges = tuple_range_checker_ranges::<T>();
+        let tuple_range_checker_ranges = self
+            .tuple_range_checker_handler
+            .tuple_range_checker_ranges::<T>();
         assert_eq!(
             tuple_range_checker_ranges.0,
             RangeConstraint::from_mask(0xffu64),
