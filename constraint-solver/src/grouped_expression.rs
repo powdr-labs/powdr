@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
     hash::Hash,
     iter::once,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -576,6 +577,132 @@ impl<
         Some(result)
     }
 
+    /// Returns the expression divided by the smallest linear coefficient.
+    /// Only known, non-zero coefficients are considered.
+    /// If there is no such coefficient, returns `self`.
+    pub fn normalize_constraint(&self) -> Self {
+        let smallest_coeff = self
+            .linear
+            .values()
+            .filter_map(|c| c.try_to_number())
+            .filter(|c| !c.is_zero())
+            .min()
+            .unwrap_or(T::FieldType::one());
+        self.clone() * Self::from_number(smallest_coeff.field_inverse())
+    }
+
+    /// Tries to split this constraint into a list of equivalent constraints.
+    /// This is the case for example if the variables in this expression can
+    /// be split into different bit areas.
+    pub fn try_split(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> Option<Vec<GroupedExpression<T, V>>> {
+        log::trace!("Trying to split: {self}");
+        if self.is_quadratic() || self.linear.is_empty() {
+            log::trace!("Returning None: Not affine");
+            return None;
+        }
+
+        let normalized = self.normalize_constraint();
+        log::trace!("Normalized: {normalized}");
+
+        // Check if we have an expression of the form:
+        // `e1 + c2 * e2 + c3 * e3 + ... = constant`
+        // where all `c2`, `c3`, ... are known non-zero coefficients
+        // and `e1`, `e2`, ... are expressions.
+        let constant = -normalized.constant.try_to_number()?;
+        log::trace!("Constant: {constant}");
+
+        if (&normalized - &Self::from_runtime_constant(normalized.constant.clone()))
+            .range_constraint(range_constraints)
+            .range_width()
+            == RangeConstraint::<T::FieldType>::unconstrained().range_width()
+        {
+            // The LHS might overflow the field, and might have multiple solutions.
+            log::trace!("Returning None: LHS might overflow the field");
+            return None;
+        }
+
+        let mut components = normalized
+            .linear
+            .iter()
+            .map(|(var, coeff)| Some((coeff.try_to_number()?, var)))
+            .collect::<Option<Vec<_>>>()?
+            .into_iter()
+            .map(|(coeff, var)| {
+                let is_negative = !coeff.is_in_lower_half();
+                if is_negative {
+                    (-coeff, -Self::from_unknown_variable(var.clone()))
+                } else {
+                    (coeff, Self::from_unknown_variable(var.clone()))
+                }
+            })
+            .into_grouping_map()
+            .sum()
+            .into_iter()
+            .filter(|(_, expr)| !expr.is_zero())
+            .sorted_by_key(|(c, _)| c.to_integer())
+            .collect::<BTreeMap<_, _>>();
+
+        let (first_coeff, e1) = components.pop_first().unwrap();
+        log::trace!("e1: {e1}");
+
+        assert_eq!(first_coeff, T::FieldType::one(), "Normalization failed");
+
+        if components.is_empty() {
+            log::trace!("Returning None: Not enough components to split");
+            return None;
+        }
+
+        // At this point, we know that `normalized` is an expression of the form:
+        // `e1 + c2 * e2 + c3 * e3 + ... = constant`, where the RHS can't overflow the field,
+        // which means that we can equivalently solve this constraint in the integers.
+        //
+        // If the constraint holds in integers, it must also hold modulo `gcd(c2, c3, ...)`:
+        // `(e1 + c2 * e2 + c3 * e3 + ...) & gcd(c2, c3, ...) = constant % gcd(c2, c3, ...)`.
+        // <==> `e1 & gcd(c2, c3, ...) = constant % gcd(c2, c3, ...)`.
+        let smallest_coeff = components
+            .keys()
+            .min()
+            .unwrap()
+            .to_integer()
+            .try_into_u64()?;
+        log::trace!("Smallest coefficient: {smallest_coeff}");
+        let gcd = if components.keys().all(|c| {
+            c.to_integer()
+                .try_into_u64()
+                .is_some_and(|c| c % smallest_coeff == 0)
+        }) {
+            smallest_coeff
+        } else {
+            // TODO: Properly compute GCD
+            log::trace!("Returning None: GCD could not be computed");
+            return None;
+        };
+
+        // If the range constraint of `e1` is such that there is a unique value such that
+        // `e1 % gcd = constant % gcd`, we can split out a constraint that constrains `e1`
+        // to equal that value.
+        let e1_rc = e1.range_constraint(range_constraints);
+        if let Some(e1_value) = e1_rc.has_unique_modular_solution(constant, gcd.into()) {
+            log::trace!("{e1} % {gcd} = {constant} % {gcd} <==> {e1} = {e1_value}");
+            let split_expr = e1 - GroupedExpression::from_number(e1_value);
+            let remaining_expression = &normalized - &split_expr;
+            // Recursively try to split the remaining expression. At this point, this will
+            // return None iff. the constraint is already minimal (i.e., there is only one
+            // component). In that case, we normalize the remaining expression and otherwise
+            // leave it as is.
+            let remaining_expressions = remaining_expression
+                .try_split(range_constraints)
+                .unwrap_or(vec![remaining_expression.normalize_constraint()]);
+            Some(once(split_expr).chain(remaining_expressions).collect())
+        } else {
+            log::trace!("Returning None: No unique solution found");
+            None
+        }
+    }
+
     fn solve_affine(
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
@@ -960,6 +1087,16 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
     }
 }
 
+impl<T: RuntimeConstant, V: Clone + Ord + Hash + Eq> Sum for GroupedExpression<T, V> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut result = Zero::zero();
+        for item in iter {
+            result += item;
+        }
+        result
+    }
+}
+
 /// Returns the sum of these quadratic terms while removing terms that
 /// cancel each other out.
 fn combine_removing_zeros<E: PartialEq>(first: Vec<(E, E)>, mut second: Vec<(E, E)>) -> Vec<(E, E)>
@@ -1200,6 +1337,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> GroupedExpression<T
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use test_log::test;
 
     use crate::test_utils::{constant, var};
 
@@ -1809,6 +1947,168 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
                 .unwrap()
                 .to_string(),
             "-t * y"
+        );
+    }
+
+    #[test]
+    fn split_simple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        // x - a + 255 * (y + b) = 0
+        let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-(a - x)
+b + y"
+        );
+    }
+
+    #[test]
+    fn split_byte_decomposition() {
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let rcs = [("b1", byte_rc.clone()), ("b2", byte_rc.clone())]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        let expr = var("b1") + var("b2") * constant(256) - constant(0x0102);
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "b1 - 2
+b2 - 1"
+        );
+    }
+
+    #[test]
+    fn split_multiple() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+            ("r", four_bit_rc.clone()),
+            ("s", four_bit_rc.clone()),
+            ("w", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        // x + y * 50 - a + b * 50 - r * 6000 + s * 6000 + w * 1200000 = 0
+        // x - a + 50 * (y + b) - 6000 * (r - s) + 1200000 * w = 0
+        // Is it important that all coefficients have common factors?
+        let expr = var("x") + var("y") * constant(50) - var("a") + var("b") * constant(50)
+            - var("r") * constant(6000)
+            + var("s") * constant(6000)
+            + var("w") * constant(1200000);
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-(a - x)
+b + y
+-(r - s)
+w"
+        );
+    }
+
+    #[test]
+    fn split_seqz() {
+        // From the seqz instruction:
+        // (b__3_0 - b_msb_f_0) * (b_msb_f_0 + 256 - b__3_0) = 0
+        // After boolean extraction:
+        // b__3_0 - b_msb_f_0 + 256 * x = 0;
+        // or:
+        // b__3_0 - b_msb_f_0 + 256 * (1 - x) = 0;
+
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let bit_rc = RangeConstraint::from_mask(0x1u32);
+        let rcs = [
+            ("b__3_0", byte_rc.clone()),
+            ("b_msb_f_0", byte_rc.clone()),
+            ("x", bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        // b__3_0 - b_msb_f_0 + 256 * x = 0
+        let expr1 = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
+        let items = expr1.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "b__3_0 - b_msb_f_0
+x"
+        );
+        // b__3_0 - b_msb_f_0 + 256 * (x - 1) = 0
+        let expr2 = var("b__3_0") - var("b_msb_f_0") + constant(256) * (var("x") - constant(1));
+        let items = expr2.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "b__3_0 - b_msb_f_0
+x - 1"
+        );
+    }
+
+    #[test]
+    fn split_multiple_with_const() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("a", four_bit_rc.clone()),
+            ("b", four_bit_rc.clone()),
+            ("r", four_bit_rc.clone()),
+            ("s", four_bit_rc.clone()),
+            ("w", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(64)
+            - var("a")
+            - var("b") * constant(64)
+            - var("r") * constant(65536)
+            + var("s") * constant(65536)
+            + var("w") * constant(0x1000000)
+            - constant(5 * 0x1000000 - 6 + 64 - 5 * 65536);
+
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "-(a - x - 6)
+-(b - y + 1)
+-(r - s - 5)
+w - 5"
+        );
+    }
+
+    #[test]
+    fn split_limb_decomposition() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("l0", four_bit_rc.clone()),
+            ("l1", four_bit_rc.clone()),
+            ("l2", four_bit_rc.clone()),
+            ("l3", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("l0")
+            + var("l1") * constant(0x10)
+            + var("l2") * constant(0x100)
+            + var("l3") * constant(0x1000)
+            - constant(0x1234);
+
+        let items = expr.try_split(&rcs).unwrap().iter().join("\n");
+        assert_eq!(
+            items,
+            "l0 - 4
+l1 - 3
+l2 - 2
+l3 - 1"
         );
     }
 
