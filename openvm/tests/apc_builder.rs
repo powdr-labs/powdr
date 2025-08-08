@@ -10,7 +10,7 @@ use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::ExtendedVmConfig;
 use powdr_openvm::Instr;
-use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND};
+use powdr_openvm::OPENVM_DEGREE_BOUND;
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
@@ -33,9 +33,7 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
 
     let vm_config = VmConfig {
         instruction_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
-            default_openvm_bus_map(),
-        ),
+        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::default(),
         bus_map: bus_map.clone(),
     };
 
