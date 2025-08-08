@@ -7,8 +7,8 @@ use powdr_autoprecompiles::{
     bus_map::BusType,
     constraint_optimizer::IsBusStateful,
     range_constraint_optimizer::{
-        filter_byte_constraints, range_constraint_to_num_bits, RangeConstraintHandler,
-        RangeConstraintMap,
+        utils::{filter_byte_constraints, range_constraint_to_num_bits},
+        RangeConstraintHandler, RangeConstraintMap,
     },
 };
 use powdr_constraint_solver::{

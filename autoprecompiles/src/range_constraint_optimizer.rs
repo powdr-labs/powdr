@@ -15,8 +15,13 @@ use powdr_number::FieldElement;
 pub type RangeConstraintMap<T, V> = BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>;
 
 pub trait RangeConstraintHandler<T: FieldElement> {
-    /// If the bus interaction *only* enforces range constraints,
-    /// returns them as a map of expressions to range constraints.
+    /// If the bus interaction *only* enforces range constraints, returns them
+    /// as a map of expressions to range constraints.
+    /// For example, if a bus interaction takes two arguments `a` and `b` and
+    /// enforces the range constraints `0 <= a < 2^b`, it is *not* a pure range
+    /// constraint if both values are unknown (because the allowed values of `a`
+    /// depend on `b`), but it is a pure range constraint if `b` is known.
+    /// Any stateful bus interaction is not a pure range constraint.
     fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -33,9 +38,9 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
 }
 
-/// Optimizes range constraints, minimizing bus interactions. This step removes range constraints
-/// that are already implied by existing constraints, and it implements bit constraints via polynomial
-/// constraints, if the degree bound allows.
+/// Optimizes range constraints, minimizing the number of bus interactions. This step removes range
+/// constraints that are already implied by existing constraints, and it implements bit constraints
+/// via polynomial constraints, if the degree bound allows.
 pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     mut system: ConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + RangeConstraintHandler<T> + Clone,
@@ -101,29 +106,41 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     system
 }
 
-/// If the range constraints is the range 0..(2^bits - 1), returns Some(bits).
-pub fn range_constraint_to_num_bits<T: FieldElement>(
-    range_constraint: &RangeConstraint<T>,
-) -> Option<usize> {
-    (0..30).find(|num_bits| {
-        let mask = (1u64 << num_bits) - 1;
-        range_constraint == &RangeConstraint::from_mask(mask)
-    })
-}
+/// Utility functions useful for implementing `batch_make_range_constraints`.
+pub mod utils {
+    use std::fmt::Display;
 
-/// Given a a set of range constraints, filters out those which can be checked via a
-/// byte constraint.
-pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display>(
-    range_constraints: &mut RangeConstraintMap<T, V>,
-) -> Vec<GroupedExpression<T, V>> {
-    let mut byte_constraints = Vec::new();
-    range_constraints.retain(|expr, rc| match range_constraint_to_num_bits(rc) {
-        Some(bits) if bits <= 8 => {
-            let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
-            byte_constraints.push(expr.clone() * factor.clone());
-            false
-        }
-        _ => true,
-    });
-    byte_constraints
+    use powdr_constraint_solver::{
+        grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
+    };
+    use powdr_number::FieldElement;
+
+    use crate::range_constraint_optimizer::RangeConstraintMap;
+
+    /// If the range constraints is the range 0..(2^bits - 1), returns Some(bits).
+    pub fn range_constraint_to_num_bits<T: FieldElement>(
+        range_constraint: &RangeConstraint<T>,
+    ) -> Option<usize> {
+        (0..30).find(|num_bits| {
+            let mask = (1u64 << num_bits) - 1;
+            range_constraint == &RangeConstraint::from_mask(mask)
+        })
+    }
+
+    /// Given a a set of range constraints, filters out those which can be checked via a
+    /// byte constraint.
+    pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display>(
+        range_constraints: &mut RangeConstraintMap<T, V>,
+    ) -> Vec<GroupedExpression<T, V>> {
+        let mut byte_constraints = Vec::new();
+        range_constraints.retain(|expr, rc| match range_constraint_to_num_bits(rc) {
+            Some(bits) if bits <= 8 => {
+                let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
+                byte_constraints.push(expr.clone() * factor.clone());
+                false
+            }
+            _ => true,
+        });
+        byte_constraints
+    }
 }
