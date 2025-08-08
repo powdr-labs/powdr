@@ -76,8 +76,16 @@ pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + E
         panic!("Expected arguments (x, y, z, op)");
     };
     let byte_rc = RangeConstraint::from_mask(0xffu64);
+    let zero_rc = RangeConstraint::from_value(T::zero());
     if op.try_to_number() == Some(T::from(0u64)) {
-        Some([(x.clone(), byte_rc.clone()), (y.clone(), byte_rc.clone())].into())
+        Some(
+            [
+                (x.clone(), byte_rc.clone()),
+                (y.clone(), byte_rc.clone()),
+                (z.clone(), zero_rc.clone()),
+            ]
+            .into(),
+        )
     } else if x == y {
         // This is a common pattern, because the `BaseAluCoreChip` range-constraints
         // the output of an addition by sending each limb as both operands to the XOR table:
@@ -86,7 +94,7 @@ pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + E
         Some(
             [
                 (x.clone(), byte_rc.clone()),
-                (z.clone(), RangeConstraint::from_value(T::zero())),
+                (z.clone(), zero_rc.clone()),
                 (op.clone(), RangeConstraint::from_mask(1)),
             ]
             .into(),
