@@ -1,0 +1,40 @@
+Instructions:
+  JALR 0 1 0 1 0
+
+APC advantage:
+  - Main columns: 28 -> 11 (2.55x reduction)
+  - Bus interactions: 16 -> 8 (2.00x reduction)
+  - Constraints: 9 -> 4 (2.25x reduction)
+
+Symbolic machine using 11 unique main columns:
+  from_state__timestamp_0
+  rs1_aux_cols__base__prev_timestamp_0
+  rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0
+  rs1_data__0_0
+  rs1_data__1_0
+  rs1_data__2_0
+  rs1_data__3_0
+  to_pc_least_sig_bit_0
+  to_pc_limbs__0_0
+  to_pc_limbs__1_0
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[0, from_state__timestamp_0]
+mult=is_valid * 1, args=[2 * to_pc_limbs__0_0 + 65536 * to_pc_limbs__1_0, from_state__timestamp_0 + 2]
+
+// Bus 1 (MEMORY):
+mult=is_valid * -1, args=[1, 1, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, rs1_aux_cols__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 1, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, from_state__timestamp_0]
+
+// Bus 3 (VARIABLE_RANGE_CHECKER):
+mult=is_valid * 1, args=[to_pc_limbs__1_0, 14]
+mult=is_valid * 1, args=[to_pc_limbs__0_0, 15]
+mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * rs1_aux_cols__base__prev_timestamp_0 + 15360 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
+
+// Algebraic constraints:
+to_pc_least_sig_bit_0 * (to_pc_least_sig_bit_0 - 1) = 0
+(30720 * to_pc_least_sig_bit_0 + 61440 * to_pc_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0)) * (30720 * to_pc_least_sig_bit_0 + 61440 * to_pc_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 1)) = 0
+(943718400 * rs1_data__0_0 + 125829121 * to_pc_limbs__0_0 + 30720 * to_pc_limbs__1_0 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * to_pc_least_sig_bit_0)) * (943718400 * rs1_data__0_0 + 125829121 * to_pc_limbs__0_0 + 30720 * to_pc_limbs__1_0 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * to_pc_least_sig_bit_0 + 1)) = 0
+is_valid * (is_valid - 1) = 0

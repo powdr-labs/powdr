@@ -2,25 +2,30 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
+    iter::once,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
 use crate::{
     effect::Condition,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
+    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable},
 };
 use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
 use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
 
-use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, EffectImpl};
+use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
 use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
+/// Terms with more than `MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS` quadratic terms
+/// are not analyzed for pairs that sum to zero.
+const MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS: usize = 20;
+
 #[derive(Default)]
 pub struct ProcessResult<T: RuntimeConstant, V> {
-    pub effects: Vec<EffectImpl<T, V>>,
+    pub effects: Vec<Effect<T, V>>,
     pub complete: bool,
 }
 
@@ -31,7 +36,7 @@ impl<T: RuntimeConstant, V> ProcessResult<T, V> {
             complete: false,
         }
     }
-    pub fn complete(effects: Vec<EffectImpl<T, V>>) -> Self {
+    pub fn complete(effects: Vec<Effect<T, V>>) -> Self {
         Self {
             effects,
             complete: true,
@@ -60,7 +65,7 @@ pub enum Error {
 /// (some kinds of) equations.
 ///
 /// The name is derived from the fact that it groups linear terms by variable.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GroupedExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are grouped expressions that
@@ -72,10 +77,6 @@ pub struct GroupedExpression<T, V> {
     /// Constant term, a (symbolically) known value.
     constant: T,
 }
-
-// TODO: This type is equivalent to a pre-refactoring version of `QuadraticSymbolicExpressionImpl`.
-// It should be removed in a follow-up PR & we should rename `QuadraticSymbolicExpressionImpl` to `QuadraticSymbolicExpression`.
-pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
 
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T, V> {
     pub fn from_number(k: F) -> Self {
@@ -188,14 +189,83 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         }
     }
 
+    /// Returns `vec![f1, f2, ..., fn]` such that `self` is equivalent to
+    /// `c * f1 * f2 * ... * fn` for some constant `c`.
+    /// Tries to find as many factors as possible and also tries to normalize
+    /// the factors as much as possible.
+    pub fn to_factors(&self) -> Vec<Self> {
+        let summands = self.quadratic.len()
+            + self.linear.len()
+            + if self.constant.is_known_zero() { 0 } else { 1 };
+        if summands == 0 {
+            vec![Self::zero()]
+        } else if summands == 1 {
+            if let [(l, r)] = self.quadratic.as_slice() {
+                l.to_factors().into_iter().chain(r.to_factors()).collect()
+            } else if let Some((var, _)) = self.linear.iter().next() {
+                vec![Self::from_unknown_variable(var.clone())]
+            } else {
+                vec![]
+            }
+        } else {
+            // Try to normalize
+            let divide_by = if !self.constant.is_known_zero() {
+                // If the constant is not zero, we divide by the constant.
+                if self.constant.is_known_nonzero() {
+                    self.constant.clone()
+                } else {
+                    T::one()
+                }
+            } else if !self.linear.is_empty() {
+                // Otherwise, we divide by the factor of the smallest variable.
+                self.linear.iter().next().unwrap().1.clone()
+            } else {
+                // This is a sum of quadratic expressions, we cannot really normalize this part.
+                T::one()
+            };
+            vec![self.clone() * T::one().field_div(&divide_by)]
+        }
+    }
+
     /// Returns the quadratic, linear and constant components of this expression.
-    pub fn components(&self) -> (&[(Self, Self)], impl Iterator<Item = (&V, &T)>, &T) {
+    pub fn components(
+        &self,
+    ) -> (
+        &[(Self, Self)],
+        impl DoubleEndedIterator<Item = (&V, &T)>,
+        &T,
+    ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
+    /// Computes the degree of a GroupedExpression in the unknown variables.
+    /// Note that it might overestimate the degree if the expression contains
+    /// terms that cancel each other out, e.g. `a * (b + 1) - a * b - a`.
+    /// Variables inside runtime constants are ignored.
+    pub fn degree(&self) -> usize {
+        self.quadratic
+            .iter()
+            .map(|(l, r)| l.degree() + r.degree())
+            .chain((!self.linear.is_empty()).then_some(1))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Computes the degree of a variable in this expression.
+    /// Variables inside runtime constants are ignored.
+    pub fn degree_of_variable(&self, var: &V) -> usize {
+        let linear_degree = if self.linear.contains_key(var) { 1 } else { 0 };
+        self.quadratic
+            .iter()
+            .map(|(l, r)| l.degree_of_variable(var) + r.degree_of_variable(var))
+            .chain(once(linear_degree))
+            .max()
+            .unwrap()
     }
 
     /// Returns the coefficient of the variable `variable` if this is an affine expression.
     /// Panics if the expression is quadratic.
-    pub fn coefficient_of_variable(&self, var: &V) -> Option<&T> {
+    pub fn coefficient_of_variable<'a>(&'a self, var: &V) -> Option<&'a T> {
         assert!(!self.is_quadratic());
         self.linear.get(var)
     }
@@ -265,6 +335,8 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 _ => true,
             }
         });
+        remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
+
         if to_add.try_to_known().map(|ta| ta.is_known_zero()) != Some(true) {
             *self += to_add;
         }
@@ -310,12 +382,13 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
                 }
             })
             .collect();
+        remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
 
         *self += to_add;
     }
 }
 
-impl<T: RuntimeConstant + ReferencedSymbols<V>, V: Ord + Clone + Eq> GroupedExpression<T, V> {
+impl<T: ReferencedSymbols<V>, V> GroupedExpression<T, V> {
     /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         let quadr = self
@@ -343,37 +416,47 @@ impl<T, V> GroupedExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V1: Ord + Clone> GroupedExpression<SymbolicExpression<T, V1>, V1> {
-    pub fn transform_var_type<V2: Ord + Clone>(
+impl<T: RuntimeConstant + VarTransformable<V1, V2>, V1: Ord + Clone, V2: Ord + Clone>
+    VarTransformable<V1, V2> for GroupedExpression<T, V1>
+{
+    type Transformed = GroupedExpression<T::Transformed, V2>;
+
+    fn try_transform_var_type(
         &self,
-        var_transform: &mut impl FnMut(&V1) -> V2,
-    ) -> GroupedExpression<SymbolicExpression<T, V2>, V2> {
-        GroupedExpression {
+        var_transform: &mut impl FnMut(&V1) -> Option<V2>,
+    ) -> Option<Self::Transformed> {
+        Some(GroupedExpression {
             quadratic: self
                 .quadratic
                 .iter()
                 .map(|(l, r)| {
-                    (
-                        l.transform_var_type(var_transform),
-                        r.transform_var_type(var_transform),
-                    )
+                    Some((
+                        l.try_transform_var_type(var_transform)?,
+                        r.try_transform_var_type(var_transform)?,
+                    ))
                 })
-                .collect(),
+                .collect::<Option<Vec<_>>>()?,
             linear: self
                 .linear
                 .iter()
                 .map(|(var, coeff)| {
-                    let new_var = var_transform(var);
-                    (new_var, coeff.transform_var_type(var_transform))
+                    let new_var = var_transform(var)?;
+                    Some((new_var, coeff.try_transform_var_type(var_transform)?))
                 })
-                .collect(),
-            constant: self.constant.transform_var_type(var_transform),
-        }
+                .collect::<Option<BTreeMap<_, _>>>()?,
+            constant: self.constant.try_transform_var_type(var_transform)?,
+        })
     }
 }
 
 pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
+}
+
+impl<R: RangeConstraintProvider<T, V>, T: FieldElement, V> RangeConstraintProvider<T, V> for &R {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        R::get(self, var)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -399,6 +482,13 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
+        if !self
+            .range_constraint(range_constraints)
+            .allows_value(Zero::zero())
+        {
+            return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+        }
+
         Ok(if self.is_quadratic() {
             self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
@@ -609,7 +699,7 @@ impl<
                 concrete_assignments.push(
                     // We're not using assignment_if_satisfies_range_constraints here, because we
                     // might still exit early. The error case is handled below.
-                    EffectImpl::Assignment(
+                    Effect::Assignment(
                         variable.clone(),
                         T::FieldType::from(component >> exponent).into(),
                     ),
@@ -640,7 +730,7 @@ impl<
             assert_eq!(concrete_assignments.len(), self.linear.len());
             Ok(ProcessResult::complete(concrete_assignments))
         } else {
-            Ok(ProcessResult::complete(vec![EffectImpl::BitDecomposition(
+            Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
                 BitDecomposition {
                     value: self.constant.clone(),
                     components,
@@ -652,7 +742,7 @@ impl<
     fn transfer_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Vec<EffectImpl<T, V>> {
+    ) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
         assert!(!self.is_quadratic());
@@ -663,7 +753,7 @@ impl<
                 Some((var, rc))
             })
             .filter(|(_, constraint)| !constraint.is_unconstrained())
-            .map(|(var, constraint)| EffectImpl::RangeConstraint(var.clone(), constraint))
+            .map(|(var, constraint)| Effect::RangeConstraint(var.clone(), constraint))
             .collect()
     }
 
@@ -712,10 +802,10 @@ fn combine_to_conditional_assignment<
     right: &ProcessResult<T, V>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<ProcessResult<T, V>> {
-    let [EffectImpl::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
+    let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
     };
-    let [EffectImpl::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
+    let [Effect::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
         return None;
     };
 
@@ -750,7 +840,7 @@ fn combine_to_conditional_assignment<
     }
 
     Some(ProcessResult {
-        effects: vec![EffectImpl::ConditionalAssignment {
+        effects: vec![Effect::ConditionalAssignment {
             variable: first_var.clone(),
             condition: Condition {
                 value: first_assignment.clone(),
@@ -808,7 +898,7 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Di
     ProcessResult {
         effects: effects
             .into_iter()
-            .map(|(v, rc, _)| EffectImpl::RangeConstraint(v.clone(), rc))
+            .map(|(v, rc, _)| Effect::RangeConstraint(v.clone(), rc))
             .collect(),
         complete,
     }
@@ -818,21 +908,21 @@ fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone 
     var: V,
     value: T,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-) -> Result<EffectImpl<T, V>, Error> {
+) -> Result<Effect<T, V>, Error> {
     let rc = range_constraints.get(&var);
     if rc.is_disjoint(&value.range_constraint()) {
         return Err(Error::ConflictingRangeConstraints);
     }
-    Ok(EffectImpl::Assignment(var, value))
+    Ok(Effect::Assignment(var, value))
 }
 
 /// Turns an effect into a range constraint on a variable.
 fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Eq>(
-    effect: &EffectImpl<T, V>,
+    effect: &Effect<T, V>,
 ) -> Option<(V, RangeConstraint<T::FieldType>)> {
     match effect {
-        EffectImpl::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
-        EffectImpl::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
+        Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
+        Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
         _ => None,
     }
 }
@@ -858,7 +948,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
     for GroupedExpression<T, V>
 {
     fn add_assign(&mut self, rhs: Self) {
-        self.quadratic.extend(rhs.quadratic);
+        self.quadratic = combine_removing_zeros(std::mem::take(&mut self.quadratic), rhs.quadratic);
         for (var, coeff) in rhs.linear {
             self.linear
                 .entry(var.clone())
@@ -868,6 +958,83 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> AddAssign<GroupedExpression<T, V>>
         self.constant += rhs.constant.clone();
         self.linear.retain(|_, f| !f.is_known_zero());
     }
+}
+
+/// Returns the sum of these quadratic terms while removing terms that
+/// cancel each other out.
+fn combine_removing_zeros<E: PartialEq>(first: Vec<(E, E)>, mut second: Vec<(E, E)>) -> Vec<(E, E)>
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    if first.len() + second.len() > MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS {
+        // If there are too many terms, we cannot do this efficiently.
+        return first.into_iter().chain(second).collect();
+    }
+
+    let mut result = first
+        .into_iter()
+        .filter(|first| {
+            // Try to find l1 * r1 inside `second`.
+            if let Some((j, _)) = second
+                .iter()
+                .find_position(|second| quadratic_terms_add_to_zero(first, second))
+            {
+                // We found a match, so they cancel each other out, we remove both.
+                second.remove(j);
+                false
+            } else {
+                true
+            }
+        })
+        .collect_vec();
+    result.extend(second);
+    result
+}
+
+/// Removes pairs of items from `terms` whose products add to zero.
+fn remove_quadratic_terms_adding_to_zero<E: PartialEq>(terms: &mut Vec<(E, E)>)
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    if terms.len() > MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS {
+        // If there are too many terms, we cannot do this efficiently.
+        return;
+    }
+
+    let mut to_remove = HashSet::new();
+    for ((i, first), (j, second)) in terms.iter().enumerate().tuple_combinations() {
+        if to_remove.contains(&i) || to_remove.contains(&j) {
+            // We already removed this term.
+            continue;
+        }
+        if quadratic_terms_add_to_zero(first, second) {
+            // We found a match, so they cancel each other out, we remove both.
+            to_remove.insert(i);
+            to_remove.insert(j);
+        }
+    }
+    if !to_remove.is_empty() {
+        *terms = terms
+            .drain(..)
+            .enumerate()
+            .filter(|(i, _)| !to_remove.contains(i))
+            .map(|(_, term)| term)
+            .collect();
+    }
+}
+
+/// Returns true if `first.0 * first.1 = -second.0 * second.1`,
+/// but does not catch all cases.
+fn quadratic_terms_add_to_zero<E: PartialEq>(first: &(E, E), second: &(E, E)) -> bool
+where
+    for<'a> &'a E: Neg<Output = E>,
+{
+    let (s0, s1) = second;
+    // Check if `first.0 * first.1 == -(second.0 * second.1)`, but we can swap left and right
+    // and we can put the negation either left or right.
+    let n1 = (&-s0, s1);
+    let n2 = (s0, &-s1);
+    [n1, n2].contains(&(&first.0, &first.1)) || [n1, n2].contains(&(&first.1, &first.0))
 }
 
 impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for &GroupedExpression<T, V> {
@@ -1216,7 +1383,7 @@ mod tests {
         let result = constr.solve(&NoRangeConstraints).unwrap();
         assert!(result.complete);
         assert_eq!(result.effects.len(), 1);
-        let EffectImpl::Assignment(var, expr) = &result.effects[0] else {
+        let Effect::Assignment(var, expr) = &result.effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
@@ -1249,7 +1416,7 @@ mod tests {
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
         let effects = result.effects;
-        let EffectImpl::Assignment(var, expr) = &effects[0] else {
+        let Effect::Assignment(var, expr) = &effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
@@ -1282,7 +1449,7 @@ mod tests {
         let [effect] = &result.effects[..] else {
             panic!();
         };
-        let EffectImpl::BitDecomposition(BitDecomposition { value, components }) = effect else {
+        let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
             panic!();
         };
         assert_eq!(format!("{value}"), "(10 + Z)");
@@ -1329,7 +1496,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             .effects
             .into_iter()
             .map(|effect| match effect {
-                EffectImpl::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
+                Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
                 _ => panic!(),
             })
             .format("")
@@ -1358,7 +1525,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             .effects
             .into_iter()
             .map(|effect| match effect {
-                EffectImpl::ConditionalAssignment {
+                Effect::ConditionalAssignment {
                     variable,
                     condition: Condition { value, condition },
                     in_range_value,
@@ -1382,7 +1549,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
-        let [EffectImpl::Assignment(var, expr)] = result.effects.as_slice() else {
+        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
             panic!("Expected 1 assignment");
         };
         assert_eq!(var, &"a");
@@ -1398,7 +1565,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let [effect] = &process_result.effects[..] else {
             panic!();
         };
-        let EffectImpl::RangeConstraint(var, rc) = effect else {
+        let Effect::RangeConstraint(var, rc) = effect else {
             panic!();
         };
         (var, rc.clone())
@@ -1643,5 +1810,47 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
                 .to_string(),
             "-t * y"
         );
+    }
+
+    #[test]
+    fn combine_removing_zeros() {
+        let a = var("x") * var("y") + var("z") * constant(3);
+        let b = var("t") * var("u") + constant(5) + var("y") * var("x");
+        assert_eq!(
+            (a.clone() - b.clone()).to_string(),
+            "-((t) * (u) - 3 * z + 5)"
+        );
+        assert_eq!((b - a).to_string(), "(t) * (u) - 3 * z + 5");
+    }
+
+    #[test]
+    fn remove_quadratic_zeros_after_substitution() {
+        let a = var("x") * var("r") + var("z") * constant(3);
+        let b = var("t") * var("u") + constant(5) + var("y") * var("x");
+        let mut t = b - a;
+        // Cannot simplify yet, because the terms are different
+        assert_eq!(
+            t.to_string(),
+            "(t) * (u) + (y) * (x) - (x) * (r) - 3 * z + 5"
+        );
+        t.substitute_by_unknown(&"r", &var("y"));
+        // Now the first term in `a` is equal to the last in `b`.
+        assert_eq!(t.to_string(), "(t) * (u) - 3 * z + 5");
+    }
+
+    #[test]
+    fn to_factors() {
+        let expr = (constant(3) * var("x"))
+            * -var("y")
+            * constant(3)
+            * (constant(5) * var("z") + constant(5))
+            * (constant(2) * var("t") + constant(4) * var("z"))
+            * (var("t") * constant(2));
+        assert_eq!(
+            expr.to_string(),
+            "-(((((9 * x) * (y)) * (5 * z + 5)) * (2 * t + 4 * z)) * (2 * t))"
+        );
+        let factors = expr.to_factors().into_iter().format(", ").to_string();
+        assert_eq!(factors, "x, y, z + 1, t + 2 * z, t");
     }
 }

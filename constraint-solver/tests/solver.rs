@@ -3,11 +3,14 @@ use std::collections::BTreeMap;
 use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    grouped_expression::QuadraticSymbolicExpression,
+    constraint_system::{
+        BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
+    },
+    grouped_expression::GroupedExpression,
     indexed_constraint_system::apply_substitutions,
     range_constraint::RangeConstraint,
-    solver::{Error, Solver},
+    solver::{solve_system, Error},
+    symbolic_expression::SymbolicExpression,
     test_utils::{constant, var, Qse},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -17,13 +20,16 @@ use pretty_assertions::assert_eq;
 
 pub type Var = &'static str;
 
+pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
+
 pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
-    solver: Solver<GoldilocksField, Var, B>,
+    system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
+    bus_interaction_handler: B,
     expected_assignments: Vec<(Var, GoldilocksField)>,
 ) {
-    let final_state = solver.solve().unwrap();
+    let final_state = solve_system(system, bus_interaction_handler).unwrap();
     let expected_final_state = expected_assignments.into_iter().collect();
-    assert_expected_state(final_state.assignments, expected_final_state);
+    assert_expected_state(final_state, expected_final_state);
 }
 
 fn assert_expected_state(
@@ -53,10 +59,11 @@ fn assert_expected_state(
 #[test]
 fn single_variable() {
     assert_solve_result(
-        Solver::new(ConstraintSystem {
+        ConstraintSystem {
             algebraic_constraints: vec![var("x") - constant(5)],
             bus_interactions: vec![],
-        }),
+        },
+        DefaultBusInteractionHandler::default(),
         vec![("x", 5.into())],
     );
 }
@@ -75,7 +82,8 @@ fn concretely_solvable() {
         bus_interactions: vec![],
     };
     assert_solve_result(
-        Solver::new(constraint_system),
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
         vec![
             ("a", 2.into()),
             ("b", 3.into()),
@@ -102,7 +110,8 @@ fn bit_decomposition() {
     };
 
     assert_solve_result(
-        Solver::new(constraint_system),
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
         vec![
             ("b0", 0.into()),
             ("b1", 1.into()),
@@ -198,11 +207,9 @@ fn byte_decomposition() {
             .collect(),
     };
 
-    let solver =
-        Solver::new(constraint_system).with_bus_interaction_handler(TestBusInteractionHandler);
-
     assert_solve_result(
-        solver,
+        constraint_system,
+        TestBusInteractionHandler,
         vec![
             ("b0", 0x12.into()),
             ("b1", 0xef.into()),
@@ -226,11 +233,9 @@ fn xor() {
         bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
     };
 
-    let solver =
-        Solver::new(constraint_system).with_bus_interaction_handler(TestBusInteractionHandler);
-
     assert_solve_result(
-        solver,
+        constraint_system,
+        TestBusInteractionHandler,
         vec![("a", 0xa0.into()), ("b", 0x0b.into()), ("c", 0xab.into())],
     );
 }
@@ -248,10 +253,7 @@ fn xor_invalid() {
         bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
     };
 
-    let solver =
-        Solver::new(constraint_system).with_bus_interaction_handler(TestBusInteractionHandler);
-
-    match solver.solve() {
+    match solve_system(constraint_system, TestBusInteractionHandler) {
         Err(e) => assert_eq!(e, Error::BusInteractionError),
         _ => panic!("Expected error!"),
     }
@@ -278,10 +280,8 @@ fn add_with_carry() {
         ],
     };
 
-    let solver = Solver::new(constraint_system.clone())
-        .with_bus_interaction_handler(TestBusInteractionHandler);
-    let final_state = solver.solve().unwrap();
-    let final_state = apply_substitutions(constraint_system, final_state.assignments)
+    let final_state = solve_system(constraint_system.clone(), TestBusInteractionHandler).unwrap();
+    let final_state = apply_substitutions(constraint_system, final_state)
         .algebraic_constraints
         .iter()
         .format("\n")
@@ -317,7 +317,8 @@ fn one_hot_flags() {
     // This can be solved via backtracking: There are 16 possible assignments
     // for the 4 flags, but only 1 of them satisfies all the constraints.
     assert_solve_result(
-        Solver::new(constraint_system),
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
         vec![
             ("flag0", 0.into()),
             ("flag1", 0.into()),
@@ -358,7 +359,8 @@ fn binary_flags() {
     };
 
     assert_solve_result(
-        Solver::new(constraint_system),
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
         vec![
             ("flag0", 1.into()),
             ("flag1", 1.into()),
@@ -430,5 +432,9 @@ fn ternary_flags() {
         bus_interactions: vec![],
     };
 
-    assert_solve_result(Solver::new(constraint_system), vec![("is_load", 1.into())]);
+    assert_solve_result(
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
+        vec![("is_load", 1.into())],
+    );
 }

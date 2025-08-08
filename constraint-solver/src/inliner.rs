@@ -1,10 +1,11 @@
 use crate::constraint_system::ConstraintRef;
-use crate::grouped_expression::QuadraticSymbolicExpression;
+use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::journaling_constraint_system::JournalingConstraintSystem;
+use crate::runtime_constant::{RuntimeConstant, Substitutable};
 
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::ExpressionConvertible;
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -17,13 +18,13 @@ pub struct DegreeBound {
 }
 
 /// Reduce variables in the constraint system by inlining them,
-/// as long as the resulting degree stays within `max_degree`.
+/// if the callback `should_inline` returns true.
 pub fn replace_constrained_witness_columns<
-    T: FieldElement,
+    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: JournalingConstraintSystem<T, V>,
-    degree_bound: DegreeBound,
+    should_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
 ) -> JournalingConstraintSystem<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
@@ -35,12 +36,7 @@ pub fn replace_constrained_witness_columns<
         let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
 
         for (var, expr) in find_inlinable_variables(constraint) {
-            if is_valid_substitution(
-                &var,
-                &expr,
-                constraint_system.indexed_system(),
-                degree_bound,
-            ) {
+            if should_inline(&var, &expr, constraint_system.indexed_system()) {
                 log::trace!("Substituting {var} = {expr}");
                 log::trace!("  (from identity {constraint})");
 
@@ -70,95 +66,81 @@ pub fn replace_constrained_witness_columns<
     constraint_system
 }
 
-/// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    constraint: &QuadraticSymbolicExpression<T, V>,
-) -> Vec<(V, QuadraticSymbolicExpression<T, V>)> {
-    let mut substitutions = vec![];
-
-    let (_, linear, _) = constraint.components();
-
-    for (target_var, _) in linear {
-        let Some(rhs_qse) = constraint.try_solve_for(target_var) else {
-            continue;
-        };
-
-        assert!(!rhs_qse.referenced_unknown_variables().contains(target_var));
-
-        substitutions.push((target_var.clone(), rhs_qse));
+/// Returns an inlining discriminator that allows everything to be inlined as long as
+/// the given degree bound is not violated.
+pub fn inline_everything_below_degree_bound<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+    degree_bound: DegreeBound,
+) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
+    move |var, expr, constraint_system| {
+        substitution_would_not_violate_degree_bound(var, expr, constraint_system, degree_bound)
     }
-
-    substitutions
 }
 
-/// Checks whether a substitution is valid under `max_degree` constraint.
-fn is_valid_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+/// Returns true if substituting `var` by `expr` inside `constraint_system` would
+/// not create new constraints with a degree larger than `degree_bound`
+pub fn substitution_would_not_violate_degree_bound<
+    T: RuntimeConstant,
+    V: Ord + Clone + Hash + Eq,
+>(
     var: &V,
-    expr: &QuadraticSymbolicExpression<T, V>,
+    expr: &GroupedExpression<T, V>,
     constraint_system: &IndexedConstraintSystem<T, V>,
     degree_bound: DegreeBound,
 ) -> bool {
-    let replacement_deg = qse_degree(expr);
+    let replacement_deg = expr.degree();
 
     constraint_system
         .constraints_referencing_variables(std::iter::once(var.clone()))
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let degree = qse_degree_with_virtual_substitution(identity, var, replacement_deg);
+                let degree =
+                    expression_degree_with_virtual_substitution(identity, var, replacement_deg);
                 degree <= degree_bound.identities
             }
             ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
-                let degree = qse_degree_with_virtual_substitution(expr, var, replacement_deg);
+                let degree =
+                    expression_degree_with_virtual_substitution(expr, var, replacement_deg);
                 degree <= degree_bound.bus_interactions
             }),
         })
 }
 
-/// Calculate the degree of a QuadraticSymbolicExpression assuming a variable is
+/// Returns substitutions of variables that appear linearly and do not depend on themselves.
+fn find_inlinable_variables<
+    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
+    V: Ord + Clone + Hash + Eq + Display,
+>(
+    constraint: &GroupedExpression<T, V>,
+) -> Vec<(V, GroupedExpression<T, V>)> {
+    let (_, linear, _) = constraint.components();
+    linear
+        .rev()
+        .filter_map(|(target_var, _)| {
+            let rhs_expr = constraint.try_solve_for(target_var)?;
+            assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
+            Some((target_var.clone(), rhs_expr))
+        })
+        .collect()
+}
+
+/// Calculate the degree of a GroupedExpression assuming a variable is
 /// replaced by an expression of known degree.
-fn qse_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    qse: &QuadraticSymbolicExpression<T, V>,
+fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clone + Eq>(
+    expr: &GroupedExpression<T, V>,
     var: &V,
     replacement_deg: usize,
 ) -> usize {
-    let (quadratic, linear, _) = qse.components();
+    let (quadratic, linear, _) = expr.components();
 
-    let quad_deg = quadratic
+    quadratic
         .iter()
         .map(|(l, r)| {
-            qse_degree_with_virtual_substitution(l, var, replacement_deg)
-                + qse_degree_with_virtual_substitution(r, var, replacement_deg)
+            expression_degree_with_virtual_substitution(l, var, replacement_deg)
+                + expression_degree_with_virtual_substitution(r, var, replacement_deg)
         })
+        .chain(linear.map(|(v, _)| if v == var { replacement_deg } else { 1 }))
         .max()
-        .unwrap_or(0);
-
-    let linear_deg = linear
-        .map(|(v, _)| if v == var { replacement_deg } else { 1 })
-        .max()
-        .unwrap_or(0);
-
-    quad_deg.max(linear_deg)
-}
-
-/// Computes the degree of a QuadraticSymbolicExpression.
-fn qse_degree<T: FieldElement, V: Ord + Clone + Hash + Eq>(
-    qse: &QuadraticSymbolicExpression<T, V>,
-) -> usize {
-    let (quadratic, linear, _) = qse.components();
-
-    let quad_deg = quadratic
-        .iter()
-        .map(|(l, r)| qse_degree(l) + qse_degree(r))
-        .max()
-        .unwrap_or(0);
-
-    let linear_deg = if linear.peekable().peek().is_some() {
-        1
-    } else {
-        0
-    };
-
-    quad_deg.max(linear_deg)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -172,11 +154,14 @@ mod test {
 
     use test_log::test;
 
-    fn bounds(identities: usize, bus_interactions: usize) -> DegreeBound {
-        DegreeBound {
+    fn bounds<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+        identities: usize,
+        bus_interactions: usize,
+    ) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
+        inline_everything_below_degree_bound(DegreeBound {
             identities,
             bus_interactions,
-        }
+        })
     }
 
     #[test]
@@ -200,7 +185,7 @@ mod test {
         // keep column result
         let bus_interactions = vec![BusInteraction {
             bus_id: constant(1),
-            payload: vec![var("result"), var("b")],
+            payload: vec![var("0result"), var("b")],
             multiplicity: constant(1),
         }];
 
@@ -208,7 +193,7 @@ mod test {
             algebraic_constraints: vec![
                 var("a") + var("b") + var("c"),
                 var("b") + var("d") - constant(1),
-                var("c") + var("b") + var("a") + var("d") - var("result"),
+                var("c") + var("b") + var("a") + var("d") - var("0result"),
             ],
             bus_interactions,
         }
@@ -233,8 +218,8 @@ mod test {
         let [result, b] = payload.as_slice() else {
             panic!();
         };
-        assert_eq!(result.to_string(), "result");
-        assert_eq!(b.to_string(), "-(result - 1)");
+        assert_eq!(result.to_string(), "0result");
+        assert_eq!(b.to_string(), "-(0result - 1)");
     }
 
     #[test]
@@ -269,19 +254,9 @@ mod test {
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
-        // 1) b + d = 0            => b = -d
-        // 2) a * b = c            => a * (-d) = c => a * d + c = 0
-        // 3) a + b + c + d = result
-        //    =(1)=> a - d + c + d = result
-        //         = a + c
-        //    => a + c - result = 0
-        //    × (-d): -a*d - c*d + d*result = 0
-        //    =(2)=> c - c*d + d*result = 0
-        // ⇒ (c + -result) * (-d) + c = 0
 
         let constraints = constraint_system.algebraic_constraints().collect_vec();
-        assert_eq!(constraints.len(), 1);
-        assert_eq!(constraints[0].to_string(), "-((c - result) * (d) - c)");
+        assert_eq!(constraints.len(), 0);
     }
 
     #[test]
@@ -314,21 +289,9 @@ mod test {
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
-        // 1) b + d = 0        => b = -d
-        // 2) c * d = e        => e = c * d
-        // 3) a + b + c + d + e = result
-        //    =⇒ a + (-d) + c + d + (c * d) = result
-        //    =⇒ a + c + (c * d) = result ⇒ a = result - c - c*d
-        //
-        // Replace a and b in (a * b = c):
-        //    (result - c - c*d) * (-d) = c
-        // ⇒ ((c * d) + c - result) * (-d) + c = 0
+
         let constraints = constraint_system.algebraic_constraints().collect_vec();
-        assert_eq!(constraints.len(), 1);
-        assert_eq!(
-            constraints[0].to_string(),
-            "-(((c) * (d) + c - result) * (d) - c)"
-        );
+        assert_eq!(constraints.len(), 0);
     }
 
     #[test]
@@ -362,8 +325,8 @@ mod test {
         let [result, x] = payload.as_slice() else {
             panic!();
         };
-        assert_eq!(result.to_string(), "z + 1");
-        assert_eq!(x.to_string(), "z - 5");
+        assert_eq!(result.to_string(), "result");
+        assert_eq!(x.to_string(), "result - 6");
     }
 
     #[test]
@@ -408,23 +371,21 @@ mod test {
         let [a, b, c, d, e, f, result] = payload.as_slice() else {
             panic!();
         };
-        // From first identity: a = b + 1
-        assert_eq!(a.to_string(), "b + 1");
-        // b kept as a symbol
-        assert_eq!(b.to_string(), "b");
+        assert_eq!(a.to_string(), "a");
+        assert_eq!(b.to_string(), "a - 1");
         // From second identity: c = a * a
         // In-lining c would violate the degree bound, so it is kept as a symbol
         // with a constraint to enforce the equality.
         assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "-((b + 1) * (b + 1) - c)");
+        assert_eq!(identity.to_string(), "-((a) * (a) - c)");
         // From third identity: d = c * a
-        assert_eq!(d.to_string(), "(c) * (b + 1)");
+        assert_eq!(d.to_string(), "(c) * (a)");
         // From fourth identity: e = d * a
-        assert_eq!(e.to_string(), "((c) * (b + 1)) * (b + 1)");
+        assert_eq!(e.to_string(), "((c) * (a)) * (a)");
         // From fifth identity: f = e + 5
-        assert_eq!(f.to_string(), "((c) * (b + 1)) * (b + 1) + 5");
+        assert_eq!(f.to_string(), "((c) * (a)) * (a) + 5");
         // From sixth identity: result = f * 2
-        assert_eq!(result.to_string(), "((2 * c) * (b + 1)) * (b + 1) + 10");
+        assert_eq!(result.to_string(), "((2 * c) * (a)) * (a) + 10");
     }
 
     #[test]
