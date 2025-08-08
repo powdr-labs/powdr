@@ -154,7 +154,7 @@ pub fn customize(
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(vm_config.clone());
-    let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
     let jumpdest_set = add_extra_targets(
@@ -175,7 +175,7 @@ pub fn customize(
     let max_total_apc_columns: Option<usize> = match pgo_config {
         PgoConfig::Cell(_, max_total_columns) => max_total_columns.map(|max_total_columns| {
             let total_non_apc_columns = original_config
-                .chip_inventory_air_metrics()
+                .chip_inventory_air_metrics(config.degree_bound.identities)
                 .values()
                 .map(|m| m.total_width())
                 .sum::<usize>();
@@ -273,7 +273,12 @@ pub fn customize(
 
     CompiledProgram {
         exe,
-        vm_config: SpecializedConfig::new(original_config, extensions, implementation),
+        vm_config: SpecializedConfig::new(
+            original_config,
+            extensions,
+            implementation,
+            config.degree_bound.identities,
+        ),
     }
 }
 
@@ -349,8 +354,10 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
+        max_degree: usize,
     ) -> Self {
-        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
+        let apc_metrics =
+            get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())), max_degree);
         let width_after = apc_metrics.widths;
 
         let width_before = apc

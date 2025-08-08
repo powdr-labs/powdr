@@ -170,8 +170,9 @@ impl SpecializedConfig {
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBear>>,
         implementation: PrecompileImplementation,
+        max_degree: usize,
     ) -> Self {
-        let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let airs = base_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(
             precompiles,
@@ -510,7 +511,10 @@ impl AirMetrics {
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+    fn air_metrics(
+        &self,
+        max_degree: usize,
+    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         use openvm_stark_backend::Chip;
 
         use crate::extraction_utils::get_air_metrics;
@@ -545,11 +549,11 @@ impl CompiledProgram {
                     // TODO this is hacky but not sure how to do it better rn.
                     if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                         powdr_air_metrics.push((
-                            get_air_metrics(air),
+                            get_air_metrics(air, max_degree),
                             apc_stats.next().unwrap().map(|stats| stats.widths),
                         ));
                     } else {
-                        non_powdr_air_metrics.push(get_air_metrics(air));
+                        non_powdr_air_metrics.push(get_air_metrics(air, max_degree));
                     }
 
                     (powdr_air_metrics, non_powdr_air_metrics)
@@ -1315,6 +1319,7 @@ mod tests {
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
+        let max_degree = config.degree_bound.identities;
         let compiled_program = compile_guest(
             guest.name,
             GuestOptions::default(),
@@ -1324,7 +1329,7 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
+        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
             &powdr_air_metrics
@@ -1546,6 +1551,7 @@ mod tests {
     #[test]
     fn guest_machine_plonk() {
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let max_degree = config.degree_bound.identities;
         let (powdr_metrics, _) = compile_guest(
             GUEST,
             GuestOptions::default(),
@@ -1554,7 +1560,7 @@ mod tests {
             PgoConfig::None,
         )
         .unwrap()
-        .air_metrics();
+        .air_metrics(max_degree);
         assert_eq!(powdr_metrics.len(), 1);
         let powdr_metrics_sum = powdr_metrics
             .into_iter()

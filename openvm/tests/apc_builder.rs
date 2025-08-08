@@ -28,7 +28,12 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
 
     let original_config = OriginalVmConfig::new(ext_vm_config);
 
-    let airs = original_config.airs().unwrap();
+    let degree_bound = DegreeBound {
+        identities: DEFAULT_OPENVM_DEGREE_BOUND,
+        bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
+    };
+
+    let airs = original_config.airs(degree_bound.identities).unwrap();
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
@@ -37,11 +42,6 @@ fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
             default_openvm_bus_map(),
         ),
         bus_map: bus_map.clone(),
-    };
-
-    let degree_bound = DegreeBound {
-        identities: DEFAULT_OPENVM_DEGREE_BOUND,
-        bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
     };
 
     let basic_block_str = basic_block
