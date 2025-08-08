@@ -21,7 +21,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
 use crate::memory_optimizer::MemoryBusInteraction;
-use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
+use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
