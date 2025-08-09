@@ -127,7 +127,6 @@ mod test {
         test_display(x.clone() + (y.clone() + z.clone()), "x + (y + z)");
         // Don't remove needed
         test_display((x.clone() + y.clone()) * z.clone(), "(x + y) * z");
-        test_display((x.clone() + y.clone()) * z.clone(), "(x + y) * z");
         test_display(-(x.clone() + y.clone()), "-(x + y)");
     }
 }
