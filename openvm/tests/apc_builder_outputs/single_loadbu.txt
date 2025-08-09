@@ -2,11 +2,11 @@ Instructions:
   LOADBU rd_rs2_ptr = 8, rs1_ptr = 2, imm = 21, mem_as = 2, needs_write = 1, imm_sign = 0
 
 APC advantage:
-  - Main columns: 41 -> 26 (1.58x reduction)
+  - Main columns: 41 -> 27 (1.52x reduction)
   - Bus interactions: 17 -> 16 (1.06x reduction)
-  - Constraints: 25 -> 14 (1.79x reduction)
+  - Constraints: 25 -> 15 (1.67x reduction)
 
-Symbolic machine using 26 unique main columns:
+Symbolic machine using 27 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -32,6 +32,7 @@ Symbolic machine using 26 unique main columns:
   prev_data__1_0
   prev_data__2_0
   prev_data__3_0
+  write_data__0_0
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -44,7 +45,7 @@ mult=is_valid * 1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_
 mult=is_valid * -1, args=[2, flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 2 * flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 3 * flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - flags__2_0 * (flags__2_0 - 1), read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, read_data_aux__base__prev_timestamp_0]
 mult=is_valid * 1, args=[2, flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 2 * flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 3 * flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - flags__2_0 * (flags__2_0 - 1), read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, from_state__timestamp_0 + 1]
 mult=is_valid * -1, args=[1, 8, prev_data__0_0, prev_data__1_0, prev_data__2_0, prev_data__3_0, write_base_aux__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 8, (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0 - flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) * read_data__0_0 + (flags__0_0 * flags__2_0 + flags__1_0 * flags__2_0 + flags__1_0 * flags__3_0 + flags__2_0 * flags__3_0) * prev_data__0_0 - ((1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__3_0 * (flags__3_0 - 1)) * read_data__0_0 + flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__1_0 + (1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) * read_data__2_0 + flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__3_0), 0, 0, 0, from_state__timestamp_0 + 2]
+mult=is_valid * 1, args=[1, 8, write_data__0_0, 0, 0, 0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
 mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17]
@@ -63,6 +64,7 @@ flags__2_0 * ((flags__2_0 - 1) * (flags__2_0 - 2)) = 0
 flags__3_0 * ((flags__3_0 - 1) * (flags__3_0 - 2)) = 0
 (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 1 * is_valid) * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) = 0
 1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__2_0 * (flags__2_0 - 1) + 1006632960 * flags__3_0 * (flags__3_0 - 1) + flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) + 1 * is_valid = 0
+(1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__3_0 * (flags__3_0 - 1)) * read_data__0_0 + flags__0_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__1_0 + (1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2)) * read_data__2_0 + flags__2_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__3_0 + (flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) - (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0)) * read_data__0_0 + write_data__0_0 - (flags__0_0 * flags__2_0 + flags__1_0 * flags__2_0 + flags__1_0 * flags__3_0 + flags__2_0 * flags__3_0) * prev_data__0_0 = 0
 (1006632960 * flags__0_0 * (flags__0_0 - 1) + 1006632960 * flags__1_0 * (flags__1_0 - 1)) * read_data__1_0 + 1006632960 * flags__2_0 * (flags__2_0 - 1) * read_data__3_0 + (flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) - flags__0_0 * flags__1_0) * read_data__1_0 - (flags__1_0 * flags__2_0 * read_data__0_0 + (flags__0_0 * flags__2_0 + flags__0_0 * flags__3_0 + flags__1_0 * flags__3_0 + flags__2_0 * flags__3_0) * prev_data__1_0) = 0
 1006632960 * flags__0_0 * (flags__0_0 - 1) * read_data__2_0 + flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__2_0 - ((flags__0_0 * flags__2_0 + flags__1_0 * flags__3_0) * read_data__0_0 + (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0 + flags__1_0 * flags__2_0 + flags__2_0 * flags__3_0) * prev_data__2_0) = 0
 1006632960 * flags__0_0 * (flags__0_0 - 1) * read_data__3_0 + flags__3_0 * (flags__0_0 + flags__1_0 + flags__2_0 + flags__3_0 - 2) * read_data__3_0 - (flags__2_0 * flags__3_0 * read_data__0_0 + flags__0_0 * flags__2_0 * read_data__1_0 + (flags__0_0 * flags__1_0 + flags__0_0 * flags__3_0 + flags__1_0 * flags__2_0 + flags__1_0 * flags__3_0) * prev_data__3_0) = 0
