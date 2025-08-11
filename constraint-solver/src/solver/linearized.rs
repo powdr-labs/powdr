@@ -305,10 +305,8 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> Option<GroupedExpression<T, V>> {
-        if let Some(c) = expr.try_to_known() {
-            Some(GroupedExpression::from_runtime_constant(c.clone()))
-        } else if let Some(var) = expr.try_to_simple_unknown() {
-            Some(GroupedExpression::from_unknown_variable(var))
+        if expr.try_to_known().is_some() || expr.try_to_simple_unknown().is_some() {
+            Some(expr.clone())
         } else {
             self.substitutions
                 .get(expr)
