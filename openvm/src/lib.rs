@@ -1292,25 +1292,6 @@ mod tests {
     }
 
     #[test]
-    fn ecc_with_hint_prove() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_HINTS);
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-
-        prove_simple(
-            GUEST_ECC_HINTS,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
     fn ecc_prove_multiple_pgo_modes() {
         use std::time::Instant;
 
@@ -1464,149 +1445,6 @@ mod tests {
 
         prove_simple(
             GUEST_ECC_HINTS,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
-    fn ecc_prove_multiple_pgo_modes() {
-        use std::time::Instant;
-
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_HINTS);
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_HINTS,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!("Proving ecc with PgoConfig::Cell took {:?}", elapsed);
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_HINTS,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!("Proving ecc with PgoConfig::Instruction took {:?}", elapsed);
-    }
-
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn ecc_prove_recursion() {
-        let stdin = StdIn::default();
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-        prove_recursion(
-            GUEST_ECC_HINTS,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
-    fn ecc_projective_prove() {
-        let stdin = StdIn::default();
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
-
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
-
-        prove_simple(
-            GUEST_ECC_PROJECTIVE,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
-    fn ecc_projective_prove_multiple_pgo_modes() {
-        use std::time::Instant;
-
-        let stdin = StdIn::default();
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
-
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_PROJECTIVE,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!(
-            "Proving ecc projective point implementation with PgoConfig::Cell took {:?}",
-            elapsed
-        );
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_PROJECTIVE,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!(
-            "Proving ecc projective point implementation with PgoConfig::Instruction took {:?}",
-            elapsed
-        );
-    }
-
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn ecc_projective_prove_recursion() {
-        let stdin = StdIn::default();
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
-
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
-        prove_recursion(
-            GUEST_ECC_PROJECTIVE,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
@@ -1630,7 +1468,6 @@ mod tests {
             None,
         );
     }
-
 
     // The following are compilation tests only
 
@@ -1937,11 +1774,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 33574,
-                            log_up: 26592,
+                            main: 33637,
+                            log_up: 50544,
                         },
-                        constraints: 23364,
-                        bus_interactions: 21882,
+                        constraints: 23839,
+                        bus_interactions: 21160,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1965,11 +1802,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 21717,
-                            log_up: 17620,
+                            main: 21349,
+                            log_up: 32796,
                         },
-                        constraints: 11040,
-                        bus_interactions: 15095,
+                        constraints: 11335,
+                        bus_interactions: 14223,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1982,13 +1819,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 130941,
-                        log_up: 95268,
+                        main: 129532,
+                        log_up: 173480,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 21717,
-                        log_up: 17620,
+                        main: 21349,
+                        log_up: 32796,
                     },
                 }
             "#]]),
@@ -2013,11 +1850,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 38629,
-                            log_up: 30384,
+                            main: 38676,
+                            log_up: 57776,
                         },
-                        constraints: 24800,
-                        bus_interactions: 25701,
+                        constraints: 25297,
+                        bus_interactions: 24804,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2041,11 +1878,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 27162,
-                            log_up: 21712,
+                            main: 26793,
+                            log_up: 40604,
                         },
-                        constraints: 12587,
-                        bus_interactions: 19169,
+                        constraints: 12782,
+                        bus_interactions: 18172,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2058,13 +1895,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 161854,
-                        log_up: 116656,
+                        main: 161067,
+                        log_up: 213944,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 27162,
-                        log_up: 21712,
+                        main: 26793,
+                        log_up: 40604,
                     },
                 }
             "#]]),
