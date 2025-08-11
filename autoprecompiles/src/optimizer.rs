@@ -48,21 +48,21 @@ pub fn optimize<A: Adapter>(
     }
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
-    let constraint_system = introduce_bus_interaction_variables(constraint_system);
+    // let constraint_system = introduce_bus_interaction_variables(constraint_system);
 
-    // Run the optimizer while avoiding inlining bus interaction field variables
-    let constraint_system =
-        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
-            constraint_system,
-            bus_interaction_handler.clone(),
-            only_inline_degree_one_and_no_bus_field_vars,
-            &mut stats_logger,
-            bus_map,
-        )?;
+    // // Run the optimizer while avoiding inlining bus interaction field variables
+    // let constraint_system =
+    //     run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
+    //         constraint_system,
+    //         bus_interaction_handler.clone(),
+    //         only_inline_degree_one_and_no_bus_field_vars,
+    //         &mut stats_logger,
+    //         bus_map,
+    //     )?;
 
-    // Now remove the bus interaction field variables and run the optimizer,
-    // allowing all inlining below the degree bound.
-    let constraint_system = remove_bus_interaction_variables(constraint_system);
+    // // Now remove the bus interaction field variables and run the optimizer,
+    // // allowing all inlining below the degree bound.
+    // let constraint_system = remove_bus_interaction_variables(constraint_system);
     let constraint_system =
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
