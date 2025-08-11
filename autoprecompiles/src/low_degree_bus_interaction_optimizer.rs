@@ -24,7 +24,7 @@ pub struct LowDegreeBusInteractionOptimizer<
     S: Solver<T, V>,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T>,
 > {
-    solver: &'a S,
+    solver: &'a mut S,
     bus_interaction_handler: B,
     _phantom: PhantomData<(T, V)>,
 }
@@ -37,7 +37,7 @@ impl<
         B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T>,
     > LowDegreeBusInteractionOptimizer<'a, T, V, S, B>
 {
-    pub fn new(solver: &'a S, bus_interaction_handler: B) -> Self {
+    pub fn new(solver: &'a mut S, bus_interaction_handler: B) -> Self {
         Self {
             solver,
             bus_interaction_handler,
@@ -45,7 +45,7 @@ impl<
         }
     }
 
-    pub fn optimize(&self, mut system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
+    pub fn optimize(self, mut system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
         let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
         system.bus_interactions = system
             .bus_interactions
@@ -74,7 +74,12 @@ impl<
             })
             .collect();
 
-        // TODO: Need to mutate solver too?
+        // Knowing the low-degree functions might help the solver.
+        // The range constraints do not need to be added, because they don't carry information
+        // that is not already implied by the existing bus interactions.
+        self.solver
+            .add_algebraic_constraints(new_constraints.iter().cloned());
+
         system.algebraic_constraints.extend(new_constraints);
         system
     }
@@ -178,7 +183,7 @@ impl<
 
     #[auto_enum(Iterator)]
     fn possible_input_output_pairs(
-        &self,
+        &'a self,
         bus_interaction: &'a BusInteraction<GroupedExpression<T, V>>,
     ) -> impl Iterator<Item = InputOutputPair<T, V>> + 'a {
         let unknown_fields = bus_interaction
@@ -259,7 +264,7 @@ impl<
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
         input_output_pair: &'b InputOutputPair<T, V>,
     ) -> impl Iterator<Item = Result<(Vec<T>, T), ()>> + 'b {
-        let bus_interaction = bus_interaction.to_range_constraints(&self.solver);
+        let bus_interaction = bus_interaction.to_range_constraints(self.solver);
         input_output_pair
             .inputs
             .iter()
