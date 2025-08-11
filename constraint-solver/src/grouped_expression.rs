@@ -627,6 +627,13 @@ impl<
                 .enumerate()
                 .filter(|(i, component)| *i != index && component.0 != Zero::zero())
                 .map(|(_, (coeff, expr))| (*coeff / *candidate_coeff, expr.clone()))
+                .map(|(coeff, expr)| {
+                    if !coeff.is_in_lower_half() {
+                        (-coeff, -expr)
+                    } else {
+                        (coeff, expr)
+                    }
+                })
                 .collect_vec();
             if rest.is_empty() {
                 // We are done anyway.
@@ -636,6 +643,7 @@ impl<
             // Now we try to extract the smallest coefficient in rest.
             let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
             assert_ne!(smallest_coeff, 0.into());
+            assert!(smallest_coeff.is_in_lower_half());
 
             let rest: GroupedExpression<_, _> = rest
                 .into_iter()
