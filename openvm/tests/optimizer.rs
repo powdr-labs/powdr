@@ -108,62 +108,63 @@ fn test_linearizer() {
         v("imm_0") - c(8),
         v("cmp_result_0") * v("imm_0") - c(4) * v("cmp_result_0") - v("BusInteractionField(10, 2)")
             + c(4),
+        (v("BusInteractionField(10, 2)") - c(4)) * (v("BusInteractionField(10, 2)") - c(8)),
     ];
     let bus_interactions = vec![
-        BusInteraction {
-            bus_id: c(1),
-            multiplicity: -c(1),
-            payload: vec![
-                c(1),
-                v("rs2_ptr_0"),
-                v("b__0_0"),
-                v("b__1_0"),
-                v("b__2_0"),
-                v("b__3_0"),
-                v("reads_aux__1__base__prev_timestamp_0"),
-            ],
-        },
-        BusInteraction {
-            bus_id: c(1),
-            multiplicity: c(1),
-            payload: vec![
-                c(1),
-                v("rs2_ptr_0"),
-                v("b__0_0"),
-                v("b__1_0"),
-                v("b__2_0"),
-                v("b__3_0"),
-                v("from_state__timestamp_0") + c(1),
-            ],
-        },
-        BusInteraction {
-            bus_id: c(2),
-            multiplicity: c(1),
-            payload: vec![
-                c(0),
-                c(1) + c(544),
-                v("rs1_ptr_0"),
-                v("rs2_ptr_0"),
-                v("imm_0"),
-                c(1),
-                c(1),
-                c(0),
-                c(0),
-            ],
-        },
-        BusInteraction {
-            bus_id: c(0),
-            multiplicity: -c(1),
-            payload: vec![c(0), v("from_state__timestamp_0")],
-        },
-        BusInteraction {
-            bus_id: c(0),
-            multiplicity: c(1),
-            payload: vec![
-                v("BusInteractionField(10, 2)"),
-                v("from_state__timestamp_0") + c(2),
-            ],
-        },
+        // BusInteraction {
+        //     bus_id: c(1),
+        //     multiplicity: -c(1),
+        //     payload: vec![
+        //         c(1),
+        //         v("rs2_ptr_0"),
+        //         v("b__0_0"),
+        //         v("b__1_0"),
+        //         v("b__2_0"),
+        //         v("b__3_0"),
+        //         v("reads_aux__1__base__prev_timestamp_0"),
+        //     ],
+        // },
+        // BusInteraction {
+        //     bus_id: c(1),
+        //     multiplicity: c(1),
+        //     payload: vec![
+        //         c(1),
+        //         v("rs2_ptr_0"),
+        //         v("b__0_0"),
+        //         v("b__1_0"),
+        //         v("b__2_0"),
+        //         v("b__3_0"),
+        //         v("from_state__timestamp_0") + c(1),
+        //     ],
+        // },
+        // BusInteraction {
+        //     bus_id: c(2),
+        //     multiplicity: c(1),
+        //     payload: vec![
+        //         c(0),
+        //         c(1) + c(544),
+        //         v("rs1_ptr_0"),
+        //         v("rs2_ptr_0"),
+        //         v("imm_0"),
+        //         c(1),
+        //         c(1),
+        //         c(0),
+        //         c(0),
+        //     ],
+        // },
+        // BusInteraction {
+        //     bus_id: c(0),
+        //     multiplicity: -c(1),
+        //     payload: vec![c(0), v("from_state__timestamp_0")],
+        // },
+        // // BusInteraction {
+        // //     bus_id: c(0),
+        // //     multiplicity: c(1),
+        // //     payload: vec![
+        // //         v("BusInteractionField(10, 2)"),
+        // //         v("from_state__timestamp_0") + c(2),
+        // //     ],
+        // // },
     ];
     // BusInteraction { bus_id: 3, multiplicity: BusInteractionField(0, 1), payload: reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17 }
     // BusInteraction { bus_id: 3, multiplicity: BusInteractionField(1, 1), payload: reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12 }
