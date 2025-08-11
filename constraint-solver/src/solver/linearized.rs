@@ -27,7 +27,28 @@ use crate::{
 pub struct LinearizedSolver<T, V, S> {
     solver: S,
     linearizer: Linearizer<T, V>,
+    var_dispenser: LinearizedVarDispenser,
+}
+
+struct LinearizedVarDispenser {
     next_var_id: usize,
+}
+
+impl LinearizedVarDispenser {
+    fn new() -> Self {
+        LinearizedVarDispenser { next_var_id: 0 }
+    }
+
+    fn next_var<V>(&mut self) -> Variable<V> {
+        let id = self.next_var_id;
+        self.next_var_id += 1;
+        Variable::Linearized(id)
+    }
+
+    /// Returns an iterator over all variables dispensed in the past.
+    fn all_dispensed_vars<V>(&self) -> impl Iterator<Item = Variable<V>> {
+        (0..self.next_var_id).map(Variable::Linearized)
+    }
 }
 
 impl<T, V, S> LinearizedSolver<T, V, S>
@@ -40,7 +61,7 @@ where
         Self {
             solver,
             linearizer: Linearizer::default(),
-            next_var_id: 0,
+            var_dispenser: LinearizedVarDispenser::new(),
         }
     }
 }
@@ -92,7 +113,7 @@ where
                     vec![
                         constr.clone(),
                         self.linearizer
-                            .linearize(constr, &mut || next_var(&mut self.next_var_id)),
+                            .linearize(constr, &mut || self.var_dispenser.next_var()),
                     ]
                 }
                 .into_iter()
@@ -114,7 +135,7 @@ where
                     .map(|expr| {
                         self.linearizer
                             .linearize_and_substitute_by_var(expr.clone(), &mut || {
-                                next_var(&mut self.next_var_id)
+                                self.var_dispenser.next_var()
                             })
                     })
                     .collect::<BusInteraction<_>>()
@@ -138,7 +159,7 @@ where
         // connect quadratic terms with the original constraints. We could try to find
         // those, but let's just keep all of them for now.
         let mut variables_to_keep = variables_to_keep.clone();
-        variables_to_keep.extend((0..(self.next_var_id)).map(|i| Variable::Linearized(i)));
+        variables_to_keep.extend(self.var_dispenser.all_dispensed_vars());
         self.solver.retain_variables(&variables_to_keep);
     }
 
@@ -173,12 +194,6 @@ where
         a.cartesian_product(b)
             .any(|(a, b)| self.solver.are_expressions_known_to_be_different(&a, &b))
     }
-}
-
-fn next_var<V>(next_var_id: &mut usize) -> Variable<V> {
-    let var = Variable::Linearized(*next_var_id);
-    *next_var_id += 1;
-    var
 }
 
 struct Linearizer<T, V> {
