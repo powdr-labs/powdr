@@ -332,7 +332,7 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> L
         .algebraic_constraints;
         self.substitutions = exprs
             .into_iter()
-            .zip(vars)
+            .zip_eq(vars)
             .map(|(expr, var)| (expr, var.clone()))
             .collect();
     }
