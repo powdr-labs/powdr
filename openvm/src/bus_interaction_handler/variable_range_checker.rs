@@ -52,7 +52,7 @@ pub fn variable_range_checker_pure_range_constraints<T: FieldElement, V: Ord + C
 mod tests {
     use crate::{
         bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
-        bus_map::{default_openvm_bus_map, DEFAULT_VARIABLE_RANGE_CHECKER},
+        bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     };
 
     use super::*;
@@ -63,7 +63,7 @@ mod tests {
         x: RangeConstraint<BabyBearField>,
         bits: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(default_openvm_bus_map());
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::default();
 
         let bus_interaction = BusInteraction {
             bus_id: RangeConstraint::from_value(DEFAULT_VARIABLE_RANGE_CHECKER.into()),

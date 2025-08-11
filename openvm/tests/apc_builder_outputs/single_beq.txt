@@ -2,11 +2,11 @@ Instructions:
   BEQ 8 5 2 1 1
 
 APC advantage:
-  - Main columns: 26 -> 18 (1.44x reduction)
+  - Main columns: 26 -> 19 (1.37x reduction)
   - Bus interactions: 11 -> 10 (1.10x reduction)
-  - Constraints: 11 -> 6 (1.83x reduction)
+  - Constraints: 11 -> 7 (1.57x reduction)
 
-Symbolic machine using 18 unique main columns:
+Symbolic machine using 19 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -20,6 +20,7 @@ Symbolic machine using 18 unique main columns:
   b__1_0
   b__2_0
   b__3_0
+  cmp_result_0
   diff_inv_marker__0_0
   diff_inv_marker__1_0
   diff_inv_marker__2_0
@@ -28,7 +29,7 @@ Symbolic machine using 18 unique main columns:
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
-mult=is_valid * 1, args=[(2 * a__0_0 - 2 * b__0_0) * diff_inv_marker__0_0 + (2 * a__1_0 - 2 * b__1_0) * diff_inv_marker__1_0 + (2 * a__2_0 - 2 * b__2_0) * diff_inv_marker__2_0 + (2 * a__3_0 - 2 * b__3_0) * diff_inv_marker__3_0 + 2, from_state__timestamp_0 + 2]
+mult=is_valid * 1, args=[4 - 2 * cmp_result_0, from_state__timestamp_0 + 2]
 
 // Bus 1 (MEMORY):
 mult=is_valid * -1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
@@ -43,9 +44,10 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 
 // Algebraic constraints:
-((b__0_0 - a__0_0) * diff_inv_marker__0_0 + (b__1_0 - a__1_0) * diff_inv_marker__1_0 + (b__2_0 - a__2_0) * diff_inv_marker__2_0 + (b__3_0 - a__3_0) * diff_inv_marker__3_0 + 1) * ((b__0_0 - a__0_0) * diff_inv_marker__0_0 + (b__1_0 - a__1_0) * diff_inv_marker__1_0 + (b__2_0 - a__2_0) * diff_inv_marker__2_0 + (b__3_0 - a__3_0) * diff_inv_marker__3_0) = 0
-((b__0_0 - a__0_0) * diff_inv_marker__0_0 + (b__1_0 - a__1_0) * diff_inv_marker__1_0 + (b__2_0 - a__2_0) * diff_inv_marker__2_0 + (b__3_0 - a__3_0) * diff_inv_marker__3_0 + 1) * (a__0_0 - b__0_0) = 0
-((b__0_0 - a__0_0) * diff_inv_marker__0_0 + (b__1_0 - a__1_0) * diff_inv_marker__1_0 + (b__2_0 - a__2_0) * diff_inv_marker__2_0 + (b__3_0 - a__3_0) * diff_inv_marker__3_0 + 1) * (a__1_0 - b__1_0) = 0
-((b__0_0 - a__0_0) * diff_inv_marker__0_0 + (b__1_0 - a__1_0) * diff_inv_marker__1_0 + (b__2_0 - a__2_0) * diff_inv_marker__2_0 + (b__3_0 - a__3_0) * diff_inv_marker__3_0 + 1) * (a__2_0 - b__2_0) = 0
-((b__0_0 - a__0_0) * diff_inv_marker__0_0 + (b__1_0 - a__1_0) * diff_inv_marker__1_0 + (b__2_0 - a__2_0) * diff_inv_marker__2_0 + (b__3_0 - a__3_0) * diff_inv_marker__3_0 + 1) * (a__3_0 - b__3_0) = 0
+cmp_result_0 * (cmp_result_0 - 1) = 0
+cmp_result_0 * (a__0_0 - b__0_0) = 0
+cmp_result_0 * (a__1_0 - b__1_0) = 0
+cmp_result_0 * (a__2_0 - b__2_0) = 0
+cmp_result_0 * (a__3_0 - b__3_0) = 0
+(a__0_0 - b__0_0) * diff_inv_marker__0_0 + (a__1_0 - b__1_0) * diff_inv_marker__1_0 + (a__2_0 - b__2_0) * diff_inv_marker__2_0 + (a__3_0 - b__3_0) * diff_inv_marker__3_0 + cmp_result_0 - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0

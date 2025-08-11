@@ -1,3 +1,4 @@
+use expect_test::expect;
 use powdr_autoprecompiles::SymbolicMachine;
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
@@ -8,8 +9,6 @@ use powdr_openvm::{
 
 use test_log::test;
 
-use pretty_assertions::assert_eq;
-
 #[test]
 fn load_machine_cbor() {
     let file = std::fs::File::open("tests/keccak_apc_pre_opt.cbor").unwrap();
@@ -17,14 +16,18 @@ fn load_machine_cbor() {
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
-    assert_eq!(
-        [
-            machine.main_columns().count(),
-            machine.bus_interactions.len(),
-            machine.constraints.len()
-        ],
-        [27194, 13167, 27689]
-    );
+    expect![[r#"
+        27194
+    "#]]
+    .assert_debug_eq(&machine.main_columns().count());
+    expect![[r#"
+        13167
+    "#]]
+    .assert_debug_eq(&machine.bus_interactions.len());
+    expect![[r#"
+        27689
+    "#]]
+    .assert_debug_eq(&machine.constraints.len());
 }
 
 #[test]
@@ -35,7 +38,7 @@ fn test_optimize() {
 
     let machine = optimize::<BabyBearOpenVmApcAdapter>(
         machine,
-        OpenVmBusInteractionHandler::new(default_openvm_bus_map()),
+        OpenVmBusInteractionHandler::default(),
         DegreeBound {
             identities: 5,
             bus_interactions: 5,
@@ -44,21 +47,18 @@ fn test_optimize() {
     )
     .unwrap();
 
-    println!(
-        "Columns: {}, bus interactions: {}, constraints: {}",
-        machine.main_columns().count(),
-        machine.bus_interactions.len(),
-        machine.constraints.len()
-    );
-
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
-    assert_eq!(
-        [
-            machine.main_columns().count(),
-            machine.bus_interactions.len(),
-            machine.constraints.len()
-        ],
-        [1807, 1411, 233]
-    );
+    expect![[r#"
+        2007
+    "#]]
+    .assert_debug_eq(&machine.main_columns().count());
+    expect![[r#"
+        1712
+    "#]]
+    .assert_debug_eq(&machine.bus_interactions.len());
+    expect![[r#"
+        233
+    "#]]
+    .assert_debug_eq(&machine.constraints.len());
 }
