@@ -3,7 +3,7 @@ use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::grouped_expression::{GroupedExpression, NoRangeConstraints};
 use powdr_constraint_solver::inliner::DegreeBound;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
@@ -69,13 +69,9 @@ impl<
                 // the bus interaction with interactions implementing the range constraints.
                 // Note that many of these may be optimized away by the range constraint optimizer.
                 new_constraints.push(replacement.polynomial_constraint);
-                let range_constraints = replacement
-                    .range_constraints
-                    .into_iter()
-                    .map(|(variable, rc)| (GroupedExpression::from_unknown_variable(variable), rc))
-                    .collect();
-                self.bus_interaction_handler
-                    .batch_make_range_constraints(range_constraints)
+                self.bus_interaction_handler.batch_make_range_constraints(
+                    replacement.range_constraints.into_iter().collect(),
+                )
             })
             .collect();
 
@@ -114,8 +110,7 @@ impl<
 
                 return Some(Replacement {
                     polynomial_constraint,
-                    // TODO
-                    range_constraints: [].into_iter().collect(),
+                    range_constraints: self.range_constraints(bus_interaction),
                 });
             }
         }
@@ -236,6 +231,21 @@ impl<
         }))
     }
 
+    fn range_constraints(
+        &self,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+    ) -> BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>> {
+        let range_constraints = self
+            .bus_interaction_handler
+            .handle_bus_interaction(bus_interaction.to_range_constraints(&NoRangeConstraints));
+        bus_interaction
+            .payload
+            .iter()
+            .zip_eq(range_constraints.payload)
+            .map(|(expr, rc)| (expr.clone(), rc))
+            .collect()
+    }
+
     fn all_possible_assignments<'b>(
         &'b self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -291,7 +301,7 @@ const MAX_DOMAIN_SIZE: u64 = 256;
 #[derive(Clone, Debug)]
 struct Replacement<T: FieldElement, V> {
     polynomial_constraint: GroupedExpression<T, V>,
-    range_constraints: BTreeMap<V, RangeConstraint<T>>,
+    range_constraints: BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>,
 }
 
 struct Input<T: FieldElement, V> {
