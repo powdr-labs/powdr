@@ -662,6 +662,10 @@ impl<
         let mut offset = self.constant.try_to_number();
         let mut concrete_assignments = vec![];
 
+        let any_negative = constrained_coefficients
+            .iter()
+            .any(|(_, _, is_negative, _, _)| *is_negative);
+
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T::FieldType as FieldElement>::Integer = 0.into();
         let mut components: Vec<BitDecompositionComponent<T::FieldType, V>> = vec![];
@@ -725,7 +729,13 @@ impl<
 
         if let Some(offset) = offset {
             if offset != 0.into() {
-                return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+                if any_negative {
+                    // In case we have negative coefficients, the algorithm
+                    // does not always find the correct assignment.
+                    return Ok(ProcessResult::empty());
+                } else {
+                    return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+                }
             }
             assert_eq!(concrete_assignments.len(), self.linear.len());
             Ok(ProcessResult::complete(concrete_assignments))
@@ -1486,7 +1496,15 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             ("result", RangeConstraint::from_mask(0x1u32)),
         ]);
         let result = constr.solve(&range_constraints).unwrap();
-        assert!(!result.complete && result.effects.is_empty());
+        assert!(!result.complete);
+        // The algorithm has a bug, so we exect no bit decomposition.
+        let has_bit_decomp = result
+            .effects
+            .iter()
+            .filter(|e| matches!(e, Effect::BitDecomposition(_)))
+            .count()
+            != 0;
+        assert!(!has_bit_decomp);
     }
 
     #[test]
