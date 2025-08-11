@@ -193,10 +193,6 @@ where
                         .map_err(Error::QseSolvingError)?
                         .effects;
                     if let Some(components) = c.try_split(&self.range_constraints) {
-                        // println!(
-                        //     "Split constraint\n  {c}\ninto\n  {}",
-                        //     components.iter().format(", ")
-                        // );
                         for c in &components {
                             if c.is_affine() {
                                 let var = c.referenced_variables().next().unwrap();
