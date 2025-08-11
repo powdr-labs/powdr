@@ -1,4 +1,7 @@
-use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
+use powdr_constraint_solver::{
+    grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
+};
 use powdr_number::{FieldElement, LargeInt};
 
 /// The maximum number of bits that can be checked by the variable range checker.
@@ -29,11 +32,28 @@ pub fn handle_variable_range_checker<T: FieldElement>(
     }
 }
 
+pub fn variable_range_checker_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
+    payload: &[GroupedExpression<T, V>],
+) -> Option<RangeConstraints<T, V>> {
+    // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/var_range/bus.rs
+    // Expects (x, bits), where `x` is in the range [0, 2^bits - 1]
+    let [x, bits] = payload else {
+        panic!("Expected arguments (x, bits)");
+    };
+    bits.try_to_number().map(|bits| {
+        [(
+            x.clone(),
+            RangeConstraint::from_mask((1u64 << bits.to_degree()) - 1),
+        )]
+        .into()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
-        bus_map::{default_openvm_bus_map, DEFAULT_VARIABLE_RANGE_CHECKER},
+        bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     };
 
     use super::*;
@@ -44,7 +64,7 @@ mod tests {
         x: RangeConstraint<BabyBearField>,
         bits: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(default_openvm_bus_map());
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::default();
 
         let bus_interaction = BusInteraction {
             bus_id: RangeConstraint::from_value(DEFAULT_VARIABLE_RANGE_CHECKER.into()),

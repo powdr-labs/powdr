@@ -32,6 +32,7 @@ pub mod expression_conversion;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
+pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use powdr_constraint_solver::inliner::DegreeBound;
@@ -181,9 +182,11 @@ impl<T: Display> Display for SymbolicMachine<T> {
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
+        let main_columns = self.main_columns().sorted().collect_vec();
         let mut output = format!(
-            "// Symbolic machine using {} unique main columns\n",
-            self.main_columns().count()
+            "Symbolic machine using {} unique main columns:\n  {}\n",
+            main_columns.len(),
+            main_columns.iter().join("\n  ")
         );
         let bus_interactions_by_bus = self
             .bus_interactions
@@ -318,11 +321,21 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let start = std::time::Instant::now();
+
     let (machine, subs) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
+
+    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    metrics::counter!("before_opt_cols", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_constraints", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_interactions", &labels)
+        .absolute(machine.unique_references().count() as u64);
 
     let machine = optimizer::optimize::<A>(
         machine,
@@ -333,6 +346,13 @@ pub fn build<A: Adapter>(
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
+
+    metrics::counter!("after_opt_cols", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_constraints", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_interactions", &labels)
+        .absolute(machine.unique_references().count() as u64);
 
     let machine = convert_machine(machine, &A::into_field);
 
@@ -352,6 +372,8 @@ pub fn build<A: Adapter>(
         let writer = BufWriter::new(file);
         serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
     }
+
+    metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
 }
