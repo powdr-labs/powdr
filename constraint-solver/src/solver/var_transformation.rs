@@ -107,6 +107,7 @@ where
         Ok(assignments
             .into_iter()
             .filter_map(|(v, expr)| {
+                assert!(expr.is_affine());
                 let v = v.try_to_original()?;
                 let expr = expr.try_transform_var_type(&mut |v| v.try_to_original())?;
                 Some((v, expr))
