@@ -216,7 +216,9 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
             // Use the variable range checker to range-check expressions:
             // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/var_range/bus.rs
             // Expects (x, bits), where `x` is in the range [0, 2^bits - 1]
-            let num_bits = range_constraint_to_num_bits(&rc).unwrap();
+            let Some(num_bits) = range_constraint_to_num_bits(&rc) else {
+                panic!("Failed to get number of bits from range constraint: {rc:?}");
+            };
             let bus_id = self
                 .bus_map
                 .get_bus_id(&BusType::Other(OpenVmBusType::VariableRangeChecker))

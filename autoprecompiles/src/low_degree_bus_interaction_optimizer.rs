@@ -69,9 +69,21 @@ impl<
                 // the bus interaction with interactions implementing the range constraints.
                 // Note that many of these may be optimized away by the range constraint optimizer.
                 new_constraints.push(replacement.polynomial_constraint);
-                self.bus_interaction_handler.batch_make_range_constraints(
-                    replacement.range_constraints.into_iter().collect(),
-                )
+                let range_constraints = replacement
+                    .range_constraints
+                    .into_iter()
+                    .filter(|(expr, rc)| {
+                        if let Some(expr_value) = rc.try_to_single_value() {
+                            new_constraints
+                                .push(GroupedExpression::from_number(expr_value) - expr.clone());
+                            false
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+                self.bus_interaction_handler
+                    .batch_make_range_constraints(range_constraints)
             })
             .collect();
 
