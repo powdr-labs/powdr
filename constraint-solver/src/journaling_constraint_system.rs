@@ -51,17 +51,6 @@ impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystem<T, V> 
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display>
     JournalingConstraintSystem<T, V>
 {
-    pub fn apply_bus_field_assignments(
-        &mut self,
-        assignments: impl IntoIterator<Item = ((usize, usize), T::FieldType)>,
-    ) {
-        // We do not track substitutions yet, but we could.
-        for ((interaction_index, field_index), value) in assignments {
-            self.system
-                .apply_bus_field_assignment(interaction_index, field_index, value);
-        }
-    }
-
     /// Applies multiple substitutions to the constraint system in an efficient manner.
     pub fn apply_substitutions(
         &mut self,

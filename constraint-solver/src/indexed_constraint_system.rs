@@ -295,17 +295,6 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
         }
     }
 
-    pub fn apply_bus_field_assignment(
-        &mut self,
-        interaction_index: usize,
-        field_index: usize,
-        value: T::FieldType,
-    ) {
-        let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
-        let field = bus_interaction.fields_mut().nth(field_index).unwrap();
-        *field = GroupedExpression::from_number(value);
-    }
-
     /// Substitute an unknown variable by a GroupedExpression in the whole system.
     ///
     /// Note this does NOT work properly if the variable is used inside a
