@@ -137,7 +137,7 @@ mod single_instruction_tests {
     fn single_or() {
         let program = [
             // [x8] = [x7] || [x5]
-            xor(8, 7, 5, 1),
+            or(8, 7, 5, 1),
         ];
         assert_machine_output(program.to_vec(), "single_or");
     }
