@@ -22,7 +22,7 @@ use powdr_number::FieldElement;
 use crate::constraint_optimizer::IsBusStateful;
 use crate::low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer;
 use crate::memory_optimizer::MemoryBusInteraction;
-use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -120,7 +120,10 @@ fn run_optimization_loop_until_no_change<
     M: MemoryBusInteraction<P, V>,
 >(
     mut constraint_system: ConstraintSystem<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
@@ -150,7 +153,10 @@ fn optimization_loop_iteration<
 >(
     constraint_system: ConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,

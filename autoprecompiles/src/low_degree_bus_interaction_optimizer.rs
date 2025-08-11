@@ -10,16 +10,19 @@ use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Display;
+use std::hash::Hash;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
+use crate::range_constraint_optimizer::RangeConstraintHandler;
 
 pub struct LowDegreeBusInteractionOptimizer<
     'a,
     T: FieldElement,
     V: Ord + Clone + Eq,
     S: Solver<T, V>,
-    B: BusInteractionHandler<T> + IsBusStateful<T>,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T>,
 > {
     solver: &'a S,
     bus_interaction_handler: B,
@@ -29,9 +32,9 @@ pub struct LowDegreeBusInteractionOptimizer<
 impl<
         'a,
         T: FieldElement,
-        V: Ord + Clone + Ord + Eq,
+        V: Ord + Clone + Ord + Eq + Display + Hash,
         S: Solver<T, V>,
-        B: BusInteractionHandler<T> + IsBusStateful<T>,
+        B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T>,
     > LowDegreeBusInteractionOptimizer<'a, T, V, S, B>
 {
     pub fn new(solver: &'a S, bus_interaction_handler: B) -> Self {
@@ -44,21 +47,32 @@ impl<
 
     pub fn optimize(&self, mut system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
         let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
-        system.bus_interactions.retain(|bus_int| {
-            let replacement = self.try_replace_bus_interaction(bus_int);
-            let Some(bus_id) = bus_int.bus_id.try_to_number() else {
-                return true;
-            };
-            if self.bus_interaction_handler.is_stateful(bus_id) {
-                return true;
-            }
-            if let Some(replacement) = replacement {
-                // TODO: Also add range constraints
+        system.bus_interactions = system
+            .bus_interactions
+            .into_iter()
+            .flat_map(|bus_int| {
+                let Some(bus_id) = bus_int.bus_id.try_to_number() else {
+                    return vec![bus_int];
+                };
+                if self.bus_interaction_handler.is_stateful(bus_id) {
+                    return vec![bus_int];
+                }
+                let Some(replacement) = self.try_replace_bus_interaction(&bus_int) else {
+                    return vec![bus_int];
+                };
+
                 new_constraints.push(replacement.polynomial_constraint);
-                return false;
-            }
-            true
-        });
+                let range_constraints = replacement
+                    .range_constraints
+                    .into_iter()
+                    .map(|(variable, rc)| (GroupedExpression::from_unknown_variable(variable), rc))
+                    .collect();
+                let range_constraints = self
+                    .bus_interaction_handler
+                    .batch_make_range_constraints(range_constraints);
+                range_constraints
+            })
+            .collect();
 
         // TODO: Need to mutate solver too?
         system.algebraic_constraints.extend(new_constraints);
@@ -154,7 +168,7 @@ impl<
             return Some(Replacement {
                 polynomial_constraint,
                 // TODO
-                _range_constraints: [].into_iter().collect(),
+                range_constraints: [].into_iter().collect(),
             });
         }
 
@@ -295,7 +309,7 @@ const MAX_DOMAIN_SIZE: u64 = 256;
 #[derive(Clone, Debug)]
 struct Replacement<T: FieldElement, V> {
     polynomial_constraint: GroupedExpression<T, V>,
-    _range_constraints: BTreeMap<V, RangeConstraint<T>>,
+    range_constraints: BTreeMap<V, RangeConstraint<T>>,
 }
 
 struct Input<T: FieldElement, V> {
