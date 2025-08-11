@@ -160,35 +160,9 @@ fn test_linearizer() {
                 c(12),
             ],
         },
-        // BusInteraction {
-        //     bus_id: c(1),
-        //     multiplicity: v("BusInteractionField(2, 1)"),
-        //     payload: vec![
-        //         c(1),
-        //         v("rs1_ptr_0"),
-        //         v("a__0_0"),
-        //         v("a__1_0"),
-        //         v("a__2_0"),
-        //         v("a__3_0"),
-        //         v("reads_aux__0__base__prev_timestamp_0"),
-        //     ],
-        // },
-        // BusInteraction {
-        //     bus_id: c(1),
-        //     multiplicity: v("BusInteractionField(3, 1)"),
-        //     payload: vec![
-        //         c(1),
-        //         v("rs1_ptr_0"),
-        //         v("a__0_0"),
-        //         v("a__1_0"),
-        //         v("a__2_0"),
-        //         v("a__3_0"),
-        //         v("from_state__timestamp_0"),
-        //     ],
-        // },
         BusInteraction {
             bus_id: c(3),
-            multiplicity: v("BusInteractionField(4, 1)"),
+            multiplicity: c(1),
             payload: vec![
                 v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0"),
                 c(17),
@@ -196,7 +170,7 @@ fn test_linearizer() {
         },
         BusInteraction {
             bus_id: c(3),
-            multiplicity: v("BusInteractionField(5, 1)"),
+            multiplicity: c(1),
             payload: vec![
                 v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0"),
                 c(12),
