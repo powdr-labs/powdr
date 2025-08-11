@@ -148,16 +148,14 @@ pub mod utils {
         })
     }
 
-    /// Given a a set of range constraints, filters out those which can be checked via a
-    /// byte constraint.
+    /// Given a set of range constraints, filters out the byte constraints and returns them.
     pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display + Hash>(
         range_constraints: &mut RangeConstraints<T, V>,
     ) -> Vec<GroupedExpression<T, V>> {
         let mut byte_constraints = Vec::new();
         range_constraints.retain(|(expr, rc)| match range_constraint_to_num_bits(rc) {
-            Some(bits) if bits <= 8 => {
-                let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
-                byte_constraints.push(expr.clone() * factor.clone());
+            Some(8) => {
+                byte_constraints.push(expr.clone());
                 false
             }
             _ => true,
