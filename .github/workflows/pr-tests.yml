@@ -161,7 +161,11 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev acbd2ba cargo-openvm
+      # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+      # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
+        run: |
+          rustup toolchain install 1.88
+          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
