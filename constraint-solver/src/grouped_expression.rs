@@ -1495,6 +1495,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
             ("lin", RangeConstraint::from_mask(0x8u32)),
             ("result", RangeConstraint::from_mask(0x1u32)),
         ]);
+        // We try to solve `lin - 4 * result = 4` and the problem is
+        // that we cannot assign `lin = 4 & mask` for some mask, since
+        // it needs to be assigned `8`.
         let result = constr.solve(&range_constraints).unwrap();
         assert!(!result.complete);
         // The algorithm has a bug, so we exect no bit decomposition.
