@@ -193,6 +193,10 @@ where
                         .map_err(Error::QseSolvingError)?
                         .effects;
                     if let Some(components) = c.try_split(&self.range_constraints) {
+                        // println!(
+                        //     "Split constraint\n  {c}\ninto\n  {}",
+                        //     components.iter().format(", ")
+                        // );
                         for c in &components {
                             if c.is_affine() {
                                 let var = c.referenced_variables().next().unwrap();
@@ -212,7 +216,7 @@ where
                         // TODO actually store these as constraints
                         // But for most of them, it will not help much
                         // as long as we don't inline here in the solver!
-                        // TODO we should also prevent an existing constraint to be added to the system.
+                        // TODO we should alse prevent an existing constraint to be added to the system.
                     }
                     effects
                 }

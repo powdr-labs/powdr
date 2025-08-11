@@ -21,6 +21,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
 use crate::memory_optimizer::MemoryBusInteraction;
+use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -70,6 +71,15 @@ pub fn optimize<A: Adapter>(
             &mut stats_logger,
             bus_map,
         )?;
+
+    // Note that the rest of the optimization does not benefit from optimizing range constraints,
+    // so we only do it once at the end.
+    let constraint_system = optimize_range_constraints(
+        constraint_system,
+        bus_interaction_handler.clone(),
+        degree_bound,
+    );
+    stats_logger.log("optimizing range constraints", &constraint_system);
 
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
