@@ -89,6 +89,9 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     for (var, value) in assignments.iter() {
         log::trace!("  {var} = {value}");
     }
+    // Assert that all substitutions are affine so that the degree
+    // does not increase.
+    assert!(assignments.iter().all(|(_, expr)| expr.is_affine()));
     constraint_system.apply_substitutions(assignments);
     Ok(constraint_system)
 }
