@@ -143,7 +143,11 @@ jobs:
         run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev acbd2ba cargo-openvm
+      # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+      # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
+        run: |
+          rustup toolchain install 1.88
+          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
 
       - name: Setup python venv
         run: |
@@ -161,7 +165,6 @@ jobs:
         run: |
           source .venv/bin/activate
           bash ./openvm/scripts/run_guest_benches.sh
-          bash ./autoprecompiles/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
@@ -189,12 +192,16 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          MODE="prove-stark" APC=0 ./run.sh
+          MODE="prove-stark" APC=0 ./run.sh || exit 1
+          echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/noapc.json
-          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
+
           # prove with 100 APCs, recording mem usage
-          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh"
+          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
+          echo "Finished proving with 100 APCs"
           mv metrics.json $RES_DIR/100apc.json
+
+          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
 
           python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt

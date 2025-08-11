@@ -63,6 +63,7 @@ clap = { version = "^4.3", features = ["derive"] }
 log = "0.4.17"
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
 
+metrics = "0.23.0"
 toml = "0.8.14"
 
 rustc-demangle = "0.1.25"

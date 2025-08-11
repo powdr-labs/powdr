@@ -12,7 +12,10 @@ use openvm_circuit_derive::InstructionExecutor;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_instructions::program::Program;
 use openvm_sdk::{
-    config::{AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery},
+    config::{
+        AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery,
+        DEFAULT_APP_LOG_BLOWUP,
+    },
     keygen::AggStarkProvingKey,
     prover::AggStarkProver,
     Sdk, StdIn,
@@ -63,12 +66,10 @@ pub use powdr_autoprecompiles::PgoConfig;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 
-// TODO: These constants should be related
-const APP_LOG_BLOWUP: usize = 2;
-pub const OPENVM_DEGREE_BOUND: usize = 5;
-const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
-    identities: OPENVM_DEGREE_BOUND,
-    bus_interactions: OPENVM_DEGREE_BOUND - 1,
+pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
+pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
+    identities: DEFAULT_OPENVM_DEGREE_BOUND,
+    bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
 };
 
 pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
@@ -169,8 +170,9 @@ impl SpecializedConfig {
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBear>>,
         implementation: PrecompileImplementation,
+        max_degree: usize,
     ) -> Self {
-        let airs = base_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let airs = base_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(
             precompiles,
@@ -509,7 +511,10 @@ impl AirMetrics {
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+    fn air_metrics(
+        &self,
+        max_degree: usize,
+    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         use openvm_stark_backend::Chip;
 
         use crate::extraction_utils::get_air_metrics;
@@ -544,11 +549,11 @@ impl CompiledProgram {
                     // TODO this is hacky but not sure how to do it better rn.
                     if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                         powdr_air_metrics.push((
-                            get_air_metrics(air),
+                            get_air_metrics(air, max_degree),
                             apc_stats.next().unwrap().map(|stats| stats.widths),
                         ));
                     } else {
-                        non_powdr_air_metrics.push(get_air_metrics(air));
+                        non_powdr_air_metrics.push(get_air_metrics(air, max_degree));
                     }
 
                     (powdr_air_metrics, non_powdr_air_metrics)
@@ -595,7 +600,8 @@ pub fn prove(
     let sdk = Sdk::default();
 
     // Set app configuration
-    let app_fri_params = FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP);
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Commit the exe
@@ -606,9 +612,7 @@ pub fn prove(
 
     if mock {
         tracing::info!("Checking constraints and witness in Mock prover...");
-        let engine = BabyBearPoseidon2Engine::new(
-            FriParameters::standard_with_100_bits_conjectured_security(APP_LOG_BLOWUP),
-        );
+        let engine = BabyBearPoseidon2Engine::new(app_fri_params);
         let vm = VirtualMachine::new(engine, vm_config.clone());
         let pk = vm.keygen();
         let streams = Streams::from(inputs);
@@ -803,6 +807,10 @@ mod tests {
     const GUEST_SHA256_APC_PGO: u64 = 10;
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;
     const GUEST_SHA256_SKIP: u64 = 0;
+
+    const GUEST_U256: &str = "guest-u256";
+    const GUEST_U256_APC_PGO: u64 = 10;
+    const GUEST_U256_SKIP: u64 = 0;
 
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
@@ -1243,6 +1251,30 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too much RAM"]
+    fn u256_prove() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_U256, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_U256,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving U256 with PgoConfig::Cell took {:?}", elapsed);
+    }
+
+    #[test]
     /// check that the hints test guest compiles and proves successfully
     fn hints_test_prove() {
         let mut stdin = StdIn::default();
@@ -1421,15 +1453,184 @@ mod tests {
         );
     }
 
-    // #[test]
-    // #[ignore = "Too much RAM"]
-    // // TODO: This test currently panics because the kzg params are not set up correctly. Fix this.
-    // #[should_panic = "No such file or directory"]
-    // fn keccak_prove_recursion() {
-    //     let mut stdin = StdIn::default();
-    //     stdin.write(&GUEST_KECCAK_ITER);
-    //     prove_recursion(GUEST_KECCAK, GUEST_KECCAK_APC, GUEST_KECCAK_SKIP, stdin);
-    // }
+    #[test]
+    fn ecc_with_hint_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_HINTS);
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_HINTS);
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving ecc with PgoConfig::Cell took {:?}", elapsed);
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving ecc with PgoConfig::Instruction took {:?}", elapsed);
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_prove_recursion() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+        prove_recursion(
+            GUEST_ECC_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_projective_prove() {
+        let stdin = StdIn::default();
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_projective_prove_multiple_pgo_modes() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc projective point implementation with PgoConfig::Cell took {:?}",
+            elapsed
+        );
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!(
+            "Proving ecc projective point implementation with PgoConfig::Instruction took {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_projective_prove_recursion() {
+        let stdin = StdIn::default();
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+        prove_recursion(
+            GUEST_ECC_PROJECTIVE,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Instruction(pgo_data),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn keccak_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_recursion(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
+    }
+
 
     // The following are compilation tests only
 
@@ -1457,6 +1658,7 @@ mod tests {
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
+        let max_degree = config.degree_bound.identities;
         let compiled_program = compile_guest(
             guest.name,
             GuestOptions::default(),
@@ -1466,7 +1668,7 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
+        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
             &powdr_air_metrics
@@ -1527,7 +1729,7 @@ mod tests {
         widths: AirWidths {
             preprocessed: 5,
             main: 797,
-            log_up: 388,
+            log_up: 676,
         },
         constraints: 604,
         bus_interactions: 252,
@@ -1551,10 +1753,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 48,
-                            log_up: 36,
+                            main: 49,
+                            log_up: 64,
                         },
-                        constraints: 22,
+                        constraints: 23,
                         bus_interactions: 30,
                     }
                 "#]],
@@ -1579,10 +1781,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 48,
-                            log_up: 36,
+                            main: 49,
+                            log_up: 64,
                         },
-                        constraints: 22,
+                        constraints: 23,
                         bus_interactions: 30,
                     }
                 "#]],
@@ -1597,12 +1799,12 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 170,
-                        log_up: 128,
+                        log_up: 236,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 48,
-                        log_up: 36,
+                        main: 49,
+                        log_up: 64,
                     },
                 }
             "#]]),
@@ -1627,11 +1829,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14676,
-                            log_up: 11976,
+                            main: 14706,
+                            log_up: 20292,
                         },
-                        constraints: 4143,
-                        bus_interactions: 11642,
+                        constraints: 4393,
+                        bus_interactions: 9916,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1655,11 +1857,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14656,
-                            log_up: 11956,
+                            main: 14678,
+                            log_up: 20260,
                         },
-                        constraints: 4127,
-                        bus_interactions: 11632,
+                        constraints: 4369,
+                        bus_interactions: 9906,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1673,12 +1875,12 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 176212,
-                        log_up: 117468,
+                        log_up: 218016,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 14656,
-                        log_up: 11956,
+                        main: 14678,
+                        log_up: 20260,
                     },
                 }
             "#]]),
@@ -1688,6 +1890,7 @@ mod tests {
     #[test]
     fn guest_machine_plonk() {
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let max_degree = config.degree_bound.identities;
         let (powdr_metrics, _) = compile_guest(
             GUEST,
             GuestOptions::default(),
@@ -1696,7 +1899,7 @@ mod tests {
             PgoConfig::None,
         )
         .unwrap()
-        .air_metrics();
+        .air_metrics(max_degree);
         assert_eq!(powdr_metrics.len(), 1);
         let powdr_metrics_sum = powdr_metrics
             .into_iter()
@@ -1708,7 +1911,7 @@ mod tests {
                 widths: AirWidths {
                     preprocessed: 0,
                     main: 26,
-                    log_up: 20,
+                    log_up: 36,
                 },
                 constraints: 1,
                 bus_interactions: 16,
@@ -1886,11 +2089,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2010,
-                            log_up: 1788,
+                            main: 2009,
+                            log_up: 3228,
                         },
-                        constraints: 166,
-                        bus_interactions: 1782,
+                        constraints: 235,
+                        bus_interactions: 1611,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1914,11 +2117,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2010,
-                            log_up: 1788,
+                            main: 2009,
+                            log_up: 3228,
                         },
-                        constraints: 166,
-                        bus_interactions: 1782,
+                        constraints: 235,
+                        bus_interactions: 1611,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1942,11 +2145,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2010,
-                            log_up: 1788,
+                            main: 2009,
+                            log_up: 3228,
                         },
-                        constraints: 166,
-                        bus_interactions: 1782,
+                        constraints: 235,
+                        bus_interactions: 1611,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1960,12 +2163,12 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 27194,
-                        log_up: 18736,
+                        log_up: 34792,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 2010,
-                        log_up: 1788,
+                        main: 2009,
+                        log_up: 3228,
                     },
                 }
             "#]]),
@@ -1993,15 +2196,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 4843,
-                            log_up: 3952,
+                            main: 3346,
+                            log_up: 5156,
                         },
-                        constraints: 958,
-                        bus_interactions: 3817,
+                        constraints: 797,
+                        bus_interactions: 2497,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    19
+                    22
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -2010,13 +2213,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 38986,
-                        log_up: 26936,
+                        main: 32195,
+                        log_up: 41428,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 4843,
-                        log_up: 3952,
+                        main: 3346,
+                        log_up: 5156,
                     },
                 }
             "#]]),

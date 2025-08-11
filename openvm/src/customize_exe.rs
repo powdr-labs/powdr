@@ -154,7 +154,7 @@ pub fn customize(
     pgo_config: PgoConfig,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(vm_config.clone());
-    let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
     let jumpdest_set = add_extra_targets(
@@ -166,16 +166,24 @@ pub fn customize(
 
     let program = Prog(&exe.program);
 
+    let range_tuple_checker_sizes = vm_config
+        .sdk_vm_config
+        .rv32m
+        .unwrap()
+        .range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(
+            bus_map.clone(),
+            range_tuple_checker_sizes,
+        ),
         bus_map: bus_map.clone(),
     };
 
     let max_total_apc_columns: Option<usize> = match pgo_config {
         PgoConfig::Cell(_, max_total_columns) => max_total_columns.map(|max_total_columns| {
             let total_non_apc_columns = original_config
-                .chip_inventory_air_metrics()
+                .chip_inventory_air_metrics(config.degree_bound.identities)
                 .values()
                 .map(|m| m.total_width())
                 .sum::<usize>();
@@ -216,6 +224,7 @@ pub fn customize(
         }
     }
 
+    let start = std::time::Instant::now();
     let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
         blocks,
         &config,
@@ -223,6 +232,7 @@ pub fn customize(
         pgo_config,
         vm_config,
     );
+    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
     let pc_step = exe.program.step;
@@ -273,7 +283,12 @@ pub fn customize(
 
     CompiledProgram {
         exe,
-        vm_config: SpecializedConfig::new(original_config, extensions, implementation),
+        vm_config: SpecializedConfig::new(
+            original_config,
+            extensions,
+            implementation,
+            config.degree_bound.identities,
+        ),
     }
 }
 
@@ -349,8 +364,10 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
+        max_degree: usize,
     ) -> Self {
-        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())));
+        let apc_metrics =
+            get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())), max_degree);
         let width_after = apc_metrics.widths;
 
         let width_before = apc
