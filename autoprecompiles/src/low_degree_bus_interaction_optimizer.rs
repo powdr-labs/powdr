@@ -1,4 +1,3 @@
-use auto_enums::auto_enum;
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
@@ -10,7 +9,7 @@ use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -131,91 +130,94 @@ impl<
         None
     }
 
-    #[auto_enum(Iterator)]
     fn possible_input_output_pairs(
-        &'a self,
-        bus_interaction: &'a BusInteraction<GroupedExpression<T, V>>,
-    ) -> impl Iterator<Item = InputOutputPair<T, V>> + 'a {
-        let unknown_fields = bus_interaction
+        &self,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+    ) -> Vec<SymbolicInputOutputPair<T, V>> {
+        let unknown_field_indices = bus_interaction
             .payload
             .iter()
             .enumerate()
             .filter(|(_i, expr)| expr.try_to_number().is_none())
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
+        let expressions = unknown_field_indices
+            .iter()
+            .map(|i| (*i, bus_interaction.payload[*i].clone()))
+            .collect::<BTreeMap<_, _>>();
+        let range_constraints = expressions
+            .iter()
+            .map(|(i, expr)| (*i, self.solver.range_constraint_for_expression(expr)))
+            .collect::<BTreeMap<_, _>>();
 
-        if unknown_fields.len() <= 1 || unknown_fields.len() > MAX_INPUTS + 1 {
-            std::iter::empty()
-        } else {
-            unknown_fields
-                .clone()
-                .into_iter()
-                .combinations(unknown_fields.len() - 1)
-                // Map to list of (index, range constraint) pairs
-                .map(|inputs| {
-                    inputs
-                        .into_iter()
-                        .map(|i| {
-                            let expr = &bus_interaction.payload[i];
-                            let rc = self.solver.range_constraint_for_expression(expr);
-                            (i, rc)
-                        })
-                        .collect::<Vec<_>>()
-                })
-                // Discard if the domain would be too large
-                .filter(|inputs_with_rc| {
-                    inputs_with_rc
+        // Currently, we only have hypotheses for:
+        // - 2 unknown fields (1 input, 1 output)
+        // - 3 unknown fields (2 inputs, 1 output)
+        if !(unknown_field_indices.len() == 2 || unknown_field_indices.len() == 3) {
+            return Vec::new();
+        }
+
+        unknown_field_indices
+            .clone()
+            .into_iter()
+            .combinations(unknown_field_indices.len() - 1)
+            .filter(|input_indices| {
+                self.has_small_domain(input_indices.iter().map(|i| range_constraints[i].clone()))
+            })
+            // Build the input-output pairs
+            .map(|input_indices| {
+                let output_index = unknown_field_indices
+                    .iter()
+                    .cloned()
+                    .filter(|i| !input_indices.contains(i))
+                    .exactly_one()
+                    .unwrap();
+                SymbolicInputOutputPair {
+                    inputs: input_indices
                         .iter()
-                        .map(|(_, rc)| {
-                            // TODO: range_width() is too loose, because it ignores the mask!
-                            rc.range_width().try_into_u64().and_then(|width| {
-                                if width < 1 << 16 {
-                                    Some(rc.allowed_values().count() as u64)
-                                } else {
-                                    None
-                                }
-                            })
+                        .map(|i| SymbolicInput {
+                            index: *i,
+                            expression: expressions[i].clone(),
+                            range_constraint: range_constraints[i].clone(),
                         })
-                        .try_fold(1u64, |acc, x| acc.checked_mul(x?))
-                        .is_some_and(|count| count <= MAX_DOMAIN_SIZE)
-                })
-                // Build the input-output pairs
-                .map(move |inputs_with_rc| {
-                    let input_indices = inputs_with_rc
-                        .iter()
-                        .map(|(i, _)| *i)
-                        .collect::<BTreeSet<_>>();
-                    InputOutputPair {
-                        inputs: inputs_with_rc
-                            .into_iter()
-                            .map(|(i, rc)| Input {
-                                index: i,
-                                expression: bus_interaction.payload[i].clone(),
-                                range_constraint: rc,
-                            })
-                            .collect(),
-                        output: unknown_fields
-                            .clone()
-                            .into_iter()
-                            .filter(|i| !input_indices.contains(i))
-                            .map(|i| Output {
-                                index: i,
-                                expression: bus_interaction.payload[i].clone(),
-                            })
-                            .exactly_one()
-                            .unwrap_or_else(|_| panic!()),
+                        .collect(),
+                    output: SymbolicOutput {
+                        index: output_index,
+                        expression: expressions[&output_index].clone(),
+                    },
+                }
+            })
+            .collect()
+    }
+
+    fn has_small_domain(
+        &self,
+        input_range_constraints: impl Iterator<Item = RangeConstraint<T>>,
+    ) -> bool {
+        input_range_constraints
+            .map(|rc| {
+                // TODO: This should share code with `has_few_possible_assignments`,
+                // But this only currently only considers the range width which ignores the mask
+                // and might be way larger than the actual number of allowed values.
+                rc.range_width().try_into_u64().and_then(|width| {
+                    if width < 1 << 16 {
+                        Some(rc.allowed_values().count() as u64)
+                    } else {
+                        None
                     }
                 })
-        }
+            })
+            .try_fold(1u64, |acc, x| acc.checked_mul(x?))
+            .is_some_and(|count| count <= MAX_DOMAIN_SIZE)
     }
 
     fn find_low_degree_function(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-        input_output_pair: &InputOutputPair<T, V>,
+        input_output_pair: &SymbolicInputOutputPair<T, V>,
     ) -> Option<LowDegreeFunction<T, V>> {
         let all_possible_assignments =
-            self.all_possible_assignments(bus_interaction, input_output_pair);
+            self.concrete_input_output_pairs(bus_interaction, input_output_pair);
         let mut hypotheses = hypotheses(input_output_pair.inputs.len());
 
         for assignment in all_possible_assignments {
@@ -243,6 +245,7 @@ impl<
         }))
     }
 
+    /// Returns the range constraints enforced by the given bus interaction.
     fn range_constraints(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -258,56 +261,64 @@ impl<
             .collect()
     }
 
-    fn all_possible_assignments<'b>(
+    /// Generate all concrete input-output pairs given a symbolic one.
+    ///
+    /// The inputs are generated as the cross product of all allowed values of the
+    /// individual inputs.
+    /// The outputs are generated by asking the bus interaction handler for each input assignment.
+    ///
+    /// If at any time (1) the inputs violate a constraint or (2) the outputs are not unique,
+    /// an error is yielded.
+    fn concrete_input_output_pairs<'b>(
         &'b self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-        input_output_pair: &'b InputOutputPair<T, V>,
+        input_output_pair: &'b SymbolicInputOutputPair<T, V>,
     ) -> impl Iterator<Item = Result<(Vec<T>, T), ()>> + 'b {
         let bus_interaction = bus_interaction.to_range_constraints(self.solver);
-        input_output_pair
+
+        // Consider all possible input assignments, which is the cross product of all allowed values.
+        let input_assignments = input_output_pair
             .inputs
             .iter()
-            // Map to (index, range constraint) pairs
             .map(move |input| {
-                (
-                    input.index,
-                    input.range_constraint.allowed_values().collect_vec(),
-                )
+                input
+                    .range_constraint
+                    .allowed_values()
+                    .map(|v| (input.index, v))
+                    .collect_vec()
             })
-            .map(|(index, values)| values.into_iter().map(move |value| (index, value)))
-            .multi_cartesian_product()
-            .map(move |assignment| {
-                let mut bus_interaction = bus_interaction.clone();
-                for (i, value) in assignment.iter() {
-                    bus_interaction.payload[*i] = RangeConstraint::from_value(*value);
-                }
-                let Ok(bus_interaction) = self
-                    .bus_interaction_handler
-                    .handle_bus_interaction_checked(bus_interaction)
-                else {
-                    // The inputs violate the constraints.
-                    return Err(());
-                };
-                let Some(output) = bus_interaction
-                    .payload
-                    .get(input_output_pair.output.index)
-                    .and_then(|expr| expr.try_to_single_value())
-                else {
-                    // The output is not uniquely determined by the inputs.
-                    return Err(());
-                };
-                let inputs = assignment
-                    .into_iter()
-                    .map(|(_i, value)| value)
-                    .collect::<Vec<_>>();
-                Ok((inputs, output))
-            })
+            .multi_cartesian_product();
+
+        // For each input assignment, try it and ask the bus interaction handler if there
+        // is a unique output assignment.
+        input_assignments.map(move |assignment| {
+            // Set all inputs to concrete values
+            let mut bus_interaction = bus_interaction.clone();
+            for (i, value) in assignment.iter() {
+                bus_interaction.payload[*i] = RangeConstraint::from_value(*value);
+            }
+
+            let inputs = assignment.into_iter().map(|(_i, value)| value).collect();
+
+            // Get the output from the bus interaction handler, if it exists and is unique.
+            let output = self
+                .bus_interaction_handler
+                .handle_bus_interaction_checked(bus_interaction)
+                // If the assignment violates a constraint, return an error.
+                .map_err(|_| ())?
+                .payload
+                .get(input_output_pair.output.index)
+                .unwrap()
+                .try_to_single_value()
+                // If the output is not unique, return an error.
+                .ok_or(())?;
+            Ok((inputs, output))
+        })
     }
 }
 
 type LowDegreeFunction<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> GroupedExpression<T, V>>;
 
-const MAX_INPUTS: usize = 2;
 const MAX_DOMAIN_SIZE: u64 = 256;
 
 #[derive(Clone, Debug)]
@@ -316,20 +327,20 @@ struct Replacement<T: FieldElement, V> {
     range_constraints: BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>,
 }
 
-struct Input<T: FieldElement, V> {
+struct SymbolicInput<T: FieldElement, V> {
     index: usize,
     expression: GroupedExpression<T, V>,
     range_constraint: RangeConstraint<T>,
 }
 
-struct Output<T: FieldElement, V> {
+struct SymbolicOutput<T: FieldElement, V> {
     index: usize,
     expression: GroupedExpression<T, V>,
 }
 
-struct InputOutputPair<T: FieldElement, V> {
-    inputs: Vec<Input<T, V>>,
-    output: Output<T, V>,
+struct SymbolicInputOutputPair<T: FieldElement, V> {
+    inputs: Vec<SymbolicInput<T, V>>,
+    output: SymbolicOutput<T, V>,
 }
 
 /// Some well-known multilinear functions that are tested against the input-output pairs.
