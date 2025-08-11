@@ -115,46 +115,11 @@ fn test_linearizer() {
             + (v("a__2_0") - v("b__2_0")) * v("diff_inv_marker__2_0")
             + (v("a__3_0") - v("b__3_0")) * v("diff_inv_marker__3_0")
             - c(1)),
-        v("from_state__pc_0") - c(0),
         v("imm_0") - c(8),
-        v("cmp_result_0") * v("imm_0") + v("from_state__pc_0")
-            - c(4) * v("cmp_result_0")
-            - v("BusInteractionField(10, 2)")
+        v("cmp_result_0") * v("imm_0") - c(4) * v("cmp_result_0") - v("BusInteractionField(10, 2)")
             + c(4),
     ];
     let bus_interactions = vec![
-        BusInteraction {
-            bus_id: c(3),
-            multiplicity: c(1),
-            payload: vec![
-                v("reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0"),
-                c(17),
-            ],
-        },
-        BusInteraction {
-            bus_id: c(3),
-            multiplicity: c(1),
-            payload: vec![
-                v("reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0"),
-                c(12),
-            ],
-        },
-        BusInteraction {
-            bus_id: c(3),
-            multiplicity: c(1),
-            payload: vec![
-                v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0"),
-                c(17),
-            ],
-        },
-        BusInteraction {
-            bus_id: c(3),
-            multiplicity: c(1),
-            payload: vec![
-                v("reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_0"),
-                c(12),
-            ],
-        },
         BusInteraction {
             bus_id: c(1),
             multiplicity: -c(1),
@@ -185,7 +150,7 @@ fn test_linearizer() {
             bus_id: c(2),
             multiplicity: c(1),
             payload: vec![
-                v("from_state__pc_0"),
+                c(0),
                 c(1) + c(544),
                 v("rs1_ptr_0"),
                 v("rs2_ptr_0"),
@@ -199,7 +164,7 @@ fn test_linearizer() {
         BusInteraction {
             bus_id: c(0),
             multiplicity: -c(1),
-            payload: vec![v("from_state__pc_0"), v("from_state__timestamp_0")],
+            payload: vec![c(0), v("from_state__timestamp_0")],
         },
         BusInteraction {
             bus_id: c(0),
