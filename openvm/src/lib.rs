@@ -67,7 +67,7 @@ pub use powdr_autoprecompiles::PgoConfig;
 type BabyBearSC = BabyBearPoseidon2Config;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
-const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
+pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     identities: DEFAULT_OPENVM_DEGREE_BOUND,
     bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
 };

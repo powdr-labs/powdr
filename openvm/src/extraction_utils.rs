@@ -503,6 +503,8 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
 
 #[cfg(test)]
 mod tests {
+    use crate::DEFAULT_OPENVM_DEGREE_BOUND;
+
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
     use openvm_bigint_circuit::Int256;
@@ -510,7 +512,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig, DEFAULT_APP_LOG_BLOWUP};
+    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig};
 
     #[test]
     fn test_get_bus_map() {
@@ -519,7 +521,7 @@ mod tests {
 
         let system_config = SystemConfig::default()
             .with_continuations()
-            .with_max_constraint_degree((1 << DEFAULT_APP_LOG_BLOWUP) + 1)
+            .with_max_constraint_degree(DEFAULT_OPENVM_DEGREE_BOUND)
             .with_public_values(32);
         let int256 = Int256::default();
         let bn_config = PairingCurve::Bn254.curve_config();
@@ -574,7 +576,7 @@ mod tests {
             base_config,
             vec![],
             crate::PrecompileImplementation::SingleRowChip,
-            DEFAULT_APP_LOG_BLOWUP * 2 + 1,
+            DEFAULT_OPENVM_DEGREE_BOUND,
         );
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();
