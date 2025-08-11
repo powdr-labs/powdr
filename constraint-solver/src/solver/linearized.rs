@@ -112,7 +112,6 @@ where
                 bus_interaction
                     .fields()
                     .map(|expr| {
-                        // expr.clone()
                         self.linearizer
                             .linearize_and_substitute_by_var(expr.clone(), &mut || {
                                 next_var(&mut self.next_var_id)
@@ -135,8 +134,9 @@ where
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<Variable<V>>) {
-        // TODO We might want to keep those constraints that only contain
-        // linearized variables that define the quadratic terms.
+        // There are constraints that only contain `Variable::Linearized` that
+        // connect quadratic terms with the original constraints. We could try to find
+        // those, but let's just keep all of them for now.
         let mut variables_to_keep = variables_to_keep.clone();
         variables_to_keep.extend((0..(self.next_var_id)).map(|i| Variable::Linearized(i)));
         self.solver.retain_variables(&variables_to_keep);
@@ -160,8 +160,16 @@ where
         a: &GroupedExpression<T, Variable<V>>,
         b: &GroupedExpression<T, Variable<V>>,
     ) -> bool {
-        let a = iter::once(a.clone()).chain(self.linearizer.try_linearize_existing(a.clone()));
-        let b = iter::once(b.clone()).chain(self.linearizer.try_linearize_existing(b.clone()));
+        let a = iter::once(a.clone()).chain(
+            (!a.is_affine())
+                .then(|| self.linearizer.try_linearize_existing(a.clone()))
+                .flatten(),
+        );
+        let b = iter::once(b.clone()).chain(
+            (!b.is_affine())
+                .then(|| self.linearizer.try_linearize_existing(b.clone()))
+                .flatten(),
+        );
         a.cartesian_product(b)
             .any(|(a, b)| self.solver.are_expressions_known_to_be_different(&a, &b))
     }
@@ -198,23 +206,21 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         var_dispenser: &mut impl FnMut() -> V,
     ) -> GroupedExpression<T, V> {
         if expr.is_affine() {
-            expr
-        } else {
-            let (quadratic, linear, constant) = expr.into_components();
-            quadratic
-                .into_iter()
-                .map(|(l, r)| {
-                    let l = self.linearize_and_substitute_by_var(l, var_dispenser);
-                    let r = self.linearize_and_substitute_by_var(r, var_dispenser);
-                    self.substitute_by_var(l * r, var_dispenser)
-                    //l * r
-                })
-                .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
-                .chain(std::iter::once(GroupedExpression::from_runtime_constant(
-                    constant,
-                )))
-                .sum()
+            return expr;
         }
+        let (quadratic, linear, constant) = expr.into_components();
+        quadratic
+            .into_iter()
+            .map(|(l, r)| {
+                let l = self.linearize_and_substitute_by_var(l, var_dispenser);
+                let r = self.linearize_and_substitute_by_var(r, var_dispenser);
+                self.substitute_by_var(l * r, var_dispenser)
+            })
+            .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
+            .chain(std::iter::once(GroupedExpression::from_runtime_constant(
+                constant,
+            )))
+            .sum()
     }
 
     /// Tries to linearize the expression according to already existing substitutions.
@@ -223,28 +229,27 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         expr: GroupedExpression<T, V>,
     ) -> Option<GroupedExpression<T, V>> {
         if expr.is_affine() {
-            None
-        } else {
-            let (quadratic, linear, constant) = expr.into_components();
-            Some(
-                quadratic
-                    .into_iter()
-                    .map(|(l, r)| {
-                        let l =
-                            self.try_substitute_by_existing_var(&self.try_linearize_existing(l)?)?;
-                        let r =
-                            self.try_substitute_by_existing_var(&self.try_linearize_existing(r)?)?;
-                        self.try_substitute_by_existing_var(&(l * r))
-                    })
-                    .collect::<Option<Vec<_>>>()?
-                    .into_iter()
-                    .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
-                    .chain(std::iter::once(GroupedExpression::from_runtime_constant(
-                        constant,
-                    )))
-                    .sum(),
-            )
+            return Some(expr);
         }
+        let (quadratic, linear, constant) = expr.into_components();
+        Some(
+            quadratic
+                .into_iter()
+                .map(|(l, r)| {
+                    let l =
+                        self.try_substitute_by_existing_var(&self.try_linearize_existing(l)?)?;
+                    let r =
+                        self.try_substitute_by_existing_var(&self.try_linearize_existing(r)?)?;
+                    self.try_substitute_by_existing_var(&(l * r))
+                })
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
+                .chain(std::iter::once(GroupedExpression::from_runtime_constant(
+                    constant,
+                )))
+                .sum(),
+        )
     }
 
     /// Linearizes the expression and substitutes the expression by a single variable.

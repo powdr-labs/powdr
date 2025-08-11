@@ -73,7 +73,6 @@ where
         + Substitutable<V>,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
-        println!("Solving constraint system:\n{}", self.constraint_system);
         self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
         Ok(std::mem::take(&mut self.assignments_to_return))

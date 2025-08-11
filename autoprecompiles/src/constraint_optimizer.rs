@@ -47,7 +47,6 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
-    println!("Optimizing constraints...\n{constraint_system}");
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 

@@ -440,7 +440,7 @@ fn ternary_flags() {
 }
 
 #[test]
-fn linearizer_bug() {
+fn bit_decomposition_bug() {
     let algebraic_constraints = vec![
         var("cmp_result_0") * (var("cmp_result_0") - constant(1)),
         var("imm_0") - constant(8),
@@ -455,13 +455,11 @@ fn linearizer_bug() {
         algebraic_constraints,
         bus_interactions: vec![],
     };
+    // The solver used to infer more assignments due to a bug
+    // in the bit decomposition logic.
     assert_solve_result(
         constraint_system,
         DefaultBusInteractionHandler::default(),
-        vec![
-            ("cmp_result_0", 0.into()),
-            ("imm_0", 8.into()),
-            ("BusInteractionField(10, 2)", 4.into()),
-        ],
+        vec![("imm_0", 8.into())],
     );
 }
