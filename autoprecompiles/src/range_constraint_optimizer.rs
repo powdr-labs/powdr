@@ -113,7 +113,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
             keep
         })
         // Restore the original order.
-        .sorted_by(|(i1, _), (i2, _)| i1.cmp(&i2))
+        .sorted_by(|(i1, _), (i2, _)| i1.cmp(i2))
         .map(|(_i, (expr, rc))| (expr, rc))
         .collect::<Vec<_>>();
 
