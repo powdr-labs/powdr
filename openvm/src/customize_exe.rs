@@ -224,6 +224,7 @@ pub fn customize(
         }
     }
 
+    let start = std::time::Instant::now();
     let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
         blocks,
         &config,
@@ -231,6 +232,7 @@ pub fn customize(
         pgo_config,
         vm_config,
     );
+    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
     let pc_step = exe.program.step;
