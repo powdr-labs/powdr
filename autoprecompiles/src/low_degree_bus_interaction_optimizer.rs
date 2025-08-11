@@ -379,6 +379,8 @@ mod tests {
     use powdr_constraint_solver::solver::new_solver;
     use powdr_number::BabyBearField;
 
+    use crate::range_constraint_optimizer::RangeConstraints;
+
     use super::*;
 
     pub type Var = &'static str;
@@ -422,6 +424,21 @@ mod tests {
             false
         }
     }
+    impl RangeConstraintHandler<BabyBearField> for XorBusHandler {
+        fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+            &self,
+            _bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, V>>,
+        ) -> Option<RangeConstraints<BabyBearField, V>> {
+            unreachable!()
+        }
+
+        fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+            &self,
+            _range_constraints: RangeConstraints<BabyBearField, V>,
+        ) -> Vec<BusInteraction<GroupedExpression<BabyBearField, V>>> {
+            unreachable!()
+        }
+    }
 
     fn compute_replacement(
         mut solver: impl Solver<BabyBearField, Var>,
@@ -430,6 +447,10 @@ mod tests {
         let optimizer = LowDegreeBusInteractionOptimizer {
             solver: &mut solver,
             bus_interaction_handler: XorBusHandler,
+            degree_bound: DegreeBound {
+                identities: 2,
+                bus_interactions: 1,
+            },
             _phantom: PhantomData,
         };
         optimizer.try_replace_bus_interaction(bus_interaction)
