@@ -59,6 +59,7 @@ pub fn optimize<A: Adapter>(
             only_inline_degree_one_and_no_bus_field_vars,
             &mut stats_logger,
             bus_map,
+            degree_bound,
         )?;
 
     // Now remove the bus interaction field variables and run the optimizer,
@@ -71,6 +72,7 @@ pub fn optimize<A: Adapter>(
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map,
+            degree_bound,
         )?;
 
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
@@ -127,6 +129,7 @@ fn run_optimization_loop_until_no_change<
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
+    degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
@@ -138,6 +141,7 @@ fn run_optimization_loop_until_no_change<
             &should_inline,
             stats_logger,
             bus_map,
+            degree_bound,
         )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             return Ok(constraint_system);
@@ -160,6 +164,7 @@ fn optimization_loop_iteration<
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
+    degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
@@ -183,9 +188,12 @@ fn optimization_loop_iteration<
         constraint_system
     };
 
-    let constraint_system =
-        LowDegreeBusInteractionOptimizer::new(solver, bus_interaction_handler.clone())
-            .optimize(constraint_system);
+    let constraint_system = LowDegreeBusInteractionOptimizer::new(
+        solver,
+        bus_interaction_handler.clone(),
+        degree_bound,
+    )
+    .optimize(constraint_system);
 
     let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
         let system = optimize_bitwise_lookup(

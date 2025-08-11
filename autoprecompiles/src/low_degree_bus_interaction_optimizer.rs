@@ -4,6 +4,7 @@ use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::inliner::DegreeBound;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::Solver;
@@ -26,6 +27,7 @@ pub struct LowDegreeBusInteractionOptimizer<
 > {
     solver: &'a mut S,
     bus_interaction_handler: B,
+    degree_bound: DegreeBound,
     _phantom: PhantomData<(T, V)>,
 }
 
@@ -37,10 +39,11 @@ impl<
         B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T>,
     > LowDegreeBusInteractionOptimizer<'a, T, V, S, B>
 {
-    pub fn new(solver: &'a mut S, bus_interaction_handler: B) -> Self {
+    pub fn new(solver: &'a mut S, bus_interaction_handler: B, degree_bound: DegreeBound) -> Self {
         Self {
             solver,
             bus_interaction_handler,
+            degree_bound,
             _phantom: PhantomData,
         }
     }
@@ -51,6 +54,7 @@ impl<
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
+                // Keep the bus interaction as is if a replacement can't be found.
                 let Some(bus_id) = bus_int.bus_id.try_to_number() else {
                     return vec![bus_int];
                 };
@@ -61,16 +65,17 @@ impl<
                     return vec![bus_int];
                 };
 
+                // If we found a replacement, add the polynomial constraints and replace
+                // the bus interaction with interactions implementing the range constraints.
+                // Note that many of these may be optimized away by the range constraint optimizer.
                 new_constraints.push(replacement.polynomial_constraint);
                 let range_constraints = replacement
                     .range_constraints
                     .into_iter()
                     .map(|(variable, rc)| (GroupedExpression::from_unknown_variable(variable), rc))
                     .collect();
-                let range_constraints = self
-                    .bus_interaction_handler
-                    .batch_make_range_constraints(range_constraints);
-                range_constraints
+                self.bus_interaction_handler
+                    .batch_make_range_constraints(range_constraints)
             })
             .collect();
 
@@ -84,100 +89,38 @@ impl<
         system
     }
 
-    /// Some well-known multilinear functions that are tested against the input-output pairs.
-    fn hypotheses(num_inputs: usize) -> Vec<Hypothesis<T, V>> {
-        match num_inputs {
-            1 => vec![
-                // Identity function
-                Box::new(|inputs| inputs[0].clone()),
-                // Logical not (8 bit)
-                Box::new(|inputs| {
-                    GroupedExpression::from_number(T::from_u64(0xff)) - inputs[0].clone()
-                }),
-                // Logical not (16 bit)
-                Box::new(|inputs| {
-                    GroupedExpression::from_number(T::from_u64(0xffff)) - inputs[0].clone()
-                }),
-            ],
-            2 => vec![
-                // Identity on x
-                Box::new(|inputs| inputs[0].clone()),
-                // Identity on y
-                Box::new(|inputs| inputs[1].clone()),
-                // x + y
-                Box::new(|inputs| inputs[0].clone() + inputs[1].clone()),
-                // AND on bits:
-                Box::new(|inputs| inputs[0].clone() * inputs[1].clone()),
-                // OR on bits:
-                Box::new(|inputs| {
-                    inputs[0].clone() + inputs[1].clone() - (inputs[0].clone() * inputs[1].clone())
-                }),
-                // XOR on bits:
-                Box::new(|inputs| {
-                    inputs[0].clone() + inputs[1].clone()
-                        - GroupedExpression::from_number(T::from_u64(2))
-                            * (inputs[0].clone() * inputs[1].clone())
-                }),
-            ],
-            _ => panic!("Unexpected number of inputs: {num_inputs}"),
-        }
-    }
-
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Option<Replacement<T, V>> {
         for input_output_pair in self.possible_input_output_pairs(bus_interaction) {
-            let all_possible_assignments =
-                self.all_possible_assignments(bus_interaction, &input_output_pair);
-            let mut hypotheses = Self::hypotheses(input_output_pair.inputs.len());
-
-            // Test the hypothesis on all remaining assignments.
-            let mut has_error = false;
-            for assignment in all_possible_assignments {
-                let Ok((inputs, output)) = assignment else {
-                    has_error = true;
-                    break;
-                };
-                let inputs = inputs
+            if let Some(low_degree_function) =
+                self.find_low_degree_function(bus_interaction, &input_output_pair)
+            {
+                // Build polynomial constraint
+                let symbolic_inputs = input_output_pair
+                    .inputs
                     .into_iter()
-                    .map(|value| GroupedExpression::from_number(value))
-                    .collect::<Vec<_>>();
-                hypotheses.retain(|hypothesis| {
-                    let hypothesis_evaluation = hypothesis(inputs.clone());
-                    hypothesis_evaluation.try_to_number().unwrap() == output
-                });
-                if hypotheses.is_empty() {
-                    has_error = true;
-                    break;
-                }
-            }
-            if has_error {
-                // The hypothesis does not hold for all assignments.
-                continue;
-            }
+                    .map(|input| input.expression)
+                    .collect();
+                let low_degree_function = low_degree_function(symbolic_inputs);
+                let polynomial_constraint =
+                    input_output_pair.output.expression.clone() - low_degree_function;
 
-            // If we got this far, the hypothesis is correct!
-            let multilinear_extension = hypotheses.into_iter().exactly_one().unwrap_or_else(|_| {
-                panic!("Expected exactly one multilinear extension, but got multiple.")
-            });
-            let symbolic_inputs = input_output_pair
-                .inputs
-                .into_iter()
-                .map(|input| input.expression)
-                .collect::<Vec<_>>();
-            let multilinear_extension = multilinear_extension(symbolic_inputs);
-            let polynomial_constraint =
-                input_output_pair.output.expression.clone() - multilinear_extension;
-            // TODO: Check degree
-            return Some(Replacement {
-                polynomial_constraint,
-                // TODO
-                range_constraints: [].into_iter().collect(),
-            });
+                // Check degree
+                if polynomial_constraint.degree() > self.degree_bound.identities {
+                    continue;
+                }
+
+                return Some(Replacement {
+                    polynomial_constraint,
+                    // TODO
+                    range_constraints: [].into_iter().collect(),
+                });
+            }
         }
 
-        // No multilinear extension found.
+        // No low-degree function found.
         None
     }
 
@@ -259,6 +202,40 @@ impl<
         }
     }
 
+    fn find_low_degree_function(
+        &self,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+        input_output_pair: &InputOutputPair<T, V>,
+    ) -> Option<LowDegreeFunction<T, V>> {
+        let all_possible_assignments =
+            self.all_possible_assignments(bus_interaction, input_output_pair);
+        let mut hypotheses = hypotheses(input_output_pair.inputs.len());
+
+        for assignment in all_possible_assignments {
+            let Ok((inputs, output)) = assignment else {
+                // We can't enumerate all possible assignments, so the hypotheses can't be tested.
+                return None;
+            };
+            let inputs = inputs
+                .into_iter()
+                .map(|value| GroupedExpression::from_number(value))
+                .collect::<Vec<_>>();
+            hypotheses.retain(|hypothesis| {
+                let hypothesis_evaluation = hypothesis(inputs.clone());
+                hypothesis_evaluation.try_to_number().unwrap() == output
+            });
+            if hypotheses.is_empty() {
+                // No hypothesis left
+                return None;
+            }
+        }
+
+        // If we got this far, the hypothesis is correct!
+        Some(hypotheses.into_iter().exactly_one().unwrap_or_else(|_| {
+            panic!("Expected exactly one multilinear extension, but got multiple.")
+        }))
+    }
+
     fn all_possible_assignments<'b>(
         &'b self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -306,7 +283,7 @@ impl<
     }
 }
 
-type Hypothesis<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> GroupedExpression<T, V>>;
+type LowDegreeFunction<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> GroupedExpression<T, V>>;
 
 const MAX_INPUTS: usize = 2;
 const MAX_DOMAIN_SIZE: u64 = 256;
@@ -331,6 +308,47 @@ struct Output<T: FieldElement, V> {
 struct InputOutputPair<T: FieldElement, V> {
     inputs: Vec<Input<T, V>>,
     output: Output<T, V>,
+}
+
+/// Some well-known multilinear functions that are tested against the input-output pairs.
+fn hypotheses<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    num_inputs: usize,
+) -> Vec<LowDegreeFunction<T, V>> {
+    match num_inputs {
+        1 => vec![
+            // Identity function
+            Box::new(|inputs| inputs[0].clone()),
+            // Logical not (8 bit)
+            Box::new(|inputs| {
+                GroupedExpression::from_number(T::from_u64(0xff)) - inputs[0].clone()
+            }),
+            // Logical not (16 bit)
+            Box::new(|inputs| {
+                GroupedExpression::from_number(T::from_u64(0xffff)) - inputs[0].clone()
+            }),
+        ],
+        2 => vec![
+            // Identity on x
+            Box::new(|inputs| inputs[0].clone()),
+            // Identity on y
+            Box::new(|inputs| inputs[1].clone()),
+            // x + y
+            Box::new(|inputs| inputs[0].clone() + inputs[1].clone()),
+            // AND on bits:
+            Box::new(|inputs| inputs[0].clone() * inputs[1].clone()),
+            // OR on bits:
+            Box::new(|inputs| {
+                inputs[0].clone() + inputs[1].clone() - (inputs[0].clone() * inputs[1].clone())
+            }),
+            // XOR on bits:
+            Box::new(|inputs| {
+                inputs[0].clone() + inputs[1].clone()
+                    - GroupedExpression::from_number(T::from_u64(2))
+                        * (inputs[0].clone() * inputs[1].clone())
+            }),
+        ],
+        _ => panic!("Unexpected number of inputs: {num_inputs}"),
+    }
 }
 
 #[cfg(test)]
