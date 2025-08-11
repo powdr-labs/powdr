@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
 
-pub struct LinearBusInteractionOptimizer<
+pub struct LowDegreeBusInteractionOptimizer<
     'a,
     T: FieldElement,
     V: Ord + Clone + Eq,
@@ -32,7 +32,7 @@ impl<
         V: Ord + Clone + Ord + Eq,
         S: Solver<T, V>,
         B: BusInteractionHandler<T> + IsBusStateful<T>,
-    > LinearBusInteractionOptimizer<'a, T, V, S, B>
+    > LowDegreeBusInteractionOptimizer<'a, T, V, S, B>
 {
     pub fn new(solver: &'a S, bus_interaction_handler: B) -> Self {
         Self {
@@ -368,7 +368,7 @@ mod tests {
         mut solver: impl Solver<BabyBearField, Var>,
         bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, Var>>,
     ) -> Option<Replacement<BabyBearField, Var>> {
-        let optimizer = LinearBusInteractionOptimizer {
+        let optimizer = LowDegreeBusInteractionOptimizer {
             solver: &mut solver,
             bus_interaction_handler: XorBusHandler,
             _phantom: PhantomData,

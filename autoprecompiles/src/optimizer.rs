@@ -20,7 +20,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
-use crate::linear_bus_interaction_optimizer::LinearBusInteractionOptimizer;
+use crate::low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
@@ -178,7 +178,7 @@ fn optimization_loop_iteration<
     };
 
     let constraint_system =
-        LinearBusInteractionOptimizer::new(solver, bus_interaction_handler.clone())
+        LowDegreeBusInteractionOptimizer::new(solver, bus_interaction_handler.clone())
             .optimize(constraint_system);
 
     let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
