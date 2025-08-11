@@ -106,14 +106,14 @@ fn test_linearizer() {
     let algebraic_constraints = vec![
         v("cmp_result_0") * (v("cmp_result_0") - c(1)),
         (-(v("cmp_result_0") - c(1))) * (v("a__0_0") - v("b__0_0")),
-        (-(v("cmp_result_0") - c(1))) * (v("a__1_0") - v("b__1_0")),
-        (-(v("cmp_result_0") - c(1))) * (v("a__2_0") - v("b__2_0")),
-        (-(v("cmp_result_0") - c(1))) * (v("a__3_0") - v("b__3_0")),
+        // (-(v("cmp_result_0") - c(1))) * (v("a__1_0") - v("b__1_0")),
+        // (-(v("cmp_result_0") - c(1))) * (v("a__2_0") - v("b__2_0")),
+        // (-(v("cmp_result_0") - c(1))) * (v("a__3_0") - v("b__3_0")),
         (-(v("cmp_result_0") - c(1))
             + (v("a__0_0") - v("b__0_0")) * v("diff_inv_marker__0_0")
-            + (v("a__1_0") - v("b__1_0")) * v("diff_inv_marker__1_0")
-            + (v("a__2_0") - v("b__2_0")) * v("diff_inv_marker__2_0")
-            + (v("a__3_0") - v("b__3_0")) * v("diff_inv_marker__3_0")
+            // + (v("a__1_0") - v("b__1_0")) * v("diff_inv_marker__1_0")
+            // + (v("a__2_0") - v("b__2_0")) * v("diff_inv_marker__2_0")
+            // + (v("a__3_0") - v("b__3_0")) * v("diff_inv_marker__3_0")
             - c(1)),
         v("imm_0") - c(8),
         v("cmp_result_0") * v("imm_0") - c(4) * v("cmp_result_0") - v("BusInteractionField(10, 2)")
