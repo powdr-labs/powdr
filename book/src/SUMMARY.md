@@ -37,7 +37,6 @@
 - [Frontends](./frontends/README.md)
     - [RISCV](./frontends/riscv.md)
         - [zk-Continuations](./frontends/zk-continuations.md)
-    - [Valida](./frontends/valida.md)
     - [EVM](./frontends/evm.md)
 - [Backends](./backends/README.md)
     - [plonky3](./backends/plonky3.md)
