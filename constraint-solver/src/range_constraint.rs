@@ -19,6 +19,9 @@ pub struct RangeConstraint<T: FieldElement> {
     /// Min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
     min: T,
     max: T,
+    /// For a value `v` to fulfill the range constraint, there has to be a (small) `k` such that
+    /// `v = min + k * stride`
+    stride: T,
 }
 
 impl<T: FieldElement> RangeConstraint<T> {
@@ -33,10 +36,16 @@ impl<T: FieldElement> RangeConstraint<T> {
     pub fn from_mask<M: Into<T::Integer>>(mask: M) -> Self {
         let mask = mask.into();
         let max = T::from(cmp::min(mask, (T::from(-1)).to_integer()));
+        let stride = (0..T::BITS as usize)
+            .filter(|i| ((mask >> *i) & (T::Integer::one()) != T::Integer::zero()))
+            .map(|i| T::from(1u64 << i))
+            .next()
+            .unwrap_or(T::one());
         Self {
             mask,
             min: T::zero(),
             max,
+            stride,
         }
     }
 
@@ -46,6 +55,7 @@ impl<T: FieldElement> RangeConstraint<T> {
             mask: value.to_integer(),
             min: value,
             max: value,
+            stride: T::one(),
         }
     }
 
@@ -59,7 +69,12 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             !T::Integer::from(0)
         };
-        Self { mask, min, max }
+        Self {
+            mask,
+            min,
+            max,
+            stride: T::one(),
+        }
     }
 
     /// Returns a constraint that allows any value.
@@ -89,7 +104,15 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// Returns (an upper bound for) the number of field elements included in the constraint.
     pub fn range_width(&self) -> T::Integer {
+        // TODO incorporate stride into this but also check that it is always used
+        // as an element counter.
         range_width(self.min, self.max)
+    }
+
+    /// Returns the `stride`, i.e. the distance between two consecutive valid values
+    /// between `min` and `max`.
+    pub fn stride(&self) -> T {
+        self.stride
     }
 
     /// Returns true if `v` is an allowed value for this range constraint.
@@ -97,8 +120,10 @@ impl<T: FieldElement> RangeConstraint<T> {
         let in_range = if self.min <= self.max {
             self.min <= v && v <= self.max
         } else {
-            self.min <= v || v <= self.max
+            self.min <= v || v <= self.max // TODO
         };
+        let in_stride = self.stride.is_one()
+            || (v - self.min).to_integer() % self.stride.to_integer().is_zero();
         let in_mask = v.to_integer() & self.mask == v.to_integer();
         in_range && in_mask
     }
