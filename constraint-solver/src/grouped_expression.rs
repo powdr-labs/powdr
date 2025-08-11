@@ -1477,6 +1477,19 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     }
 
     #[test]
+    fn bit_decomposition_bug() {
+        let lin = Qse::from_unknown_variable("lin");
+        let result = Qse::from_unknown_variable("result");
+        let constr = lin.clone() - constant(4) * result.clone() - constant(4);
+        let range_constraints = HashMap::from([
+            ("lin", RangeConstraint::from_mask(0x8u32)),
+            ("result", RangeConstraint::from_mask(0x1u32)),
+        ]);
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(!result.complete && result.effects.is_empty());
+    }
+
+    #[test]
     fn solve_constraint_transfer() {
         let rc = RangeConstraint::from_mask(0xffu32);
         let a = Qse::from_unknown_variable("a");
