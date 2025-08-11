@@ -49,8 +49,6 @@ pub fn optimize<A: Adapter>(
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
     let constraint_system = introduce_bus_interaction_variables(constraint_system);
-    // println!("Constraint system after introducing bus interaction variables:");
-    // println!("{constraint_system}");
 
     // Run the optimizer while avoiding inlining bus interaction field variables
     let constraint_system =
@@ -65,8 +63,6 @@ pub fn optimize<A: Adapter>(
     // Now remove the bus interaction field variables and run the optimizer,
     // allowing all inlining below the degree bound.
     let constraint_system = remove_bus_interaction_variables(constraint_system);
-    // println!("Constraint system after removal of bus interaction variables:");
-    // println!("{constraint_system}");
     let constraint_system =
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
