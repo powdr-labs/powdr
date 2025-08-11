@@ -15,8 +15,10 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
-use crate::range_constraint_optimizer::RangeConstraintHandler;
+use crate::range_constraint_optimizer::{RangeConstraintHandler, RangeConstraints};
 
+/// An optimizer that removes stateless bus interactions (a.k.a. lookups)
+/// which can also be implemented by low-degree constraints.
 pub struct LowDegreeBusInteractionOptimizer<
     'a,
     T: FieldElement,
@@ -68,21 +70,8 @@ impl<
                 // the bus interaction with interactions implementing the range constraints.
                 // Note that many of these may be optimized away by the range constraint optimizer.
                 new_constraints.push(replacement.polynomial_constraint);
-                let range_constraints = replacement
-                    .range_constraints
-                    .into_iter()
-                    .filter(|(expr, rc)| {
-                        if let Some(expr_value) = rc.try_to_single_value() {
-                            new_constraints
-                                .push(GroupedExpression::from_number(expr_value) - expr.clone());
-                            false
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
                 self.bus_interaction_handler
-                    .batch_make_range_constraints(range_constraints)
+                    .batch_make_range_constraints(replacement.range_constraints)
             })
             .collect();
 
@@ -96,6 +85,8 @@ impl<
         system
     }
 
+    /// Checks whether a bus interaction can be replaced by a low-degree constraint + range checks.
+    /// Returns None if no replacement is found.
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -130,6 +121,8 @@ impl<
         None
     }
 
+    /// Given a bus interaction of 2 or 3 unknown fields, finds all combinations of inputs and
+    /// outputs where the input space is small enough.
     fn possible_input_output_pairs(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -190,6 +183,8 @@ impl<
             .collect()
     }
 
+    /// Given a list of input range constraints, computes whether the total input space (i.e.,
+    /// the cross product of all possible input values) is small enough.
     fn has_small_domain(
         &self,
         input_range_constraints: impl Iterator<Item = RangeConstraint<T>>,
@@ -211,14 +206,16 @@ impl<
             .is_some_and(|count| count <= MAX_DOMAIN_SIZE)
     }
 
+    /// Given a bus interaction and a symbolic input-output pair, tries to find a low-degree function
+    /// by testing all of the hard-coded hypotheses against set of all concrete input-output pairs.
     fn find_low_degree_function(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
         input_output_pair: &SymbolicInputOutputPair<T, V>,
     ) -> Option<LowDegreeFunction<T, V>> {
+        let mut hypotheses = hypotheses(input_output_pair.inputs.len());
         let all_possible_assignments =
             self.concrete_input_output_pairs(bus_interaction, input_output_pair);
-        let mut hypotheses = hypotheses(input_output_pair.inputs.len());
 
         for assignment in all_possible_assignments {
             let Ok((inputs, output)) = assignment else {
@@ -249,7 +246,7 @@ impl<
     fn range_constraints(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>> {
+    ) -> RangeConstraints<T, V> {
         let range_constraints = self
             .bus_interaction_handler
             .handle_bus_interaction(bus_interaction.to_range_constraints(&NoRangeConstraints));
@@ -258,6 +255,7 @@ impl<
             .iter()
             .zip_eq(range_constraints.payload)
             .map(|(expr, rc)| (expr.clone(), rc))
+            .filter(|(expr, _rc)| expr.try_to_number().is_none())
             .collect()
     }
 
@@ -317,14 +315,16 @@ impl<
     }
 }
 
+/// Represents a low-degree function, mapping a list of inputs to a single output.
 type LowDegreeFunction<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> GroupedExpression<T, V>>;
 
+/// The maximum size of the input domain for low-degree functions.
 const MAX_DOMAIN_SIZE: u64 = 256;
 
 #[derive(Clone, Debug)]
 struct Replacement<T: FieldElement, V> {
     polynomial_constraint: GroupedExpression<T, V>,
-    range_constraints: BTreeMap<GroupedExpression<T, V>, RangeConstraint<T>>,
+    range_constraints: RangeConstraints<T, V>,
 }
 
 struct SymbolicInput<T: FieldElement, V> {
@@ -343,7 +343,7 @@ struct SymbolicInputOutputPair<T: FieldElement, V> {
     output: SymbolicOutput<T, V>,
 }
 
-/// Some well-known multilinear functions that are tested against the input-output pairs.
+/// Some well-known low-degree functions that are tested against the input-output pairs.
 fn hypotheses<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     num_inputs: usize,
 ) -> Vec<LowDegreeFunction<T, V>> {
@@ -351,6 +351,8 @@ fn hypotheses<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         1 => vec![
             // Identity function
             Box::new(|inputs| inputs[0].clone()),
+            // Logical not (1 bit)
+            Box::new(|inputs| GroupedExpression::from_number(T::from_u64(1)) - inputs[0].clone()),
             // Logical not (8 bit)
             Box::new(|inputs| {
                 GroupedExpression::from_number(T::from_u64(0xff)) - inputs[0].clone()
@@ -387,6 +389,8 @@ fn hypotheses<T: FieldElement, V: Ord + Clone + Hash + Eq>(
 #[cfg(test)]
 mod tests {
 
+    use std::array::from_fn;
+
     use powdr_constraint_solver::solver::new_solver;
     use powdr_number::BabyBearField;
 
@@ -410,23 +414,26 @@ mod tests {
             &self,
             bus_interaction: BusInteraction<RangeConstraint<BabyBearField>>,
         ) -> BusInteraction<RangeConstraint<BabyBearField>> {
-            match (
+            let range_constraints = match (
                 bus_interaction.payload[0].try_to_single_value(),
                 bus_interaction.payload[1].try_to_single_value(),
             ) {
+                // If x and y are known, compute z
                 (Some(x), Some(y)) => {
                     let z = BabyBearField::from(x.to_degree() ^ y.to_degree());
-                    BusInteraction {
-                        bus_id: bus_interaction.bus_id,
-                        payload: vec![
-                            RangeConstraint::from_value(x),
-                            RangeConstraint::from_value(y),
-                            RangeConstraint::from_value(z),
-                        ],
-                        multiplicity: bus_interaction.multiplicity,
-                    }
+                    [
+                        RangeConstraint::from_value(x),
+                        RangeConstraint::from_value(y),
+                        RangeConstraint::from_value(z),
+                    ]
                 }
-                _ => bus_interaction, // If not both inputs are known, return unchanged
+                // By default, just return byte range constraints
+                _ => from_fn(|_i| RangeConstraint::from_mask(0xffu32)),
+            };
+            BusInteraction {
+                bus_id: bus_interaction.bus_id,
+                payload: range_constraints.into_iter().collect(),
+                multiplicity: bus_interaction.multiplicity,
             }
         }
     }
@@ -496,6 +503,13 @@ mod tests {
             panic!("Expected a replacement")
         };
         assert_eq!(replacement.polynomial_constraint.to_string(), "x + z - 255");
+        assert_eq!(
+            replacement.range_constraints,
+            vec![
+                (var("x"), RangeConstraint::from_mask(0xffu32)),
+                (var("z"), RangeConstraint::from_mask(0xffu32))
+            ]
+        );
     }
 
     #[test]
@@ -516,6 +530,14 @@ mod tests {
             replacement.polynomial_constraint.to_string(),
             "(2 * x) * (y) - x - y + z"
         );
+        assert_eq!(
+            replacement.range_constraints,
+            vec![
+                (var("x"), RangeConstraint::from_mask(0xffu32)),
+                (var("y"), RangeConstraint::from_mask(0xffu32)),
+                (var("z"), RangeConstraint::from_mask(0xffu32)),
+            ]
+        );
     }
 
     #[test]
@@ -535,6 +557,14 @@ mod tests {
         assert_eq!(
             replacement.polynomial_constraint.to_string(),
             "-(x + y - z)"
+        );
+        assert_eq!(
+            replacement.range_constraints,
+            vec![
+                (var("x"), RangeConstraint::from_mask(0xffu32)),
+                (var("y"), RangeConstraint::from_mask(0xffu32)),
+                (var("z"), RangeConstraint::from_mask(0xffu32)),
+            ]
         );
     }
 }
