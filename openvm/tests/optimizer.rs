@@ -1,8 +1,5 @@
-use powdr_autoprecompiles::{constraint_optimizer, SymbolicMachine};
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_number::BabyBearField;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::{
