@@ -58,6 +58,7 @@ pub fn optimize<A: Adapter>(
     )
     .system()
     .clone();
+    stats_logger.log("inlining", &constraint_system);
 
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
