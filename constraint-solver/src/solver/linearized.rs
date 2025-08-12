@@ -134,15 +134,14 @@ where
                     .fields()
                     .map(|expr| {
                         self.linearizer
-                            .linearize_and_substitute_by_var(expr.clone(), &mut || {
-                                self.var_dispenser.next_var()
-                            })
+                            .substitute_by_var(expr.clone(), &mut || self.var_dispenser.next_var())
                     })
                     .collect::<BusInteraction<_>>()
             })
             .collect_vec();
-        self.solver
-            .add_algebraic_constraints(self.linearizer.constraints_to_add.drain(..));
+        // The substitution was not yet linearized.
+        let to_add = std::mem::take(&mut self.linearizer.constraints_to_add);
+        self.add_algebraic_constraints(to_add);
         self.solver.add_bus_interactions(bus_interactions);
     }
 
