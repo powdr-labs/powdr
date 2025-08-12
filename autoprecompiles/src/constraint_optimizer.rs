@@ -96,6 +96,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 
     // Now try to replace bus interaction fields that the solver knows to be constant
     let mut modified_bus_interactions = vec![];
+    let mut new_algebraic_constraints = vec![];
     constraint_system.retain_bus_interactions(|bus_interaction| {
         if bus_interaction
             .fields()
@@ -103,7 +104,14 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
         {
             let replacement = bus_interaction
                 .fields()
-                .map(|field| try_replace_by_number(field, solver).unwrap_or_else(|| field.clone()))
+                .map(|field| {
+                    if let Some(n) = try_replace_by_number(field, solver) {
+                        new_algebraic_constraints.push(&n - field);
+                        n
+                    } else {
+                        field.clone()
+                    }
+                })
                 .collect();
             log::trace!("Replacing bus interaction {bus_interaction} with {replacement}");
             modified_bus_interactions.push(replacement);
@@ -113,6 +121,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
         }
     });
     constraint_system.add_bus_interactions(modified_bus_interactions);
+    constraint_system.add_algebraic_constraints(new_algebraic_constraints);
     Ok(constraint_system)
 }
 
