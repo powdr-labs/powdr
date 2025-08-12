@@ -68,6 +68,16 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display
     }
 }
 
+impl<T: RuntimeConstant, V: Clone + Ord + Hash> JournalingConstraintSystem<T, V> {
+    /// Adds new bus interactions to the system.
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
+    ) {
+        self.system.add_bus_interactions(bus_interactions);
+    }
+}
+
 impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Removes all algebraic constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(

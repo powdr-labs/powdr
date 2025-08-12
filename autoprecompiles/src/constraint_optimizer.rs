@@ -93,7 +93,44 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     // does not increase.
     assert!(assignments.iter().all(|(_, expr)| expr.is_affine()));
     constraint_system.apply_substitutions(assignments);
+
+    // Now try to replace bus interaction fields that the solver knows to be constant
+    let mut modified_bus_interactions = vec![];
+    constraint_system.retain_bus_interactions(|bus_interaction| {
+        if bus_interaction
+            .fields()
+            .any(|field| try_replace_by_number(field, solver).is_some())
+        {
+            let replacement = bus_interaction
+                .fields()
+                .map(|field| try_replace_by_number(field, solver).unwrap_or_else(|| field.clone()))
+                .collect();
+            log::trace!("Replacing bus interaction {bus_interaction} with {replacement}");
+            modified_bus_interactions.push(replacement);
+            false
+        } else {
+            true
+        }
+    });
+    constraint_system.add_bus_interactions(modified_bus_interactions);
     Ok(constraint_system)
+}
+
+/// Tries to find a number that is equivalent to the expression and returns it
+/// as a GroupedExpression.
+/// Returns None if the expression already is a number.
+fn try_replace_by_number<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    expr: &GroupedExpression<T, V>,
+    solver: &impl Solver<T, V>,
+) -> Option<GroupedExpression<T, V>> {
+    if expr.try_to_number().is_some() {
+        return None;
+    }
+    Some(GroupedExpression::from_number(
+        solver
+            .range_constraint_for_expression(expr)
+            .try_to_single_value()?,
+    ))
 }
 
 /// Removes free variables from the constraint system, under some conditions.
