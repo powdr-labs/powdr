@@ -6,18 +6,16 @@ Instructions:
   BNE 52 0 248 1 1
 
 APC advantage:
-  - Main columns: 172 -> 63 (2.73x reduction)
+  - Main columns: 172 -> 51 (3.37x reduction)
   - Bus interactions: 87 -> 36 (2.42x reduction)
-  - Constraints: 111 -> 45 (2.47x reduction)
+  - Constraints: 111 -> 33 (3.36x reduction)
 
-Symbolic machine using 63 unique main columns:
+Symbolic machine using 51 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0
   writes_aux__base__prev_timestamp_0
   writes_aux__base__timestamp_lt_aux__lower_decomp__0_0
-  writes_aux__base__timestamp_lt_aux__lower_decomp__1_0
   writes_aux__prev_data__0_0
   writes_aux__prev_data__1_0
   writes_aux__prev_data__2_0
@@ -29,10 +27,8 @@ Symbolic machine using 63 unique main columns:
   b__3_0
   reads_aux__0__base__prev_timestamp_1
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_1
   writes_aux__base__prev_timestamp_1
   writes_aux__base__timestamp_lt_aux__lower_decomp__0_1
-  writes_aux__base__timestamp_lt_aux__lower_decomp__1_1
   cmp_result_1
   diff_marker__0_1
   diff_marker__1_1
@@ -41,10 +37,8 @@ Symbolic machine using 63 unique main columns:
   diff_val_1
   reads_aux__0__base__prev_timestamp_2
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2
   writes_aux__base__prev_timestamp_2
   writes_aux__base__timestamp_lt_aux__lower_decomp__0_2
-  writes_aux__base__timestamp_lt_aux__lower_decomp__1_2
   writes_aux__prev_data__0_2
   writes_aux__prev_data__1_2
   writes_aux__prev_data__2_2
@@ -57,20 +51,14 @@ Symbolic machine using 63 unique main columns:
   diff_val_2
   reads_aux__0__base__prev_timestamp_3
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_3
   reads_aux__1__base__prev_timestamp_3
   reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3
-  reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3
   writes_aux__base__prev_timestamp_3
   writes_aux__base__timestamp_lt_aux__lower_decomp__0_3
-  writes_aux__base__timestamp_lt_aux__lower_decomp__1_3
-  a__0_3
   reads_aux__0__base__prev_timestamp_4
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_4
   reads_aux__1__base__prev_timestamp_4
   reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4
-  reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4
   cmp_result_4
   diff_inv_marker__0_4
   is_valid
@@ -85,43 +73,41 @@ mult=is_valid * 1, args=[1, 44, b__0_0, b__1_0, b__2_0, b__3_0, from_state__time
 mult=is_valid * -1, args=[1, 52, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
 mult=is_valid * -1, args=[1, 56, writes_aux__prev_data__0_2, writes_aux__prev_data__1_2, writes_aux__prev_data__2_2, writes_aux__prev_data__3_2, reads_aux__0__base__prev_timestamp_2]
 mult=is_valid * 1, args=[1, 56, cmp_result_2, 0, 0, 0, from_state__timestamp_0 + 10]
-mult=is_valid * 1, args=[1, 52, a__0_3, 0, 0, 0, from_state__timestamp_0 + 12]
+mult=is_valid * 1, args=[1, 52, cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2, 0, 0, 0, from_state__timestamp_0 + 12]
 mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__1__base__prev_timestamp_4]
 mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, from_state__timestamp_0 + 13]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_1, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_1 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 30720), 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_1, 12]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_1 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 61440), 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_2 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 76800), 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_2, 12]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_2 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 107520), 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_3, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_3 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3 - (15360 * from_state__timestamp_0 + 122880), 12]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_3 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 - (15360 * from_state__timestamp_0 + 138240), 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1_3, 12]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_3 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_3 - (15360 * from_state__timestamp_0 + 153600), 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4, 17]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_4, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_4 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4 - (15360 * from_state__timestamp_0 + 168960), 12]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4, 17]
-mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_4 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4 - (15360 * from_state__timestamp_0 + 184320), 12]
 
 // Bus 6 (OPENVM_BITWISE_LOOKUP):
 mult=is_valid * 1, args=[b__0_0, 3, b__0_0 + 3 - 2 * a__0_0, 1]
 mult=diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1, args=[diff_val_1 - 1, 0, 0, 0]
 mult=diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2, args=[diff_val_2 - 1, 0, 0, 0]
-mult=is_valid * 1, args=[2 * a__0_3 - (cmp_result_1 + cmp_result_2), 0, 0, 0]
+mult=is_valid * 1, args=[cmp_result_1 + cmp_result_2 - 2 * cmp_result_1 * cmp_result_2, 0, 0, 0]
 
 // Algebraic constraints:
-from_state__timestamp_0 - (reads_aux__0__base__prev_timestamp_0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_0 + 1 * is_valid) = 0
-from_state__timestamp_0 + 1 * is_valid - (writes_aux__base__prev_timestamp_0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_0) = 0
 cmp_result_1 * (cmp_result_1 - 1) = 0
 diff_marker__3_1 * (diff_marker__3_1 - 1) = 0
 diff_marker__3_1 * diff_val_1 = 0
@@ -134,8 +120,6 @@ diff_marker__0_1 * (diff_marker__0_1 - 1) = 0
 diff_marker__0_1 * ((a__0_0 - 1) * (2 * cmp_result_1 - 1) + diff_val_1) = 0
 (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - 1) = 0
 (1 - (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1)) * cmp_result_1 = 0
-from_state__timestamp_0 + 2 * is_valid - (reads_aux__0__base__prev_timestamp_1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_1) = 0
-from_state__timestamp_0 + 4 * is_valid - (writes_aux__base__prev_timestamp_1 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_1 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_1) = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 diff_marker__3_2 * (diff_marker__3_2 - 1) = 0
 -((1 - diff_marker__3_2) * (writes_aux__prev_data__3_2 * (2 * cmp_result_2 - 1))) = 0
@@ -151,17 +135,9 @@ diff_marker__0_2 * (diff_marker__0_2 - 1) = 0
 diff_marker__0_2 * ((writes_aux__prev_data__0_2 - 1) * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2) * (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2 - 1) = 0
 (1 - (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * cmp_result_2 = 0
-from_state__timestamp_0 + 5 * is_valid - (reads_aux__0__base__prev_timestamp_2 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_2) = 0
-from_state__timestamp_0 + 7 * is_valid - (writes_aux__base__prev_timestamp_2 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_2 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_2) = 0
-from_state__timestamp_0 + 8 * is_valid - (reads_aux__0__base__prev_timestamp_3 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_3) = 0
-from_state__timestamp_0 + 9 * is_valid - (reads_aux__1__base__prev_timestamp_3 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_3) = 0
-from_state__timestamp_0 + 10 * is_valid - (writes_aux__base__prev_timestamp_3 + writes_aux__base__timestamp_lt_aux__lower_decomp__0_3 + 131072 * writes_aux__base__timestamp_lt_aux__lower_decomp__1_3) = 0
 cmp_result_4 * (cmp_result_4 - 1) = 0
-(1 - cmp_result_4) * a__0_3 = 0
-a__0_3 * diff_inv_marker__0_4 - cmp_result_4 = 0
-from_state__timestamp_0 + 11 * is_valid - (reads_aux__0__base__prev_timestamp_4 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4 + 131072 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__1_4) = 0
-from_state__timestamp_0 + 12 * is_valid - (reads_aux__1__base__prev_timestamp_4 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4 + 131072 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__1_4) = 0
-2 * cmp_result_1 + 2 * cmp_result_2 - (2 * cmp_result_1 * cmp_result_2 + 2 * a__0_3) = 0
+(1 - cmp_result_4) * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) = 0
+(cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) * diff_inv_marker__0_4 - cmp_result_4 = 0
 (1 - is_valid) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) = 0
 (1 - is_valid) * (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2) = 0
 is_valid * (is_valid - 1) = 0
