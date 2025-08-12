@@ -90,40 +90,40 @@ powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler",
 powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
 
 # openvm
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737", default-features = false }
-openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737", default-features = false, features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6", default-features = false }
+openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
   "bench-metrics",
 ] }
-openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737", default-features = false }
-openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737", default-features = false }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
-openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "391b737" }
+openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6", default-features = false }
+openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6", default-features = false }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
 
 # stark-backend
 openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "ee4e22b", default-features = false, features = [
