@@ -166,13 +166,23 @@ where
         &self,
         expr: &GroupedExpression<T, Variable<V>>,
     ) -> RangeConstraint<T::FieldType> {
+        // Ask the solver directly for the range constraint of the expression.
         let direct = self.solver.range_constraint_for_expression(expr);
+        // See if we have a direct substitution for the expression by a variable.
+        let simple_substituted = self
+            .linearizer
+            .try_substitute_by_existing_var(expr)
+            .map(|expr| self.solver.range_constraint_for_expression(&expr))
+            .unwrap_or_default();
+        // Try to re-do the linearization
         let substituted = self
             .linearizer
             .try_linearize_existing(expr.clone())
             .map(|expr| self.solver.range_constraint_for_expression(&expr))
             .unwrap_or_default();
-        direct.conjunction(&substituted)
+        direct
+            .conjunction(&simple_substituted)
+            .conjunction(&substituted)
     }
 
     fn are_expressions_known_to_be_different(
