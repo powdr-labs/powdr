@@ -2,11 +2,11 @@ Instructions:
   LOADHU rd_rs2_ptr = 0, rs1_ptr = 2, imm = 22, mem_as = 2, needs_write = 0, imm_sign = 0
 
 APC advantage:
-  - Main columns: 41 -> 20 (2.05x reduction)
+  - Main columns: 41 -> 18 (2.28x reduction)
   - Bus interactions: 17 -> 12 (1.42x reduction)
-  - Constraints: 25 -> 10 (2.50x reduction)
+  - Constraints: 25 -> 9 (2.78x reduction)
 
-Symbolic machine using 20 unique main columns:
+Symbolic machine using 18 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -24,8 +24,6 @@ Symbolic machine using 20 unique main columns:
   read_data__1_0
   read_data__2_0
   read_data__3_0
-  prev_data__2_0
-  prev_data__3_0
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -51,9 +49,8 @@ flags__1_0 * ((flags__1_0 - 1) * (flags__1_0 - 2)) = 0
 flags__2_0 * ((flags__2_0 - 1) * (flags__2_0 - 2)) = 0
 (flags__1_0 + flags__2_0 - 1 * is_valid) * (flags__1_0 + flags__2_0 - 2) = 0
 1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__1_0 + flags__2_0 - 2) + flags__2_0 * (flags__1_0 + flags__2_0 - 2) + 1 * is_valid = 0
--(flags__1_0 * flags__2_0 * prev_data__2_0) = 0
--(flags__1_0 * flags__2_0 * prev_data__3_0) = 0
 (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 675840 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 675841)) = 0
 (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 629145590 * is_valid - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 629145589 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) = 0
 flags__1_0 * (flags__1_0 - 1) + flags__2_0 * (flags__2_0 - 1) + 5 * flags__1_0 * flags__2_0 - (flags__1_0 * (flags__1_0 + flags__2_0 - 2) + flags__2_0 * (flags__1_0 + flags__2_0 - 2) + 2 * is_valid) = 0
+flags__1_0 * flags__2_0 = 0
 is_valid * (is_valid - 1) = 0
