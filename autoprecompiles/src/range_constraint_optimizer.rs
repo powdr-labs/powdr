@@ -98,7 +98,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         .enumerate()
         // Sort by range width, because stricter range constraints are more likely to imply
         // looser ones.
-        .sorted_by(|(_, (_, rc1)), (_, (_, rc2))| rc1.range_width().cmp(&rc2.range_width()))
+        .sorted_by_key(|(_, (_, rc))| rc.range_width())
         .filter(|(_i, (expr, rc))| {
             let current_rc = solver.range_constraint_for_expression(expr);
             let keep = current_rc != current_rc.conjunction(rc);
@@ -113,7 +113,7 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
             keep
         })
         // Restore the original order.
-        .sorted_by(|(i1, _), (i2, _)| i1.cmp(i2))
+        .sorted_by_key(|(i, _)| *i)
         .map(|(_i, (expr, rc))| (expr, rc))
         .collect::<Vec<_>>();
 
