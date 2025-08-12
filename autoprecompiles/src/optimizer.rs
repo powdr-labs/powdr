@@ -47,7 +47,7 @@ pub fn optimize<A: Adapter>(
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
-            inline_everything_below_degree_bound(degree_bound),
+            |var, expr, constraint_system| false,
             &mut stats_logger,
             bus_map,
         )?;
