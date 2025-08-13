@@ -19,13 +19,7 @@ use crate::range_constraint_optimizer::{RangeConstraintHandler, RangeConstraints
 
 /// An optimizer that replaces some stateless bus interactions (a.k.a. lookups)
 /// by low-degree algebraic constraints.
-pub struct LowDegreeBusInteractionOptimizer<
-    'a,
-    T: FieldElement,
-    V: Ord + Clone + Eq,
-    S: Solver<T, V>,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T>,
-> {
+pub struct LowDegreeBusInteractionOptimizer<'a, T, V, S, B> {
     solver: &'a mut S,
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
