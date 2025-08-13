@@ -102,7 +102,7 @@ impl<
 
                 // Check degree
                 let within_degree_bound =
-                    polynomial_constraint.degree() > self.degree_bound.identities;
+                    polynomial_constraint.degree() <= self.degree_bound.identities;
                 within_degree_bound.then_some(polynomial_constraint)
             })
     }
