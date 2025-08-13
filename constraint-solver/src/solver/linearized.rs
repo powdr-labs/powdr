@@ -95,6 +95,11 @@ where
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, Variable<V>>>, Error> {
         assert!(self.linearizer.constraints_to_add.is_empty());
         let assignments = self.solver.solve()?;
+        // Apply the deduced assignments to the substitutions we performed.
+        // We assume that the user of the solver applies the assignments to
+        // their expressions and thus "incoming" expressions used in the functions
+        // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
+        // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
         Ok(assignments)
     }
