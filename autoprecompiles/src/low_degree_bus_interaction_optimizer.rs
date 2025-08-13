@@ -84,21 +84,21 @@ impl<
             return None;
         }
 
-        self.input_output_pairs_with_small_domain(bus_interaction)
+        self.symbolic_functions_with_small_domain(bus_interaction)
             .into_iter()
-            .find_map(|input_output_pair| {
+            .find_map(|symbolic_function| {
                 let low_degree_function =
-                    self.find_low_degree_function(bus_interaction, &input_output_pair)?;
+                    self.find_low_degree_function(bus_interaction, &symbolic_function)?;
 
                 // Build polynomial constraint
-                let symbolic_inputs = input_output_pair
+                let symbolic_inputs = symbolic_function
                     .inputs
                     .into_iter()
                     .map(|input| input.expression)
                     .collect();
                 let low_degree_function = low_degree_function(symbolic_inputs);
                 let polynomial_constraint =
-                    input_output_pair.output.expression.clone() - low_degree_function;
+                    symbolic_function.output.expression.clone() - low_degree_function;
 
                 // Check degree
                 let within_degree_bound =
@@ -109,10 +109,10 @@ impl<
 
     /// Given a bus interaction of 2 or 3 unknown fields, finds all combinations of (symbolic)
     /// inputs and outputs where the input space is small enough.
-    fn input_output_pairs_with_small_domain(
+    fn symbolic_functions_with_small_domain(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> Vec<SymbolicInputOutputPair<T, V>> {
+    ) -> Vec<SymbolicFunction<T, V>> {
         let expressions = bus_interaction
             .payload
             .iter()
@@ -148,7 +148,7 @@ impl<
                     .filter(|i| !input_indices.contains(i))
                     .exactly_one()
                     .unwrap();
-                SymbolicInputOutputPair {
+                SymbolicFunction {
                     inputs: input_indices
                         .iter()
                         .map(|i| SymbolicInput {
@@ -194,11 +194,11 @@ impl<
     fn find_low_degree_function(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-        input_output_pair: &SymbolicInputOutputPair<T, V>,
+        symbolic_function: &SymbolicFunction<T, V>,
     ) -> Option<LowDegreeFunction<T, V>> {
-        let mut hypotheses = hypotheses(input_output_pair.inputs.len());
+        let mut hypotheses = hypotheses(symbolic_function.inputs.len());
         let all_possible_assignments =
-            self.concrete_input_output_pairs(bus_interaction, input_output_pair);
+            self.concrete_input_output_pairs(bus_interaction, symbolic_function);
 
         for assignment in all_possible_assignments {
             let Ok((inputs, output)) = assignment else {
@@ -253,7 +253,7 @@ impl<
     fn concrete_input_output_pairs<'b>(
         &'b self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-        input_output_pair: &'b SymbolicInputOutputPair<T, V>,
+        input_output_pair: &'b SymbolicFunction<T, V>,
     ) -> impl Iterator<Item = Result<(Vec<T>, T), ()>> + 'b {
         let bus_interaction = bus_interaction.to_range_constraints(self.solver);
 
@@ -304,18 +304,26 @@ type LowDegreeFunction<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> Group
 /// The maximum size of the input domain for low-degree functions.
 const MAX_DOMAIN_SIZE: u64 = 256;
 
+/// Represents a bus interaction field that is interpreted as an input.
 struct SymbolicInput<T: FieldElement, V> {
+    /// The index into the bus interaction payload
     index: usize,
+    /// The expression in the bus interaction payload
     expression: GroupedExpression<T, V>,
+    /// The range constraint for the input
     range_constraint: RangeConstraint<T>,
 }
 
+/// Represents a bus interaction field that is interpreted as an output.
 struct SymbolicOutput<T: FieldElement, V> {
+    /// The index into the bus interaction payload
     index: usize,
+    /// The expression in the bus interaction payload
+    /// Note that this expression does *not* compute the output from the inputs.
     expression: GroupedExpression<T, V>,
 }
 
-struct SymbolicInputOutputPair<T: FieldElement, V> {
+struct SymbolicFunction<T: FieldElement, V> {
     inputs: Vec<SymbolicInput<T, V>>,
     output: SymbolicOutput<T, V>,
 }
