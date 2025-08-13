@@ -15,7 +15,6 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
-use crate::expression;
 use crate::range_constraint_optimizer::{RangeConstraintHandler, RangeConstraints};
 
 /// An optimizer that replaces some stateless bus interactions (a.k.a. lookups)
@@ -135,8 +134,8 @@ impl<
         }
 
         unknown_field_indices
-            .clone()
-            .into_iter()
+            .iter()
+            .copied()
             .combinations(unknown_field_indices.len() - 1)
             .filter(|input_indices| {
                 self.has_small_domain(input_indices.iter().map(|i| range_constraints[i].clone()))
