@@ -172,23 +172,10 @@ where
         &self,
         expr: &GroupedExpression<T, Variable<V>>,
     ) -> RangeConstraint<T::FieldType> {
-        // Ask the solver directly for the range constraint of the expression.
-        let direct = self.solver.range_constraint_for_expression(expr);
-        // See if we have a direct substitution for the expression by a variable.
-        let simple_substituted = self
-            .linearizer
-            .try_substitute_by_existing_var(expr)
-            .map(|expr| self.solver.range_constraint_for_expression(&expr))
-            .unwrap_or_default();
-        // Try to re-do the linearization
-        let substituted = self
-            .linearizer
-            .try_linearize_existing(expr.clone())
-            .map(|expr| self.solver.range_constraint_for_expression(&expr))
-            .unwrap_or_default();
-        direct
-            .conjunction(&simple_substituted)
-            .conjunction(&substituted)
+        self.internalized_versions_of_expression(expr)
+            .fold(RangeConstraint::default(), |acc, expr| {
+                acc.conjunction(&self.solver.range_constraint_for_expression(&expr))
+            })
     }
 
     fn are_expressions_known_to_be_different(
@@ -196,18 +183,34 @@ where
         a: &GroupedExpression<T, Variable<V>>,
         b: &GroupedExpression<T, Variable<V>>,
     ) -> bool {
-        let a = iter::once(a.clone()).chain(
-            (!a.is_affine())
-                .then(|| self.linearizer.try_linearize_existing(a.clone()))
-                .flatten(),
-        );
-        let b = iter::once(b.clone()).chain(
-            (!b.is_affine())
-                .then(|| self.linearizer.try_linearize_existing(b.clone()))
-                .flatten(),
-        );
+        let a = self.internalized_versions_of_expression(a);
+        let b = self.internalized_versions_of_expression(b);
         a.cartesian_product(b)
             .any(|(a, b)| self.solver.are_expressions_known_to_be_different(&a, &b))
+    }
+}
+
+impl<T, V, S> LinearizedSolver<T, Variable<V>, S>
+where
+    T: RuntimeConstant + Hash,
+    V: Ord + Clone + Eq + Hash,
+{
+    /// Returns an iterator over expressions equivalent to `expr` with the idea that
+    /// they might allow to answer a query better or worse.
+    /// It usually returns the original expression, a single variable that it was
+    /// substituted into during a previous linearization and a previously linearized version.
+    fn internalized_versions_of_expression(
+        &self,
+        expr: &GroupedExpression<T, Variable<V>>,
+    ) -> impl Iterator<Item = GroupedExpression<T, Variable<V>>> + Clone {
+        let direct = expr.clone();
+        // See if we have a direct substitution for the expression by a variable.
+        let simple_substituted = self.linearizer.try_substitute_by_existing_var(expr);
+        // Try to re-do the linearization
+        let substituted = self.linearizer.try_linearize_existing(expr.clone());
+        iter::once(direct)
+            .chain(simple_substituted)
+            .chain(substituted)
     }
 }
 
