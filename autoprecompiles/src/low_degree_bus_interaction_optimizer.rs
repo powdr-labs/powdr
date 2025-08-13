@@ -17,8 +17,8 @@ use std::marker::PhantomData;
 use crate::constraint_optimizer::IsBusStateful;
 use crate::range_constraint_optimizer::{RangeConstraintHandler, RangeConstraints};
 
-/// An optimizer that removes stateless bus interactions (a.k.a. lookups)
-/// which can also be implemented by low-degree constraints.
+/// An optimizer that replaces some stateless bus interactions (a.k.a. lookups)
+/// by low-degree algebraic constraints.
 pub struct LowDegreeBusInteractionOptimizer<
     'a,
     T: FieldElement,
