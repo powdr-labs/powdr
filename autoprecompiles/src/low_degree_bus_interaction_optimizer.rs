@@ -15,6 +15,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
+use crate::expression;
 use crate::range_constraint_optimizer::{RangeConstraintHandler, RangeConstraints};
 
 /// An optimizer that replaces some stateless bus interactions (a.k.a. lookups)
@@ -84,7 +85,7 @@ impl<
             return None;
         }
 
-        self.possible_input_output_pairs(bus_interaction)
+        self.input_output_pairs_with_small_domain(bus_interaction)
             .into_iter()
             .find_map(|input_output_pair| {
                 let low_degree_function =
@@ -107,27 +108,24 @@ impl<
             })
     }
 
-    /// Given a bus interaction of 2 or 3 unknown fields, finds all combinations of inputs and
-    /// outputs where the input space is small enough.
-    fn possible_input_output_pairs(
+    /// Given a bus interaction of 2 or 3 unknown fields, finds all combinations of (symbolic)
+    /// inputs and outputs where the input space is small enough.
+    fn input_output_pairs_with_small_domain(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Vec<SymbolicInputOutputPair<T, V>> {
-        let unknown_field_indices = bus_interaction
+        let expressions = bus_interaction
             .payload
             .iter()
             .enumerate()
             .filter(|(_i, expr)| expr.try_to_number().is_none())
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>();
-        let expressions = unknown_field_indices
-            .iter()
-            .map(|i| (*i, bus_interaction.payload[*i].clone()))
+            .map(|(i, expr)| (i, expr.clone()))
             .collect::<BTreeMap<_, _>>();
         let range_constraints = expressions
             .iter()
             .map(|(i, expr)| (*i, self.solver.range_constraint_for_expression(expr)))
             .collect::<BTreeMap<_, _>>();
+        let unknown_field_indices = expressions.keys().copied().collect::<Vec<_>>();
 
         // Currently, we only have hypotheses for:
         // - 2 unknown fields (1 input, 1 output)
