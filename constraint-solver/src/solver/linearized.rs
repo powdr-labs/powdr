@@ -289,7 +289,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     }
 
     /// Substitutes the given expression by a single variable using the variable dispenser,
-    /// unless the expression is already just a single variable. Re-uses substitutions
+    /// unless the expression is already just a single variable or constant. Re-uses substitutions
     /// that were made in the past.
     /// Adds the equality constraint to `self.constraints_to_add` and returns the variable
     /// as an expression.
