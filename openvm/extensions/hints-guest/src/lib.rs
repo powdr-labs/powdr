@@ -101,6 +101,7 @@ pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
 }
 
 /// Ensures that the 10 limbs are weakly normalized (i.e., the most significant limb is 22 bits and the others are 26 bits).
+/// For an honest prover, this is a no-op.
 #[cfg(target_os = "zkvm")]
 fn ensure_weakly_normalized_10x26(limbs: [u32; 10]) -> [u32; 10] {
     [
