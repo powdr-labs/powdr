@@ -708,7 +708,9 @@ fn read_and_verify<T: FieldElement>(
     let proof = Path::new(&proof);
     let vkey = Path::new(&vkey).to_path_buf();
 
-    let proof = fs::read(proof).unwrap();
+    let proof = fs::read(proof).map_err(|e| {
+        vec![format!("Failed to read proof file {}: {e}", proof.display())]
+    })?;
     let publics = split_inputs(publics.as_str());
 
     let mut pipeline = Pipeline::<T>::default()
