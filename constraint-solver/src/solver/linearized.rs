@@ -183,10 +183,7 @@ where
         a: &GroupedExpression<T, Variable<V>>,
         b: &GroupedExpression<T, Variable<V>>,
     ) -> bool {
-        let a = self.internalized_versions_of_expression(a);
-        let b = self.internalized_versions_of_expression(b);
-        a.cartesian_product(b)
-            .any(|(a, b)| self.solver.are_expressions_known_to_be_different(&a, &b))
+        self.solver.are_expressions_known_to_be_different(a, b)
     }
 }
 
