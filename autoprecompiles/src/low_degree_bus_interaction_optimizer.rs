@@ -53,9 +53,9 @@ impl<
                     // If we found a replacement, add the polynomial constraints and replace
                     // the bus interaction with interactions implementing the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
-                    new_constraints.push(replacement.polynomial_constraint);
+                    new_constraints.push(replacement);
                     self.bus_interaction_handler
-                        .batch_make_range_constraints(replacement.range_constraints)
+                        .batch_make_range_constraints(self.range_constraints(&bus_int))
                 } else {
                     // Keep the bus interaction as is if a replacement can't be found.
                     vec![bus_int]
@@ -78,7 +78,7 @@ impl<
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> Option<Replacement<T, V>> {
+    ) -> Option<GroupedExpression<T, V>> {
         let bus_id = bus_interaction.bus_id.try_to_number()?;
         if self.bus_interaction_handler.is_stateful(bus_id) {
             return None;
@@ -102,10 +102,7 @@ impl<
                     continue;
                 }
 
-                return Some(Replacement {
-                    polynomial_constraint,
-                    range_constraints: self.range_constraints(bus_interaction),
-                });
+                return Some(polynomial_constraint);
             }
         }
 
@@ -313,12 +310,6 @@ type LowDegreeFunction<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> Group
 /// The maximum size of the input domain for low-degree functions.
 const MAX_DOMAIN_SIZE: u64 = 256;
 
-#[derive(Clone, Debug)]
-struct Replacement<T: FieldElement, V> {
-    polynomial_constraint: GroupedExpression<T, V>,
-    range_constraints: RangeConstraints<T, V>,
-}
-
 struct SymbolicInput<T: FieldElement, V> {
     index: usize,
     expression: GroupedExpression<T, V>,
@@ -453,7 +444,7 @@ mod tests {
     fn compute_replacement(
         mut solver: impl Solver<BabyBearField, Var>,
         bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, Var>>,
-    ) -> Option<Replacement<BabyBearField, Var>> {
+    ) -> Option<GroupedExpression<BabyBearField, Var>> {
         let optimizer = LowDegreeBusInteractionOptimizer {
             solver: &mut solver,
             bus_interaction_handler: XorBusHandler,
@@ -494,14 +485,7 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.polynomial_constraint.to_string(), "x + z - 255");
-        assert_eq!(
-            replacement.range_constraints,
-            vec![
-                (var("x"), RangeConstraint::from_mask(0xffu32)),
-                (var("z"), RangeConstraint::from_mask(0xffu32))
-            ]
-        );
+        assert_eq!(replacement.to_string(), "x + z - 255");
     }
 
     #[test]
@@ -518,18 +502,7 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(
-            replacement.polynomial_constraint.to_string(),
-            "(2 * x) * (y) - x - y + z"
-        );
-        assert_eq!(
-            replacement.range_constraints,
-            vec![
-                (var("x"), RangeConstraint::from_mask(0xffu32)),
-                (var("y"), RangeConstraint::from_mask(0xffu32)),
-                (var("z"), RangeConstraint::from_mask(0xffu32)),
-            ]
-        );
+        assert_eq!(replacement.to_string(), "(2 * x) * (y) - x - y + z");
     }
 
     #[test]
@@ -546,12 +519,29 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
+        assert_eq!(replacement.to_string(), "-(x + y - z)");
+    }
+
+    #[test]
+    fn test_range_constraints() {
+        let mut solver = new_solver(ConstraintSystem::default(), XorBusHandler);
+        let optimizer = LowDegreeBusInteractionOptimizer {
+            solver: &mut solver,
+            bus_interaction_handler: XorBusHandler,
+            degree_bound: DegreeBound {
+                identities: 2,
+                bus_interactions: 1,
+            },
+            _phantom: PhantomData,
+        };
+        let bus_interaction = BusInteraction {
+            bus_id: constant(0),
+            payload: vec![var("x"), var("y"), var("z")],
+            multiplicity: constant(1),
+        };
+        let range_constraints = optimizer.range_constraints(&bus_interaction);
         assert_eq!(
-            replacement.polynomial_constraint.to_string(),
-            "-(x + y - z)"
-        );
-        assert_eq!(
-            replacement.range_constraints,
+            range_constraints,
             vec![
                 (var("x"), RangeConstraint::from_mask(0xffu32)),
                 (var("y"), RangeConstraint::from_mask(0xffu32)),
