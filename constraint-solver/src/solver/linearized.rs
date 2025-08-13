@@ -417,17 +417,17 @@ mod tests {
         // already linearized `x + y`.
         expect!([r#"
             ((x + y) * (z + 1)) * (x - 1) = 0
-            lin_4 = 0
-            (a + b) * (c - 2) = 0
-            lin_7 = 0
             x + y - lin_0 = 0
             z - lin_1 + 1 = 0
             (lin_0) * (lin_1) - lin_2 = 0
             x - lin_3 - 1 = 0
             (lin_2) * (lin_3) - lin_4 = 0
+            lin_4 = 0
+            (a + b) * (c - 2) = 0
             a + b - lin_5 = 0
             c - lin_6 - 2 = 0
             (lin_5) * (lin_6) - lin_7 = 0
+            lin_7 = 0
             -(a + lin_8) = 0
             BusInteraction { bus_id: 1, multiplicity: lin_1, payload: lin_0, lin_8, a }"#])
         .assert_eq(&solver.to_string());
@@ -444,17 +444,17 @@ mod tests {
 
         expect!([r#"
             ((x + y) * (z + 1)) * (x - 1) = 0
-            0 = 0
-            (a + b) * (c - 2) = 0
-            0 = 0
             x + y - lin_0 = 0
             z - lin_1 + 1 = 0
             (lin_0) * (lin_1) - lin_2 = 0
             x - lin_3 - 1 = 0
             (lin_2) * (lin_3) = 0
+            0 = 0
+            (a + b) * (c - 2) = 0
             a + b - lin_5 = 0
             c - lin_6 - 2 = 0
             (lin_5) * (lin_6) = 0
+            0 = 0
             -(a + lin_8) = 0
             BusInteraction { bus_id: 1, multiplicity: lin_1, payload: lin_0, lin_8, a }"#])
         .assert_eq(&solver.to_string());
