@@ -49,23 +49,17 @@ impl<
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
-                // Keep the bus interaction as is if a replacement can't be found.
-                let Some(bus_id) = bus_int.bus_id.try_to_number() else {
-                    return vec![bus_int];
-                };
-                if self.bus_interaction_handler.is_stateful(bus_id) {
-                    return vec![bus_int];
+                if let Some(replacement) = self.try_replace_bus_interaction(&bus_int) {
+                    // If we found a replacement, add the polynomial constraints and replace
+                    // the bus interaction with interactions implementing the range constraints.
+                    // Note that many of these may be optimized away by the range constraint optimizer.
+                    new_constraints.push(replacement.polynomial_constraint);
+                    self.bus_interaction_handler
+                        .batch_make_range_constraints(replacement.range_constraints)
+                } else {
+                    // Keep the bus interaction as is if a replacement can't be found.
+                    vec![bus_int]
                 }
-                let Some(replacement) = self.try_replace_bus_interaction(&bus_int) else {
-                    return vec![bus_int];
-                };
-
-                // If we found a replacement, add the polynomial constraints and replace
-                // the bus interaction with interactions implementing the range constraints.
-                // Note that many of these may be optimized away by the range constraint optimizer.
-                new_constraints.push(replacement.polynomial_constraint);
-                self.bus_interaction_handler
-                    .batch_make_range_constraints(replacement.range_constraints)
             })
             .collect();
 
@@ -85,6 +79,10 @@ impl<
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Option<Replacement<T, V>> {
+        let bus_id = bus_interaction.bus_id.try_to_number()?;
+        if self.bus_interaction_handler.is_stateful(bus_id) {
+            return None;
+        }
         for input_output_pair in self.possible_input_output_pairs(bus_interaction) {
             if let Some(low_degree_function) =
                 self.find_low_degree_function(bus_interaction, &input_output_pair)
