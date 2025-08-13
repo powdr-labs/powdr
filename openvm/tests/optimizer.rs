@@ -1,11 +1,11 @@
 use expect_test::expect;
+use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::SymbolicMachine;
-use powdr_autoprecompiles::{optimizer::optimize, DegreeBound};
 use powdr_number::BabyBearField;
-use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
 };
+use powdr_openvm::{BabyBearOpenVmApcAdapter, DEFAULT_DEGREE_BOUND};
 
 use test_log::test;
 
@@ -39,10 +39,7 @@ fn test_optimize() {
     let machine = optimize::<BabyBearOpenVmApcAdapter>(
         machine,
         OpenVmBusInteractionHandler::default(),
-        DegreeBound {
-            identities: 5,
-            bus_interactions: 5,
-        },
+        DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
     )
     .unwrap();
@@ -58,7 +55,7 @@ fn test_optimize() {
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        233
+        234
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
