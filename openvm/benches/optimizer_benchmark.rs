@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use powdr_autoprecompiles::{optimizer::optimize, DegreeBound, SymbolicMachine};
+use powdr_autoprecompiles::{optimizer::optimize, SymbolicMachine};
 use powdr_number::BabyBearField;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
-    BabyBearOpenVmApcAdapter,
+    BabyBearOpenVmApcAdapter, DEFAULT_DEGREE_BOUND,
 };
 
 /// Benching the `test_optimize` test
@@ -22,10 +22,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
                 optimize::<BabyBearOpenVmApcAdapter>(
                     black_box(machine),
                     OpenVmBusInteractionHandler::default(),
-                    DegreeBound {
-                        identities: 5,
-                        bus_interactions: 5,
-                    },
+                    DEFAULT_DEGREE_BOUND,
                     &default_openvm_bus_map(),
                 )
                 .unwrap()
