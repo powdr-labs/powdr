@@ -95,7 +95,19 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// Returns (an upper bound for) the number of field elements included in the constraint.
     pub fn size(&self) -> T::Integer {
-        self.range_width()
+        let stride = stride_from_mask(&self.mask);
+        let width = range_width(self.min, self.max);
+        if let (Some(stride), Some(width)) = (stride.try_into_u64(), width.try_into_u64()) {
+            // Divide by stride, rounding up, and add one more if we are wrapping.
+            T::Integer::from(u64::div_ceil(width, stride))
+                + if self.min > self.max {
+                    1.into()
+                } else {
+                    0.into()
+                }
+        } else {
+            width
+        }
     }
 
     /// Returns true if `v` is an allowed value for this range constraint.
@@ -273,12 +285,30 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns the allowed values of this range constraint.
-    /// Panics if the range width is larger than 2^32 (in which case you
+    /// Panics if the range width is larger than 2^64 (in which case you
     /// probably don't want to call this function).
+    #[auto_enums::auto_enum(Iterator)]
     pub fn allowed_values(&self) -> impl Iterator<Item = T> + '_ {
-        (0..=self.range_width().try_into_u32().unwrap())
-            .map(move |offset| self.min + T::from(offset))
-            .filter(|value| self.allows_value(*value))
+        let width = self.range_width().try_into_u64().unwrap();
+        let stride = stride_from_mask(&self.mask);
+        if let Some(stride) = stride.try_into_u64() {
+            if self.min <= self.max {
+                (0..=width).step_by(stride as usize).map(move |offset| {
+                    let v = self.min + T::from(offset);
+                    assert!(self.allows_value(v));
+                    v
+                })
+            } else {
+                // TODO
+                (0..=width)
+                    .map(move |offset| self.min + T::from(offset))
+                    .filter(|value| self.allows_value(*value))
+            }
+        } else {
+            (0..=width)
+                .map(move |offset| self.min + T::from(offset))
+                .filter(|value| self.allows_value(*value))
+        }
     }
 }
 
@@ -295,6 +325,17 @@ fn range_width<T: FieldElement>(min: T, max: T) -> T::Integer {
         T::modulus()
     } else {
         (max - min + T::one()).to_integer()
+    }
+}
+
+/// Returns a number `s` such that if `x` satisfies the mask,
+/// no number between `x` and `x + s` satisfies the mask (unless the addition wraps).
+fn stride_from_mask<I: LargeInt>(mask: &I) -> I {
+    if let Some(trailing_zeros) = mask.to_arbitrary_integer().trailing_zeros() {
+        I::from(1u64 << trailing_zeros)
+    } else {
+        // mask is zero, so a stride of one is fine.
+        I::from(1)
     }
 }
 
@@ -845,5 +886,41 @@ mod test {
         assert!(!c.is_disjoint(&b));
         let d = c.conjunction(&RangeConstraint::from_range(1.into(), 5000.into()));
         assert!(d.is_disjoint(&b));
+    }
+
+    #[test]
+    fn size() {
+        let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 20.into());
+        assert!(a.allowed_values().count() as u64 <= a.size().try_into_u64().unwrap());
+        assert_eq!(a.size(), 11u64.into());
+        let a = a.multiple(2.into());
+        assert!(a.allowed_values().count() as u64 <= a.size().try_into_u64().unwrap());
+        assert_eq!(a.size(), 11u64.into());
+
+        // Even numbers
+        let even = RangeConstraint::<GoldilocksField>::from_mask(0xffffffffffffffffu64 << 1);
+        let b = even.conjunction(&RangeConstraint::from_range(0.into(), 2.into()));
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 2u64.into());
+        let b = even.conjunction(&RangeConstraint::from_range(0.into(), 3.into()));
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 2u64.into());
+        let b = even.conjunction(&RangeConstraint::from_range(0.into(), 4.into()));
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 3u64.into());
+        let b = even.conjunction(&RangeConstraint::from_range(1.into(), 2.into()));
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 1u64.into());
+        let b = even.conjunction(&RangeConstraint::from_range(1.into(), 3.into()));
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 1u64.into());
+        let b = even.conjunction(&RangeConstraint::from_range(1.into(), 4.into()));
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 2u64.into());
+
+        let b = even.conjunction(&-RangeConstraint::from_range(0.into(), 1.into()));
+        // Even numbers between -1 and 0. Note that -1 is even, so there are two.
+        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
+        assert_eq!(b.size(), 2u64.into());
     }
 }
