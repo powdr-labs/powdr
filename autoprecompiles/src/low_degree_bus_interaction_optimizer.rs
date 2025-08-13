@@ -83,10 +83,13 @@ impl<
         if self.bus_interaction_handler.is_stateful(bus_id) {
             return None;
         }
-        for input_output_pair in self.possible_input_output_pairs(bus_interaction) {
-            if let Some(low_degree_function) =
-                self.find_low_degree_function(bus_interaction, &input_output_pair)
-            {
+
+        self.possible_input_output_pairs(bus_interaction)
+            .into_iter()
+            .find_map(|input_output_pair| {
+                let low_degree_function =
+                    self.find_low_degree_function(bus_interaction, &input_output_pair)?;
+
                 // Build polynomial constraint
                 let symbolic_inputs = input_output_pair
                     .inputs
@@ -98,16 +101,10 @@ impl<
                     input_output_pair.output.expression.clone() - low_degree_function;
 
                 // Check degree
-                if polynomial_constraint.degree() > self.degree_bound.identities {
-                    continue;
-                }
-
-                return Some(polynomial_constraint);
-            }
-        }
-
-        // No low-degree function found.
-        None
+                let within_degree_bound =
+                    polynomial_constraint.degree() > self.degree_bound.identities;
+                within_degree_bound.then_some(polynomial_constraint)
+            })
     }
 
     /// Given a bus interaction of 2 or 3 unknown fields, finds all combinations of inputs and
