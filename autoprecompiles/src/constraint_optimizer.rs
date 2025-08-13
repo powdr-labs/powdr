@@ -95,32 +95,30 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system.apply_substitutions(assignments);
 
     // Now try to replace bus interaction fields that the solver knows to be constant
-    let mut modified_bus_interactions = vec![];
+    let mut bus_interactions = vec![];
     let mut new_algebraic_constraints = vec![];
+    // We remove all bus interactions because we do not want to change the order.
     constraint_system.retain_bus_interactions(|bus_interaction| {
-        if bus_interaction
+        let mut modified = false;
+        let replacement = bus_interaction
             .fields()
-            .any(|field| try_replace_by_number(field, solver).is_some())
-        {
-            let replacement = bus_interaction
-                .fields()
-                .map(|field| {
-                    if let Some(n) = try_replace_by_number(field, solver) {
-                        new_algebraic_constraints.push(&n - field);
-                        n
-                    } else {
-                        field.clone()
-                    }
-                })
-                .collect();
+            .map(|field| {
+                if let Some(n) = try_replace_by_number(field, solver) {
+                    modified = true;
+                    new_algebraic_constraints.push(&n - field);
+                    n
+                } else {
+                    field.clone()
+                }
+            })
+            .collect();
+        if modified {
             log::trace!("Replacing bus interaction {bus_interaction} with {replacement}");
-            modified_bus_interactions.push(replacement);
-            false
-        } else {
-            true
         }
+        bus_interactions.push(replacement);
+        false
     });
-    constraint_system.add_bus_interactions(modified_bus_interactions);
+    constraint_system.add_bus_interactions(bus_interactions);
     constraint_system.add_algebraic_constraints(new_algebraic_constraints);
     Ok(constraint_system)
 }
