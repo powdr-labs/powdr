@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt::Display};
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
+use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
@@ -47,10 +47,18 @@ pub fn optimize<A: Adapter>(
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
-            inline_everything_below_degree_bound(degree_bound),
+            |var, expr, constraint_system| false,
             &mut stats_logger,
             bus_map,
         )?;
+
+    let constraint_system = inliner::replace_constrained_witness_columns(
+        constraint_system.into(),
+        inline_everything_below_degree_bound(degree_bound),
+    )
+    .system()
+    .clone();
+    stats_logger.log("inlining", &constraint_system);
 
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
