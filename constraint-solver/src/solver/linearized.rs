@@ -93,8 +93,12 @@ where
     S: Solver<T, Variable<V>>,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, Variable<V>>>, Error> {
-        assert!(self.linearizer.constraints_to_add.is_empty());
         let assignments = self.solver.solve()?;
+        // Apply the deduced assignments to the substitutions we performed.
+        // We assume that the user of the solver applies the assignments to
+        // their expressions and thus "incoming" expressions used in the functions
+        // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
+        // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
         Ok(assignments)
     }
@@ -103,23 +107,22 @@ where
         &mut self,
         constraints: impl IntoIterator<Item = GroupedExpression<T, Variable<V>>>,
     ) {
-        let mut constraints = constraints
+        let constraints = constraints
             .into_iter()
             .flat_map(|constr| {
-                if constr.is_affine() {
-                    vec![constr]
-                } else {
-                    // Add both the original and the linearized constraint.
-                    vec![
-                        constr.clone(),
-                        self.linearizer
-                            .linearize(constr, &mut || self.var_dispenser.next_var()),
-                    ]
+                // We always add the original constraint unmodified.
+                let mut constrs = vec![constr.clone()];
+                if !constr.is_affine() {
+                    let linearized = self.linearizer.linearize(
+                        constr,
+                        &mut || self.var_dispenser.next_var(),
+                        &mut constrs,
+                    );
+                    constrs.push(linearized);
                 }
-                .into_iter()
+                constrs
             })
             .collect::<Vec<_>>();
-        constraints.append(&mut self.linearizer.constraints_to_add);
         self.solver.add_algebraic_constraints(constraints);
     }
 
@@ -127,21 +130,24 @@ where
         &mut self,
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, Variable<V>>>>,
     ) {
+        let mut constraints_to_add = vec![];
         let bus_interactions = bus_interactions
             .into_iter()
             .map(|bus_interaction| {
                 bus_interaction
                     .fields()
                     .map(|expr| {
-                        self.linearizer
-                            .substitute_by_var(expr.clone(), &mut || self.var_dispenser.next_var())
+                        self.linearizer.substitute_by_var(
+                            expr.clone(),
+                            &mut || self.var_dispenser.next_var(),
+                            &mut constraints_to_add,
+                        )
                     })
                     .collect::<BusInteraction<_>>()
             })
             .collect_vec();
-        // The substitution was not yet linearized.
-        let to_add = std::mem::take(&mut self.linearizer.constraints_to_add);
-        self.add_algebraic_constraints(to_add);
+        // We only substituted by a variable, but the substitution was not yet linearized.
+        self.add_algebraic_constraints(constraints_to_add);
         self.solver.add_bus_interactions(bus_interactions);
     }
 
@@ -166,23 +172,10 @@ where
         &self,
         expr: &GroupedExpression<T, Variable<V>>,
     ) -> RangeConstraint<T::FieldType> {
-        // Ask the solver directly for the range constraint of the expression.
-        let direct = self.solver.range_constraint_for_expression(expr);
-        // See if we have a direct substitution for the expression by a variable.
-        let simple_substituted = self
-            .linearizer
-            .try_substitute_by_existing_var(expr)
-            .map(|expr| self.solver.range_constraint_for_expression(&expr))
-            .unwrap_or_default();
-        // Try to re-do the linearization
-        let substituted = self
-            .linearizer
-            .try_linearize_existing(expr.clone())
-            .map(|expr| self.solver.range_constraint_for_expression(&expr))
-            .unwrap_or_default();
-        direct
-            .conjunction(&simple_substituted)
-            .conjunction(&substituted)
+        self.internalized_versions_of_expression(expr)
+            .fold(RangeConstraint::default(), |acc, expr| {
+                acc.conjunction(&self.solver.range_constraint_for_expression(&expr))
+            })
     }
 
     fn are_expressions_known_to_be_different(
@@ -190,30 +183,44 @@ where
         a: &GroupedExpression<T, Variable<V>>,
         b: &GroupedExpression<T, Variable<V>>,
     ) -> bool {
-        let a = iter::once(a.clone()).chain(
-            (!a.is_affine())
-                .then(|| self.linearizer.try_linearize_existing(a.clone()))
-                .flatten(),
-        );
-        let b = iter::once(b.clone()).chain(
-            (!b.is_affine())
-                .then(|| self.linearizer.try_linearize_existing(b.clone()))
-                .flatten(),
-        );
+        let a = self.internalized_versions_of_expression(a);
+        let b = self.internalized_versions_of_expression(b);
         a.cartesian_product(b)
             .any(|(a, b)| self.solver.are_expressions_known_to_be_different(&a, &b))
     }
 }
 
+impl<T, V, S> LinearizedSolver<T, Variable<V>, S>
+where
+    T: RuntimeConstant + Hash,
+    V: Ord + Clone + Eq + Hash,
+{
+    /// Returns an iterator over expressions equivalent to `expr` with the idea that
+    /// they might allow to answer a query better or worse.
+    /// It usually returns the original expression, a single variable that it was
+    /// substituted into during a previous linearization and a previously linearized version.
+    fn internalized_versions_of_expression(
+        &self,
+        expr: &GroupedExpression<T, Variable<V>>,
+    ) -> impl Iterator<Item = GroupedExpression<T, Variable<V>>> + Clone {
+        let direct = expr.clone();
+        // See if we have a direct substitution for the expression by a variable.
+        let simple_substituted = self.linearizer.try_substitute_by_existing_var(expr);
+        // Try to re-do the linearization
+        let substituted = self.linearizer.try_linearize_existing(expr.clone());
+        iter::once(direct)
+            .chain(simple_substituted)
+            .chain(substituted)
+    }
+}
+
 struct Linearizer<T, V> {
-    constraints_to_add: Vec<GroupedExpression<T, V>>,
     substitutions: HashMap<GroupedExpression<T, V>, V>,
 }
 
 impl<T, V> Default for Linearizer<T, V> {
     fn default() -> Self {
         Linearizer {
-            constraints_to_add: vec![],
             substitutions: HashMap::new(),
         }
     }
@@ -222,12 +229,13 @@ impl<T, V> Default for Linearizer<T, V> {
 impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     /// Linearizes the constraint by introducing new variables for
     /// non-affine parts. The new constraints are appended to
-    /// `self.constraints_to_add` and must be added to the system.
+    /// `constraint_collection` and must be added to the system.
     /// The linearized expression is returned.
     fn linearize(
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
+        constraint_collection: &mut impl Extend<GroupedExpression<T, V>>,
     ) -> GroupedExpression<T, V> {
         if expr.is_affine() {
             return expr;
@@ -236,9 +244,11 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         quadratic
             .into_iter()
             .map(|(l, r)| {
-                let l = self.linearize_and_substitute_by_var(l, var_dispenser);
-                let r = self.linearize_and_substitute_by_var(r, var_dispenser);
-                self.substitute_by_var(l * r, var_dispenser)
+                let l =
+                    self.linearize_and_substitute_by_var(l, var_dispenser, constraint_collection);
+                let r =
+                    self.linearize_and_substitute_by_var(r, var_dispenser, constraint_collection);
+                self.substitute_by_var(l * r, var_dispenser, constraint_collection)
             })
             .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
             .chain(std::iter::once(GroupedExpression::from_runtime_constant(
@@ -283,20 +293,22 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
+        constraint_collection: &mut impl Extend<GroupedExpression<T, V>>,
     ) -> GroupedExpression<T, V> {
-        let linearized = self.linearize(expr, var_dispenser);
-        self.substitute_by_var(linearized, var_dispenser)
+        let linearized = self.linearize(expr, var_dispenser, constraint_collection);
+        self.substitute_by_var(linearized, var_dispenser, constraint_collection)
     }
 
     /// Substitutes the given expression by a single variable using the variable dispenser,
-    /// unless the expression is already just a single variable. Re-uses substitutions
+    /// unless the expression is already just a single variable or constant. Re-uses substitutions
     /// that were made in the past.
-    /// Adds the equality constraint to `self.constraints_to_add` and returns the variable
+    /// Adds the equality constraint to `constraint_collection` and returns the variable
     /// as an expression.
     fn substitute_by_var(
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
+        constraint_collection: &mut impl Extend<GroupedExpression<T, V>>,
     ) -> GroupedExpression<T, V> {
         if let Some(var) = self.try_substitute_by_existing_var(&expr) {
             var
@@ -304,7 +316,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
             let var = var_dispenser();
             self.substitutions.insert(expr.clone(), var.clone());
             let var = GroupedExpression::from_unknown_variable(var);
-            self.constraints_to_add.push(expr - var.clone());
+            constraint_collection.extend([expr - var.clone()]);
             var
         }
     }
@@ -370,18 +382,19 @@ mod tests {
         let mut var_counter = 0usize;
         let mut linearizer = Linearizer::default();
         let expr = var("x") + var("y") * (var("z") + constant(1)) * (var("x") - constant(1));
-        let linearized = linearizer.linearize(expr, &mut || {
-            let var = Variable::Linearized(var_counter);
-            var_counter += 1;
-            var
-        });
+        let mut constraints_to_add = vec![];
+        let linearized = linearizer.linearize(
+            expr,
+            &mut || {
+                let var = Variable::Linearized(var_counter);
+                var_counter += 1;
+                var
+            },
+            &mut constraints_to_add,
+        );
         assert_eq!(linearized.to_string(), "x + lin_3");
         assert_eq!(
-            linearizer
-                .constraints_to_add
-                .into_iter()
-                .format("\n")
-                .to_string(),
+            constraints_to_add.into_iter().format("\n").to_string(),
             "z - lin_0 + 1\n(y) * (lin_0) - lin_1\nx - lin_2 - 1\n(lin_1) * (lin_2) - lin_3"
         );
     }
@@ -404,17 +417,17 @@ mod tests {
         // already linearized `x + y`.
         expect!([r#"
             ((x + y) * (z + 1)) * (x - 1) = 0
-            lin_4 = 0
-            (a + b) * (c - 2) = 0
-            lin_7 = 0
             x + y - lin_0 = 0
             z - lin_1 + 1 = 0
             (lin_0) * (lin_1) - lin_2 = 0
             x - lin_3 - 1 = 0
             (lin_2) * (lin_3) - lin_4 = 0
+            lin_4 = 0
+            (a + b) * (c - 2) = 0
             a + b - lin_5 = 0
             c - lin_6 - 2 = 0
             (lin_5) * (lin_6) - lin_7 = 0
+            lin_7 = 0
             -(a + lin_8) = 0
             BusInteraction { bus_id: 1, multiplicity: lin_1, payload: lin_0, lin_8, a }"#])
         .assert_eq(&solver.to_string());
@@ -431,17 +444,17 @@ mod tests {
 
         expect!([r#"
             ((x + y) * (z + 1)) * (x - 1) = 0
-            0 = 0
-            (a + b) * (c - 2) = 0
-            0 = 0
             x + y - lin_0 = 0
             z - lin_1 + 1 = 0
             (lin_0) * (lin_1) - lin_2 = 0
             x - lin_3 - 1 = 0
             (lin_2) * (lin_3) = 0
+            0 = 0
+            (a + b) * (c - 2) = 0
             a + b - lin_5 = 0
             c - lin_6 - 2 = 0
             (lin_5) * (lin_6) = 0
+            0 = 0
             -(a + lin_8) = 0
             BusInteraction { bus_id: 1, multiplicity: lin_1, payload: lin_0, lin_8, a }"#])
         .assert_eq(&solver.to_string());
