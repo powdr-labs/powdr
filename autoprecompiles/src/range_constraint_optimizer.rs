@@ -96,9 +96,9 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         })
         // Enumerate, so we can restore the original order later.
         .enumerate()
-        // Sort by range width, because stricter range constraints are more likely to imply
+        // Sort by size, because stricter range constraints are more likely to imply
         // looser ones.
-        .sorted_by_key(|(_, (_, rc))| rc.range_width())
+        .sorted_by_key(|(_, (_, rc))| rc.size())
         .filter(|(_i, (expr, rc))| {
             let current_rc = solver.range_constraint_for_expression(expr);
             let keep = current_rc != current_rc.conjunction(rc);

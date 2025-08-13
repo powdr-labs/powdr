@@ -87,9 +87,15 @@ impl<T: FieldElement> RangeConstraint<T> {
         (self.min, self.max)
     }
 
-    /// Returns (an upper bound for) the number of field elements included in the constraint.
+    /// Returns the number of elements between the min and the max value, disregarding the mask and
+    /// potentially other constraints.
     pub fn range_width(&self) -> T::Integer {
         range_width(self.min, self.max)
+    }
+
+    /// Returns (an upper bound for) the number of field elements included in the constraint.
+    pub fn size(&self) -> T::Integer {
+        self.range_width()
     }
 
     /// Returns true if `v` is an allowed value for this range constraint.
