@@ -8,6 +8,8 @@ use powdr_number::{FieldElement, LargeInt};
 // TODO: This should be configurable
 const MAX_BITS: u64 = 25;
 
+/// Implements [BusInteractionHandler::handle_bus_interaction] for the variable range checker bus,
+/// tightening the currently known range constraints.
 pub fn handle_variable_range_checker<T: FieldElement>(
     payload: &[RangeConstraint<T>],
 ) -> Vec<RangeConstraint<T>> {
