@@ -83,7 +83,7 @@ impl<
             return None;
         }
 
-        self.symbolic_functions_with_small_domain(bus_interaction)
+        self.symbolic_function_candidates_with_small_domain(bus_interaction)
             .into_iter()
             .find_map(|symbolic_function| {
                 let low_degree_function =
@@ -108,7 +108,7 @@ impl<
 
     /// Given a bus interaction of 2 or 3 unknown fields, finds all combinations of (symbolic)
     /// inputs and outputs where the input space is small enough.
-    fn symbolic_functions_with_small_domain(
+    fn symbolic_function_candidates_with_small_domain(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Vec<SymbolicFunction<T, V>> {
