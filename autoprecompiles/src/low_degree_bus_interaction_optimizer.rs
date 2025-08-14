@@ -222,6 +222,10 @@ impl<
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> RangeConstraints<T, V> {
+        // Get the range constraints enforced on each field individually, without any existing knowledge from
+        // the solver. For example, this could be the set of all bytes. The assumption here is that whatever
+        // range constraint is returned here can always be passed to `bus_interaction_handler.batch_make_range_constraints`,
+        // i.e., the backend will always have a way to *only* enforce that range constraint.
         let range_constraints = self
             .bus_interaction_handler
             .handle_bus_interaction(bus_interaction.to_range_constraints(&NoRangeConstraints));
