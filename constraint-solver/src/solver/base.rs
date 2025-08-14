@@ -219,24 +219,48 @@ where
     /// If there is exactly one assignment that does not lead to a contradiction,
     /// apply it. This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
-        let assignments = exhaustive_search::get_unique_assignments(
-            self.constraint_system.system(),
-            &*self,
-            &self.bus_interaction_handler,
-        )?;
+        log::debug!("Starting exhaustive search...");
+        let mut variable_sets =
+            exhaustive_search::get_brute_force_candidates(self.constraint_system.system(), &*self)
+                .collect_vec();
+        // Start with small sets to make larger ones redundant after some assignments.
+        variable_sets.sort_by_key(|set| set.len());
 
-        let mut progress = false;
-        let start = std::time::Instant::now();
-        for (variable, value) in &assignments {
-            progress |=
-                self.apply_range_constraint_update(variable, RangeConstraint::from_value(*value));
-        }
-        println!(
-            "Exhaustive search found {} assignments in {}ms",
-            assignments.len(),
-            start.elapsed().as_millis()
+        log::debug!(
+            "Found {} sets of variables with few possible assignments. Checking each set...",
+            variable_sets.len()
         );
 
+        let mut progress = false;
+
+        for mut variable_set in variable_sets {
+            variable_set.retain(|v| {
+                self.range_constraints
+                    .get(v)
+                    .try_to_single_value()
+                    .is_none()
+            });
+            // TODO we might already have handled it.
+            match exhaustive_search::find_unique_assignment_for_set(
+                self.constraint_system.system(),
+                &variable_set,
+                &*self,
+                &self.bus_interaction_handler,
+            ) {
+                Ok(Some(assignments)) => {
+                    for (var, value) in assignments.iter() {
+                        progress |= self.apply_range_constraint_update(
+                            var,
+                            RangeConstraint::from_value(*value),
+                        );
+                    }
+                }
+                // Might return None if the assignment is not unique.
+                Ok(None) => {}
+                // Might error out if a contradiction was found.
+                Err(e) => return Err(e),
+            }
+        }
         Ok(progress)
     }
 

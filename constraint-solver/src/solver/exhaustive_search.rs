@@ -24,80 +24,12 @@ const MAX_SEARCH_WIDTH: u64 = 1 << 10;
 /// The maximum range width of a variable to be considered for exhaustive search.
 const MAX_VAR_RANGE_WIDTH: u64 = 5;
 
-/// Tries to find unique assignments via exhaustive search: For any group of variables that
-/// appear together in an identity, if there are fewer than `MAX_SEARCH_WIDTH` possible
-/// assignments, it tries them all and returns any unique assignments.
-/// Returns an error if there are any contradictions between those assignments, or if no
-/// assignment satisfies the constraint system for any group of variables.
-pub fn get_unique_assignments<T, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
-    bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
-) -> Result<BTreeMap<V, T::FieldType>, Error>
-where
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Substitutable<V>
-        + ExpressionConvertible<T::FieldType, V>
-        + Display,
-{
-    log::debug!("Starting exhaustive search with maximum width {MAX_SEARCH_WIDTH}");
-    let mut variable_sets = get_brute_force_candidates(constraint_system, rc.clone()).collect_vec();
-    // Start with small sets to make larger ones redundant after some assignments.
-    variable_sets.sort_by_key(|set| set.len());
-
-    log::debug!(
-        "Found {} sets of variables with few possible assignments. Checking each set...",
-        variable_sets.len()
-    );
-
-    let mut constraint_system = constraint_system.clone();
-
-    let mut unique_assignments = BTreeMap::new();
-
-    for mut assignment_candidates in variable_sets {
-        assignment_candidates.retain(|v| !unique_assignments.contains_key(v));
-        // TODO we might already have handled it.
-        match find_unique_assignment_for_set(
-            &constraint_system,
-            &assignment_candidates,
-            rc.clone(),
-            bus_interaction_handler,
-        ) {
-            Ok(Some(assignments)) => {
-                for (v, val) in assignments.iter() {
-                    constraint_system.substitute_by_known(v, &T::from(*val));
-                    let conflict = unique_assignments.insert(v.clone(), *val).is_some();
-                    assert!(!conflict);
-                }
-            }
-            // Might return None if the assignment is not unique.
-            Ok(None) => {}
-            // Might error out if a contradiction was found.
-            Err(e) => return Err(e),
-        }
-    }
-
-    log::debug!(
-        "{} variable sets with unique assignments found",
-        unique_assignments.len()
-    );
-
-    log::debug!("Total assignments: {}", unique_assignments.len());
-    if log::log_enabled!(log::Level::Trace) {
-        for (variable, value) in &unique_assignments {
-            log::trace!("  {variable} = {value}");
-        }
-    }
-    Ok(unique_assignments)
-}
-
 /// Goes through all possible assignments for the given variables and checks whether they satisfy
 /// all constraints. If exactly one assignment satisfies the constraint system (and all others
 /// lead to a contradiction), it returns that assignment.
 /// If multiple assignments satisfy the constraint system, it returns `None`.
 /// Returns an error if all assignments are contradictory.
-fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
+pub fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     variables: &BTreeSet<V>,
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
@@ -137,7 +69,7 @@ where
 /// Returns all unique sets of variables that appear together in an identity
 /// (either in an algebraic constraint or in the same field of a bus interaction),
 /// IF the number of possible assignments is less than `MAX_SEARCH_WIDTH`.
-fn get_brute_force_candidates<
+pub fn get_brute_force_candidates<
     'a,
     T: RuntimeConstant + ReferencedSymbols<V>,
     V: Clone + Hash + Ord,
