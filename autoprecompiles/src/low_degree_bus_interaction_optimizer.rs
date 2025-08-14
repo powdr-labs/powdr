@@ -9,7 +9,6 @@ use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
-use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -113,57 +112,44 @@ impl<
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     ) -> Vec<SymbolicFunction<T, V>> {
-        let expressions = bus_interaction
+        let unknown_fields = bus_interaction
             .payload
             .iter()
+            .cloned()
             .enumerate()
             .filter(|(_i, expr)| expr.try_to_number().is_none())
-            .map(|(i, expr)| (i, expr.clone()))
-            .collect::<BTreeMap<_, _>>();
-        let range_constraints = expressions
-            .iter()
-            .map(|(i, expr)| (*i, self.solver.range_constraint_for_expression(expr)))
-            .collect::<BTreeMap<_, _>>();
-        let unknown_field_indices = expressions.keys().copied().collect::<Vec<_>>();
+            .map(|(index, expression)| {
+                let range_constraint = self.solver.range_constraint_for_expression(&expression);
+                SymbolicField {
+                    index,
+                    expression,
+                    range_constraint,
+                }
+            })
+            .collect_vec();
 
+        let unknown_field_count = unknown_fields.len();
         // Currently, we only have hypotheses for:
         // - 2 unknown fields (1 input, 1 output)
         // - 3 unknown fields (2 inputs, 1 output)
-        if !(unknown_field_indices.len() == 2 || unknown_field_indices.len() == 3) {
+        if !(unknown_field_count == 2 || unknown_field_count == 3) {
             return Vec::new();
         }
 
-        unknown_field_indices
-            .iter()
-            .copied()
-            .combinations(unknown_field_indices.len() - 1)
-            .filter(|input_indices| {
-                self.has_small_domain(input_indices.iter().map(|i| range_constraints[i].clone()))
-            })
-            // Build the input-output pairs
-            .map(|input_indices| {
-                let output_index = unknown_field_indices
-                    .iter()
-                    .cloned()
-                    .filter(|i| !input_indices.contains(i))
-                    .exactly_one()
-                    .unwrap();
+        unknown_fields
+            .into_iter()
+            .permutations(unknown_field_count)
+            .map(|mut fields| {
+                let output = fields.pop().unwrap();
                 SymbolicFunction {
-                    inputs: input_indices
-                        .iter()
-                        .map(|i| SymbolicInput {
-                            index: *i,
-                            expression: expressions[i].clone(),
-                            range_constraint: range_constraints[i].clone(),
-                        })
-                        .collect(),
-                    output: SymbolicOutput {
-                        index: output_index,
-                        expression: expressions[&output_index].clone(),
-                    },
+                    inputs: fields,
+                    output,
                 }
             })
-            .collect()
+            .filter(|function| {
+                self.has_small_domain(function.inputs.iter().map(|f| f.range_constraint.clone()))
+            })
+            .collect_vec()
     }
 
     /// Given a list of input range constraints, computes whether the total input space (i.e.,
@@ -304,28 +290,21 @@ type LowDegreeFunction<T, V> = Box<dyn Fn(Vec<GroupedExpression<T, V>>) -> Group
 /// The maximum size of the input domain for low-degree functions.
 const MAX_DOMAIN_SIZE: u64 = 256;
 
-/// Represents a bus interaction field that is interpreted as an input.
-struct SymbolicInput<T: FieldElement, V> {
+/// Represents a bus interaction field.
+#[derive(Clone, Debug)]
+struct SymbolicField<T: FieldElement, V> {
     /// The index into the bus interaction payload
     index: usize,
     /// The expression in the bus interaction payload
     expression: GroupedExpression<T, V>,
-    /// The range constraint for the input
+    /// The range constraint for the expression
     range_constraint: RangeConstraint<T>,
 }
 
-/// Represents a bus interaction field that is interpreted as an output.
-struct SymbolicOutput<T: FieldElement, V> {
-    /// The index into the bus interaction payload
-    index: usize,
-    /// The expression in the bus interaction payload
-    /// Note that this expression does *not* compute the output from the inputs.
-    expression: GroupedExpression<T, V>,
-}
-
+#[derive(Clone, Debug)]
 struct SymbolicFunction<T: FieldElement, V> {
-    inputs: Vec<SymbolicInput<T, V>>,
-    output: SymbolicOutput<T, V>,
+    inputs: Vec<SymbolicField<T, V>>,
+    output: SymbolicField<T, V>,
 }
 
 /// Some well-known low-degree functions that are tested against the input-output pairs.
