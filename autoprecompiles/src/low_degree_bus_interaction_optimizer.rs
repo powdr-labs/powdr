@@ -273,9 +273,7 @@ impl<
                 .handle_bus_interaction_checked(bus_interaction)
                 // If the assignment violates a constraint, return an error.
                 .map_err(|_| ())?
-                .payload
-                .get(input_output_pair.output.index)
-                .unwrap()
+                .payload[input_output_pair.output.index]
                 .try_to_single_value()
                 // If the output is not unique, return an error.
                 .ok_or(())?;
