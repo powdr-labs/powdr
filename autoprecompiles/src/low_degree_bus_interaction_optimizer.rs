@@ -147,18 +147,22 @@ impl<
                 }
             })
             .filter(|function| {
-                self.has_small_domain(function.inputs.iter().map(|f| f.range_constraint.clone()))
+                self.has_few_possible_values(
+                    function.inputs.iter().map(|f| f.range_constraint.clone()),
+                    MAX_DOMAIN_SIZE,
+                )
             })
             .collect_vec()
     }
 
-    /// Given a list of input range constraints, computes whether the total input space (i.e.,
-    /// the cross product of all possible input values) is small enough.
-    fn has_small_domain(
+    /// Given a list of range constraints, computes whether space of all possible values
+    /// is small enough.
+    fn has_few_possible_values(
         &self,
-        input_range_constraints: impl Iterator<Item = RangeConstraint<T>>,
+        range_constraints: impl Iterator<Item = RangeConstraint<T>>,
+        max_size: u64,
     ) -> bool {
-        input_range_constraints
+        range_constraints
             .map(|rc| {
                 // TODO: This should share code with `has_few_possible_assignments`,
                 // But this only currently only considers the range width which ignores the mask
@@ -172,7 +176,7 @@ impl<
                 })
             })
             .try_fold(1u64, |acc, x| acc.checked_mul(x?))
-            .is_some_and(|count| count <= MAX_DOMAIN_SIZE)
+            .is_some_and(|count| count <= max_size)
     }
 
     /// Given a bus interaction and a symbolic input-output pair, tries to find a low-degree function
