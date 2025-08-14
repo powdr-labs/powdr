@@ -331,10 +331,9 @@ fn hypotheses<T: FieldElement, V: Ord + Clone + Hash + Eq>(
             }),
         ],
         2 => vec![
-            // Identity on x
+            // Identity on the first input. Note that we don't have to add identity on the second input,
+            // because we test all possible permutations of inputs.
             Box::new(|inputs| inputs[0].clone()),
-            // Identity on y
-            Box::new(|inputs| inputs[1].clone()),
             // x + y
             Box::new(|inputs| inputs[0].clone() + inputs[1].clone()),
             // AND on bits:
