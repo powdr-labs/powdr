@@ -69,7 +69,7 @@ pub fn main() {
     .unwrap();
 
     // Multi scalar multiplication
-    let multiplication = k256::lincomb(&[(point1, scalar_1), (point2, scalar_2)]);
+    let multiplication = k256::PowdrAffinePoint::lincomb(&[(point1, scalar_1), (point2, scalar_2)]);
     assert_eq!(multiplication.x(), result_x);
     assert_eq!(multiplication.y(), result_y);
 }
