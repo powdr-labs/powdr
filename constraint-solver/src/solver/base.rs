@@ -226,10 +226,16 @@ where
         )?;
 
         let mut progress = false;
+        let start = std::time::Instant::now();
         for (variable, value) in &assignments {
             progress |=
                 self.apply_range_constraint_update(variable, RangeConstraint::from_value(*value));
         }
+        println!(
+            "Exhaustive search found {} assignments in {}ms",
+            assignments.len(),
+            start.elapsed().as_millis()
+        );
 
         Ok(progress)
     }

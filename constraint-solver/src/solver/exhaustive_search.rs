@@ -42,52 +42,54 @@ where
         + Display,
 {
     log::debug!("Starting exhaustive search with maximum width {MAX_SEARCH_WIDTH}");
-    let variable_sets = get_brute_force_candidates(constraint_system, rc.clone()).collect_vec();
+    let mut variable_sets = get_brute_force_candidates(constraint_system, rc.clone()).collect_vec();
+    // Start with small sets to make larger ones redundant after some assignments.
+    variable_sets.sort_by_key(|set| set.len());
 
     log::debug!(
         "Found {} sets of variables with few possible assignments. Checking each set...",
         variable_sets.len()
     );
 
-    let unique_assignments = variable_sets
-        .iter()
-        .filter_map(|assignment_candidates| {
-            match find_unique_assignment_for_set(
-                constraint_system,
-                assignment_candidates,
-                rc.clone(),
-                bus_interaction_handler,
-            ) {
-                Ok(Some(assignments)) => Some(Ok(assignments)),
-                // Might return None if the assignment is not unique.
-                Ok(None) => None,
-                // Might error out if a contradiction was found.
-                Err(e) => Some(Err(e)),
+    let mut constraint_system = constraint_system.clone();
+
+    let mut unique_assignments = BTreeMap::new();
+
+    for mut assignment_candidates in variable_sets {
+        assignment_candidates.retain(|v| !unique_assignments.contains_key(v));
+        // TODO we might already have handled it.
+        match find_unique_assignment_for_set(
+            &constraint_system,
+            &assignment_candidates,
+            rc.clone(),
+            bus_interaction_handler,
+        ) {
+            Ok(Some(assignments)) => {
+                for (v, val) in assignments.iter() {
+                    constraint_system.substitute_by_known(v, &T::from(*val));
+                    let conflict = unique_assignments.insert(v.clone(), *val).is_some();
+                    assert!(!conflict);
+                }
             }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+            // Might return None if the assignment is not unique.
+            Ok(None) => {}
+            // Might error out if a contradiction was found.
+            Err(e) => return Err(e),
+        }
+    }
 
     log::debug!(
         "{} variable sets with unique assignments found",
         unique_assignments.len()
     );
 
-    let mut result = BTreeMap::new();
-    for (variable, value) in unique_assignments.iter().flatten() {
-        if let Some(old_value) = result.insert(variable.clone(), *value) {
-            if old_value != *value {
-                // Two assignments contradict each other.
-                return Err(Error::ExhaustiveSearchError);
-            }
+    log::debug!("Total assignments: {}", unique_assignments.len());
+    if log::log_enabled!(log::Level::Trace) {
+        for (variable, value) in &unique_assignments {
+            log::trace!("  {variable} = {value}");
         }
     }
-
-    log::debug!("Total assignments: {}", result.len());
-    for (variable, value) in &result {
-        log::trace!("  {variable} = {value}");
-    }
-
-    Ok(result)
+    Ok(unique_assignments)
 }
 
 /// Goes through all possible assignments for the given variables and checks whether they satisfy
