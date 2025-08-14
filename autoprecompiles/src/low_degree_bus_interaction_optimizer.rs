@@ -187,6 +187,8 @@ impl<
         symbolic_function: &SymbolicFunction<T, V>,
     ) -> Option<LowDegreeFunction<T, V>> {
         let mut hypotheses = hypotheses(symbolic_function.inputs.len());
+
+        // Generate the function graph, to match against the hypotheses.
         let all_possible_assignments =
             self.concrete_input_output_pairs(bus_interaction, symbolic_function);
 
