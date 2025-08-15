@@ -487,12 +487,7 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 4] = [
-        "std/poseidon_bn254_test.asm",
-        "std/split_bn254_test.asm",
-        "keccakf16_memory_test",
-        "keccakf32_memory_test",
-    ];
+    const BLACKLIST: [&str; 2] = ["std/poseidon_bn254_test.asm", "std/split_bn254_test.asm"];
 
     fn run_reparse_test(file: &str) {
         run_reparse_test_with_blacklist(file, &BLACKLIST);
