@@ -84,6 +84,26 @@ pub fn optimize<A: Adapter>(
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
 
+    // Sanity check: Degree bound should be respected:
+    for algebraic_constraint in &constraint_system.algebraic_constraints {
+        assert!(
+            algebraic_constraint.degree() <= degree_bound.identities,
+            "Degree bound violated ({} > {}): {algebraic_constraint}",
+            algebraic_constraint.degree(),
+            degree_bound.identities
+        );
+    }
+    for bus_interaction in &constraint_system.bus_interactions {
+        for (i, expr) in bus_interaction.fields().enumerate() {
+            assert!(
+                expr.degree() <= degree_bound.identities,
+                "Degree bound violated in field {i} ({} > {}): {bus_interaction}",
+                expr.degree(),
+                degree_bound.identities
+            );
+        }
+    }
+
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
     assert!(
