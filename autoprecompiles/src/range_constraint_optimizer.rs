@@ -15,6 +15,10 @@ use powdr_number::FieldElement;
 
 pub type RangeConstraints<T, V> = Vec<(GroupedExpression<T, V>, RangeConstraint<T>)>;
 
+/// The requested range constraint cannot be implemented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MakeRangeConstraintsError(pub String);
+
 pub trait RangeConstraintHandler<T: FieldElement> {
     /// If the bus interaction *only* enforces range constraints, returns them
     /// as a map of expressions to range constraints.
@@ -37,13 +41,13 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     /// range constraints using a single bus interaction.
     /// As all input range constraints are unconditional, the multiplicity of
     /// the returned bus interactions should be 1.
-    /// Note that only range constraints returned from `pure_range_constraints`
-    /// are passed here, so the implementation should always be able to construct
-    /// a valid bus interaction from them.
+    /// If one of the range constraints cannot be implemented exactly, an error
+    /// is returned. For soundness, the implementation should *never* relax the
+    /// range constraint.
     fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         range_constraints: RangeConstraints<T, V>,
-    ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
+    ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError>;
 }
 
 /// Optimizes range constraints, minimizing the number of bus interactions.
@@ -119,7 +123,12 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         .collect();
 
     // Create all range constraints in batch and add them to the system.
-    let range_constraints = bus_interaction_handler.batch_make_range_constraints(to_constrain);
+    // Note that unwrapping here should be fine, because we only pass range constraints
+    // that were returned from `pure_range_constraints`, so clearly the VM is able to
+    // implement them.
+    let range_constraints = bus_interaction_handler
+        .batch_make_range_constraints(to_constrain)
+        .unwrap();
     for bus_interaction in &range_constraints {
         assert_eq!(bus_interaction.multiplicity.try_to_number(), Some(T::one()));
     }
