@@ -2,7 +2,7 @@ use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
-use powdr_constraint_solver::grouped_expression::{GroupedExpression, NoRangeConstraints};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::inliner::DegreeBound;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
@@ -11,6 +11,7 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 use std::fmt::Display;
 use std::hash::Hash;
+use std::iter::once;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
@@ -48,13 +49,16 @@ impl<
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
-                if let Some(replacement) = self.try_replace_bus_interaction(&bus_int) {
+                if let Some((replacement, range_constraints)) =
+                    self.try_replace_bus_interaction(&bus_int)
+                {
                     // If we found a replacement, add the polynomial constraints and replace
                     // the bus interaction with interactions implementing the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
                     new_constraints.push(replacement);
                     self.bus_interaction_handler
-                        .batch_make_range_constraints(self.range_constraints(&bus_int))
+                        .batch_make_range_constraints(range_constraints)
+                        .unwrap()
                 } else {
                     // Keep the bus interaction as is if a replacement can't be found.
                     vec![bus_int]
@@ -77,7 +81,7 @@ impl<
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> Option<GroupedExpression<T, V>> {
+    ) -> Option<(GroupedExpression<T, V>, RangeConstraints<T, V>)> {
         let bus_id = bus_interaction.bus_id.try_to_number()?;
         if self.bus_interaction_handler.is_stateful(bus_id) {
             return None;
@@ -92,7 +96,8 @@ impl<
                 // Build polynomial constraint
                 let symbolic_inputs = symbolic_function
                     .inputs
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .map(|input| input.expression)
                     .collect();
                 let low_degree_function = low_degree_function(symbolic_inputs);
@@ -102,7 +107,15 @@ impl<
                 // Check degree
                 let within_degree_bound =
                     polynomial_constraint.degree() <= self.degree_bound.identities;
-                within_degree_bound.then_some(polynomial_constraint)
+                if within_degree_bound {
+                    let range_constraints = once(symbolic_function.output)
+                        .chain(symbolic_function.inputs)
+                        .map(|field| (field.expression, field.range_constraint))
+                        .collect();
+                    Some((polynomial_constraint, range_constraints))
+                } else {
+                    None
+                }
             })
     }
 
@@ -215,27 +228,6 @@ impl<
         Some(hypotheses.into_iter().exactly_one().unwrap_or_else(|_| {
             panic!("Expected exactly one multilinear extension, but got multiple.")
         }))
-    }
-
-    /// Returns the range constraints enforced by the given bus interaction.
-    fn range_constraints(
-        &self,
-        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> RangeConstraints<T, V> {
-        // Get the range constraints enforced on each field individually, without any existing knowledge from
-        // the solver. For example, this could be the set of all bytes. The assumption here is that whatever
-        // range constraint is returned here can always be passed to `bus_interaction_handler.batch_make_range_constraints`,
-        // i.e., the backend will always have a way to *only* enforce that range constraint.
-        let range_constraints = self
-            .bus_interaction_handler
-            .handle_bus_interaction(bus_interaction.to_range_constraints(&NoRangeConstraints));
-        bus_interaction
-            .payload
-            .iter()
-            .zip_eq(range_constraints.payload)
-            .map(|(expr, rc)| (expr.clone(), rc))
-            .filter(|(expr, _rc)| expr.try_to_number().is_none())
-            .collect()
     }
 
     /// Generate all concrete input-output pairs given a symbolic one.

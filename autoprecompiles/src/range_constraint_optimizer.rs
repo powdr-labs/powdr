@@ -15,6 +15,10 @@ use powdr_number::FieldElement;
 
 pub type RangeConstraints<T, V> = Vec<(GroupedExpression<T, V>, RangeConstraint<T>)>;
 
+/// The requested range constraint cannot be implemented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MakeRangeConstraintsError(pub String);
+
 pub trait RangeConstraintHandler<T: FieldElement> {
     /// If the bus interaction *only* enforces range constraints, returns them
     /// as a map of expressions to range constraints.
@@ -43,7 +47,7 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         range_constraints: RangeConstraints<T, V>,
-    ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
+    ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError>;
 }
 
 /// Optimizes range constraints, minimizing the number of bus interactions.
@@ -116,7 +120,9 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         .collect();
 
     // Create all range constraints in batch and add them to the system.
-    let range_constraints = bus_interaction_handler.batch_make_range_constraints(to_constrain);
+    let range_constraints = bus_interaction_handler
+        .batch_make_range_constraints(to_constrain)
+        .unwrap();
     for bus_interaction in &range_constraints {
         assert_eq!(bus_interaction.multiplicity.try_to_number(), Some(T::one()));
     }
