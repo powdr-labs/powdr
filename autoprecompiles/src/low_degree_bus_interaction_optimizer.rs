@@ -56,9 +56,17 @@ impl<
                     // the bus interaction with interactions implementing the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
                     new_constraints.push(replacement);
+
                     self.bus_interaction_handler
                         .batch_make_range_constraints(range_constraints)
-                        .unwrap()
+                        // It can be that the VM cannot implement the precise range constraint (although this
+                        // does not really happen in practice!).
+                        // For soundness, it is essential that the constraint is not wider than the
+                        // one we used to generate all inputs. So if `batch_make_range_constraints`
+                        // errors out, we keep the original bus interaction.
+                        // Note that we still add the polynomial constraints, because it'll likely
+                        // lead to columns being inlined.
+                        .unwrap_or(vec![bus_int])
                 } else {
                     // Keep the bus interaction as is if a replacement can't be found.
                     vec![bus_int]
