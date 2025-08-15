@@ -357,7 +357,7 @@ mod tests {
     use powdr_constraint_solver::solver::new_solver;
     use powdr_number::BabyBearField;
 
-    use crate::range_constraint_optimizer::RangeConstraints;
+    use crate::range_constraint_optimizer::{MakeRangeConstraintsError, RangeConstraints};
 
     use super::*;
 
@@ -416,7 +416,10 @@ mod tests {
         fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
             &self,
             _range_constraints: RangeConstraints<BabyBearField, V>,
-        ) -> Vec<BusInteraction<GroupedExpression<BabyBearField, V>>> {
+        ) -> Result<
+            Vec<BusInteraction<GroupedExpression<BabyBearField, V>>>,
+            MakeRangeConstraintsError,
+        > {
             unreachable!()
         }
     }
@@ -434,7 +437,9 @@ mod tests {
             },
             _phantom: PhantomData,
         };
-        optimizer.try_replace_bus_interaction(bus_interaction)
+        optimizer
+            .try_replace_bus_interaction(bus_interaction)
+            .map(|(replacement, _)| replacement)
     }
 
     #[test]
@@ -500,33 +505,5 @@ mod tests {
             panic!("Expected a replacement")
         };
         assert_eq!(replacement.to_string(), "-(x + y - z)");
-    }
-
-    #[test]
-    fn test_range_constraints() {
-        let mut solver = new_solver(ConstraintSystem::default(), XorBusHandler);
-        let optimizer = LowDegreeBusInteractionOptimizer {
-            solver: &mut solver,
-            bus_interaction_handler: XorBusHandler,
-            degree_bound: DegreeBound {
-                identities: 2,
-                bus_interactions: 1,
-            },
-            _phantom: PhantomData,
-        };
-        let bus_interaction = BusInteraction {
-            bus_id: constant(0),
-            payload: vec![var("x"), var("y"), var("z")],
-            multiplicity: constant(1),
-        };
-        let range_constraints = optimizer.range_constraints(&bus_interaction);
-        assert_eq!(
-            range_constraints,
-            vec![
-                (var("x"), RangeConstraint::from_mask(0xffu32)),
-                (var("y"), RangeConstraint::from_mask(0xffu32)),
-                (var("z"), RangeConstraint::from_mask(0xffu32)),
-            ]
-        );
     }
 }
