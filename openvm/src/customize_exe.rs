@@ -70,7 +70,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type Field = BabyBear;
     type InstructionHandler = OriginalAirs<Self::Field>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
-    // type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
@@ -192,7 +191,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
-
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
