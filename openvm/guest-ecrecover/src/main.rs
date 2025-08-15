@@ -1,5 +1,5 @@
-//#![cfg_attr(not(feature = "std"), no_main)]
-//#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_main)]
+#![cfg_attr(not(feature = "std"), no_std)]
 openvm::entry!(main);
 
 use ecdsa::{PowdrVerifyingKey, RecoveryId, Signature};

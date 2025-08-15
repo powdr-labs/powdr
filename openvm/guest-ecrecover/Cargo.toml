@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev="dcf8ee6" }
-k256={git="https://github.com/powdr-labs/elliptic-curves-k256", rev="a8072bb",default-features=false, features = ["expose-field", "arithmetic"] }
+k256={git="https://github.com/powdr-labs/elliptic-curves-k256", rev="fa56099",default-features=false, features = ["expose-field", "arithmetic"] }
 hex-literal = { version = "0.4.1", default-features = false }
-ecdsa = { path = "/home/shuang/PowdrCode/shuangEccCurve/signatures/ecdsa",default-features = false, features = ["verifying"]}
+ecdsa = { git = "https://github.com/powdr-labs/signatures",default-features = false, features = ["verifying"]}
 
