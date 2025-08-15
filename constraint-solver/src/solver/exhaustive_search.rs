@@ -96,7 +96,7 @@ pub fn get_brute_force_candidates<
                     let num_variables = variables.len();
                     let variables_without_largest_range = variables
                         .into_iter()
-                        .sorted_by(|a, b| rc.get(a).range_width().cmp(&rc.get(b).range_width()))
+                        .sorted_by(|a, b| rc.get(a).size_estimate().cmp(&rc.get(b).size_estimate()))
                         .take(num_variables - 1)
                         .collect::<BTreeSet<_>>();
                     is_candidate_for_exhaustive_search(&variables_without_largest_range, &rc)
@@ -113,22 +113,21 @@ fn is_candidate_for_exhaustive_search<T: FieldElement, V: Clone + Ord>(
     rc: &impl RangeConstraintProvider<T, V>,
 ) -> bool {
     has_few_possible_assignments(variables.iter().cloned(), rc, MAX_SEARCH_WIDTH)
-        && has_small_max_range_width(variables.iter().cloned(), rc, MAX_VAR_RANGE_WIDTH)
+        && has_small_max_range_constraint_size(variables.iter().cloned(), rc, MAX_VAR_RANGE_WIDTH)
 }
 
-fn has_small_max_range_width<T: FieldElement, V: Clone + Ord>(
-    variables: impl Iterator<Item = V>,
+fn has_small_max_range_constraint_size<T: FieldElement, V: Clone + Ord>(
+    mut variables: impl Iterator<Item = V>,
     rc: &impl RangeConstraintProvider<T, V>,
     threshold: u64,
 ) -> bool {
-    let widths = variables
-        .map(|v| rc.get(&v).range_width().try_into_u64())
-        .collect::<Option<Vec<_>>>();
-    if let Some(widths) = widths {
-        widths.iter().all(|&width| width <= threshold)
-    } else {
-        false
-    }
+    variables.all(|v| {
+        if let Some(size) = rc.get(&v).size_estimate().try_into_u64() {
+            size <= threshold
+        } else {
+            false
+        }
+    })
 }
 
 /// The provided assignments lead to a contradiction in the constraint system.
