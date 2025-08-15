@@ -6,11 +6,7 @@ edition = "2021"
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev="391b737" }
-sha2 = { version = "0.10", default-features = false }
-
-k256={git="https://github.com/powdr-labs/elliptic-curves-k256", rev="a8072bb",default-features=false, features = ["expose-field","ecdsa", "arithmetic"] }
+k256={git="https://github.com/powdr-labs/elliptic-curves-k256", rev="a8072bb",default-features=false, features = ["expose-field", "arithmetic"] }
 hex-literal = { version = "0.4.1", default-features = false }
-
-[patch.crates-io]
-ecdsa = { git = "https://github.com/RustCrypto/signatures", rev = "41edbafeca0ecaf8076232e4b87a5564540bd2e3" }
+ecdsa = { path = "/home/shuang/PowdrCode/shuangEccCurve/signatures/ecdsa",default-features = false, features = ["verifying"]}
 
