@@ -1,0 +1,16 @@
+
+[workspace]
+[package]
+name = "openvm-ecc-test-programs"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/ecc/guest", default-features = false }
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "extensions/algebra/guest", default-features = false }
+openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", subdirectory = "guest-libs/k256", package = "k256", features = [
+    "ecdsa",
+]}
+
+hex-literal = { version = "0.4.1", default-features = false }
