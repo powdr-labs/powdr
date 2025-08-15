@@ -344,7 +344,7 @@ where
                 // Sort so that we get the least constrained variable.
                 known_constraints
                     .range_constraint(*i)
-                    .map(|c| c.size())
+                    .map(|c| c.size_estimate())
                     .unwrap_or_else(|| T::modulus())
             })?;
 

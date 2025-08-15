@@ -188,7 +188,7 @@ impl<
                 // TODO: This should share code with `has_few_possible_assignments`,
                 // But this only currently only considers the range width which ignores the mask
                 // and might be way larger than the actual number of allowed values.
-                rc.size().try_into_u64().and_then(|size| {
+                rc.size_estimate().try_into_u64().and_then(|size| {
                     if size < 1 << 16 {
                         Some(rc.allowed_values().count() as u64)
                     } else {

@@ -94,7 +94,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns (an upper bound for) the number of field elements included in the constraint.
-    pub fn size(&self) -> T::Integer {
+    pub fn size_estimate(&self) -> T::Integer {
         self.range_width()
     }
 

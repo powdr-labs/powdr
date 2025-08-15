@@ -96,7 +96,7 @@ pub fn get_brute_force_candidates<
                     let num_variables = variables.len();
                     let variables_without_largest_range = variables
                         .into_iter()
-                        .sorted_by(|a, b| rc.get(a).size().cmp(&rc.get(b).size()))
+                        .sorted_by(|a, b| rc.get(a).size_estimate().cmp(&rc.get(b).size_estimate()))
                         .take(num_variables - 1)
                         .collect::<BTreeSet<_>>();
                     is_candidate_for_exhaustive_search(&variables_without_largest_range, &rc)
@@ -122,7 +122,7 @@ fn has_small_max_range_constraint_size<T: FieldElement, V: Clone + Ord>(
     threshold: u64,
 ) -> bool {
     variables.all(|v| {
-        if let Some(size) = rc.get(&v).size().try_into_u64() {
+        if let Some(size) = rc.get(&v).size_estimate().try_into_u64() {
             size <= threshold
         } else {
             false

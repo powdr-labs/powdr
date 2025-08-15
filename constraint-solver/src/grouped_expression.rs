@@ -893,7 +893,7 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Di
             // constraint, and thus we want it to only hit the "single value" case.
             let complete = rc1.try_to_single_value().is_some()
                 && rc2.try_to_single_value().is_some()
-                && rc.size() <= 2.into();
+                && rc.size_estimate() <= 2.into();
             Some((v, rc, complete))
         })
         .collect_vec();
