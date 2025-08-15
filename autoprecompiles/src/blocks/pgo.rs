@@ -78,6 +78,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
         apc: AdapterApc<A>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<A>,
+        max_degree: usize,
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
@@ -153,7 +154,12 @@ fn create_apcs_with_cell_pgo<A: Adapter>(
                 config.apc_candidates_dir_path.as_deref(),
             )
             .ok()?;
-            let candidate = A::Candidate::create(apc, &pgo_program_pc_count, vm_config.clone());
+            let candidate = A::Candidate::create(
+                apc,
+                &pgo_program_pc_count,
+                vm_config.clone(),
+                config.degree_bound.identities,
+            );
             if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                 let json_export = candidate.to_json_export(apc_candidates_dir_path);
                 apc_candidates.lock().unwrap().push(json_export);

@@ -3,8 +3,8 @@ Instructions:
 
 APC advantage:
   - Main columns: 53 -> 15 (3.53x reduction)
-  - Bus interactions: 24 -> 12 (2.00x reduction)
-  - Constraints: 76 -> 1 (76.00x reduction)
+  - Bus interactions: 24 -> 11 (2.18x reduction)
+  - Constraints: 76 -> 2 (38.00x reduction)
 
 Symbolic machine using 15 unique main columns:
   from_state__timestamp_0
@@ -34,7 +34,6 @@ mult=is_valid * -1, args=[1, 68, writes_aux__prev_data__0_0, writes_aux__prev_da
 mult=is_valid * 1, args=[1, 68, a__0_0, 0, 0, 0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[b__3_0 - 2 * a__0_0, 1]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
@@ -44,4 +43,5 @@ mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * wr
 mult=is_valid * 1, args=[a__0_0, 0, 0, 0]
 
 // Algebraic constraints:
+(b__3_0 - 2 * a__0_0) * (b__3_0 - (2 * a__0_0 + 1)) = 0
 is_valid * (is_valid - 1) = 0

@@ -7,12 +7,13 @@ use crate::opcode::branch_opcodes_set;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{
     AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr,
-    SpecializedExecutor, APP_LOG_BLOWUP,
+    SpecializedExecutor,
 };
 use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
+
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
@@ -196,7 +197,10 @@ impl OriginalVmConfig {
     /// - The bus map
     ///
     /// Returns an error if the conversion from the OpenVM expression type fails.
-    pub fn airs(&self) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
+    pub fn airs(
+        &self,
+        max_degree: usize,
+    ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
         let chip_complex = self.chip_complex();
 
         let instruction_allowlist = instruction_allowlist();
@@ -214,7 +218,7 @@ impl OriginalVmConfig {
                     let air = executor.air();
                     let columns = get_columns(air.clone());
                     let constraints = get_constraints(air.clone());
-                    let metrics = get_air_metrics(air);
+                    let metrics = get_air_metrics(air, max_degree);
 
                     let powdr_exprs = constraints
                         .constraints
@@ -298,7 +302,7 @@ impl OriginalVmConfig {
         self.sdk_config.create_chip_complex()
     }
 
-    pub fn chip_inventory_air_metrics(&self) -> HashMap<String, AirMetrics> {
+    pub fn chip_inventory_air_metrics(&self, max_degree: usize) -> HashMap<String, AirMetrics> {
         let inventory = &self.chip_complex().inventory;
 
         inventory
@@ -313,7 +317,7 @@ impl OriginalVmConfig {
             )
             .map(|air| {
                 // both executors and periphery implement the same `air()` API
-                (air.name(), get_air_metrics(air))
+                (air.name(), get_air_metrics(air, max_degree))
             })
             .collect()
     }
@@ -370,9 +374,7 @@ pub fn get_constraints(
     builder.constraints()
 }
 
-pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>) -> AirMetrics {
-    let max_degree = (1 << APP_LOG_BLOWUP) + 1;
-
+pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
     let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
@@ -501,7 +503,7 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
 
 #[cfg(test)]
 mod tests {
-    use crate::APP_LOG_BLOWUP;
+    use crate::DEFAULT_OPENVM_DEGREE_BOUND;
 
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
@@ -519,7 +521,7 @@ mod tests {
 
         let system_config = SystemConfig::default()
             .with_continuations()
-            .with_max_constraint_degree((1 << APP_LOG_BLOWUP) + 1)
+            .with_max_constraint_degree(DEFAULT_OPENVM_DEGREE_BOUND)
             .with_public_values(32);
         let int256 = Int256::default();
         let bn_config = PairingCurve::Bn254.curve_config();
@@ -574,6 +576,7 @@ mod tests {
             base_config,
             vec![],
             crate::PrecompileImplementation::SingleRowChip,
+            DEFAULT_OPENVM_DEGREE_BOUND,
         );
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();

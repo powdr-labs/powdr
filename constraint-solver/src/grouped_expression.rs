@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
-    iter::once,
+    iter::{once, Sum},
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -65,7 +65,7 @@ pub enum Error {
 /// (some kinds of) equations.
 ///
 /// The name is derived from the fact that it groups linear terms by variable.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GroupedExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are grouped expressions that
@@ -236,6 +236,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         &T,
     ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
+    pub fn into_components(self) -> (Vec<(Self, Self)>, impl Iterator<Item = (V, T)>, T) {
+        (self.quadratic, self.linear.into_iter(), self.constant)
     }
 
     /// Computes the degree of a GroupedExpression in the unknown variables.
@@ -662,6 +666,10 @@ impl<
         let mut offset = self.constant.try_to_number();
         let mut concrete_assignments = vec![];
 
+        let any_negative = constrained_coefficients
+            .iter()
+            .any(|(_, _, is_negative, _, _)| *is_negative);
+
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T::FieldType as FieldElement>::Integer = 0.into();
         let mut components: Vec<BitDecompositionComponent<T::FieldType, V>> = vec![];
@@ -725,7 +733,13 @@ impl<
 
         if let Some(offset) = offset {
             if offset != 0.into() {
-                return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+                if any_negative {
+                    // In case we have negative coefficients, the algorithm
+                    // does not always find the correct assignment.
+                    return Ok(ProcessResult::empty());
+                } else {
+                    return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+                }
             }
             assert_eq!(concrete_assignments.len(), self.linear.len());
             Ok(ProcessResult::complete(concrete_assignments))
@@ -1116,6 +1130,15 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> MulAssign<&T> for GroupedExpressio
     }
 }
 
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sum for GroupedExpression<T, V> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), |mut acc, item| {
+            acc += item;
+            acc
+        })
+    }
+}
+
 impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
@@ -1474,6 +1497,30 @@ b = (((10 + Z) & 0xff0000) >> 16);
 c = (((10 + Z) & 0xff000000) >> 24) [negative];
 "
         );
+    }
+
+    #[test]
+    fn bit_decomposition_bug() {
+        let lin = Qse::from_unknown_variable("lin");
+        let result = Qse::from_unknown_variable("result");
+        let constr = lin.clone() - constant(4) * result.clone() - constant(4);
+        let range_constraints = HashMap::from([
+            ("lin", RangeConstraint::from_mask(0x8u32)),
+            ("result", RangeConstraint::from_mask(0x1u32)),
+        ]);
+        // We try to solve `lin - 4 * result = 4` and the problem is
+        // that we cannot assign `lin = 4 & mask` for some mask, since
+        // it needs to be assigned `8`.
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(!result.complete);
+        // The algorithm has a bug, so we exect no bit decomposition.
+        let has_bit_decomp = result
+            .effects
+            .iter()
+            .filter(|e| matches!(e, Effect::BitDecomposition(_)))
+            .count()
+            != 0;
+        assert!(!has_bit_decomp);
     }
 
     #[test]

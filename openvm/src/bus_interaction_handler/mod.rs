@@ -1,15 +1,34 @@
+use std::fmt::Display;
+
 use bitwise_lookup::handle_bitwise_lookup;
+use itertools::Itertools;
 use memory::handle_memory;
-use powdr_autoprecompiles::{bus_map::BusType, constraint_optimizer::IsBusStateful};
+use openvm_rv32im_circuit::Rv32M;
+use powdr_autoprecompiles::{
+    bus_map::BusType,
+    constraint_optimizer::IsBusStateful,
+    range_constraint_optimizer::{
+        utils::{filter_byte_constraints, range_constraint_to_num_bits},
+        MakeRangeConstraintsError, RangeConstraintHandler, RangeConstraints,
+    },
+};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
+    grouped_expression::GroupedExpression,
     range_constraint::RangeConstraint,
 };
 use powdr_number::{FieldElement, LargeInt};
-use tuple_range_checker::handle_tuple_range_checker;
+use std::hash::Hash;
 use variable_range_checker::handle_variable_range_checker;
 
-use crate::bus_map::{BusMap, OpenVmBusType};
+use crate::{
+    bus_interaction_handler::{
+        bitwise_lookup::bitwise_lookup_pure_range_constraints,
+        tuple_range_checker::TupleRangeCheckerHandler,
+        variable_range_checker::variable_range_checker_pure_range_constraints,
+    },
+    bus_map::{default_openvm_bus_map, BusMap, OpenVmBusType},
+};
 
 mod bitwise_lookup;
 mod memory;
@@ -19,13 +38,24 @@ mod variable_range_checker;
 #[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
     bus_map: BusMap,
+    tuple_range_checker_handler: TupleRangeCheckerHandler,
     _phantom: std::marker::PhantomData<T>,
 }
 
+impl<T: FieldElement> Default for OpenVmBusInteractionHandler<T> {
+    fn default() -> Self {
+        Self::new(
+            default_openvm_bus_map(),
+            Rv32M::default().range_tuple_checker_sizes,
+        )
+    }
+}
+
 impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
-    pub fn new(bus_map: BusMap) -> Self {
+    pub fn new(bus_map: BusMap, range_tuple_checker_sizes: [u32; 2]) -> Self {
         Self {
             bus_map,
+            tuple_range_checker_handler: TupleRangeCheckerHandler::new(range_tuple_checker_sizes),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -62,9 +92,9 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 handle_variable_range_checker(&bus_interaction.payload)
             }
-            BusType::Other(OpenVmBusType::TupleRangeChecker) => {
-                handle_tuple_range_checker(&bus_interaction.payload)
-            }
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => self
+                .tuple_range_checker_handler
+                .handle_bus_interaction(&bus_interaction.payload),
         };
         BusInteraction {
             payload: payload_constraints,
@@ -88,6 +118,141 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::Other(OpenVmBusType::VariableRangeChecker) => false,
             BusType::Other(OpenVmBusType::TupleRangeChecker) => false,
         }
+    }
+}
+
+impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<T> {
+    fn pure_range_constraints<V: Ord + Clone + Eq>(
+        &self,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+    ) -> Option<RangeConstraints<T, V>> {
+        let bus_id = bus_interaction
+            .bus_id
+            .try_to_number()
+            .unwrap()
+            .to_integer()
+            .try_into_u64()
+            .unwrap();
+        match self.bus_map.bus_type(bus_id) {
+            BusType::ExecutionBridge | BusType::Memory | BusType::PcLookup => None,
+            BusType::OpenVmBitwiseLookup => {
+                bitwise_lookup_pure_range_constraints(&bus_interaction.payload)
+            }
+            BusType::Other(OpenVmBusType::VariableRangeChecker) => {
+                variable_range_checker_pure_range_constraints(&bus_interaction.payload)
+            }
+            BusType::Other(OpenVmBusType::TupleRangeChecker) => self
+                .tuple_range_checker_handler
+                .pure_range_constraints(&bus_interaction.payload),
+        }
+    }
+
+    fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+        &self,
+        mut range_constraints: RangeConstraints<T, V>,
+    ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError> {
+        let mut byte_constraints = filter_byte_constraints(&mut range_constraints);
+        let tuple_range_checker_ranges = self
+            .tuple_range_checker_handler
+            .tuple_range_checker_ranges::<T>();
+        assert_eq!(
+            tuple_range_checker_ranges.0,
+            RangeConstraint::from_mask(0xffu64),
+        );
+
+        // The tuple range checker bus can range-check two expressions at the same time.
+        // We assume the first range is a byte range (see assertion above). From the remaining
+        // range constraints, we find all that happen to require the second range and zip them
+        // with the byte constraints.
+        let (mut tuple_range_checker_second_args, mut range_constraints): (Vec<_>, Vec<_>) =
+            range_constraints
+                .into_iter()
+                .partition(|(_expr, rc)| rc == &tuple_range_checker_ranges.1);
+        if tuple_range_checker_second_args.len() > byte_constraints.len() {
+            range_constraints
+                .extend(tuple_range_checker_second_args.drain(byte_constraints.len()..));
+        }
+        let num_variable_range_checker_interactions = tuple_range_checker_second_args.len();
+
+        let tuple_range_checker_constraints = byte_constraints
+            .drain(..num_variable_range_checker_interactions)
+            .zip_eq(tuple_range_checker_second_args)
+            .map(|(byte_expr, (expr2, _rc))| {
+                // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/range_tuple/bus.rs
+                // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
+                let bus_id = self
+                    .bus_map
+                    .get_bus_id(&BusType::Other(OpenVmBusType::TupleRangeChecker))
+                    .unwrap();
+                BusInteraction {
+                    bus_id: GroupedExpression::from_number(T::from(bus_id)),
+                    multiplicity: GroupedExpression::from_number(T::one()),
+                    payload: vec![byte_expr.clone(), expr2.clone()],
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let byte_constraints = byte_constraints
+            .into_iter()
+            .chunks(2)
+            .into_iter()
+            .map(|mut bytes| {
+                // Use the bitwise lookup to range-check two bytes at the same time:
+                // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/bitwise_op_lookup/bus.rs
+                // Expects (x, y, z, op), where:
+                // - if op == 0, x & y are bytes, z = 0
+                // - if op == 1, x & y are bytes, z = x ^ y
+                let byte1 = bytes.next().unwrap();
+                let byte2 = bytes
+                    .next()
+                    .unwrap_or(GroupedExpression::from_number(T::zero()));
+
+                let bus_id = self
+                    .bus_map
+                    .get_bus_id(&BusType::OpenVmBitwiseLookup)
+                    .unwrap();
+                BusInteraction {
+                    bus_id: GroupedExpression::from_number(T::from(bus_id)),
+                    multiplicity: GroupedExpression::from_number(T::one()),
+                    payload: vec![
+                        byte1.clone(),
+                        byte2.clone(),
+                        GroupedExpression::from_number(T::zero()),
+                        GroupedExpression::from_number(T::zero()),
+                    ],
+                }
+            })
+            .collect::<Vec<_>>();
+        let other_constraints = range_constraints
+            .into_iter()
+            .map(|(expr, rc)| {
+                // Use the variable range checker to range-check expressions:
+                // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/var_range/bus.rs
+                // Expects (x, bits), where `x` is in the range [0, 2^bits - 1]
+                let Some(num_bits) = range_constraint_to_num_bits(&rc) else {
+                    return Err(MakeRangeConstraintsError(format!(
+                        "Failed to get number of bits from range constraint: {rc:?}"
+                    )));
+                };
+                let bus_id = self
+                    .bus_map
+                    .get_bus_id(&BusType::Other(OpenVmBusType::VariableRangeChecker))
+                    .unwrap();
+                Ok(BusInteraction {
+                    bus_id: GroupedExpression::from_number(T::from(bus_id)),
+                    multiplicity: GroupedExpression::from_number(T::one()),
+                    payload: vec![
+                        expr,
+                        GroupedExpression::from_number(T::from(num_bits as u64)),
+                    ],
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(tuple_range_checker_constraints
+            .into_iter()
+            .chain(byte_constraints)
+            .chain(other_constraints)
+            .collect::<Vec<_>>())
     }
 }
 
