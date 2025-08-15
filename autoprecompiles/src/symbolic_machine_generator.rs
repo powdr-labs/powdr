@@ -3,8 +3,10 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BasicBlock,
-    BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
+    adapter::Adapter,
+    blocks::{BasicBlock, Instruction},
+    expression::AlgebraicExpression,
+    powdr, BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicMachine,
 };
 

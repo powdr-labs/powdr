@@ -25,13 +25,13 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::adapter::{Adapter, AdapterApc, AdapterVmConfig};
-use powdr_autoprecompiles::blocks::{
-    collect_basic_blocks, ApcCandidateJsonExport, Instruction, Program,
+use powdr_autoprecompiles::adapter::{
+    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{generate_apcs_with_pgo, Candidate, KnapsackItem, PgoConfig};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
@@ -70,12 +70,13 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type Field = BabyBear;
     type InstructionHandler = OriginalAirs<Self::Field>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
-    type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
+    // type Candidate = OpenVmApcCandidate<Self::Field, Instr<Self::Field>>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
+    type ApcStats = OvmApcStats;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -145,13 +146,13 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
     }
 }
 
-pub fn customize(
+pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,
     implementation: PrecompileImplementation,
-    pgo_config: PgoConfig,
+    pgo: P,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(vm_config.clone());
     let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -180,18 +181,6 @@ pub fn customize(
         bus_map: bus_map.clone(),
     };
 
-    let max_total_apc_columns: Option<usize> = match pgo_config {
-        PgoConfig::Cell(_, max_total_columns) => max_total_columns.map(|max_total_columns| {
-            let total_non_apc_columns = original_config
-                .chip_inventory_air_metrics(config.degree_bound.identities)
-                .values()
-                .map(|m| m.total_width())
-                .sum::<usize>();
-            max_total_columns - total_non_apc_columns
-        }),
-        PgoConfig::Instruction(_) | PgoConfig::None => None,
-    };
-
     // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
     let jumpdest_set = jumpdest_set
         .iter()
@@ -203,11 +192,12 @@ pub fn customize(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .filter_map(|block| Some((pgo_config.pc_execution_count(block.start_pc)?, block)))
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
@@ -225,13 +215,7 @@ pub fn customize(
     }
 
     let start = std::time::Instant::now();
-    let apcs = generate_apcs_with_pgo::<BabyBearOpenVmApcAdapter>(
-        blocks,
-        &config,
-        max_total_apc_columns,
-        pgo_config,
-        vm_config,
-    );
+    let apcs = pgo.create_apcs_with_pgo(blocks, &config, vm_config);
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
@@ -242,6 +226,7 @@ pub fn customize(
 
     let extensions = apcs
         .into_iter()
+        .map(AdapterApcWithStats::into_parts)
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
             let Apc {
@@ -358,8 +343,6 @@ impl OvmApcStats {
 }
 
 impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
-    type ApcStats = OvmApcStats;
-
     fn create(
         apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
@@ -420,8 +403,8 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         }
     }
 
-    fn into_apc_and_stats(self) -> (AdapterApc<BabyBearOpenVmApcAdapter<'a>>, Self::ApcStats) {
-        (self.apc, OvmApcStats::new(self.widths))
+    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
+        AdapterApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
     }
 }
 
