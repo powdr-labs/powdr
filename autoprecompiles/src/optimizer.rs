@@ -20,8 +20,9 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
+use crate::low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer;
 use crate::memory_optimizer::MemoryBusInteraction;
-use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::{
     adapter::Adapter,
     bitwise_lookup_optimizer::optimize_bitwise_lookup,
@@ -58,6 +59,7 @@ pub fn optimize<A: Adapter>(
             only_inline_degree_one_and_no_bus_field_vars,
             &mut stats_logger,
             bus_map,
+            degree_bound,
         )?;
 
     // Now remove the bus interaction field variables and run the optimizer,
@@ -70,6 +72,7 @@ pub fn optimize<A: Adapter>(
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map,
+            degree_bound,
         )?;
 
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
@@ -80,6 +83,26 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+
+    // Sanity check: Degree bound should be respected:
+    for algebraic_constraint in &constraint_system.algebraic_constraints {
+        assert!(
+            algebraic_constraint.degree() <= degree_bound.identities,
+            "Degree bound violated ({} > {}): {algebraic_constraint}",
+            algebraic_constraint.degree(),
+            degree_bound.identities
+        );
+    }
+    for bus_interaction in &constraint_system.bus_interactions {
+        for (i, expr) in bus_interaction.fields().enumerate() {
+            assert!(
+                expr.degree() <= degree_bound.identities,
+                "Degree bound violated in field {i} ({} > {}): {bus_interaction}",
+                expr.degree(),
+                degree_bound.identities
+            );
+        }
+    }
 
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
@@ -119,10 +142,14 @@ fn run_optimization_loop_until_no_change<
     M: MemoryBusInteraction<P, V>,
 >(
     mut constraint_system: ConstraintSystem<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
+    degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
@@ -134,6 +161,7 @@ fn run_optimization_loop_until_no_change<
             &should_inline,
             stats_logger,
             bus_map,
+            degree_bound,
         )?;
         if stats == stats_logger::Stats::from(&constraint_system) {
             return Ok(constraint_system);
@@ -149,10 +177,14 @@ fn optimization_loop_iteration<
 >(
     constraint_system: ConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
+    degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
     let constraint_system = JournalingConstraintSystem::from(constraint_system);
     let constraint_system = optimize_constraints(
@@ -175,6 +207,13 @@ fn optimization_loop_iteration<
     } else {
         constraint_system
     };
+
+    let constraint_system = LowDegreeBusInteractionOptimizer::new(
+        solver,
+        bus_interaction_handler.clone(),
+        degree_bound,
+    )
+    .optimize(constraint_system);
 
     let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
         let system = optimize_bitwise_lookup(

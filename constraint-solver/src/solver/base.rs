@@ -233,7 +233,7 @@ where
 
         let mut progress = false;
 
-        let mut error_sets = BTreeSet::new();
+        let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
             variable_set.retain(|v| {
@@ -242,10 +242,14 @@ where
                     .try_to_single_value()
                     .is_none()
             });
-            if error_sets.contains(&variable_set) {
-                // This set did not yield a unique assignment.
-                // It could be that other assignments make it unique but this is rare
-                // and we will catch it in the next loop iteration.
+            if unsuccessful_variable_sets.contains(&variable_set) {
+                // It can happen that we process the same variable set twice because
+                // assignments can make previously different sets equal.
+                // We have processed this variable set before, and it did not
+                // yield a unique assignment.
+                // It could be that other assignments created in the meantime
+                // make it unique but this is rare and we will catch it in the
+                // next loop iteration.
                 continue;
             }
             match exhaustive_search::find_unique_assignment_for_set(
@@ -264,7 +268,7 @@ where
                 }
                 // Might return None if the assignment is not unique.
                 Ok(None) => {
-                    error_sets.insert(variable_set.clone());
+                    unsuccessful_variable_sets.insert(variable_set.clone());
                 }
                 // Might error out if a contradiction was found.
                 Err(e) => return Err(e),

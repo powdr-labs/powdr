@@ -29,6 +29,7 @@ pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
+pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
