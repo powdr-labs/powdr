@@ -17,7 +17,7 @@ pub enum Variable<V> {
     /// A new boolean-constrained variable that was introduced by the solver.
     Boolean(usize),
     /// A new variable introduced by the linearizer.
-    Linear(usize),
+    Linearized(usize),
 }
 
 impl<V> From<V> for Variable<V> {
@@ -48,7 +48,7 @@ impl<V: Display> Display for Variable<V> {
         match self {
             Variable::Original(v) => write!(f, "{v}"),
             Variable::Boolean(i) => write!(f, "bool_{i}"),
-            Variable::Linear(i) => write!(f, "lin_{i}"),
+            Variable::Linearized(i) => write!(f, "lin_{i}"),
         }
     }
 }
