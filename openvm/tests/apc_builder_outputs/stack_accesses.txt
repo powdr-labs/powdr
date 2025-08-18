@@ -4,11 +4,11 @@ Instructions:
   STOREW rd_rs2_ptr = 8, rs1_ptr = 2, imm = 24, mem_as = 2, needs_write = 1, imm_sign = 0
 
 APC advantage:
-  - Main columns: 123 -> 44 (2.80x reduction)
-  - Bus interactions: 51 -> 34 (1.50x reduction)
+  - Main columns: 123 -> 36 (3.42x reduction)
+  - Bus interactions: 51 -> 26 (1.96x reduction)
   - Constraints: 75 -> 5 (15.00x reduction)
 
-Symbolic machine using 44 unique main columns:
+Symbolic machine using 36 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -30,8 +30,6 @@ Symbolic machine using 44 unique main columns:
   prev_data__1_0
   prev_data__2_0
   prev_data__3_0
-  rs1_aux_cols__base__prev_timestamp_1
-  rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_1
   read_data_aux__base__prev_timestamp_1
   read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1
   mem_ptr_limbs__0_1
@@ -46,12 +44,6 @@ Symbolic machine using 44 unique main columns:
   prev_data__1_1
   prev_data__2_1
   prev_data__3_1
-  rs1_aux_cols__base__prev_timestamp_2
-  rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_2
-  read_data_aux__base__prev_timestamp_2
-  read_data_aux__base__timestamp_lt_aux__lower_decomp__0_2
-  write_base_aux__prev_timestamp_2
-  write_base_aux__timestamp_lt_aux__lower_decomp__0_2
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -79,20 +71,12 @@ mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_
 mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_0 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_0 + 15360 * write_base_aux__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
-mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[15360 * rs1_aux_cols__base__prev_timestamp_1 + 15360 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 30720), 12]
 mult=is_valid * 1, args=[-(503316480 * mem_ptr_limbs__0_1), 14]
 mult=is_valid * 1, args=[mem_ptr_limbs__1_1, 13]
 mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17]
 mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_1 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 46080), 12]
 mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_1, 17]
 mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_1 + 15360 * write_base_aux__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 61440), 12]
-mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[15360 * rs1_aux_cols__base__prev_timestamp_2 + 15360 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 76800), 12]
-mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_2 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 92160), 12]
-mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_2 + 15360 * write_base_aux__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 107520), 12]
 
 // Algebraic constraints:
 (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 614400 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 614401)) = 0

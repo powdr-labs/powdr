@@ -6,11 +6,11 @@ Instructions:
   BNE 52 0 248 1 1
 
 APC advantage:
-  - Main columns: 172 -> 51 (3.37x reduction)
-  - Bus interactions: 87 -> 35 (2.49x reduction)
+  - Main columns: 172 -> 37 (4.65x reduction)
+  - Bus interactions: 87 -> 21 (4.14x reduction)
   - Constraints: 111 -> 33 (3.36x reduction)
 
-Symbolic machine using 51 unique main columns:
+Symbolic machine using 37 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -25,10 +25,6 @@ Symbolic machine using 51 unique main columns:
   b__1_0
   b__2_0
   b__3_0
-  reads_aux__0__base__prev_timestamp_1
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1
-  writes_aux__base__prev_timestamp_1
-  writes_aux__base__timestamp_lt_aux__lower_decomp__0_1
   cmp_result_1
   diff_marker__0_1
   diff_marker__1_1
@@ -37,8 +33,6 @@ Symbolic machine using 51 unique main columns:
   diff_val_1
   reads_aux__0__base__prev_timestamp_2
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2
-  writes_aux__base__prev_timestamp_2
-  writes_aux__base__timestamp_lt_aux__lower_decomp__0_2
   writes_aux__prev_data__0_2
   writes_aux__prev_data__1_2
   writes_aux__prev_data__2_2
@@ -49,14 +43,6 @@ Symbolic machine using 51 unique main columns:
   diff_marker__2_2
   diff_marker__3_2
   diff_val_2
-  reads_aux__0__base__prev_timestamp_3
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3
-  reads_aux__1__base__prev_timestamp_3
-  reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3
-  writes_aux__base__prev_timestamp_3
-  writes_aux__base__timestamp_lt_aux__lower_decomp__0_3
-  reads_aux__0__base__prev_timestamp_4
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4
   reads_aux__1__base__prev_timestamp_4
   reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4
   cmp_result_4
@@ -82,22 +68,8 @@ mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_1 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 30720), 12]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_1 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 61440), 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_2 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 76800), 12]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_2, 17]
-mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_2 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 107520), 12]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_3 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_3 - (15360 * from_state__timestamp_0 + 122880), 12]
-mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_3 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_3 - (15360 * from_state__timestamp_0 + 138240), 12]
-mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_3, 17]
-mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_3 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_3 - (15360 * from_state__timestamp_0 + 153600), 12]
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_4 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_4 - (15360 * from_state__timestamp_0 + 168960), 12]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_4 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4 - (15360 * from_state__timestamp_0 + 184320), 12]
 
