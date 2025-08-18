@@ -11,7 +11,6 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::iter::once;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
@@ -116,8 +115,9 @@ impl<
                 let within_degree_bound =
                     polynomial_constraint.degree() <= self.degree_bound.identities;
                 if within_degree_bound {
-                    let range_constraints = once(symbolic_function.output)
-                        .chain(symbolic_function.inputs)
+                    let range_constraints = symbolic_function
+                        .inputs
+                        .into_iter()
                         .map(|field| (field.expression, field.range_constraint))
                         .collect();
                     Some((polynomial_constraint, range_constraints))
