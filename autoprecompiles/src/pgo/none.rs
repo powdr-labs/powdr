@@ -27,12 +27,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        // Filter out blocks that should be skipped according to the adapter.
-        let blocks: Vec<_> = blocks
-            .into_iter()
-            .filter(|block| !Self::Adapter::should_skip_block(block))
-            .collect();
-
         tracing::info!(
             "Generating autoprecompiles with no PGO for {} blocks",
             blocks.len()

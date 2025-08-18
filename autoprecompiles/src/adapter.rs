@@ -37,6 +37,19 @@ impl<A: Adapter> From<AdapterApc<A>> for AdapterApcWithStats<A> {
 pub trait PgoAdapter {
     type Adapter: Adapter;
 
+    fn filter_blocks_and_create_apcs_with_pgo(
+        &self,
+        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        config: &PowdrConfig,
+        vm_config: AdapterVmConfig<Self::Adapter>,
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
+        let filtered_blocks = blocks
+            .into_iter()
+            .filter(|block| !Self::Adapter::should_skip_block(block))
+            .collect();
+        self.create_apcs_with_pgo(filtered_blocks, config, vm_config)
+    }
+
     fn create_apcs_with_pgo(
         &self,
         blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,

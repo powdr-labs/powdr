@@ -26,16 +26,10 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        // Filter out blocks that should be skipped according to the adapter.
-        let mut blocks: Vec<_> = blocks
-            .into_iter()
-            .filter(|block| !Self::Adapter::should_skip_block(block))
-            .collect();
-
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
             blocks.len()

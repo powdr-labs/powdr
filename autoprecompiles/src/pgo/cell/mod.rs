@@ -85,16 +85,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        // Filter out blocks that should be skipped according to the adapter.
-        let mut blocks: Vec<_> = blocks
-            .into_iter()
-            .filter(|block| !Self::Adapter::should_skip_block(block))
-            .collect();
-
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
             blocks.len()
