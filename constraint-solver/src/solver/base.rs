@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef};
@@ -84,7 +85,7 @@ where
     ) {
         self.equivalent_expressions_cache.clear();
         self.constraint_system
-            .add_algebraic_constraints(constraints);
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
     }
 
     fn add_bus_interactions(

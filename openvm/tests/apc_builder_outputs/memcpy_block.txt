@@ -8,7 +8,7 @@ Instructions:
 APC advantage:
   - Main columns: 172 -> 38 (4.53x reduction)
   - Bus interactions: 87 -> 23 (3.78x reduction)
-  - Constraints: 111 -> 35 (3.17x reduction)
+  - Constraints: 111 -> 34 (3.26x reduction)
 
 Symbolic machine using 38 unique main columns:
   from_state__timestamp_0
@@ -113,7 +113,6 @@ diff_marker__0_2 * ((writes_aux__prev_data__0_2 - 1) * (2 * cmp_result_2 - 1) + 
 cmp_result_4 * (cmp_result_4 - 1) = 0
 (1 - cmp_result_4) * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) = 0
 (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) * diff_inv_marker__0_4 - cmp_result_4 = 0
-0 = 0
 (1 - is_valid) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) = 0
 (1 - is_valid) * (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2) = 0
 is_valid * (is_valid - 1) = 0

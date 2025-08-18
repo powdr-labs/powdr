@@ -1714,7 +1714,7 @@ mod tests {
                             main: 3313,
                             log_up: 5200,
                         },
-                        constraints: 850,
+                        constraints: 849,
                         bus_interactions: 2516,
                     }
                 "#]],
