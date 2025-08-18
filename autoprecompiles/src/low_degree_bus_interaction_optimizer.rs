@@ -12,7 +12,6 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::iter::once;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;

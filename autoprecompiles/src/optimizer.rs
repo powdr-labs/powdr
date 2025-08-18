@@ -4,7 +4,6 @@ use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
@@ -48,7 +47,6 @@ pub fn optimize<A: Adapter>(
         run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
             bus_interaction_handler.clone(),
-            |var, expr, constraint_system| false,
             &mut stats_logger,
             bus_map,
             degree_bound,
@@ -115,7 +113,6 @@ fn run_optimization_loop_until_no_change<
         + IsBusStateful<P>
         + RangeConstraintHandler<P>
         + Clone,
-    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
     degree_bound: DegreeBound,
@@ -127,7 +124,6 @@ fn run_optimization_loop_until_no_change<
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
-            &should_inline,
             stats_logger,
             bus_map,
             degree_bound,
@@ -150,7 +146,6 @@ fn optimization_loop_iteration<
         + IsBusStateful<P>
         + RangeConstraintHandler<P>
         + Clone,
-    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     bus_map: &BusMap<C>,
     degree_bound: DegreeBound,
@@ -160,7 +155,6 @@ fn optimization_loop_iteration<
         constraint_system,
         solver,
         bus_interaction_handler.clone(),
-        should_inline,
         stats_logger,
     )?;
     let constraint_system = constraint_system.system().clone();
