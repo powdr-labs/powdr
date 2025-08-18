@@ -334,3 +334,33 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
     });
     constraint_system
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use powdr_number::BabyBearField;
+
+    fn var(name: &str) -> GroupedExpression<BabyBearField, String> {
+        GroupedExpression::from_unknown_variable(name.to_string())
+    }
+
+    fn constant(value: u64) -> GroupedExpression<BabyBearField, String> {
+        GroupedExpression::from_number(BabyBearField::from(value))
+    }
+
+    #[test]
+    fn redundant_constraints() {
+        // x * (x - 1) = 0
+        // -((1 - x) * x) = 0
+        let algebraic_constraints = vec![
+            var("x") * (var("x") - constant(1)),
+            -(var("x") - constant(1)) * var("x"),
+        ];
+        let system = JournalingConstraintSystem::from(ConstraintSystem {
+            algebraic_constraints,
+            bus_interactions: vec![],
+        });
+        let system = remove_redundant_constraints::<BabyBearField, _>(system);
+        assert_eq!(system.to_string(), "");
+    }
+}
