@@ -58,6 +58,19 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
+    Ok(trivial_simplifications(
+        constraint_system,
+        bus_interaction_handler,
+        stats_logger,
+    ))
+}
+
+/// Performs some very easy simplifications that only remove constraints.
+pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+    constraint_system: JournalingConstraintSystem<P, V>,
+    bus_interaction_handler: impl IsBusStateful<P>,
+    stats_logger: &mut StatsLogger,
+) -> JournalingConstraintSystem<P, V> {
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
 
@@ -68,7 +81,7 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
-    Ok(constraint_system)
+    constraint_system
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(

@@ -13,7 +13,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-use crate::constraint_optimizer::IsBusStateful;
+use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
@@ -68,6 +68,14 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+
+    let constraint_system = trivial_simplifications(
+        constraint_system.into(),
+        bus_interaction_handler,
+        &mut stats_logger,
+    )
+    .system()
+    .clone();
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
