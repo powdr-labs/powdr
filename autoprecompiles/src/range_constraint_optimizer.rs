@@ -85,7 +85,6 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     });
 
     // Filter range constraints that are already implied by existing constraints.
-    // TODO: They could also be implied by each other.
     let mut solver = new_solver(system.clone(), bus_interaction_handler.clone());
     solver.solve().unwrap();
     let to_constrain = to_constrain
@@ -95,10 +94,27 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
             let rc = range_constraints.remove(&expr).unwrap();
             (expr, rc)
         })
-        .filter(|(expr, rc)| {
+        // Enumerate, so we can restore the original order later.
+        .enumerate()
+        // Sort by range width, because stricter range constraints are more likely to imply
+        // looser ones.
+        .sorted_by_key(|(_, (_, rc))| rc.range_width())
+        .filter(|(_i, (expr, rc))| {
             let current_rc = solver.range_constraint_for_expression(expr);
-            current_rc != current_rc.conjunction(rc)
+            let keep = current_rc != current_rc.conjunction(rc);
+            if keep {
+                // Add the range constraint to the solver
+                // TODO: Implement this for generic expressions
+                if let Some(var) = expr.try_to_simple_unknown() {
+                    solver.add_range_constraint(&var, rc.clone());
+                    solver.solve().unwrap();
+                }
+            }
+            keep
         })
+        // Restore the original order.
+        .sorted_by_key(|(i, _)| *i)
+        .map(|(_i, (expr, rc))| (expr, rc))
         .collect::<Vec<_>>();
 
     // Implement bit constraints via polynomial constraints, if the degree bound allows.
@@ -148,16 +164,14 @@ pub mod utils {
         })
     }
 
-    /// Given a a set of range constraints, filters out those which can be checked via a
-    /// byte constraint.
+    /// Given a set of range constraints, filters out the byte constraints and returns them.
     pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display + Hash>(
         range_constraints: &mut RangeConstraints<T, V>,
     ) -> Vec<GroupedExpression<T, V>> {
         let mut byte_constraints = Vec::new();
         range_constraints.retain(|(expr, rc)| match range_constraint_to_num_bits(rc) {
-            Some(bits) if bits <= 8 => {
-                let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
-                byte_constraints.push(expr.clone() * factor.clone());
+            Some(8) => {
+                byte_constraints.push(expr.clone());
                 false
             }
             _ => true,
