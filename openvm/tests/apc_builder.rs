@@ -80,7 +80,6 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     match (expected, &actual, update_expectation) {
         (Some(expected), _, _) if expected == actual => {
             // Test succeeded.
-            return;
         }
         (Some(expected), actual, false) => {
             // The expectation file exists, is different from "actual" and we are
