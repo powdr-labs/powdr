@@ -815,7 +815,7 @@ mod tests {
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
     const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
-    const GUEST_ECC_APC_PGO: u64 = 100;
+    const GUEST_ECC_APC_PGO: u64 = 50;
     const GUEST_ECC_SKIP: u64 = 0;
 
     const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
@@ -1774,15 +1774,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 37173,
-                            log_up: 55300,
+                            main: 28710,
+                            log_up: 44156,
                         },
-                        constraints: 26087,
-                        bus_interactions: 23169,
+                        constraints: 22127,
+                        bus_interactions: 18188,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    100
+                    50
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1790,7 +1790,7 @@ mod tests {
             None,
         );
     }
-
+    #[test]
     fn ecc_with_hint_machine_pgo_cell() {
         let stdin = StdIn::default();
         let pgo_data =
@@ -1808,15 +1808,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 20935,
-                            log_up: 32076,
+                            main: 16416,
+                            log_up: 26464,
                         },
-                        constraints: 11486,
-                        bus_interactions: 13714,
+                        constraints: 9752,
+                        bus_interactions: 11214,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    100
+                    50
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1825,13 +1825,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 123000,
-                        log_up: 165092,
+                        main: 107877,
+                        log_up: 144716,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 20935,
-                        log_up: 32076,
+                        main: 16416,
+                        log_up: 26464,
                     },
                 }
             "#]]),
