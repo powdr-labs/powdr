@@ -6,9 +6,7 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
-use crate::solver::base::BaseSolver;
-use crate::solver::boolean_extracted::BooleanExtractedSolver;
-use crate::solver::linearized::LinearizedSolver;
+use crate::solver::base::{BaseSolver, VarDispenserImpl};
 use crate::solver::var_transformation::{VarTransformation, Variable};
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
@@ -18,7 +16,7 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 mod base;
-mod boolean_extracted;
+mod boolean_extractor;
 mod exhaustive_search;
 mod linearized;
 mod quadratic_equivalences;
@@ -61,9 +59,9 @@ where
         + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let mut solver = VarTransformation::new(BooleanExtractedSolver::new(LinearizedSolver::new(
-        BaseSolver::new(bus_interaction_handler),
-    )));
+    let mut solver = VarTransformation::new(BaseSolver::<_, _, _, VarDispenserImpl>::new(
+        bus_interaction_handler,
+    ));
     solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
     solver.add_bus_interactions(constraint_system.bus_interactions);
     solver

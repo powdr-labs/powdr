@@ -1,217 +1,17 @@
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::iter;
-use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
 
 use crate::constraint_system::ConstraintSystem;
 use crate::indexed_constraint_system::apply_substitutions;
 use crate::runtime_constant::Substitutable;
-use crate::solver::var_transformation::Variable;
-use crate::solver::{Error, VariableAssignment};
-use crate::{
-    constraint_system::BusInteraction,
-    grouped_expression::{GroupedExpression, RangeConstraintProvider},
-    range_constraint::RangeConstraint,
-    runtime_constant::{RuntimeConstant, VarTransformable},
-    solver::Solver,
-};
+use crate::solver::VariableAssignment;
+use crate::{grouped_expression::GroupedExpression, runtime_constant::RuntimeConstant};
 
-/// A Solver that turns algebraic constraints into affine constraints
-/// by introducing new variables for the non-affine parts.
-/// It also replaces bus interaction fields by new variables if they are
-/// not just variables or constants.
-///
-/// The original algebraic constraints are kept as well.
-pub struct LinearizedSolver<T, V, S> {
-    solver: S,
-    linearizer: Linearizer<T, V>,
-    var_dispenser: LinearizedVarDispenser,
-}
-
-struct LinearizedVarDispenser {
-    next_var_id: usize,
-}
-
-impl LinearizedVarDispenser {
-    fn new() -> Self {
-        LinearizedVarDispenser { next_var_id: 0 }
-    }
-
-    fn next_var<V>(&mut self) -> Variable<V> {
-        let id = self.next_var_id;
-        self.next_var_id += 1;
-        Variable::Linearized(id)
-    }
-
-    /// Returns an iterator over all variables dispensed in the past.
-    fn all_dispensed_vars<V>(&self) -> impl Iterator<Item = Variable<V>> {
-        (0..self.next_var_id).map(Variable::Linearized)
-    }
-}
-
-impl<T, V, S> LinearizedSolver<T, V, S>
-where
-    T: RuntimeConstant,
-    V: Clone + Eq,
-    S: Solver<T, V>,
-{
-    pub fn new(solver: S) -> Self {
-        Self {
-            solver,
-            linearizer: Linearizer::default(),
-            var_dispenser: LinearizedVarDispenser::new(),
-        }
-    }
-}
-
-impl<T, V, S> RangeConstraintProvider<T::FieldType, Variable<V>>
-    for LinearizedSolver<T, Variable<V>, S>
-where
-    T: RuntimeConstant,
-    S: RangeConstraintProvider<T::FieldType, Variable<V>>,
-    V: Clone,
-{
-    fn get(&self, var: &Variable<V>) -> RangeConstraint<T::FieldType> {
-        self.solver.get(var)
-    }
-}
-
-impl<T: VarTransformable<V, Variable<V>>, V, S: Display> Display
-    for LinearizedSolver<T, Variable<V>, S>
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.solver)
-    }
-}
-
-impl<T, V, S> Solver<T, Variable<V>> for LinearizedSolver<T, Variable<V>, S>
-where
-    T: RuntimeConstant + Substitutable<Variable<V>> + Display + Hash,
-    V: Ord + Clone + Eq + Hash + Display,
-    S: Solver<T, Variable<V>>,
-{
-    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, Variable<V>>>, Error> {
-        let assignments = self.solver.solve()?;
-        // Apply the deduced assignments to the substitutions we performed.
-        // We assume that the user of the solver applies the assignments to
-        // their expressions and thus "incoming" expressions used in the functions
-        // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
-        // will have the assignments applied.
-        self.linearizer.apply_assignments(&assignments);
-        Ok(assignments)
-    }
-
-    fn add_algebraic_constraints(
-        &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, Variable<V>>>,
-    ) {
-        let constraints = constraints
-            .into_iter()
-            .flat_map(|constr| {
-                // We always add the original constraint unmodified.
-                let mut constrs = vec![constr.clone()];
-                if !constr.is_affine() {
-                    let linearized = self.linearizer.linearize(
-                        constr,
-                        &mut || self.var_dispenser.next_var(),
-                        &mut constrs,
-                    );
-                    constrs.push(linearized);
-                }
-                constrs
-            })
-            .collect::<Vec<_>>();
-        self.solver.add_algebraic_constraints(constraints);
-    }
-
-    fn add_bus_interactions(
-        &mut self,
-        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, Variable<V>>>>,
-    ) {
-        let mut constraints_to_add = vec![];
-        let bus_interactions = bus_interactions
-            .into_iter()
-            .map(|bus_interaction| {
-                bus_interaction
-                    .fields()
-                    .map(|expr| {
-                        self.linearizer.substitute_by_var(
-                            expr.clone(),
-                            &mut || self.var_dispenser.next_var(),
-                            &mut constraints_to_add,
-                        )
-                    })
-                    .collect::<BusInteraction<_>>()
-            })
-            .collect_vec();
-        // We only substituted by a variable, but the substitution was not yet linearized.
-        self.add_algebraic_constraints(constraints_to_add);
-        self.solver.add_bus_interactions(bus_interactions);
-    }
-
-    fn add_range_constraint(
-        &mut self,
-        variable: &Variable<V>,
-        constraint: RangeConstraint<T::FieldType>,
-    ) {
-        self.solver.add_range_constraint(variable, constraint);
-    }
-
-    fn retain_variables(&mut self, variables_to_keep: &HashSet<Variable<V>>) {
-        // There are constraints that only contain `Variable::Linearized` that
-        // connect quadratic terms with the original constraints. We could try to find
-        // those, but let's just keep all of them for now.
-        let mut variables_to_keep = variables_to_keep.clone();
-        variables_to_keep.extend(self.var_dispenser.all_dispensed_vars());
-        self.solver.retain_variables(&variables_to_keep);
-    }
-
-    fn range_constraint_for_expression(
-        &self,
-        expr: &GroupedExpression<T, Variable<V>>,
-    ) -> RangeConstraint<T::FieldType> {
-        self.internalized_versions_of_expression(expr)
-            .fold(RangeConstraint::default(), |acc, expr| {
-                acc.conjunction(&self.solver.range_constraint_for_expression(&expr))
-            })
-    }
-
-    fn are_expressions_known_to_be_different(
-        &mut self,
-        a: &GroupedExpression<T, Variable<V>>,
-        b: &GroupedExpression<T, Variable<V>>,
-    ) -> bool {
-        self.solver.are_expressions_known_to_be_different(a, b)
-    }
-}
-
-impl<T, V, S> LinearizedSolver<T, Variable<V>, S>
-where
-    T: RuntimeConstant + Hash,
-    V: Ord + Clone + Eq + Hash,
-{
-    /// Returns an iterator over expressions equivalent to `expr` with the idea that
-    /// they might allow to answer a query better or worse.
-    /// It usually returns the original expression, a single variable that it was
-    /// substituted into during a previous linearization and a previously linearized version.
-    fn internalized_versions_of_expression(
-        &self,
-        expr: &GroupedExpression<T, Variable<V>>,
-    ) -> impl Iterator<Item = GroupedExpression<T, Variable<V>>> + Clone {
-        let direct = expr.clone();
-        // See if we have a direct substitution for the expression by a variable.
-        let simple_substituted = self.linearizer.try_substitute_by_existing_var(expr);
-        // Try to re-do the linearization
-        let substituted = self.linearizer.try_linearize_existing(expr.clone());
-        iter::once(direct)
-            .chain(simple_substituted)
-            .chain(substituted)
-    }
-}
-
-struct Linearizer<T, V> {
+/// Solver component that substitutes non-affine sub-expressions
+/// by new variables.
+pub struct Linearizer<T, V> {
     substitutions: HashMap<GroupedExpression<T, V>, V>,
 }
 
@@ -228,7 +28,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     /// non-affine parts. The new constraints are appended to
     /// `constraint_collection` and must be added to the system.
     /// The linearized expression is returned.
-    fn linearize(
+    pub fn linearize(
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
@@ -255,7 +55,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     }
 
     /// Tries to linearize the expression according to already existing substitutions.
-    fn try_linearize_existing(
+    pub fn try_linearize_existing(
         &self,
         expr: GroupedExpression<T, V>,
     ) -> Option<GroupedExpression<T, V>> {
@@ -301,7 +101,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     /// that were made in the past.
     /// Adds the equality constraint to `constraint_collection` and returns the variable
     /// as an expression.
-    fn substitute_by_var(
+    pub fn substitute_by_var(
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
@@ -319,7 +119,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     }
 
     /// Tries to substitute the given expression by an existing variable.
-    fn try_substitute_by_existing_var(
+    pub fn try_substitute_by_existing_var(
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> Option<GroupedExpression<T, V>> {
@@ -335,7 +135,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
 
 impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     /// Applies the assignments to the stored substitutions.
-    fn apply_assignments(&mut self, assignments: &[VariableAssignment<T, V>]) {
+    pub fn apply_assignments(&mut self, assignments: &[VariableAssignment<T, V>]) {
         if assignments.is_empty() {
             return;
         }
@@ -362,7 +162,14 @@ mod tests {
     use powdr_number::GoldilocksField;
 
     use super::*;
-    use crate::{constraint_system::DefaultBusInteractionHandler, solver::base::BaseSolver};
+    use crate::{
+        constraint_system::{BusInteraction, DefaultBusInteractionHandler},
+        solver::{
+            base::{BaseSolver, VarDispenserImpl},
+            var_transformation::Variable,
+            Solver,
+        },
+    };
 
     type Qse = GroupedExpression<GoldilocksField, Variable<&'static str>>;
 
@@ -399,7 +206,7 @@ mod tests {
     #[test]
     fn solver_transforms() {
         let mut solver =
-            LinearizedSolver::new(BaseSolver::new(DefaultBusInteractionHandler::default()));
+            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
         solver.add_algebraic_constraints(vec![
             (var("x") + var("y")) * (var("z") + constant(1)) * (var("x") - constant(1)),
             (var("a") + var("b")) * (var("c") - constant(2)),
