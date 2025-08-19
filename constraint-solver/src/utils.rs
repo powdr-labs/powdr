@@ -57,7 +57,7 @@ pub fn has_few_possible_assignments<T: FieldElement, V: Clone + Ord>(
 ) -> bool {
     variables
         .map(|v| rc.get(&v))
-        .map(|rc| rc.size().try_into_u64())
+        .map(|rc| rc.size_estimate().try_into_u64())
         .try_fold(1u64, |acc, x| acc.checked_mul(x?))
         .is_some_and(|count| count <= threshold)
 }

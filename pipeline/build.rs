@@ -21,7 +21,11 @@ fn build_reparse_test(kind: &str, dir: &str) {
     build_tests(kind, dir, "", "reparse")
 }
 
-const SLOW_LIST: [&str; 1] = ["keccakf16_test"];
+const SLOW_LIST: [&str; 3] = [
+    "keccakf16_test",
+    "keccakf16_memory_test",
+    "keccakf32_memory_test",
+];
 
 #[allow(clippy::print_stdout)]
 fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {

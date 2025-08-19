@@ -47,15 +47,45 @@ fn test_optimize() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        2008
+        1808
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1712
+        1512
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
         234
+    "#]]
+    .assert_debug_eq(&machine.constraints.len());
+}
+
+#[test]
+fn test_sha256() {
+    let file = std::fs::File::open("tests/sha256_apc_pre_opt.cbor.gz").unwrap();
+    let reader = flate2::read::GzDecoder::new(file);
+    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+
+    let machine = optimize::<BabyBearOpenVmApcAdapter>(
+        machine,
+        OpenVmBusInteractionHandler::default(),
+        DEFAULT_DEGREE_BOUND,
+        &default_openvm_bus_map(),
+    )
+    .unwrap();
+
+    // This cbor file above has the `is_valid` column removed, this is why the number below
+    // might be one less than in other tests.
+    expect![[r#"
+        12506
+    "#]]
+    .assert_debug_eq(&machine.main_columns().count());
+    expect![[r#"
+        9834
+    "#]]
+    .assert_debug_eq(&machine.bus_interactions.len());
+    expect![[r#"
+        3858
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }

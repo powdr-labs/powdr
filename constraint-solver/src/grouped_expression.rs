@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Display,
     hash::Hash,
-    iter::once,
+    iter::{once, Sum},
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
@@ -236,6 +236,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         &T,
     ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
+    }
+
+    pub fn into_components(self) -> (Vec<(Self, Self)>, impl Iterator<Item = (V, T)>, T) {
+        (self.quadratic, self.linear.into_iter(), self.constant)
     }
 
     /// Computes the degree of a GroupedExpression in the unknown variables.
@@ -893,7 +897,7 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Di
             // constraint, and thus we want it to only hit the "single value" case.
             let complete = rc1.try_to_single_value().is_some()
                 && rc2.try_to_single_value().is_some()
-                && rc.size() <= 2.into();
+                && rc.size_estimate() <= 2.into();
             Some((v, rc, complete))
         })
         .collect_vec();
@@ -1123,6 +1127,15 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> MulAssign<&T> for GroupedExpressio
             }
             self.constant *= rhs.clone();
         }
+    }
+}
+
+impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sum for GroupedExpression<T, V> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), |mut acc, item| {
+            acc += item;
+            acc
+        })
     }
 }
 

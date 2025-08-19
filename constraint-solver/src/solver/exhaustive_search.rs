@@ -24,78 +24,12 @@ const MAX_SEARCH_WIDTH: u64 = 1 << 10;
 /// The maximum range width of a variable to be considered for exhaustive search.
 const MAX_VAR_RANGE_WIDTH: u64 = 5;
 
-/// Tries to find unique assignments via exhaustive search: For any group of variables that
-/// appear together in an identity, if there are fewer than `MAX_SEARCH_WIDTH` possible
-/// assignments, it tries them all and returns any unique assignments.
-/// Returns an error if there are any contradictions between those assignments, or if no
-/// assignment satisfies the constraint system for any group of variables.
-pub fn get_unique_assignments<T, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
-    bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
-) -> Result<BTreeMap<V, T::FieldType>, Error>
-where
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Substitutable<V>
-        + ExpressionConvertible<T::FieldType, V>
-        + Display,
-{
-    log::debug!("Starting exhaustive search with maximum width {MAX_SEARCH_WIDTH}");
-    let variable_sets = get_brute_force_candidates(constraint_system, rc.clone()).collect_vec();
-
-    log::debug!(
-        "Found {} sets of variables with few possible assignments. Checking each set...",
-        variable_sets.len()
-    );
-
-    let unique_assignments = variable_sets
-        .iter()
-        .filter_map(|assignment_candidates| {
-            match find_unique_assignment_for_set(
-                constraint_system,
-                assignment_candidates,
-                rc.clone(),
-                bus_interaction_handler,
-            ) {
-                Ok(Some(assignments)) => Some(Ok(assignments)),
-                // Might return None if the assignment is not unique.
-                Ok(None) => None,
-                // Might error out if a contradiction was found.
-                Err(e) => Some(Err(e)),
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    log::debug!(
-        "{} variable sets with unique assignments found",
-        unique_assignments.len()
-    );
-
-    let mut result = BTreeMap::new();
-    for (variable, value) in unique_assignments.iter().flatten() {
-        if let Some(old_value) = result.insert(variable.clone(), *value) {
-            if old_value != *value {
-                // Two assignments contradict each other.
-                return Err(Error::ExhaustiveSearchError);
-            }
-        }
-    }
-
-    log::debug!("Total assignments: {}", result.len());
-    for (variable, value) in &result {
-        log::trace!("  {variable} = {value}");
-    }
-
-    Ok(result)
-}
-
 /// Goes through all possible assignments for the given variables and checks whether they satisfy
 /// all constraints. If exactly one assignment satisfies the constraint system (and all others
 /// lead to a contradiction), it returns that assignment.
 /// If multiple assignments satisfy the constraint system, it returns `None`.
 /// Returns an error if all assignments are contradictory.
-fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
+pub fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     variables: &BTreeSet<V>,
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone,
@@ -135,7 +69,7 @@ where
 /// Returns all unique sets of variables that appear together in an identity
 /// (either in an algebraic constraint or in the same field of a bus interaction),
 /// IF the number of possible assignments is less than `MAX_SEARCH_WIDTH`.
-fn get_brute_force_candidates<
+pub fn get_brute_force_candidates<
     'a,
     T: RuntimeConstant + ReferencedSymbols<V>,
     V: Clone + Hash + Ord,
@@ -162,7 +96,7 @@ fn get_brute_force_candidates<
                     let num_variables = variables.len();
                     let variables_without_largest_range = variables
                         .into_iter()
-                        .sorted_by(|a, b| rc.get(a).size().cmp(&rc.get(b).size()))
+                        .sorted_by(|a, b| rc.get(a).size_estimate().cmp(&rc.get(b).size_estimate()))
                         .take(num_variables - 1)
                         .collect::<BTreeSet<_>>();
                     is_candidate_for_exhaustive_search(&variables_without_largest_range, &rc)
@@ -188,7 +122,7 @@ fn has_small_max_range_constraint_size<T: FieldElement, V: Clone + Ord>(
     threshold: u64,
 ) -> bool {
     variables.all(|v| {
-        if let Some(size) = rc.get(&v).size().try_into_u64() {
+        if let Some(size) = rc.get(&v).size_estimate().try_into_u64() {
             size <= threshold
         } else {
             false

@@ -94,7 +94,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns (an upper bound for) the number of field elements included in the constraint.
-    pub fn size(&self) -> T::Integer {
+    pub fn size_estimate(&self) -> T::Integer {
         let stride = stride_from_mask(&self.mask);
         let width = range_width(self.min, self.max);
         if let (Some(stride), Some(width)) = (stride.try_into_u64(), width.try_into_u64()) {
@@ -889,38 +889,38 @@ mod test {
     }
 
     #[test]
-    fn size() {
+    fn size_estimate() {
         let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 20.into());
-        assert!(a.allowed_values().count() as u64 <= a.size().try_into_u64().unwrap());
-        assert_eq!(a.size(), 11u64.into());
+        assert!(a.allowed_values().count() as u64 <= a.size_estimate().try_into_u64().unwrap());
+        assert_eq!(a.size_estimate(), 11u64.into());
         let a = a.multiple(2.into());
-        assert!(a.allowed_values().count() as u64 <= a.size().try_into_u64().unwrap());
-        assert_eq!(a.size(), 11u64.into());
+        assert!(a.allowed_values().count() as u64 <= a.size_estimate().try_into_u64().unwrap());
+        assert_eq!(a.size_estimate(), 11u64.into());
 
         // Even numbers
         let even = RangeConstraint::<GoldilocksField>::from_mask(0xffffffffffffffffu64 << 1);
         let b = even.conjunction(&RangeConstraint::from_range(0.into(), 2.into()));
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 2u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 2u64.into());
         let b = even.conjunction(&RangeConstraint::from_range(0.into(), 3.into()));
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 2u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 2u64.into());
         let b = even.conjunction(&RangeConstraint::from_range(0.into(), 4.into()));
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 3u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 3u64.into());
         let b = even.conjunction(&RangeConstraint::from_range(1.into(), 2.into()));
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 1u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 1u64.into());
         let b = even.conjunction(&RangeConstraint::from_range(1.into(), 3.into()));
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 1u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 1u64.into());
         let b = even.conjunction(&RangeConstraint::from_range(1.into(), 4.into()));
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 2u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 2u64.into());
 
         let b = even.conjunction(&-RangeConstraint::from_range(0.into(), 1.into()));
         // Even numbers between -1 and 0. Note that -1 is even, so there are two.
-        assert!(b.allowed_values().count() as u64 <= b.size().try_into_u64().unwrap());
-        assert_eq!(b.size(), 2u64.into());
+        assert!(b.allowed_values().count() as u64 <= b.size_estimate().try_into_u64().unwrap());
+        assert_eq!(b.size_estimate(), 2u64.into());
     }
 }
