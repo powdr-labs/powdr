@@ -12,6 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -311,11 +312,27 @@ pub struct Apc<T, I> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApcSubs {
+    /// For each original instruction, the mapping from the index of a column in the associated air to the index of the corresponding column in the apc
     original_instructions: Vec<Vec<u64>>,
+    /// The index of the `is_valid` column in the apc
     is_valid: u64,
 }
 
 impl ApcSubs {
+    pub fn new(original_instructions: Vec<Vec<u64>>, is_valid: u64) -> Self {
+        // Sanity check that the substitutions are dense
+        let all_ids = original_instructions
+            .iter()
+            .flatten()
+            .chain(once(&is_valid))
+            .collect::<BTreeSet<_>>();
+        assert!(all_ids.len() as u64 == all_ids.iter().max().map(|max| *max + 1).unwrap_or(0));
+        Self {
+            original_instructions,
+            is_valid,
+        }
+    }
+
     #[must_use]
     pub fn into_parts(self) -> (Vec<Vec<u64>>, u64) {
         (self.original_instructions, self.is_valid)
@@ -381,10 +398,7 @@ pub fn build<A: Adapter>(
     let apc = Apc {
         block,
         machine,
-        subs: ApcSubs {
-            original_instructions: subs,
-            is_valid,
-        },
+        subs: ApcSubs::new(subs, is_valid),
     };
 
     if let Some(path) = apc_candidates_dir_path {

@@ -83,7 +83,7 @@ impl<F> PowdrPrecompile<F> {
         opcode: PowdrOpcode,
         machine: SymbolicMachine<F>,
         original_instructions: Vec<OriginalInstruction<F>>,
-        is_valid: u64,
+        is_valid_poly_id: u64,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
@@ -91,7 +91,7 @@ impl<F> PowdrPrecompile<F> {
             opcode,
             machine,
             original_instructions,
-            is_valid_poly_id: is_valid,
+            is_valid_poly_id,
             apc_stats,
         }
     }
