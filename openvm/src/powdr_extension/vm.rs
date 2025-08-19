@@ -4,7 +4,6 @@ use std::iter::once;
 
 use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
-use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
@@ -74,7 +73,7 @@ pub struct PowdrPrecompile<F> {
     pub opcode: PowdrOpcode,
     pub machine: SymbolicMachine<F>,
     pub original_instructions: Vec<OriginalInstruction<F>>,
-    pub is_valid_column: AlgebraicReference,
+    pub is_valid_poly_id: u64,
     pub apc_stats: Option<OvmApcStats>,
 }
 
@@ -84,7 +83,7 @@ impl<F> PowdrPrecompile<F> {
         opcode: PowdrOpcode,
         machine: SymbolicMachine<F>,
         original_instructions: Vec<OriginalInstruction<F>>,
-        is_valid_column: AlgebraicReference,
+        is_valid: u64,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
@@ -92,7 +91,7 @@ impl<F> PowdrPrecompile<F> {
             opcode,
             machine,
             original_instructions,
-            is_valid_column,
+            is_valid_poly_id: is_valid,
             apc_stats,
         }
     }

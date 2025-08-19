@@ -306,11 +306,24 @@ pub trait InstructionHandler<T, I> {
 pub struct Apc<T, I> {
     pub block: BasicBlock<I>,
     pub machine: SymbolicMachine<T>,
-    pub subs: Vec<Vec<u64>>,
+    pub subs: ApcSubs,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApcSubs {
+    original_instructions: Vec<Vec<u64>>,
+    is_valid: u64,
+}
+
+impl ApcSubs {
+    #[must_use]
+    pub fn into_parts(self) -> (Vec<Vec<u64>>, u64) {
+        (self.original_instructions, self.is_valid)
+    }
 }
 
 impl<T, I> Apc<T, I> {
-    pub fn subs(&self) -> &[Vec<u64>] {
+    pub fn subs(&self) -> &ApcSubs {
         &self.subs
     }
 
@@ -354,7 +367,7 @@ pub fn build<A: Adapter>(
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
+    let (machine, is_valid) = add_guards(machine);
 
     metrics::counter!("after_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -368,7 +381,10 @@ pub fn build<A: Adapter>(
     let apc = Apc {
         block,
         machine,
-        subs,
+        subs: ApcSubs {
+            original_instructions: subs,
+            is_valid,
+        },
     };
 
     if let Some(path) = apc_candidates_dir_path {
@@ -428,7 +444,8 @@ fn add_guards_constraint<T: FieldElement>(
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
-fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+/// Returns the updated machine and the ID of the `is_valid` reference.
+fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> (SymbolicMachine<T>, u64) {
     let pre_degree = machine.degree();
 
     let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
@@ -471,5 +488,5 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
     // so it may increase the degree of the machine.
     machine.constraints.push(powdr::make_bool(is_valid).into());
 
-    machine
+    (machine, max_id)
 }

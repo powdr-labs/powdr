@@ -59,7 +59,7 @@ impl<F: PrimeField32> PowdrChip<F> {
         let PowdrPrecompile {
             machine,
             original_instructions,
-            is_valid_column,
+            is_valid_poly_id: is_valid,
             name,
             opcode,
             ..
@@ -68,7 +68,7 @@ impl<F: PrimeField32> PowdrChip<F> {
         let executor = PowdrExecutor::new(
             original_instructions,
             original_airs,
-            is_valid_column,
+            is_valid,
             memory,
             base_config,
             periphery,

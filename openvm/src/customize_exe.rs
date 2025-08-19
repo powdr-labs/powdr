@@ -258,10 +258,7 @@ pub fn customize(
             // This is only for witgen: the program in the program chip is left unchanged.
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
-            let is_valid_column = machine
-                .main_columns()
-                .find(|c| &*c.name == "is_valid")
-                .unwrap();
+            let (original_subs, is_valid) = subs.into_parts();
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", block.start_pc),
@@ -272,10 +269,10 @@ pub fn customize(
                 block
                     .statements
                     .into_iter()
-                    .zip_eq(subs)
+                    .zip_eq(original_subs)
                     .map(|(instruction, subs)| OriginalInstruction::new(instruction.0, subs))
                     .collect(),
-                is_valid_column,
+                is_valid,
                 apc_stats,
             )
         })
