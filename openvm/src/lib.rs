@@ -1757,7 +1757,7 @@ mod tests {
     }
 
     #[test]
-    fn ecc_with_hint_machine_pgo() {
+    fn ecc_with_hint_machine_pgo_instruction() {
         let stdin = StdIn::default();
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
@@ -1789,6 +1789,12 @@ mod tests {
             },
             None,
         );
+    }
+
+    fn ecc_with_hint_machine_pgo_cell() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
 
         test_machine_compilation(
             GuestTestConfig {
