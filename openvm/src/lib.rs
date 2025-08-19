@@ -819,7 +819,7 @@ mod tests {
     const GUEST_ECC_SKIP: u64 = 0;
 
     const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
-    const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 100;
+    const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
     const GUEST_ECC_PROJECTIVE_SKIP: u64 = 0;
 
     #[test]
@@ -1856,15 +1856,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 38676,
-                            log_up: 57776,
+                            main: 34964,
+                            log_up: 53668,
                         },
-                        constraints: 25297,
-                        bus_interactions: 24804,
+                        constraints: 23772,
+                        bus_interactions: 22983,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    100
+                    50
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1884,15 +1884,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 26793,
-                            log_up: 40604,
+                            main: 23535,
+                            log_up: 37044,
                         },
-                        constraints: 12782,
-                        bus_interactions: 18172,
+                        constraints: 11800,
+                        bus_interactions: 16512,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    100
+                    50
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1901,13 +1901,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 161067,
-                        log_up: 213944,
+                        main: 151709,
+                        log_up: 201112,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 26793,
-                        log_up: 40604,
+                        main: 23535,
+                        log_up: 37044,
                     },
                 }
             "#]]),
