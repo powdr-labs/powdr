@@ -69,7 +69,7 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let base = Path::new("tests/apc_builder_outputs");
     let file_path = base.join(format!("{test_name}.txt"));
 
-    let update_expectation = std::env::var("UPDATE_EXPECT")
+    let should_update_expectation = std::env::var("UPDATE_EXPECT")
         .map(|v| v.as_str() == "1")
         .unwrap_or(false);
 
@@ -77,11 +77,11 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
         .exists()
         .then(|| fs::read_to_string(&file_path).unwrap());
 
-    match (expected, &actual, update_expectation) {
-        (Some(expected), _, _) if expected == actual => {
+    match (expected, should_update_expectation) {
+        (Some(expected), _) if expected == actual => {
             // Test succeeded.
         }
-        (Some(expected), actual, false) => {
+        (Some(expected), false) => {
             // The expectation file exists, is different from "actual" and we are
             // not allowed to update it.
             // Test failed.
