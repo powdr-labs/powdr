@@ -18,45 +18,43 @@ with_psrecord() {
 }
 
 basic_metrics() {
-    python3 $SCRIPTS_DIR/basic_metrics.py --csv *.json > basic_metrics.csv
+    python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 }
 
 plot_cells() {
-    python3 $SCRIPTS_DIR/plot_trace_cells.py -o trace_cells.png $1 > trace_cells.txt
+    run_name="$1"
+    python3 $SCRIPTS_DIR/plot_trace_cells.py -o ${run_name}/trace_cells.png ${run_name}/metrics.json > ${run_name}/trace_cells.txt
 }
 
 plot_effectiveness() {
     python3 $SCRIPTS_DIR/../../autoprecompiles/scripts/plot_effectiveness.py $1 --output effectiveness.png
 }
 
-# usage: run_bench guest guest_manual_pcp apc_num input
 run_bench() {
     guest="$1"
-    guest_manual="$2"
+    input="$2"
     apcs="$3"
-    input="$4"
-    dir="results/$guest"
-    mkdir -p "$dir"
-    pushd "$dir"
-    # prove with manual precompile if given
-    if [ -n "$guest_manual" ]; then
-        cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
-    fi
-    # prove with no APCs to obtain noapc.json for metrics comparison against case with APCs
-    mkdir -p ${apcs}apc
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion 
+    run_name="$4"
+
+    mkdir -p ${run_name}
     # prove with APCs and record memory usage; default Pgo::Cell mode also collects data on all APC candidates
-    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input $input --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion --apc-candidates-dir ${apcs}apc"
-    # process results
-    basic_metrics
-    plot_cells ${apcs}apc.json
-    plot_effectiveness ${apcs}apc/apc_candidates.json
+    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input $input --autoprecompiles $apcs --metrics ${run_name}/metrics.json --recursion --apc-candidates-dir ${run_name}"
+    plot_cells ${run_name}
     rm debug.pil
-    rm ${apcs}apc/*.cbor
-    popd
+    rm ${run_name}/*.cbor
 }
 
-# keccak for 10000 iterations, 100 apcs
-run_bench guest-keccak guest-keccak-manual-precompile 100 10000
+### Keccak
+dir="results/keccak"
+input="10000"
 
-# run_bench guest-matmul "" 100 0
+mkdir -p "$dir"
+pushd "$dir"
+
+run guest-keccak-manual-precompile "$input" 0 manual
+run guest-keccak "$input" 0 noapc
+run guest-keccak "$input" 100 100apc
+
+basic_metrics
+plot_effectiveness 100apc/apc_candidates.json
+popd
