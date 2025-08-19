@@ -50,6 +50,9 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
+    let constraint_system = remove_trivial_constraints(constraint_system);
+    stats_logger.log("removing trivial constraints", &constraint_system);
+
     let constraint_system =
         remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing free variables", &constraint_system);
@@ -86,8 +89,10 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
     let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
-    for (var, value) in assignments.iter() {
-        log::trace!("  {var} = {value}");
+    if log::log_enabled!(log::Level::Trace) {
+        for (var, value) in assignments.iter() {
+            log::trace!("  {var} = {value}");
+        }
     }
     // Assert that all substitutions are affine so that the degree
     // does not increase.
