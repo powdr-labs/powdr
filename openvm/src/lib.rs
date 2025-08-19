@@ -1668,10 +1668,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 16416,
-                            log_up: 26464,
+                            log_up: 26292,
                         },
                         constraints: 9752,
-                        bus_interactions: 11214,
+                        bus_interactions: 11135,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
