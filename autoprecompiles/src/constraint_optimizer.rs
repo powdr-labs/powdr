@@ -177,12 +177,8 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 .map(|constraint| (variable.clone(), constraint))
         })
         .filter(|(variable, constraint)| match constraint {
-            // TODO: These constraints could be removed also if they are linear in the free variable.
-            // The problem with this currently is that this removes constraints like
-            // `writes_aux__prev_data__3_0 - BusInteractionField(15, 7)` (`writes_aux__prev_data__3_0` is a free variable)
-            // which causes `remove_bus_interaction_variables` to fail, because it doesn't know the definition of the
-            // bus interaction variable.
-            ConstraintRef::AlgebraicConstraint(..) => false,
+            // Remove the algebraic constraint if we can solve for the variable.
+            ConstraintRef::AlgebraicConstraint(constr) => constr.try_solve_for(variable).is_some(),
             ConstraintRef::BusInteraction(bus_interaction) => {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
                 // Only stateless bus interactions can be removed.
