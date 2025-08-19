@@ -69,26 +69,37 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let base = Path::new("tests/apc_builder_outputs");
     let file_path = base.join(format!("{test_name}.txt"));
 
-    if std::env::var("UPDATE_EXPECT")
+    let should_update_expectation = std::env::var("UPDATE_EXPECT")
         .map(|v| v.as_str() == "1")
-        .unwrap_or(false)
-        || !file_path.exists()
-    {
-        // Write the new expected output to the file
-        fs::create_dir_all(base).unwrap();
-        fs::write(&file_path, actual).unwrap();
+        .unwrap_or(false);
 
-        println!("Expected output for `{test_name}` was updated. Re-run the test to confirm.");
-    } else {
-        let expected = fs::read_to_string(&file_path).unwrap();
-        assert_eq!(
-            expected.trim(),
-            actual.trim(),
-            "The output of `{test_name}` does not match the expected output. \
+    let expected = file_path
+        .exists()
+        .then(|| fs::read_to_string(&file_path).unwrap());
+
+    match (expected, should_update_expectation) {
+        (Some(expected), _) if expected == actual => {
+            // Test succeeded.
+        }
+        (Some(expected), false) => {
+            // The expectation file exists, is different from "actual" and we are
+            // not allowed to update it.
+            // Test failed.
+            assert_eq!(
+                expected.trim(),
+                actual.trim(),
+                "The output of `{test_name}` does not match the expected output. \
                  To overwrite the expected output with the currently generated one, \
                  re-run the test with the environment variable `UPDATE_EXPECT=1` or \
                  delete the file `{test_name}.txt`.",
-        );
+            );
+        }
+        _ => {
+            // Expectation file does not exist or is different from "actual" and we are allowed to update it.
+            fs::create_dir_all(base).unwrap();
+            fs::write(&file_path, &actual).unwrap();
+            println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
+        }
     }
 }
 
