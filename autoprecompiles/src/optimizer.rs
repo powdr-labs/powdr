@@ -20,6 +20,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::IsBusStateful;
+use crate::expression_conversion::grouped_expression_to_algebraic_constraint;
 use crate::low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
@@ -328,7 +329,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .algebraic_constraints
             .iter()
             .map(|constraint| SymbolicConstraint {
-                expr: grouped_expression_to_algebraic(constraint),
+                expr: grouped_expression_to_algebraic_constraint(constraint),
             })
             .collect(),
         bus_interactions: constraint_system

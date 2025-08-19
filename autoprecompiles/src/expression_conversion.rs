@@ -16,6 +16,22 @@ pub fn algebraic_to_grouped_expression<T: FieldElement>(
     })
 }
 
+/// Turns a grouped expression, seen as a constraint, into an algebraic expression.
+/// The difference to `grouped_expression_to_algebraic` is that
+/// `grouped_expression_to_algebraic_constraint` removes negations at the outside
+/// because it is assumed that the expression is equated to zero.
+pub fn grouped_expression_to_algebraic_constraint<T: FieldElement>(
+    expr: &GroupedExpression<T, AlgebraicReference>,
+) -> AlgebraicExpression<T> {
+    match grouped_expression_to_algebraic(expr) {
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+            op: AlgebraicUnaryOperator::Minus,
+            expr,
+        }) => *expr, // Remove the negation at the outside.
+        other => other,
+    }
+}
+
 /// Turns a grouped expression back into an algebraic expression.
 /// Tries to simplify the expression wrt negation and constant factors
 /// to aid human readability.
