@@ -26,7 +26,7 @@ use crate::{
     memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
-    BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+    BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
 pub fn optimize<A: Adapter>(
@@ -298,9 +298,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
         constraints: constraint_system
             .algebraic_constraints
             .iter()
-            .map(|constraint| SymbolicConstraint {
-                expr: grouped_expression_to_algebraic(constraint),
-            })
+            .map(|constraint| grouped_expression_to_algebraic(constraint).into())
             .collect(),
         bus_interactions: constraint_system
             .bus_interactions
