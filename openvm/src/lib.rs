@@ -1292,17 +1292,11 @@ mod tests {
     }
 
     #[test]
-    fn ecc_prove_multiple_pgo_modes() {
-        use std::time::Instant;
-
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_HINTS);
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-
+    fn ecc_hint_prove() {
+        let stdin = StdIn::default();
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-
-        let start = Instant::now();
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_simple(
             GUEST_ECC_HINTS,
             config.clone(),
@@ -1311,36 +1305,21 @@ mod tests {
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
         );
-        let elapsed = start.elapsed();
-        tracing::debug!("Proving ecc with PgoConfig::Cell took {:?}", elapsed);
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_HINTS,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!("Proving ecc with PgoConfig::Instruction took {:?}", elapsed);
     }
 
     #[test]
     #[ignore = "Too much RAM"]
-    fn ecc_prove_recursion() {
+    fn ecc_hint_prove_recursion() {
         let stdin = StdIn::default();
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_recursion(
             GUEST_ECC_HINTS,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1362,93 +1341,7 @@ mod tests {
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
-    fn ecc_projective_prove_multiple_pgo_modes() {
-        use std::time::Instant;
-
-        let stdin = StdIn::default();
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
-
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_PROJECTIVE,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!(
-            "Proving ecc projective point implementation with PgoConfig::Cell took {:?}",
-            elapsed
-        );
-
-        let start = Instant::now();
-        prove_simple(
-            GUEST_ECC_PROJECTIVE,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-        let elapsed = start.elapsed();
-        tracing::debug!(
-            "Proving ecc projective point implementation with PgoConfig::Instruction took {:?}",
-            elapsed
-        );
-    }
-
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn ecc_projective_prove_recursion() {
-        let stdin = StdIn::default();
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
-
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
-        prove_recursion(
-            GUEST_ECC_PROJECTIVE,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    #[test]
-    fn ecc_with_hint_prove() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_HINTS);
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-
-        prove_simple(
-            GUEST_ECC_HINTS,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoConfig::Cell(pgo_data, None),
             None,
         );
     }
@@ -1757,41 +1650,7 @@ mod tests {
     }
 
     #[test]
-    fn ecc_with_hint_machine_pgo_instruction() {
-        let stdin = StdIn::default();
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
-
-        test_machine_compilation(
-            GuestTestConfig {
-                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
-                name: GUEST_ECC_HINTS,
-                apc: GUEST_ECC_APC_PGO,
-                skip: GUEST_ECC_SKIP,
-            },
-            MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 28710,
-                            log_up: 44156,
-                        },
-                        constraints: 22127,
-                        bus_interactions: 18188,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect![[r#"
-                    50
-                "#]],
-                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-            },
-            None,
-        );
-    }
-    #[test]
-    fn ecc_with_hint_machine_pgo_cell() {
+    fn ecc_hint_machine_pgo_cell() {
         let stdin = StdIn::default();
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
@@ -1832,82 +1691,6 @@ mod tests {
                         preprocessed: 0,
                         main: 16416,
                         log_up: 26464,
-                    },
-                }
-            "#]]),
-        );
-    }
-
-    #[test]
-    fn ecc_projective_machine_pgo() {
-        let stdin = StdIn::default();
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_PROJECTIVE, GuestOptions::default(), stdin);
-
-        test_machine_compilation(
-            GuestTestConfig {
-                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
-                name: GUEST_ECC_PROJECTIVE,
-                apc: GUEST_ECC_PROJECTIVE_APC_PGO,
-                skip: GUEST_ECC_PROJECTIVE_SKIP,
-            },
-            MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 34964,
-                            log_up: 53668,
-                        },
-                        constraints: 23772,
-                        bus_interactions: 22983,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect![[r#"
-                    50
-                "#]],
-                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-            },
-            None,
-        );
-
-        test_machine_compilation(
-            GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
-                name: GUEST_ECC_PROJECTIVE,
-                apc: GUEST_ECC_PROJECTIVE_APC_PGO,
-                skip: GUEST_ECC_PROJECTIVE_SKIP,
-            },
-            MachineTestMetrics {
-                powdr_expected_sum: expect![[r#"
-                    AirMetrics {
-                        widths: AirWidths {
-                            preprocessed: 0,
-                            main: 23535,
-                            log_up: 37044,
-                        },
-                        constraints: 11800,
-                        bus_interactions: 16512,
-                    }
-                "#]],
-                powdr_expected_machine_count: expect![[r#"
-                    50
-                "#]],
-                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
-                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
-            },
-            Some(expect![[r#"
-                AirWidthsDiff {
-                    before: AirWidths {
-                        preprocessed: 0,
-                        main: 151709,
-                        log_up: 201112,
-                    },
-                    after: AirWidths {
-                        preprocessed: 0,
-                        main: 23535,
-                        log_up: 37044,
                     },
                 }
             "#]]),
