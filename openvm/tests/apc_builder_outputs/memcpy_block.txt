@@ -7,7 +7,7 @@ Instructions:
 
 APC advantage:
   - Main columns: 172 -> 38 (4.53x reduction)
-  - Bus interactions: 87 -> 23 (3.78x reduction)
+  - Bus interactions: 87 -> 22 (3.95x reduction)
   - Constraints: 111 -> 34 (3.26x reduction)
 
 Symbolic machine using 38 unique main columns:
@@ -71,7 +71,6 @@ mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 
 mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_2 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 76800), 12]
-mult=is_valid * 1, args=[cmp_result_1 + cmp_result_2 - 2 * cmp_result_1 * cmp_result_2, 1]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_4 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4 - (15360 * from_state__timestamp_0 + 184320), 12]
 
