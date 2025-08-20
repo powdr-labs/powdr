@@ -82,16 +82,9 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
         // which is equivalent to `right + z * offset = 0` for a new
         // boolean variable `z`.
 
-        // TODO At this point, we could still have z2 = 1 - z1.
-        // So maybe we should use `offset` to normalize which of the two options
-        // for the boolean we used.
-
         let key = -right * T::one().field_div(offset);
         if self.substitutions.contains_key(&key) {
             // We have already performed this transformation before.
-
-            // TODO we could still return the constraint, maybe the solver does not know
-            // about this particular normalization.
             return None;
         }
 
