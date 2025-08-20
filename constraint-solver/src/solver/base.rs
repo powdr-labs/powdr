@@ -8,7 +8,7 @@ use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
-use crate::solver::boolean_extractor::try_extract_boolean;
+use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
@@ -45,6 +45,8 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
     /// A dispenser for fresh variables.
     var_dispenser: VarDisp,
+    /// The boolean extraction component.
+    boolean_extractor: BooleanExtractor<T, V>,
     /// The linearizing component.
     linearizer: Linearizer<T, V>,
 }
@@ -93,6 +95,7 @@ impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
             assignments_to_return: Default::default(),
             equivalent_expressions_cache: Default::default(),
             var_dispenser: Default::default(),
+            boolean_extractor: Default::default(),
             linearizer: Default::default(),
             bus_interaction_handler,
         }
@@ -133,12 +136,13 @@ where
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
         // Apply the deduced assignments to the substitutions we performed
-        // while linearizing.
+        // while linearizing and boolean extracting.
         // We assume that the user of the solver applies the assignments to
         // their expressions and thus "incoming" expressions used in the functions
         // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
         // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
+        self.boolean_extractor.apply_assignments(&assignments);
         Ok(assignments)
     }
 
@@ -264,11 +268,17 @@ where
         &mut self,
         constr: GroupedExpression<T, V>,
     ) -> impl Iterator<Item = GroupedExpression<T, V>> {
-        let extracted = try_extract_boolean(&constr, &mut || {
-            let v = self.var_dispenser.next_boolean();
-            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
-            v
-        });
+        let mut new_boolean_var = None;
+        let extracted = self
+            .boolean_extractor
+            .try_extract_boolean(&constr, &mut || {
+                let v = self.var_dispenser.next_boolean();
+                new_boolean_var = Some(v.clone());
+                v
+            });
+        if let Some(v) = new_boolean_var {
+            self.add_range_constraint(&v, RangeConstraint::from_mask(1))
+        }
         std::iter::once(constr).chain(extracted)
     }
 
