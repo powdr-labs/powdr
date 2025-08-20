@@ -9,7 +9,7 @@ use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 use crate::solver::boolean_extractor::try_extract_boolean;
-use crate::solver::linearized::Linearizer;
+use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
@@ -17,7 +17,6 @@ use crate::utils::possible_concrete_values;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
-use std::iter::once;
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 ///
