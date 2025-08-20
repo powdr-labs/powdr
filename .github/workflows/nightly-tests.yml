@@ -62,8 +62,8 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-      - name: Install Rust toolchain 1.85
-        run: rustup toolchain install 1.85
+      - name: Install Rust toolchain 1.88
+        run: rustup toolchain install 1.88
       - name: Install nightly
         run: rustup toolchain install nightly-2025-05-14 --component rust-src
       - name: Install nightly
@@ -101,8 +101,8 @@ jobs:
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.85
-        run: rustup toolchain install 1.85
+      - name: Install Rust toolchain 1.88
+        run: rustup toolchain install 1.88
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
       - name: Install test dependencies
@@ -136,15 +136,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
       - name: Build
         run: cargo build --release -p powdr-openvm
       - name: Run tests
         run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
 
       - name: Install cargo openvm
-      # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
-      # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
+        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
         run: |
           rustup toolchain install 1.88
           cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm

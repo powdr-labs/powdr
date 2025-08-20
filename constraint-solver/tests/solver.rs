@@ -438,3 +438,28 @@ fn ternary_flags() {
         vec![("is_load", 1.into())],
     );
 }
+
+#[test]
+fn bit_decomposition_bug() {
+    let algebraic_constraints = vec![
+        var("cmp_result_0") * (var("cmp_result_0") - constant(1)),
+        var("imm_0") - constant(8),
+        var("cmp_result_0") * var("imm_0")
+            - constant(4) * var("cmp_result_0")
+            - var("BusInteractionField(10, 2)")
+            + constant(4),
+        (var("BusInteractionField(10, 2)") - constant(4))
+            * (var("BusInteractionField(10, 2)") - constant(8)),
+    ];
+    let constraint_system = ConstraintSystem {
+        algebraic_constraints,
+        bus_interactions: vec![],
+    };
+    // The solver used to infer more assignments due to a bug
+    // in the bit decomposition logic.
+    assert_solve_result(
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
+        vec![("imm_0", 8.into())],
+    );
+}

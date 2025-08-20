@@ -7,6 +7,7 @@ pub use blocks::{pgo_config, BasicBlock, PgoConfig, PgoType};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -29,6 +30,7 @@ pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
+pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
 pub mod powdr;
@@ -94,7 +96,14 @@ impl<T: Display> Display for SymbolicConstraint<T> {
 
 impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     fn from(expr: AlgebraicExpression<T>) -> Self {
-        SymbolicConstraint { expr }
+        let expr = match expr {
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: AlgebraicUnaryOperator::Minus,
+                expr,
+            }) => *expr, // Remove the negation at the outside.
+            other => other,
+        };
+        Self { expr }
     }
 }
 

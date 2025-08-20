@@ -15,6 +15,10 @@ use powdr_number::FieldElement;
 
 pub type RangeConstraints<T, V> = Vec<(GroupedExpression<T, V>, RangeConstraint<T>)>;
 
+/// The requested range constraint cannot be implemented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MakeRangeConstraintsError(pub String);
+
 pub trait RangeConstraintHandler<T: FieldElement> {
     /// If the bus interaction *only* enforces range constraints, returns them
     /// as a map of expressions to range constraints.
@@ -37,13 +41,13 @@ pub trait RangeConstraintHandler<T: FieldElement> {
     /// range constraints using a single bus interaction.
     /// As all input range constraints are unconditional, the multiplicity of
     /// the returned bus interactions should be 1.
-    /// Note that only range constraints returned from `pure_range_constraints`
-    /// are passed here, so the implementation should always be able to construct
-    /// a valid bus interaction from them.
+    /// If one of the range constraints cannot be implemented exactly, an error
+    /// is returned. For soundness, the implementation should *never* relax the
+    /// range constraint.
     fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
         range_constraints: RangeConstraints<T, V>,
-    ) -> Vec<BusInteraction<GroupedExpression<T, V>>>;
+    ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError>;
 }
 
 /// Optimizes range constraints, minimizing the number of bus interactions.
@@ -106,8 +110,11 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     let to_constrain = to_constrain
         .into_iter()
         .filter(|(expr, rc)| {
-            if rc == &RangeConstraint::from_mask(1) && expr.degree() < degree_bound.identities {
-                bit_constraints.push(expr.clone() * (expr.clone() - GroupedExpression::one()));
+            let bit_range_constraint = expr.clone() * (expr.clone() - GroupedExpression::one());
+            if rc == &RangeConstraint::from_mask(1)
+                && bit_range_constraint.degree() <= degree_bound.identities
+            {
+                bit_constraints.push(bit_range_constraint);
                 false
             } else {
                 true
@@ -116,7 +123,12 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
         .collect();
 
     // Create all range constraints in batch and add them to the system.
-    let range_constraints = bus_interaction_handler.batch_make_range_constraints(to_constrain);
+    // Note that unwrapping here should be fine, because we only pass range constraints
+    // that were returned from `pure_range_constraints`, so clearly the VM is able to
+    // implement them.
+    let range_constraints = bus_interaction_handler
+        .batch_make_range_constraints(to_constrain)
+        .unwrap();
     for bus_interaction in &range_constraints {
         assert_eq!(bus_interaction.multiplicity.try_to_number(), Some(T::one()));
     }
@@ -148,16 +160,14 @@ pub mod utils {
         })
     }
 
-    /// Given a a set of range constraints, filters out those which can be checked via a
-    /// byte constraint.
+    /// Given a set of range constraints, filters out the byte constraints and returns them.
     pub fn filter_byte_constraints<T: FieldElement, V: Ord + Clone + Eq + Display + Hash>(
         range_constraints: &mut RangeConstraints<T, V>,
     ) -> Vec<GroupedExpression<T, V>> {
         let mut byte_constraints = Vec::new();
         range_constraints.retain(|(expr, rc)| match range_constraint_to_num_bits(rc) {
-            Some(bits) if bits <= 8 => {
-                let factor = GroupedExpression::from_number(T::from(1u64 << (8 - bits)));
-                byte_constraints.push(expr.clone() * factor.clone());
+            Some(8) => {
+                byte_constraints.push(expr.clone());
                 false
             }
             _ => true,

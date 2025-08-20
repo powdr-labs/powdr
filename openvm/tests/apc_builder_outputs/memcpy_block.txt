@@ -77,7 +77,7 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_4 + 15360 * 
 mult=is_valid * 1, args=[b__0_0, 3, b__0_0 + 3 - 2 * a__0_0, 1]
 mult=diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1, args=[diff_val_1 - 1, 0, 0, 0]
 mult=diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2, args=[diff_val_2 - 1, 0, 0, 0]
-mult=is_valid * 1, args=[cmp_result_1 + cmp_result_2 - 2 * cmp_result_1 * cmp_result_2, 0, 0, 0]
+mult=is_valid * 1, args=[b_msb_f_2, 0, 0, 0]
 
 // Algebraic constraints:
 cmp_result_1 * (cmp_result_1 - 1) = 0
@@ -94,13 +94,13 @@ diff_marker__0_1 * ((a__0_0 - 1) * (2 * cmp_result_1 - 1) + diff_val_1) = 0
 (1 - (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1)) * cmp_result_1 = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 diff_marker__3_2 * (diff_marker__3_2 - 1) = 0
--((1 - diff_marker__3_2) * (writes_aux__prev_data__3_2 * (2 * cmp_result_2 - 1))) = 0
-diff_marker__3_2 * (writes_aux__prev_data__3_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
+(1 - diff_marker__3_2) * (b_msb_f_2 * (2 * cmp_result_2 - 1)) = 0
+diff_marker__3_2 * (b_msb_f_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 diff_marker__2_2 * (diff_marker__2_2 - 1) = 0
--((1 - (diff_marker__2_2 + diff_marker__3_2)) * (writes_aux__prev_data__2_2 * (2 * cmp_result_2 - 1))) = 0
+(1 - (diff_marker__2_2 + diff_marker__3_2)) * (writes_aux__prev_data__2_2 * (2 * cmp_result_2 - 1)) = 0
 diff_marker__2_2 * (writes_aux__prev_data__2_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 diff_marker__1_2 * (diff_marker__1_2 - 1) = 0
--((1 - (diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * (writes_aux__prev_data__1_2 * (2 * cmp_result_2 - 1))) = 0
+(1 - (diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * (writes_aux__prev_data__1_2 * (2 * cmp_result_2 - 1)) = 0
 diff_marker__1_2 * (writes_aux__prev_data__1_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 diff_marker__0_2 * (diff_marker__0_2 - 1) = 0
 (1 * is_valid - (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * ((1 - writes_aux__prev_data__0_2) * (2 * cmp_result_2 - 1)) = 0
