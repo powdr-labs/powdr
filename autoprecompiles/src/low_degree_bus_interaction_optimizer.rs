@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
@@ -51,10 +52,13 @@ impl<
                 if let Some((replacement, range_constraints)) =
                     self.try_replace_bus_interaction(&bus_int)
                 {
-                    // If we found a replacement, add the polynomial constraints and replace
-                    // the bus interaction with interactions implementing the range constraints.
+                    // If we found a replacement, add the polynomial constraints (unless it is
+                    // trivially zero) and replace the bus interaction with interactions implementing
+                    // the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
-                    new_constraints.push(replacement);
+                    if !replacement.is_zero() {
+                        new_constraints.push(replacement);
+                    }
 
                     self.bus_interaction_handler
                         .batch_make_range_constraints(range_constraints)

@@ -159,7 +159,7 @@ where
             .collect_vec();
 
         self.constraint_system
-            .add_algebraic_constraints(constraints);
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
     }
 
     fn add_bus_interactions(
