@@ -84,6 +84,8 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
 
         if offset.is_zero() {
             // In this special case, we do not need a new variable.
+
+            // TOOD we might add the same constraint multiple times
             return Some(right.clone());
         }
         // TODO At this point, we could still have z2 = 1 - z1.

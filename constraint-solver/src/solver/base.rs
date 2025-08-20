@@ -544,7 +544,7 @@ where
                         new_boolean_var = Some(v.clone());
                         v
                     })?;
-                vars_to_add.push(new_boolean_var.unwrap().clone());
+                vars_to_add.extend(new_boolean_var);
                 Some(extracted)
             })
             .collect_vec();
