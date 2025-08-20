@@ -22,21 +22,21 @@ run_bench() {
     echo "==== ${run_name} ===="
     echo ""
 
-    mkdir -p ${run_name}
+    mkdir -p "${run_name}"
 
-    psrecord --include-children --interval 1 --log ${run_name}/psrecord.csv --log-format csv --plot ${run_name}/psrecord.png \
-        "cargo run --bin powdr_openvm -r prove $guest --input $input --autoprecompiles $apcs --metrics ${run_name}/metrics.json --recursion --apc-candidates-dir ${run_name}"
+    psrecord --include-children --interval 1 --log "${run_name}"/psrecord.csv --log-format csv --plot "${run_name}"/psrecord.png \
+        'cargo run --bin powdr_openvm -r prove "$guest" --input "$input" --autoprecompiles "$apcs" --metrics "${run_name}"/metrics.json --recursion --apc-candidates-dir "${run_name}"'
     
-    python3 $SCRIPTS_DIR/plot_trace_cells.py -o ${run_name}/trace_cells.png ${run_name}/metrics.json > ${run_name}/trace_cells.txt
+    python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
     # apc_candidates.json is only available when apcs > 0
     if [ "${apcs:-0}" -ne 0 ]; then
-        python3 $SCRIPTS_DIR/../../autoprecompiles/scripts/plot_effectiveness.py ${run_name}/apc_candidates.json --output ${run_name}/effectiveness.png
+        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${run_name}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
 
     # Clean up some files that we don't want to to push.
     rm debug.pil
-    rm -f ${run_name}/*.cbor
+    rm -f "${run_name}"/*.cbor
 }
 
 ### Keccak
@@ -62,5 +62,5 @@ pushd "$dir"
 run_bench guest-matmul 0 0 noapc
 run_bench guest-matmul 0 100 100apc
 
-python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
