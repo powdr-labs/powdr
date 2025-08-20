@@ -131,7 +131,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 
 /// Tries to find a number that is equivalent to the expression and returns it
 /// as a GroupedExpression.
-/// Returns None if the expression already is a number.
+/// Returns None if it was unsuccessful or if the expression already is a number.
 fn try_replace_by_number<T: FieldElement, V: Clone + Ord + Hash + Display>(
     expr: &GroupedExpression<T, V>,
     solver: &impl Solver<T, V>,
