@@ -17,6 +17,7 @@ use crate::utils::possible_concrete_values;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
+use std::iter::once;
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 ///
@@ -155,7 +156,7 @@ where
         let constraints = constraints
             .into_iter()
             .filter(|c| !c.is_zero())
-            .flat_map(|constr| self.extract_boolean(constr))
+            .flat_map(|constr| once(constr.clone()).chain(self.try_extract_boolean(&constr)))
             // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
@@ -263,23 +264,21 @@ where
 {
     /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
-    /// This function will always return the original constraint as well as any extracted constraints.
-    fn extract_boolean(
+    /// Only returns the extracted constraint, not the original.
+    fn try_extract_boolean(
         &mut self,
-        constr: GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        constr: &GroupedExpression<T, V>,
+    ) -> Option<GroupedExpression<T, V>> {
         let mut new_boolean_var = None;
         let extracted = self
             .boolean_extractor
-            .try_extract_boolean(&constr, &mut || {
+            .try_extract_boolean(constr, &mut || {
                 let v = self.var_dispenser.next_boolean();
                 new_boolean_var = Some(v.clone());
                 v
-            });
-        if let Some(v) = new_boolean_var {
-            self.add_range_constraint(&v, RangeConstraint::from_mask(1))
-        }
-        std::iter::once(constr).chain(extracted)
+            })?;
+        self.add_range_constraint(&new_boolean_var.unwrap(), RangeConstraint::from_mask(1));
+        Some(extracted)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
@@ -334,6 +333,7 @@ where
         + Hash
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
+    VD: VarDispenser<V>,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
@@ -525,10 +525,26 @@ where
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
+
+        let new_constraints = self
+            .constraint_system
+            .system()
+            .constraints_referencing_variables(once(variable.clone()))
+            .filter_map(|constr| match constr {
+                ConstraintRef::AlgebraicConstraint(c) => Some(c),
+                ConstraintRef::BusInteraction(_) => None,
+            })
+            .cloned()
+            // TODO this is super wasteful.
+            .collect_vec()
+            .into_iter()
+            .flat_map(|c| self.try_extract_boolean(&c))
+            .collect_vec();
+
+        self.add_algebraic_constraints(new_constraints);
+
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
-        // TODO we could check if the variable already has an assignment,
-        // but usually it should not be in the system once it has been assigned.
         true
     }
 }
