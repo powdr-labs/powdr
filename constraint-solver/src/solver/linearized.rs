@@ -131,6 +131,24 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
                 .map(|var| GroupedExpression::from_unknown_variable(var.clone()))
         }
     }
+
+    /// Returns an iterator over expressions equivalent to `expr` with the idea that
+    /// they might allow to answer a query better or worse.
+    /// It usually returns the original expression, a single variable that it was
+    /// substituted into during a previous linearization and a previously linearized version.
+    pub fn internalized_versions_of_expression(
+        &self,
+        expr: &GroupedExpression<T, V>,
+    ) -> impl Iterator<Item = GroupedExpression<T, V>> + Clone {
+        let direct = expr.clone();
+        // See if we have a direct substitution for the expression by a variable.
+        let simple_substituted = self.try_substitute_by_existing_var(expr);
+        // Try to re-do the linearization
+        let substituted = self.try_linearize_existing(expr.clone());
+        std::iter::once(direct)
+            .chain(simple_substituted)
+            .chain(substituted)
+    }
 }
 
 impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {

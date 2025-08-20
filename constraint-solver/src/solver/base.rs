@@ -20,6 +20,16 @@ use std::hash::Hash;
 use std::iter::once;
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
+///
+/// It contains two main components that transform constraints: The boolean extractor and the linearizer.
+///
+/// The boolean extractor is run first and tries to turn quadratic constraints into affine constraints by
+/// introducing new boolean variables.
+///
+/// The linearizer is run second and replaces all non-affine sub-components of constraints by new variables.
+/// It also replaces bus interaction fields by new variables.
+///
+/// For both of these transforming components, the original constraints are also kept unmodified.
 pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
@@ -245,7 +255,8 @@ where
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
-        self.internalized_versions_of_expression(expr)
+        self.linearizer
+            .internalized_versions_of_expression(expr)
             .fold(RangeConstraint::default(), |acc, expr| {
                 acc.conjunction(&expr.range_constraint(self))
             })
@@ -478,22 +489,6 @@ where
         // TODO we could check if the variable already has an assignment,
         // but usually it should not be in the system once it has been assigned.
         true
-    }
-
-    /// Returns an iterator over expressions equivalent to `expr` with the idea that
-    /// they might allow to answer a query better or worse.
-    /// It usually returns the original expression, a single variable that it was
-    /// substituted into during a previous linearization and a previously linearized version.
-    fn internalized_versions_of_expression(
-        &self,
-        expr: &GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> + Clone {
-        let direct = expr.clone();
-        // See if we have a direct substitution for the expression by a variable.
-        let simple_substituted = self.linearizer.try_substitute_by_existing_var(expr);
-        // Try to re-do the linearization
-        let substituted = self.linearizer.try_linearize_existing(expr.clone());
-        once(direct).chain(simple_substituted).chain(substituted)
     }
 }
 
