@@ -46,7 +46,8 @@ run_bench() {
 
 ### Keccak
 dir="results/keccak"
-input="10000"
+# TODO: Make 10k again
+input="10"
 
 mkdir -p "$dir"
 pushd "$dir"
