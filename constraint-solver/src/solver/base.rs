@@ -526,6 +526,7 @@ where
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
 
+        let mut vars_to_add = vec![];
         let new_constraints = self
             .constraint_system
             .system()
@@ -534,12 +535,22 @@ where
                 ConstraintRef::AlgebraicConstraint(c) => Some(c),
                 ConstraintRef::BusInteraction(_) => None,
             })
-            .cloned()
-            // TODO this is super wasteful.
-            .collect_vec()
-            .into_iter()
-            .flat_map(|c| self.try_extract_boolean(&c))
+            .flat_map(|constr| {
+                let mut new_boolean_var = None;
+                let extracted = self
+                    .boolean_extractor
+                    .try_extract_boolean(constr, &mut || {
+                        let v = self.var_dispenser.next_boolean();
+                        new_boolean_var = Some(v.clone());
+                        v
+                    })?;
+                vars_to_add.push(new_boolean_var.unwrap().clone());
+                Some(extracted)
+            })
             .collect_vec();
+        for v in vars_to_add {
+            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
+        }
 
         self.add_algebraic_constraints(new_constraints);
 
