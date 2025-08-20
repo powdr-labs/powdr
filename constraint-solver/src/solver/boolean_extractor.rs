@@ -93,16 +93,13 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
         let key = -right * T::one().field_div(offset);
         if self.substitutions.contains_key(&key) {
             // We have already performed this transformation before.
-
-            // TODO we could still return the constraint, maybe the solver does not know
-            // about this particular normalization.
             return None;
         }
 
         if key.try_to_simple_unknown().is_some() {
             // In this case we don't gain anything because the new variable `z` will just
             // be equivalent to the single variable in `right`.
-            return None;
+            None
         } else {
             let z = var_dispenser();
 
