@@ -299,6 +299,9 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
     ///
     /// Note this does NOT work properly if the variable is used inside a
     /// known SymbolicExpression.
+    ///
+    /// It does not delete the occurrence of `variable` so that it can be used to check
+    /// which constraints it used to occur in.
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         let items = self
             .variable_occurrences
@@ -446,6 +449,9 @@ where
 
     /// Substitutes a variable with a known value in the whole system.
     /// This function also updates the queue accordingly.
+    ///
+    /// It does not delete the occurrence of `variable` so that it can be used to check
+    /// which constraints it used to occur in.
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         self.constraint_system
             .substitute_by_unknown(variable, substitution);
