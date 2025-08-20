@@ -11,10 +11,10 @@ use crate::{
 };
 
 pub struct BooleanExtractor<T, V> {
-    // If (expr, z) is in the map, it means that
-    // we have transformed a constraint `left * right = 0` into
-    // `right + z * offset = 0`, where `z` is a new boolean variable
-    // and `expr = -right / offset = z`.
+    /// If (expr, z) is in the map, it means that
+    /// we have transformed a constraint `left * right = 0` into
+    /// `right + z * offset = 0`, where `z` is a new boolean variable
+    /// and `expr = -right / offset = z`.
     substitutions: HashMap<GroupedExpression<T, V>, V>,
 }
 
