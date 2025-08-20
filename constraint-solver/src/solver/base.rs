@@ -49,7 +49,7 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     linearizer: Linearizer<T, V>,
 }
 
-trait VarDispenser<V> {
+pub trait VarDispenser<V> {
     /// Returns a fresh new variable of kind "boolean".
     fn next_boolean(&mut self) -> V;
 
@@ -148,44 +148,18 @@ where
     ) {
         self.equivalent_expressions_cache.clear();
 
-        let mut new_vars_with_ranges = vec![];
-
         let constraints = constraints
             .into_iter()
             .filter(|c| !c.is_zero())
-            .flat_map(|constr| {
-                // Perform boolean extraction
-                let extracted = try_extract_boolean(&constr, &mut || {
-                    let v = self.var_dispenser.next_boolean();
-                    new_vars_with_ranges.push((v.clone(), RangeConstraint::from_mask(1)));
-                    v
-                });
-                std::iter::once(constr).chain(extracted)
-            })
-            // needed because of access to the var dispenser.
+            .flat_map(|constr| self.extract_boolean(constr))
+            // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
-            .flat_map(|constr| {
-                // Perform linearization
-                let mut constrs = vec![constr.clone()];
-                if !constr.is_affine() {
-                    let linearized = self.linearizer.linearize(
-                        constr,
-                        &mut || self.var_dispenser.next_linear(),
-                        &mut constrs,
-                    );
-                    constrs.push(linearized);
-                }
-                constrs
-            });
+            .flat_map(|constr| self.linearize_expression(constr))
+            .collect_vec();
 
         self.constraint_system
             .add_algebraic_constraints(constraints);
-
-        // Add the variables and their range constraints.
-        for (v, rc) in new_vars_with_ranges {
-            self.add_range_constraint(&v, rc);
-        }
     }
 
     fn add_bus_interactions(
@@ -197,16 +171,7 @@ where
         let bus_interactions = bus_interactions
             .into_iter()
             .map(|bus_interaction| {
-                bus_interaction
-                    .fields()
-                    .map(|expr| {
-                        self.linearizer.substitute_by_var(
-                            expr.clone(),
-                            &mut || self.var_dispenser.next_linear(),
-                            &mut constraints_to_add,
-                        )
-                    })
-                    .collect::<BusInteraction<_>>()
+                self.linearize_bus_interaction(bus_interaction, &mut constraints_to_add)
             })
             .collect_vec();
         // We only substituted by a variable, but the substitution was not yet linearized.
@@ -278,6 +243,75 @@ where
                 possible_concrete_values(&(a_eq - b_eq), self, 20)
                     .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
             })
+    }
+}
+
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>>
+    BaseSolver<T, V, BusInter, VD>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Display
+        + Hash
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
+{
+    /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
+    /// by introducing new boolean variables.
+    /// This function will always return the original constraint as well as any extracted constraints.
+    fn extract_boolean(
+        &mut self,
+        constr: GroupedExpression<T, V>,
+    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        let extracted = try_extract_boolean(&constr, &mut || {
+            let v = self.var_dispenser.next_boolean();
+            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
+            v
+        });
+        std::iter::once(constr).chain(extracted)
+    }
+
+    /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
+    /// by new variables.
+    /// This function will always return the original constraint as well as the linearized constraints
+    /// and equivalences needed after linearization.
+    fn linearize_expression(
+        &mut self,
+        constr: GroupedExpression<T, V>,
+    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        let mut constrs = vec![constr.clone()];
+        if !constr.is_affine() {
+            let linearized = self.linearizer.linearize(
+                constr,
+                &mut || self.var_dispenser.next_linear(),
+                &mut constrs,
+            );
+            constrs.push(linearized);
+        }
+        constrs.into_iter()
+    }
+
+    /// Replaces all bus interaction fields by new variables.
+    /// Adds the equality constraint to `constraint_collection` and returns the modified
+    /// bus interaction.
+    ///
+    /// Note that the constraints added to `constraint_collection` are not yet boolean-extracted or linearized.
+    fn linearize_bus_interaction(
+        &mut self,
+        bus_interaction: BusInteraction<GroupedExpression<T, V>>,
+        constraint_collection: &mut Vec<GroupedExpression<T, V>>,
+    ) -> BusInteraction<GroupedExpression<T, V>> {
+        bus_interaction
+            .fields()
+            .map(|expr| {
+                self.linearizer.substitute_by_var(
+                    expr.clone(),
+                    &mut || self.var_dispenser.next_linear(),
+                    constraint_collection,
+                )
+            })
+            .collect()
     }
 }
 
@@ -481,8 +515,6 @@ where
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
-        // TODO the variable refrence thing is still tehre, we can get all constrainst that reference `variable`
-
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
         // TODO we could check if the variable already has an assignment,
