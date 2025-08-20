@@ -1715,11 +1715,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2799,
-                            log_up: 4412,
+                            main: 1809,
+                            log_up: 3028,
                         },
                         constraints: 235,
-                        bus_interactions: 2204,
+                        bus_interactions: 1512,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1743,11 +1743,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2799,
-                            log_up: 4412,
+                            main: 1809,
+                            log_up: 3028,
                         },
                         constraints: 235,
-                        bus_interactions: 2204,
+                        bus_interactions: 1512,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
