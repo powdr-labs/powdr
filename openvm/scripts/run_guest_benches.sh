@@ -36,6 +36,8 @@ run_bench() {
     apcs="$3"
     run_name="$4"
 
+    echo "\n==== ${run_name} ====\n"
+
     mkdir -p ${run_name}
     # prove with APCs and record memory usage; default Pgo::Cell mode also collects data on all APC candidates
     with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input $input --autoprecompiles $apcs --metrics ${run_name}/metrics.json --recursion --apc-candidates-dir ${run_name}"
