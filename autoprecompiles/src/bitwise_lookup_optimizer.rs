@@ -108,7 +108,9 @@ pub fn optimize_bitwise_lookup<T: FieldElement, V: Hash + Eq + Clone + Ord + Deb
             multiplicity: One::one(),
         });
     }
-    system.algebraic_constraints.extend(new_constraints);
+    system
+        .algebraic_constraints
+        .extend(new_constraints.into_iter().filter(|expr| !expr.is_zero()));
     system
 }
 

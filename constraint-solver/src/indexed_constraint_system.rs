@@ -217,7 +217,7 @@ fn retain<V, Item>(
     occurrences.retain(|_, occurrences| !occurrences.is_empty());
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
     /// Adds new algebraic constraints to the system.
     pub fn add_algebraic_constraints(
         &mut self,
