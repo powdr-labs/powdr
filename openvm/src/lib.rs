@@ -1559,11 +1559,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14702,
-                            log_up: 23300,
+                            main: 14560,
+                            log_up: 23156,
                         },
-                        constraints: 4393,
-                        bus_interactions: 11419,
+                        constraints: 4261,
+                        bus_interactions: 11345,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1715,10 +1715,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1809,
+                            main: 1757,
                             log_up: 3028,
                         },
-                        constraints: 235,
+                        constraints: 183,
                         bus_interactions: 1512,
                     }
                 "#]],
@@ -1743,10 +1743,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1809,
+                            main: 1757,
                             log_up: 3028,
                         },
-                        constraints: 235,
+                        constraints: 183,
                         bus_interactions: 1512,
                     }
                 "#]],
@@ -1771,10 +1771,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1809,
+                            main: 1757,
                             log_up: 3028,
                         },
-                        constraints: 235,
+                        constraints: 183,
                         bus_interactions: 1512,
                     }
                 "#]],
@@ -1793,7 +1793,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 1809,
+                        main: 1757,
                         log_up: 3028,
                     },
                 }
