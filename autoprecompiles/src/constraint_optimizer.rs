@@ -379,7 +379,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
     constraint_system
 }
 
-/// If a constraint contains the same factor multiple times removes that factor.
+/// If a constraint contains the same factor multiple times removes the duplicate factors.
 fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
