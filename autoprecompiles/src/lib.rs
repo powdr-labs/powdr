@@ -22,7 +22,6 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 pub mod adapter;
-mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
