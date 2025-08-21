@@ -17,7 +17,6 @@ use crate::utils::possible_concrete_values;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
-use std::iter::once;
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 ///
@@ -334,7 +333,6 @@ where
         + Hash
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
-    VD: VarDispenser<V>,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
@@ -526,32 +524,10 @@ where
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
-
-        let mut vars_to_boolean_constrain = vec![];
-        let new_constraints = self
-            .constraint_system
-            .system()
-            .constraints_referencing_variables(once(variable.clone()))
-            .filter_map(|constr| match constr {
-                ConstraintRef::AlgebraicConstraint(c) => Some(c),
-                ConstraintRef::BusInteraction(_) => None,
-            })
-            .flat_map(|constr| {
-                let (constr, new_var) = self
-                    .boolean_extractor
-                    .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
-                vars_to_boolean_constrain.extend(new_var);
-                Some(constr)
-            })
-            .collect_vec();
-        for v in vars_to_boolean_constrain {
-            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
-        }
-
-        self.add_algebraic_constraints(new_constraints);
-
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
+        // TODO we could check if the variable already has an assignment,
+        // but usually it should not be in the system once it has been assigned.
         true
     }
 }
