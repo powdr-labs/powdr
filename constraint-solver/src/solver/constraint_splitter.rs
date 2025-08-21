@@ -44,19 +44,20 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             // We are done anyway.
             continue;
         }
-        // The original constraint is equivalent to `candidate + rest = constant`.
+        // The original constraint is equivalent to `candidate.expr + rest = constant / candidate.coeff`.
         // Now we try to extract the smallest coefficient in rest.
-        let smallest_coeff = rest.iter().map(|(coeff, _)| *coeff).min().unwrap();
+        let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
         assert_ne!(smallest_coeff, 0.into());
         assert!(smallest_coeff.is_in_lower_half());
 
         let rest: GroupedExpression<_, _> = rest
             .into_iter()
-            .map(|(coeff, expr)| expr * &T::from(coeff / smallest_coeff))
+            .map(|comp| GroupedExpression::from(comp / smallest_coeff))
             .sum();
 
-        let candidate_rc = candidate.range_constraint(range_constraints);
-        println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
+        let candidate_rc = candidate.expr.range_constraint(range_constraints);
+        println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {} and rest {rest} (smallest coeff: {smallest_coeff})",
+    candidate.coeff);
         // TODO do we need to compute the full range constraint of the complete expression?
         // TODO what about `constant`?
         if candidate_rc.is_unconstrained()
@@ -81,7 +82,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
 
         if let Some(solution) = candidate_rc
             // TODO what if the field div here is not a division without remainder in the integers?
-            .has_unique_modular_solution(constant.field_div(candidate_coeff), smallest_coeff)
+            .has_unique_modular_solution(constant.field_div(candidate.coeff), smallest_coeff)
         {
             // TODO do we need to modify constant in some way?
 
@@ -93,7 +94,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             //     "Adjusting constant from {constant} to {}",
             //     constant - solution * *candidate_coeff
             // );
-            constant -= solution * *candidate_coeff;
+            constant -= solution * *candidate.coeff;
             // Substitute `candidate = solution` in our expression
             // by replacing the component by zero and subtracting
             // the solution from the constant.
@@ -176,6 +177,12 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> Div<T::FieldType> for Component<T,
             coeff: self.coeff / rhs,
             expr: self.expr,
         }
+    }
+}
+
+impl<T: RuntimeConstant, V: Ord + Clone + Eq> From<Component<T, V>> for GroupedExpression<T, V> {
+    fn from(comp: Component<T, V>) -> Self {
+        comp.expr * T::from(comp.coeff)
     }
 }
 
