@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef};
@@ -7,6 +8,9 @@ use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
+use crate::solver::boolean_extractor::try_extract_boolean;
+use crate::solver::linearizer::Linearizer;
+use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
 
@@ -15,7 +19,17 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
-pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler> {
+///
+/// It contains two main components that transform constraints: The boolean extractor and the linearizer.
+///
+/// The boolean extractor is run first and tries to turn quadratic constraints into affine constraints by
+/// introducing new boolean variables.
+///
+/// The linearizer is run second and replaces all non-affine sub-components of constraints by new variables.
+/// It also replaces bus interaction fields by new variables.
+///
+/// For both of these transforming components, the original constraints are also kept unmodified.
+pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystemWithQueue<T, V>,
@@ -29,21 +43,63 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler> {
     assignments_to_return: Vec<VariableAssignment<T, V>>,
     /// A cache of expressions that are equivalent to a given expression.
     equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
+    /// A dispenser for fresh variables.
+    var_dispenser: VarDisp,
+    /// The linearizing component.
+    linearizer: Linearizer<T, V>,
 }
 
-impl<T: RuntimeConstant, V, B: BusInteractionHandler<T::FieldType>> BaseSolver<T, V, B> {
+pub trait VarDispenser<V> {
+    /// Returns a fresh new variable of kind "boolean".
+    fn next_boolean(&mut self) -> V;
+
+    /// Returns a fresh new variable of kind "linear".
+    fn next_linear(&mut self) -> V;
+
+    /// Returns an iterator over all variables of kind "linear" dispensed in the past.
+    fn all_linearized_vars(&self) -> impl Iterator<Item = V>;
+}
+
+#[derive(Default)]
+pub struct VarDispenserImpl {
+    next_boolean_id: usize,
+    next_linearized_id: usize,
+}
+
+impl<V> VarDispenser<Variable<V>> for VarDispenserImpl {
+    fn next_boolean(&mut self) -> Variable<V> {
+        let id = self.next_boolean_id;
+        self.next_boolean_id += 1;
+        Variable::Boolean(id)
+    }
+
+    fn next_linear(&mut self) -> Variable<V> {
+        let id = self.next_linearized_id;
+        self.next_linearized_id += 1;
+        Variable::Linearized(id)
+    }
+
+    /// Returns an iterator over all linearized variables dispensed in the past.
+    fn all_linearized_vars(&self) -> impl Iterator<Item = Variable<V>> {
+        (0..self.next_linearized_id).map(Variable::Linearized)
+    }
+}
+
+impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
     pub fn new(bus_interaction_handler: B) -> Self {
         BaseSolver {
             constraint_system: Default::default(),
             range_constraints: Default::default(),
             assignments_to_return: Default::default(),
             equivalent_expressions_cache: Default::default(),
+            var_dispenser: Default::default(),
+            linearizer: Default::default(),
             bus_interaction_handler,
         }
     }
 }
 
-impl<T, V, BusInter> RangeConstraintProvider<T::FieldType, V> for BaseSolver<T, V, BusInter>
+impl<T, V, BusInter, VD> RangeConstraintProvider<T::FieldType, V> for BaseSolver<T, V, BusInter, VD>
 where
     V: Clone + Hash + Eq,
     T: RuntimeConstant,
@@ -53,16 +109,16 @@ where
     }
 }
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Hash + Display, BusInter> Display
-    for BaseSolver<T, V, BusInter>
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Hash + Display, BusInter, VD> Display
+    for BaseSolver<T, V, BusInter, VD>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.constraint_system)
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> Solver<T, V>
-    for BaseSolver<T, V, BusInter>
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>> Solver<T, V>
+    for BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
     T: RuntimeConstant
@@ -75,7 +131,15 @@ where
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
-        Ok(std::mem::take(&mut self.assignments_to_return))
+        let assignments = std::mem::take(&mut self.assignments_to_return);
+        // Apply the deduced assignments to the substitutions we performed
+        // while linearizing.
+        // We assume that the user of the solver applies the assignments to
+        // their expressions and thus "incoming" expressions used in the functions
+        // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
+        // will have the assignments applied.
+        self.linearizer.apply_assignments(&assignments);
+        Ok(assignments)
     }
 
     fn add_algebraic_constraints(
@@ -83,8 +147,19 @@ where
         constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
     ) {
         self.equivalent_expressions_cache.clear();
+
+        let constraints = constraints
+            .into_iter()
+            .filter(|c| !c.is_zero())
+            .flat_map(|constr| self.extract_boolean(constr))
+            // needed because of unique access to the var dispenser / self.
+            .collect_vec()
+            .into_iter()
+            .flat_map(|constr| self.linearize_expression(constr))
+            .collect_vec();
+
         self.constraint_system
-            .add_algebraic_constraints(constraints);
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
     }
 
     fn add_bus_interactions(
@@ -92,6 +167,15 @@ where
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
     ) {
         self.equivalent_expressions_cache.clear();
+        let mut constraints_to_add = vec![];
+        let bus_interactions = bus_interactions
+            .into_iter()
+            .map(|bus_interaction| {
+                self.linearize_bus_interaction(bus_interaction, &mut constraints_to_add)
+            })
+            .collect_vec();
+        // We only substituted by a variable, but the substitution was not yet linearized.
+        self.add_algebraic_constraints(constraints_to_add);
         self.constraint_system
             .add_bus_interactions(bus_interactions);
     }
@@ -104,6 +188,13 @@ where
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
         self.equivalent_expressions_cache.clear();
         assert!(self.assignments_to_return.is_empty());
+
+        // There are constraints that only contain `Variable::Linearized` that
+        // connect quadratic terms with the original constraints. We could try to find
+        // those, but let's just keep all of them for now.
+        let mut variables_to_keep = variables_to_keep.clone();
+        variables_to_keep.extend(self.var_dispenser.all_linearized_vars());
+
         self.constraint_system.retain_algebraic_constraints(|c| {
             c.referenced_variables()
                 .any(|v| variables_to_keep.contains(v))
@@ -128,7 +219,11 @@ where
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
-        expr.range_constraint(self)
+        self.linearizer
+            .internalized_versions_of_expression(expr)
+            .fold(RangeConstraint::default(), |acc, expr| {
+                acc.conjunction(&expr.range_constraint(self))
+            })
     }
 
     fn are_expressions_known_to_be_different(
@@ -151,7 +246,76 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>> BaseSolver<T, V, BusInter>
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>>
+    BaseSolver<T, V, BusInter, VD>
+where
+    V: Ord + Clone + Hash + Eq + Display,
+    T: RuntimeConstant
+        + ReferencedSymbols<V>
+        + Display
+        + Hash
+        + ExpressionConvertible<T::FieldType, V>
+        + Substitutable<V>,
+{
+    /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
+    /// by introducing new boolean variables.
+    /// This function will always return the original constraint as well as any extracted constraints.
+    fn extract_boolean(
+        &mut self,
+        constr: GroupedExpression<T, V>,
+    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        let extracted = try_extract_boolean(&constr, &mut || {
+            let v = self.var_dispenser.next_boolean();
+            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
+            v
+        });
+        std::iter::once(constr).chain(extracted)
+    }
+
+    /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
+    /// by new variables.
+    /// This function will always return the original constraint as well as the linearized constraints
+    /// and equivalences needed after linearization.
+    fn linearize_expression(
+        &mut self,
+        constr: GroupedExpression<T, V>,
+    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        let mut constrs = vec![constr.clone()];
+        if !constr.is_affine() {
+            let linearized = self.linearizer.linearize(
+                constr,
+                &mut || self.var_dispenser.next_linear(),
+                &mut constrs,
+            );
+            constrs.push(linearized);
+        }
+        constrs.into_iter()
+    }
+
+    /// Replaces all bus interaction fields by new variables.
+    /// Adds the equality constraint to `constraint_collection` and returns the modified
+    /// bus interaction.
+    ///
+    /// Note that the constraints added to `constraint_collection` are not yet boolean-extracted or linearized.
+    fn linearize_bus_interaction(
+        &mut self,
+        bus_interaction: BusInteraction<GroupedExpression<T, V>>,
+        constraint_collection: &mut Vec<GroupedExpression<T, V>>,
+    ) -> BusInteraction<GroupedExpression<T, V>> {
+        bus_interaction
+            .fields()
+            .map(|expr| {
+                self.linearizer.substitute_by_var(
+                    expr.clone(),
+                    &mut || self.var_dispenser.next_linear(),
+                    constraint_collection,
+                )
+            })
+            .collect()
+    }
+}
+
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD> BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
     T: RuntimeConstant
@@ -415,10 +579,27 @@ mod tests {
         Qse::from_number(GoldilocksField::from(value))
     }
 
+    #[derive(Default)]
+    struct NoVarDispenser;
+    impl<V> VarDispenser<V> for NoVarDispenser {
+        fn next_boolean(&mut self) -> V {
+            unreachable!("This solver does not use boolean variables.")
+        }
+
+        fn next_linear(&mut self) -> V {
+            unreachable!("This solver does not use linear variables.")
+        }
+
+        fn all_linearized_vars(&self) -> impl Iterator<Item = V> {
+            vec![].into_iter()
+        }
+    }
+
     #[test]
     fn is_known_to_by_nonzero() {
-        let mut solver =
-            BaseSolver::<GoldilocksField, Var, _>::new(DefaultBusInteractionHandler::default());
+        let mut solver = BaseSolver::<GoldilocksField, Var, _, NoVarDispenser>::new(
+            DefaultBusInteractionHandler::default(),
+        );
         assert!(!solver.are_expressions_known_to_be_different(&constant(0), &constant(0)));
         assert!(solver.are_expressions_known_to_be_different(&constant(1), &constant(0)));
         assert!(solver.are_expressions_known_to_be_different(&constant(7), &constant(0)));

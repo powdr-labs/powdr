@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::Zero;
 use powdr_constraint_solver::constraint_system::{
     BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
@@ -11,7 +12,6 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::iter::once;
 use std::marker::PhantomData;
 
 use crate::constraint_optimizer::IsBusStateful;
@@ -52,10 +52,13 @@ impl<
                 if let Some((replacement, range_constraints)) =
                     self.try_replace_bus_interaction(&bus_int)
                 {
-                    // If we found a replacement, add the polynomial constraints and replace
-                    // the bus interaction with interactions implementing the range constraints.
+                    // If we found a replacement, add the polynomial constraints (unless it is
+                    // trivially zero) and replace the bus interaction with interactions implementing
+                    // the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
-                    new_constraints.push(replacement);
+                    if !replacement.is_zero() {
+                        new_constraints.push(replacement);
+                    }
 
                     self.bus_interaction_handler
                         .batch_make_range_constraints(range_constraints)
@@ -116,8 +119,9 @@ impl<
                 let within_degree_bound =
                     polynomial_constraint.degree() <= self.degree_bound.identities;
                 if within_degree_bound {
-                    let range_constraints = once(symbolic_function.output)
-                        .chain(symbolic_function.inputs)
+                    let range_constraints = symbolic_function
+                        .inputs
+                        .into_iter()
                         .map(|field| (field.expression, field.range_constraint))
                         .collect();
                     Some((polynomial_constraint, range_constraints))

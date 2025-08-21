@@ -849,6 +849,14 @@ mod tests {
 
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
+    const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
+    const GUEST_ECC_APC_PGO: u64 = 50;
+    const GUEST_ECC_SKIP: u64 = 0;
+
+    const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
+    const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
+    const GUEST_ECC_PROJECTIVE_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1319,6 +1327,61 @@ mod tests {
     }
 
     #[test]
+    fn ecc_hint_prove() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+        prove_simple(
+            GUEST_ECC_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecc_hint_prove_recursion() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+        prove_recursion(
+            GUEST_ECC_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecc_projective_prove() {
+        let stdin = StdIn::default();
+        let config =
+            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECC_PROJECTIVE,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+
+        prove_simple(
+            GUEST_ECC_PROJECTIVE,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
     #[ignore = "Too much RAM"]
     fn keccak_prove_recursion() {
         let mut stdin = StdIn::default();
@@ -1532,10 +1595,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14702,
-                            log_up: 23304,
+                            log_up: 23300,
                         },
                         constraints: 4393,
-                        bus_interactions: 11421,
+                        bus_interactions: 11419,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1560,10 +1623,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14674,
-                            log_up: 23272,
+                            log_up: 23268,
                         },
                         constraints: 4369,
-                        bus_interactions: 11411,
+                        bus_interactions: 11409,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1582,7 +1645,7 @@ mod tests {
                     after: AirWidths {
                         preprocessed: 0,
                         main: 14674,
-                        log_up: 23272,
+                        log_up: 23268,
                     },
                 }
             "#]]),
@@ -1618,6 +1681,54 @@ mod tests {
                 constraints: 1,
                 bus_interactions: 16,
             }
+        );
+    }
+
+    #[test]
+    fn ecc_hint_machine_pgo_cell() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST_ECC_HINTS,
+                apc: GUEST_ECC_APC_PGO,
+                skip: GUEST_ECC_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 16416,
+                            log_up: 26292,
+                        },
+                        constraints: 9132,
+                        bus_interactions: 11135,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    50
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 107877,
+                        log_up: 144716,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 16416,
+                        log_up: 26292,
+                    },
+                }
+            "#]]),
         );
     }
 
@@ -1747,10 +1858,10 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 3313,
-                            log_up: 5200,
+                            log_up: 5192,
                         },
                         constraints: 849,
-                        bus_interactions: 2516,
+                        bus_interactions: 2513,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1769,7 +1880,7 @@ mod tests {
                     after: AirWidths {
                         preprocessed: 0,
                         main: 3313,
-                        log_up: 5200,
+                        log_up: 5192,
                     },
                 }
             "#]]),

@@ -7,6 +7,7 @@ use crate::symbolic_machine_generator::convert_machine;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -96,7 +97,14 @@ impl<T: Display> Display for SymbolicConstraint<T> {
 
 impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     fn from(expr: AlgebraicExpression<T>) -> Self {
-        SymbolicConstraint { expr }
+        let expr = match expr {
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: AlgebraicUnaryOperator::Minus,
+                expr,
+            }) => *expr, // Remove the negation at the outside.
+            other => other,
+        };
+        Self { expr }
     }
 }
 
