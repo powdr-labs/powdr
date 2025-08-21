@@ -12,15 +12,15 @@ use crate::{
 };
 
 pub struct BooleanExtractor<T, V> {
-    // If (expr, Some(z)) is in the map, it means that
-    // we have transformed a constraint `left * right = 0` into
-    // `right + z * offset = 0`, where `z` is a new boolean variable
-    // and `expr = -right / offset = z`.
-    //
-    // If (expr, None) is in the map, it means that
-    // we have transformed a constraint `right * right = 0` into
-    // `right = 0`, which is a special case where we do not need
-    // a new boolean variable.
+    /// If (expr, Some(z)) is in the map, it means that
+    /// we have transformed a constraint `left * right = 0` into
+    /// `right + z * offset = 0`, where `z` is a new boolean variable
+    /// and `expr = -right / offset = z`.
+    ///
+    /// If (expr, None) is in the map, it means that
+    /// we have transformed a constraint `right * right = 0` into
+    /// `right = 0`, which is a special case where we do not need
+    /// a new boolean variable.
     substitutions: HashMap<GroupedExpression<T, V>, Option<V>>,
 }
 
