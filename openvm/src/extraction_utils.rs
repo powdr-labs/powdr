@@ -270,11 +270,12 @@ impl OriginalVmConfig {
                 ]
                 .into_iter()
             }
-            .chain(
-                shared_bitwise_lookup
-                    .into_iter()
-                    .map(|chip| (chip.bus().inner.index, BusType::OpenVmBitwiseLookup)),
-            )
+            .chain(shared_bitwise_lookup.into_iter().map(|chip| {
+                (
+                    chip.bus().inner.index,
+                    BusType::Other(OpenVmBusType::BitwiseLookup),
+                )
+            }))
             .chain(shared_range_tuple_checker.into_iter().map(|chip| {
                 (
                     chip.bus().inner.index,

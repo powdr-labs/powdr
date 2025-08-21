@@ -87,7 +87,9 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             // of the args here, but for auto-precompiles, only the PC will be unknown, which could
             // have any value.
             BusType::PcLookup => bus_interaction.payload,
-            BusType::OpenVmBitwiseLookup => handle_bitwise_lookup(&bus_interaction.payload),
+            BusType::Other(OpenVmBusType::BitwiseLookup) => {
+                handle_bitwise_lookup(&bus_interaction.payload)
+            }
             BusType::Memory => handle_memory(&bus_interaction.payload, multiplicity),
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 handle_variable_range_checker(&bus_interaction.payload)
@@ -114,7 +116,7 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::ExecutionBridge => true,
             BusType::Memory => true,
             BusType::PcLookup => false,
-            BusType::OpenVmBitwiseLookup => false,
+            BusType::Other(OpenVmBusType::BitwiseLookup) => false,
             BusType::Other(OpenVmBusType::VariableRangeChecker) => false,
             BusType::Other(OpenVmBusType::TupleRangeChecker) => false,
         }
@@ -135,7 +137,7 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
             .unwrap();
         match self.bus_map.bus_type(bus_id) {
             BusType::ExecutionBridge | BusType::Memory | BusType::PcLookup => None,
-            BusType::OpenVmBitwiseLookup => {
+            BusType::Other(OpenVmBusType::BitwiseLookup) => {
                 bitwise_lookup_pure_range_constraints(&bus_interaction.payload)
             }
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
@@ -209,7 +211,7 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
 
                 let bus_id = self
                     .bus_map
-                    .get_bus_id(&BusType::OpenVmBitwiseLookup)
+                    .get_bus_id(&BusType::Other(OpenVmBusType::BitwiseLookup))
                     .unwrap();
                 BusInteraction {
                     bus_id: GroupedExpression::from_number(T::from(bus_id)),
