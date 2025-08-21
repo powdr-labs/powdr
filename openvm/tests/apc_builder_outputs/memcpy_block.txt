@@ -33,10 +33,10 @@ Symbolic machine using 37 unique main columns:
   diff_val_1
   reads_aux__0__base__prev_timestamp_2
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2
-  b__0_2
-  b__1_2
-  b__2_2
-  b__3_2
+  writes_aux__prev_data__0_2
+  writes_aux__prev_data__1_2
+  writes_aux__prev_data__2_2
+  writes_aux__prev_data__3_2
   cmp_result_2
   diff_marker__0_2
   diff_marker__1_2
@@ -57,7 +57,7 @@ mult=is_valid * 1, args=[244 * cmp_result_4 + 20, from_state__timestamp_0 + 14]
 mult=is_valid * -1, args=[1, 44, b__0_0, b__1_0, b__2_0, b__3_0, reads_aux__0__base__prev_timestamp_0]
 mult=is_valid * 1, args=[1, 44, b__0_0, b__1_0, b__2_0, b__3_0, from_state__timestamp_0]
 mult=is_valid * -1, args=[1, 52, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
-mult=is_valid * -1, args=[1, 56, b__0_2, b__1_2, b__2_2, b__3_2, reads_aux__0__base__prev_timestamp_2]
+mult=is_valid * -1, args=[1, 56, writes_aux__prev_data__0_2, writes_aux__prev_data__1_2, writes_aux__prev_data__2_2, writes_aux__prev_data__3_2, reads_aux__0__base__prev_timestamp_2]
 mult=is_valid * 1, args=[1, 56, cmp_result_2, 0, 0, 0, from_state__timestamp_0 + 10]
 mult=is_valid * 1, args=[1, 52, cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2, 0, 0, 0, from_state__timestamp_0 + 12]
 mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__1__base__prev_timestamp_4]
@@ -92,19 +92,18 @@ diff_marker__0_1 * ((a__0_0 - 1) * (2 * cmp_result_1 - 1) + diff_val_1) = 0
 (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - 1) = 0
 (1 - (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1)) * cmp_result_1 = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
-(b__3_2 - b_msb_f_2) * (b_msb_f_2 + 256 - b__3_2) = 0
 diff_marker__3_2 * (diff_marker__3_2 - 1) = 0
 (1 - diff_marker__3_2) * (writes_aux__prev_data__3_2 * (2 * cmp_result_2 - 1)) = 0
 diff_marker__3_2 * (writes_aux__prev_data__3_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 diff_marker__2_2 * (diff_marker__2_2 - 1) = 0
-(1 - (diff_marker__2_2 + diff_marker__3_2)) * (b__2_2 * (2 * cmp_result_2 - 1)) = 0
-diff_marker__2_2 * (b__2_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
+(1 - (diff_marker__2_2 + diff_marker__3_2)) * (writes_aux__prev_data__2_2 * (2 * cmp_result_2 - 1)) = 0
+diff_marker__2_2 * (writes_aux__prev_data__2_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 diff_marker__1_2 * (diff_marker__1_2 - 1) = 0
-(1 - (diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * (b__1_2 * (2 * cmp_result_2 - 1)) = 0
-diff_marker__1_2 * (b__1_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
+(1 - (diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * (writes_aux__prev_data__1_2 * (2 * cmp_result_2 - 1)) = 0
+diff_marker__1_2 * (writes_aux__prev_data__1_2 * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 diff_marker__0_2 * (diff_marker__0_2 - 1) = 0
-(1 * is_valid - (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * ((1 - b__0_2) * (2 * cmp_result_2 - 1)) = 0
-diff_marker__0_2 * ((b__0_2 - 1) * (2 * cmp_result_2 - 1) + diff_val_2) = 0
+(1 * is_valid - (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * ((1 - writes_aux__prev_data__0_2) * (2 * cmp_result_2 - 1)) = 0
+diff_marker__0_2 * ((writes_aux__prev_data__0_2 - 1) * (2 * cmp_result_2 - 1) + diff_val_2) = 0
 (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2) * (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2 - 1) = 0
 (1 - (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2)) * cmp_result_2 = 0
 cmp_result_4 * (cmp_result_4 - 1) = 0
