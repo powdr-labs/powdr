@@ -23,14 +23,21 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        tracing::info!(
-            "Generating autoprecompiles with no PGO for {} blocks",
-            blocks.len()
-        );
+        // cost = number_of_original_instructions
+        blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
+
+        // Debug print blocks by descending cost
+        for block in &blocks {
+            tracing::debug!(
+                "Basic block start_pc: {}, number_of_instructions: {}",
+                block.start_pc,
+                block.statements.len(),
+            );
+        }
 
         create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
     }
