@@ -817,6 +817,9 @@ mod tests {
     const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
     const GUEST_ECC_APC_PGO: u64 = 50;
     const GUEST_ECC_SKIP: u64 = 0;
+    // Even with an iteration of 0, the test does one linear combination
+    // (and asserts that the result is correct)
+    const GUEST_ECC_ITER: u32 = 0;
 
     const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
     const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
@@ -1293,7 +1296,8 @@ mod tests {
 
     #[test]
     fn ecc_hint_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
@@ -1310,7 +1314,8 @@ mod tests {
     #[test]
     #[ignore = "Too much RAM"]
     fn ecc_hint_prove_recursion() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
@@ -1326,7 +1331,8 @@ mod tests {
 
     #[test]
     fn ecc_projective_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let config =
             default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
@@ -1651,7 +1657,8 @@ mod tests {
 
     #[test]
     fn ecc_hint_machine_pgo_cell() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
 
