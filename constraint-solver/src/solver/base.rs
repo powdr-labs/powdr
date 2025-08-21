@@ -268,18 +268,14 @@ where
         &mut self,
         constr: GroupedExpression<T, V>,
     ) -> impl Iterator<Item = GroupedExpression<T, V>> {
-        let mut new_boolean_var = None;
         let extracted = self
             .boolean_extractor
-            .try_extract_boolean(&constr, &mut || {
-                let v = self.var_dispenser.next_boolean();
-                new_boolean_var = Some(v.clone());
-                v
-            });
-        if let Some(v) = new_boolean_var {
-            self.add_range_constraint(&v, RangeConstraint::from_mask(1))
+            .try_extract_boolean(&constr, || self.var_dispenser.next_boolean());
+        if let Some((_, Some(v))) = &extracted {
+            // If we extracted a boolean variable, we constrain it to be boolean.
+            self.add_range_constraint(v, RangeConstraint::from_mask(1));
         }
-        std::iter::once(constr).chain(extracted)
+        std::iter::once(constr).chain(extracted.map(|(e, _)| e))
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
