@@ -156,7 +156,11 @@ where
         let constraints = constraints
             .into_iter()
             .filter(|c| !c.is_zero())
-            .flat_map(|constr| once(constr.clone()).chain(self.try_extract_boolean(&constr)))
+            .flat_map(|constr| {
+                self.try_extract_boolean(&constr)
+                    .into_iter()
+                    .chain(std::iter::once(constr))
+            })
             // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
@@ -262,23 +266,20 @@ where
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
-    /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
+    /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
-    /// Only returns the extracted constraint, not the original.
     fn try_extract_boolean(
         &mut self,
         constr: &GroupedExpression<T, V>,
     ) -> Option<GroupedExpression<T, V>> {
-        let mut new_boolean_var = None;
-        let extracted = self
+        let (constr, var) = self
             .boolean_extractor
-            .try_extract_boolean(constr, &mut || {
-                let v = self.var_dispenser.next_boolean();
-                new_boolean_var = Some(v.clone());
-                v
-            })?;
-        self.add_range_constraint(&new_boolean_var.unwrap(), RangeConstraint::from_mask(1));
-        Some(extracted)
+            .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
+        if let Some(var) = var {
+            // If we created a boolean variable, we constrain it to be boolean.
+            self.add_range_constraint(&var, RangeConstraint::from_mask(1));
+        }
+        Some(constr)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
@@ -530,6 +531,7 @@ where
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
 
+        let mut vars_to_add = vec![];
         let new_constraints = self
             .constraint_system
             .system()
@@ -538,12 +540,17 @@ where
                 ConstraintRef::AlgebraicConstraint(c) => Some(c),
                 ConstraintRef::BusInteraction(_) => None,
             })
-            .cloned()
-            // TODO this is super wasteful.
-            .collect_vec()
-            .into_iter()
-            .flat_map(|c| self.try_extract_boolean(&c))
+            .flat_map(|constr| {
+                let (constr, new_var) = self
+                    .boolean_extractor
+                    .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
+                vars_to_add.extend(new_var);
+                Some(constr)
+            })
             .collect_vec();
+        for v in vars_to_add {
+            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
+        }
 
         self.add_algebraic_constraints(new_constraints);
 

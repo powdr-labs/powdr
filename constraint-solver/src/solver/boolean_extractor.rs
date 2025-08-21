@@ -1,21 +1,26 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{cmp::min, collections::HashMap, hash::Hash};
 
 use itertools::Itertools;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
-    constraint_system::ConstraintSystem,
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions,
+    indexed_constraint_system::apply_substitutions_to_expressions,
     runtime_constant::{RuntimeConstant, Substitutable},
     solver::VariableAssignment,
 };
 
 pub struct BooleanExtractor<T, V> {
-    // If (expr, z) is in the map, it means that
-    // we have transformed a constraint `left * right = 0` into
-    // `right + z * offset = 0`, where `z` is a new boolean variable
-    // and `expr = -right / offset = z`.
-    substitutions: HashMap<GroupedExpression<T, V>, V>,
+    /// If (expr, Some(z)) is in the map, it means that
+    /// we have transformed a constraint `left * right = 0` into
+    /// `right + z * offset = 0`, where `z` is a new boolean variable
+    /// and `expr = -right / offset = z`.
+    ///
+    /// If (expr, None) is in the map, it means that
+    /// we have transformed a constraint `right * right = 0` into
+    /// `right = 0`, which is a special case where we do not need
+    /// a new boolean variable.
+    substitutions: HashMap<GroupedExpression<T, V>, Option<V>>,
 }
 
 impl<T, V> Default for BooleanExtractor<T, V> {
@@ -31,6 +36,8 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
     /// constraint that makes use of a new boolean variable.
     /// NOTE: The boolean constraint is not part of the output.
     ///
+    /// Returns the new constraint and the new variable if required.
+    ///
     /// If the same simplification has been performed before, it will
     /// return None (in particular, it will not request a new variable).
     ///
@@ -44,7 +51,7 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
         &mut self,
         constraint: &GroupedExpression<T, V>,
         mut var_dispenser: impl FnMut() -> V,
-    ) -> Option<GroupedExpression<T, V>> {
+    ) -> Option<(GroupedExpression<T, V>, Option<V>)> {
         let (left, right) = constraint.try_as_single_product()?;
         // We want to check if `left` and `right` differ by a constant offset.
         // Since multiplying the whole constraint by a non-zero constant does
@@ -84,34 +91,61 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
 
         if offset.is_zero() {
             // In this special case, we do not need a new variable.
-            return Some(right.clone());
-        }
-        // TODO At this point, we could still have z2 = 1 - z1.
-        // So maybe we should use `offset` to normalize which of the two options
-        // for the boolean we used.
-
-        let key = -right * T::one().field_div(offset);
-        if self.substitutions.contains_key(&key) {
-            // We have already performed this transformation before.
-
-            // TODO we could still return the constraint, maybe the solver does not know
-            // about this particular normalization.
-            return None;
-        }
-
-        if key.try_to_simple_unknown().is_some() {
-            // In this case we don't gain anything because the new variable `z` will just
-            // be equivalent to the single variable in `right`.
-            return None;
+            if self.substitutions.contains_key(right) {
+                None
+            } else {
+                self.substitutions.insert(right.clone(), None);
+                Some((right.clone(), None))
+            }
         } else {
-            let z = var_dispenser();
+            // We can substitute the initial constraint using a new boolean variable `z`
+            // either by
+            // `0 = right + z * offset`
+            // or by
+            // `0 = right + (1 - z) * offset = right + offset - z * offset`,
+            // which is equivalent to
+            // `0 = -right - offset + z * offset`.
+            // We use the one that has a smaller constant offset in the resulting expression.
+            let expr = [
+                right.clone(),
+                -right - GroupedExpression::from_runtime_constant(offset.clone()),
+            ]
+            .into_iter()
+            .min_by_key(|e| {
+                // Return the abs of the constant offset, or None on larger fields.
+                e.components().2.try_to_number().and_then(try_to_abs_u64)
+            })
+            .unwrap();
 
-            self.substitutions.insert(key, z.clone());
+            let key = -&expr * T::one().field_div(offset);
+            if self.substitutions.contains_key(&key) {
+                // We have already performed this transformation before.
+                return None;
+            }
 
-            // We return `right + z * offset == 0`, which is equivalent to the original constraint.
-            Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
+            if key.try_to_simple_unknown().is_some() {
+                // In this case we don't gain anything because the new variable `z` will just
+                // be equivalent to the single variable in `right`.
+                None
+            } else {
+                let z = var_dispenser();
+
+                self.substitutions.insert(key, Some(z.clone()));
+
+                // We return `expr + z * offset == 0`, which is equivalent to the original constraint.
+                Some((
+                    expr + (GroupedExpression::from_unknown_variable(z.clone()) * offset),
+                    Some(z),
+                ))
+            }
         }
     }
+}
+
+fn try_to_abs_u64<T: FieldElement>(x: T) -> Option<u64> {
+    let modulus = T::modulus().try_into_u64()?;
+    let x = x.to_integer().try_into_u64()?;
+    Some(min(x, modulus - x))
 }
 
 impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
@@ -123,20 +157,14 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
             return;
         }
         let (exprs, vars): (Vec<_>, Vec<_>) = self.substitutions.drain().unzip();
-        let exprs = apply_substitutions(
-            ConstraintSystem {
-                algebraic_constraints: exprs,
-                bus_interactions: vec![],
-            },
-            assignments.iter().cloned(),
-        )
-        .algebraic_constraints;
+        let exprs = apply_substitutions_to_expressions(exprs, assignments.iter().cloned());
         self.substitutions = exprs.into_iter().zip_eq(vars).collect();
     }
 }
 
 #[cfg(test)]
 mod tests {
+
     use crate::test_utils::{constant, var};
 
     use super::*;
@@ -148,8 +176,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        let result = result.unwrap();
-        assert_eq!(result.to_string(), "a + b - 10 * z + 10");
+        let (result, z) = result.unwrap();
+        assert_eq!(result.to_string(), "-(a + b + 10 * z)");
+        assert_eq!(z, Some("z"));
     }
 
     #[test]
@@ -159,8 +188,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        let result = result.unwrap();
+        let (result, z) = result.unwrap();
         assert_eq!(result.to_string(), "a + b");
+        assert_eq!(z, None);
     }
 
     #[test]
@@ -183,11 +213,20 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        let result = result.unwrap();
-        assert_eq!(result.to_string(), "a + b - 10 * z + 10");
+        let (result, z) = result.unwrap();
+        assert_eq!(result.to_string(), "-(a + b + 10 * z)");
+        assert_eq!(z, Some("z"));
 
         assert!(extractor
             .try_extract_boolean(&expr, &mut var_dispenser)
+            .is_none());
+
+        // left and right swapped
+        assert!(extractor
+            .try_extract_boolean(
+                &(var("a") + var("b") + constant(10) * (var("a") + var("b"))),
+                &mut var_dispenser
+            )
             .is_none());
 
         let expr2 = (constant(2) * (var("a") + var("b"))) * (var("a") + var("b") + constant(10));
@@ -206,8 +245,49 @@ mod tests {
             extractor
                 .try_extract_boolean(&expr4, &mut var_dispenser)
                 .unwrap()
+                .0
                 .to_string(),
-            "2 * a + 2 * b - 40 * z + 40"
+            "-(2 * a + 2 * b + 40 * z)"
         );
+    }
+
+    #[test]
+    fn do_not_extract_squares_twice() {
+        let mut var_dispenser = || "z";
+        let expr = (var("a") + var("b")) * (var("a") + var("b"));
+        let mut extractor: BooleanExtractor<_, _> = Default::default();
+        let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_some());
+        let (result, z) = result.unwrap();
+        assert_eq!(result.to_string(), "a + b");
+        assert_eq!(z, None);
+
+        let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn apply_assignments() {
+        let mut counter = 0;
+        let vars = (0..10).map(|i| format!("z_{i}")).collect_vec();
+        let mut var_dispenser = || {
+            counter += 1;
+            vars[counter - 1].as_str()
+        };
+        let expr =
+            (var("a") + var("b") + var("k")) * (var("a") + var("b") + var("k") - constant(2));
+        let mut extractor: BooleanExtractor<_, _> = Default::default();
+        let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_some());
+        let (result, z) = result.unwrap();
+        assert_eq!(result.to_string(), "-(a + b + k - 2 * z_0)");
+        assert_eq!(z, Some("z_0"));
+
+        extractor.apply_assignments(&[("k", -constant(9))]);
+        let expr2 =
+            (var("a") + var("b") - constant(9)) * (var("a") + var("b") - constant(9) - constant(2));
+
+        let result = extractor.try_extract_boolean(&expr2, &mut var_dispenser);
+        assert!(result.is_none());
     }
 }
