@@ -78,6 +78,9 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
+    let constraint_system = remove_duplicate_factors(constraint_system);
+    stats_logger.log("removing duplicate factors", &constraint_system);
+
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
@@ -362,6 +365,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         // Counting the factors is sufficient here.
         redundant.retain(|j| {
             let other_factors = &constraints_as_factors[*j];
+            // This assertion can fail if `remove_duplicate_factors` is not called before this function.
             assert!(other_factors.len() >= factors.len());
             other_factors.len() > factors.len() || *j > i
         });
@@ -373,5 +377,30 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         counter += 1;
         retain
     });
+    constraint_system
+}
+
+/// If a constraint contains the same factor multiple times removes that factor.
+fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
+    let mut constraint_to_add = vec![];
+    constraint_system.retain_algebraic_constraints(|constraint| {
+        let factors = constraint.to_factors();
+        let factor_count = factors.len();
+        let unique_factors = factors.into_iter().unique().collect_vec();
+        if unique_factors.len() < factor_count {
+            constraint_to_add.push(
+                unique_factors
+                    .into_iter()
+                    .reduce(|acc, factor| acc * factor)
+                    .unwrap(),
+            );
+            false
+        } else {
+            true
+        }
+    });
+    constraint_system.add_algebraic_constraints(constraint_to_add);
     constraint_system
 }
