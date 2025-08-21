@@ -20,7 +20,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<Vec<GroupedExpression<T, V>>> {
     // Group the linear part by absolute coefficients.
-    let (components, constant) = components_grouped_by_absolute_coefficient(constraint)?;
+    let (mut components, constant) = components_grouped_by_absolute_coefficient(constraint)?;
     if components.len() < 2 {
         return None;
     }
@@ -56,8 +56,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             .sum();
 
         let candidate_rc = candidate.expr.range_constraint(range_constraints);
-        println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {} and rest {rest} (smallest coeff: {smallest_coeff})",
-    candidate.coeff);
+        println!("Trying candidate {candidate} [rc: {candidate_rc}] with rest {rest} (smallest coeff: {smallest_coeff})");
         // TODO do we need to compute the full range constraint of the complete expression?
         // TODO what about `constant`?
         if candidate_rc.is_unconstrained()
@@ -67,12 +66,12 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
                 .is_unconstrained()
         {
             println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
-            for var in candidate.referenced_unknown_variables() {
-                println!("    {var} has rc {}", range_constraints.get(var));
-            }
+            // for var in candidate.referenced_unknown_variables() {
+            //     println!("    {var} has rc {}", range_constraints.get(var));
+            // }
             continue;
         }
-        // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`
+        // The original constraint is equivalent to `candidate.expr + smallest_coeff * rest = constant / candidate.coeff`
         // and the constraint can equivalently be evaluated in the integers.
         // We now apply `x -> x % smallest_coeff` to the whole constraint.
         // If it was true before, it will be true afterwards.
@@ -82,25 +81,23 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
 
         if let Some(solution) = candidate_rc
             // TODO what if the field div here is not a division without remainder in the integers?
-            .has_unique_modular_solution(constant.field_div(candidate.coeff), smallest_coeff)
+            .has_unique_modular_solution(constant.field_div(&candidate.coeff), smallest_coeff)
         {
             // TODO do we need to modify constant in some way?
 
             // candidate % smallest_coeff == constant only if candidate = solution.
             // Add `candidate = solution` to the parts
-            parts.push(candidate - &GroupedExpression::from_number(solution));
+            parts.push(candidate.expr.clone() - GroupedExpression::from_number(solution));
             // println!("Split out {}", parts.last().unwrap());
             // println!(
             //     "Adjusting constant from {constant} to {}",
             //     constant - solution * *candidate_coeff
             // );
-            constant -= solution * *candidate.coeff;
+            constant -= solution * candidate.coeff;
             // Substitute `candidate = solution` in our expression
             // by replacing the component by zero and subtracting
             // the solution from the constant.
-            components[index] = (Zero::zero(), Zero::zero());
-            // TODO correct?
-            //constant = constant.field_div(&smallest_coeff);
+            components[index] = Default::default();
         }
     }
     if parts.is_empty() {
@@ -110,15 +107,17 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         // and return them.
         let remaining = components
             .into_iter()
-            .filter(|(coeff, _)| *coeff != 0.into())
+            .filter(|comp| comp.coeff != 0.into())
             .collect_vec();
         let constant = GroupedExpression::from_number(constant);
         parts.push(match remaining.as_slice() {
-            [(coeff, expr)] => expr - &(constant * T::one().field_div(&T::from(*coeff))), // if there is only one component, we normalize
+            [Component { coeff, expr }] => {
+                expr - &(constant * T::one().field_div(&T::from(*coeff)))
+            } // if there is only one component, we normalize
             _ => {
                 remaining
                     .into_iter()
-                    .map(|(coeff, expr)| expr * T::from(coeff))
+                    .map(|comp| comp.into())
                     .sum::<GroupedExpression<_, _>>()
                     - constant
             }
@@ -131,6 +130,12 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
 struct Component<T: RuntimeConstant, V> {
     coeff: T::FieldType,
     expr: GroupedExpression<T, V>,
+}
+
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Component<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} * ({})", self.coeff, self.expr)
+    }
 }
 
 impl<'a, T: RuntimeConstant, V: Ord + Clone + Eq> TryFrom<(&'a V, &'a T)> for Component<T, V> {
@@ -183,6 +188,15 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> Div<T::FieldType> for Component<T,
 impl<T: RuntimeConstant, V: Ord + Clone + Eq> From<Component<T, V>> for GroupedExpression<T, V> {
     fn from(comp: Component<T, V>) -> Self {
         comp.expr * T::from(comp.coeff)
+    }
+}
+
+impl<T: RuntimeConstant, V: Clone + Ord> Default for Component<T, V> {
+    fn default() -> Self {
+        Self {
+            coeff: T::FieldType::zero(),
+            expr: GroupedExpression::zero(),
+        }
     }
 }
 
