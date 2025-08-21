@@ -1,4 +1,7 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    ops::{Add, Div},
+};
 
 use itertools::Itertools;
 use num_traits::Zero;
@@ -23,31 +26,19 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     }
     let mut constant = -constant;
 
+    // The original constraint is equivalent to
+    // `components.iter().map(|(coeff, expr)| coeff * expr).sum() = constant`
+
     // Now try to split out each one in turn.
     let mut parts = vec![];
     for index in 0..components.len() {
-        println!(
-            "Components: {} = {constant}",
-            components
-                .iter()
-                .map(|(c, e)| format!("{c} * ({e})"))
-                .join(" + ")
-        );
-
-        let (candidate_coeff, candidate) = &components[index];
+        let candidate = &components[index];
         // println!("Trying to split out {candidate_coeff} * ({candidate})");
         let rest = components
             .iter()
             .enumerate()
-            .filter(|(i, component)| *i != index && component.0 != Zero::zero())
-            .map(|(_, (coeff, expr))| (*coeff / *candidate_coeff, expr.clone()))
-            .map(|(coeff, expr)| {
-                if !coeff.is_in_lower_half() {
-                    (-coeff, -expr)
-                } else {
-                    (coeff, expr)
-                }
-            })
+            .filter(|(i, component)| *i != index && component.coeff != Zero::zero())
+            .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
         if rest.is_empty() {
             // We are done anyway.
@@ -135,6 +126,59 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     }
 }
 
+#[derive(Clone)]
+struct Component<T: RuntimeConstant, V> {
+    coeff: T::FieldType,
+    expr: GroupedExpression<T, V>,
+}
+
+impl<'a, T: RuntimeConstant, V: Ord + Clone + Eq> TryFrom<(&'a V, &'a T)> for Component<T, V> {
+    type Error = ();
+    fn try_from((var, coeff): (&'a V, &'a T)) -> Result<Self, ()> {
+        let coeff = coeff.try_to_number().ok_or(())?;
+        let expr = GroupedExpression::from_unknown_variable(var.clone());
+        Ok(Self { coeff, expr })
+    }
+}
+
+impl<T: RuntimeConstant, V: Ord + Clone + Eq> Component<T, V> {
+    /// Normalize the component such that the coefficient is positive.
+    fn normalize(self) -> Self {
+        if self.coeff.is_in_lower_half() {
+            self
+        } else {
+            Self {
+                coeff: -self.coeff,
+                expr: -self.expr.clone(),
+            }
+        }
+    }
+}
+
+impl<T: RuntimeConstant, V: Ord + Clone + Eq> Add for Component<T, V> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        assert!(self.coeff == other.coeff);
+        Self {
+            coeff: self.coeff,
+            expr: self.expr + other.expr,
+        }
+    }
+}
+
+impl<T: RuntimeConstant, V: Ord + Clone + Eq> Div<T::FieldType> for Component<T, V> {
+    type Output = Self;
+
+    fn div(self, rhs: T::FieldType) -> Self {
+        assert!(!rhs.is_zero());
+        Self {
+            coeff: self.coeff / rhs,
+            expr: self.expr,
+        }
+    }
+}
+
 /// Turns an affine constraint `constraint = 0` into a list of expressions grouped by absolute coefficients
 /// and an offset. The list is sorted by the coefficient.
 /// If it returns `Some(([(c1, e1), ..., (cn, en)], o))`, then
@@ -144,7 +188,7 @@ fn components_grouped_by_absolute_coefficient<
     V: Clone + Ord + Display,
 >(
     constraint: &GroupedExpression<T, V>,
-) -> Option<(Vec<(T::FieldType, GroupedExpression<T, V>)>, T::FieldType)> {
+) -> Option<(Vec<Component<T, V>>, T::FieldType)> {
     let (quadratic, linear, constant) = constraint.components();
     if !quadratic.is_empty() {
         // We cannot split quadratic constraints.
@@ -154,21 +198,16 @@ fn components_grouped_by_absolute_coefficient<
 
     // Group the linear part by absolute coefficients.
     let components = linear
-        .map(|(var, coeff)| Some((coeff.try_to_number()?, var.clone())))
+        .map(|(var, coeff)| Component::try_from((var, coeff)).ok())
         .collect::<Option<Vec<_>>>()?
         .into_iter()
-        .map(|(coeff, var)| {
-            if coeff.is_in_lower_half() {
-                (coeff, GroupedExpression::from_unknown_variable(var))
-            } else {
-                (-coeff, -GroupedExpression::from_unknown_variable(var))
-            }
-        })
-        .into_grouping_map()
+        .map(|c| c.normalize())
+        .into_grouping_map_by(|c| c.coeff)
         .sum()
         .into_iter()
-        .filter(|(_, expr)| !expr.is_zero())
-        .sorted_by_key(|(c, _)| c.to_integer())
+        .filter(|(_, expr)| !expr.coeff.is_zero())
+        .map(|(_, comp)| comp)
+        .sorted_by_key(|comp| comp.coeff.to_integer())
         .collect_vec();
 
     Some((components, constant))
