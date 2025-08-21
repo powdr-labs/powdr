@@ -67,3 +67,26 @@ run_bench guest-matmul 0 100 100apc
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
+
+### ECC
+dir="results/ecc"
+# TODO: guest-ecc-powdr-affine-hint fails for larger inputs
+input="20"
+
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-ecc-manual $input 0 manual
+run_bench guest-ecc-projective $input 0 projective-apc000
+run_bench guest-ecc-projective $input 3 projective-apc003
+run_bench guest-ecc-projective $input 10 projective-apc010
+run_bench guest-ecc-projective $input 30 projective-apc030
+run_bench guest-ecc-projective $input 100 projective-apc100
+run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
+run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003
+run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010
+run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
+run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100
+
+python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd
