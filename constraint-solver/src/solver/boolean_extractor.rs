@@ -1,6 +1,7 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{cmp::min, collections::HashMap, hash::Hash};
 
 use itertools::Itertools;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
     constraint_system::ConstraintSystem,
@@ -96,7 +97,26 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
                 Some(right.clone())
             }
         } else {
-            let key = -right * T::one().field_div(offset);
+            // We can substitute the initial constraint using a new boolean variable `z`
+            // either by
+            // `0 = right + z * offset`
+            // or by
+            // `0 = right + (1 - z) * offset = right + offset - z * offset`,
+            // which is equivalent to
+            // `0 = -right - offset + z * offset`.
+            // We use the one that has a smaller constant offset in the resulting expression.
+            let expr = [
+                right.clone(),
+                -right - GroupedExpression::from_runtime_constant(offset.clone()),
+            ]
+            .into_iter()
+            .min_by_key(|e| {
+                // Return the abs of the constant offset, or None on larger fields.
+                e.components().2.try_to_number().and_then(try_to_abs_u64)
+            })
+            .unwrap();
+
+            let key = -&expr * T::one().field_div(offset);
             if self.substitutions.contains_key(&key) {
                 // We have already performed this transformation before.
                 return None;
@@ -111,11 +131,17 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
 
                 self.substitutions.insert(key, Some(z.clone()));
 
-                // We return `right + z * offset == 0`, which is equivalent to the original constraint.
-                Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
+                // We return `expr + z * offset == 0`, which is equivalent to the original constraint.
+                Some(expr + (GroupedExpression::from_unknown_variable(z) * offset))
             }
         }
     }
+}
+
+fn try_to_abs_u64<T: FieldElement>(x: T) -> Option<u64> {
+    let modulus = T::modulus().try_into_u64()?;
+    let x = x.to_integer().try_into_u64()?;
+    Some(min(x, modulus - x))
 }
 
 impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
@@ -153,7 +179,7 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
         let result = result.unwrap();
-        assert_eq!(result.to_string(), "a + b - 10 * z + 10");
+        assert_eq!(result.to_string(), "-(a + b + 10 * z)");
     }
 
     #[test]
@@ -188,10 +214,18 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
         let result = result.unwrap();
-        assert_eq!(result.to_string(), "a + b - 10 * z + 10");
+        assert_eq!(result.to_string(), "-(a + b + 10 * z)");
 
         assert!(extractor
             .try_extract_boolean(&expr, &mut var_dispenser)
+            .is_none());
+
+        // left and right swapped
+        assert!(extractor
+            .try_extract_boolean(
+                &(var("a") + var("b") + constant(10) * (var("a") + var("b"))),
+                &mut var_dispenser
+            )
             .is_none());
 
         let expr2 = (constant(2) * (var("a") + var("b"))) * (var("a") + var("b") + constant(10));
@@ -211,7 +245,7 @@ mod tests {
                 .try_extract_boolean(&expr4, &mut var_dispenser)
                 .unwrap()
                 .to_string(),
-            "2 * a + 2 * b - 40 * z + 40"
+            "-(2 * a + 2 * b + 40 * z)"
         );
     }
 
@@ -241,11 +275,11 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().to_string(), "a + b + k + 2 * z_0 - 2");
+        assert_eq!(result.unwrap().to_string(), "-(a + b + k - 2 * z_0)");
 
-        extractor.apply_assignments(&[("k", constant(9))]);
+        extractor.apply_assignments(&[("k", -constant(9))]);
         let expr2 =
-            (var("a") + var("b") + constant(9)) * (var("a") + var("b") + constant(9) - constant(2));
+            (var("a") + var("b") - constant(9)) * (var("a") + var("b") - constant(9) - constant(2));
 
         let result = extractor.try_extract_boolean(&expr2, &mut var_dispenser);
         assert!(result.is_none());
