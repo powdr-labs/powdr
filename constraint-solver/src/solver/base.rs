@@ -531,7 +531,7 @@ where
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
 
-        let mut vars_to_add = vec![];
+        let mut vars_to_boolean_constrain = vec![];
         let new_constraints = self
             .constraint_system
             .system()
@@ -544,11 +544,11 @@ where
                 let (constr, new_var) = self
                     .boolean_extractor
                     .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
-                vars_to_add.extend(new_var);
+                vars_to_boolean_constrain.extend(new_var);
                 Some(constr)
             })
             .collect_vec();
-        for v in vars_to_add {
+        for v in vars_to_boolean_constrain {
             self.add_range_constraint(&v, RangeConstraint::from_mask(1));
         }
 

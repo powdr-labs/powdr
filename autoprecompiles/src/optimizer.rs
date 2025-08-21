@@ -19,7 +19,6 @@ use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::{
     adapter::Adapter,
-    bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
@@ -186,20 +185,7 @@ fn optimization_loop_iteration<
     )
     .optimize(constraint_system);
 
-    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
-        let system = optimize_bitwise_lookup(
-            constraint_system,
-            bitwise_bus_id,
-            solver,
-            bus_interaction_handler.clone(),
-        );
-        stats_logger.log("optimizing bitwise lookup", &system);
-        system
-    } else {
-        constraint_system
-    };
-
-    Ok(system)
+    Ok(constraint_system)
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
