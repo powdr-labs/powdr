@@ -11,11 +11,16 @@ use crate::{
 };
 
 pub struct BooleanExtractor<T, V> {
-    // If (expr, z) is in the map, it means that
+    // If (expr, Some(z)) is in the map, it means that
     // we have transformed a constraint `left * right = 0` into
     // `right + z * offset = 0`, where `z` is a new boolean variable
     // and `expr = -right / offset = z`.
-    substitutions: HashMap<GroupedExpression<T, V>, V>,
+    //
+    // If (expr, None) is in the map, it means that
+    // we have transformed a constraint `right * right = 0` into
+    // `right = 0`, which is a special case where we do not need
+    // a new boolean variable.
+    substitutions: HashMap<GroupedExpression<T, V>, Option<V>>,
 }
 
 impl<T, V> Default for BooleanExtractor<T, V> {
@@ -84,26 +89,31 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
 
         if offset.is_zero() {
             // In this special case, we do not need a new variable.
-            return Some(right.clone());
-        }
-
-        let key = -right * T::one().field_div(offset);
-        if self.substitutions.contains_key(&key) {
-            // We have already performed this transformation before.
-            return None;
-        }
-
-        if key.try_to_simple_unknown().is_some() {
-            // In this case we don't gain anything because the new variable `z` will just
-            // be equivalent to the single variable in `right`.
-            None
+            if self.substitutions.contains_key(right) {
+                None
+            } else {
+                self.substitutions.insert(right.clone(), None);
+                Some(right.clone())
+            }
         } else {
-            let z = var_dispenser();
+            let key = -right * T::one().field_div(offset);
+            if self.substitutions.contains_key(&key) {
+                // We have already performed this transformation before.
+                return None;
+            }
 
-            self.substitutions.insert(key, z.clone());
+            if key.try_to_simple_unknown().is_some() {
+                // In this case we don't gain anything because the new variable `z` will just
+                // be equivalent to the single variable in `right`.
+                None
+            } else {
+                let z = var_dispenser();
 
-            // We return `right + z * offset == 0`, which is equivalent to the original constraint.
-            Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
+                self.substitutions.insert(key, Some(z.clone()));
+
+                // We return `right + z * offset == 0`, which is equivalent to the original constraint.
+                Some(right + &(GroupedExpression::from_unknown_variable(z) * offset))
+            }
         }
     }
 }
@@ -203,5 +213,18 @@ mod tests {
                 .to_string(),
             "2 * a + 2 * b - 40 * z + 40"
         );
+    }
+
+    #[test]
+    fn do_not_extract_squares_twice() {
+        let mut var_dispenser = || "z";
+        let expr = (var("a") + var("b")) * (var("a") + var("b"));
+        let mut extractor: BooleanExtractor<_, _> = Default::default();
+        let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().to_string(), "a + b");
+
+        let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_none());
     }
 }
