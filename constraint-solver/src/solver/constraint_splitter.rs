@@ -40,49 +40,13 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             .filter(|(i, component)| *i != index && component.coeff != Zero::zero())
             .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
-        if rest.is_empty() {
-            // We are done anyway.
-            continue;
-        }
-        // The original constraint is equivalent to `candidate.expr + rest = constant / candidate.coeff`.
-        // Now we try to extract the smallest coefficient in rest.
-        let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
-        assert_ne!(smallest_coeff, 0.into());
-        assert!(smallest_coeff.is_in_lower_half());
-
-        let rest: GroupedExpression<_, _> = rest
-            .into_iter()
-            .map(|comp| GroupedExpression::from(comp / smallest_coeff))
-            .sum();
-
-        let candidate_rc = candidate.expr.range_constraint(range_constraints);
-        println!("Trying candidate {candidate} [rc: {candidate_rc}] with rest {rest} (smallest coeff: {smallest_coeff})");
-        // TODO do we need to compute the full range constraint of the complete expression?
-        // TODO what about `constant`?
-        if candidate_rc.is_unconstrained()
-            || rest
-                .range_constraint(range_constraints)
-                .multiple(smallest_coeff)
-                .is_unconstrained()
-        {
-            println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
-            // for var in candidate.referenced_unknown_variables() {
-            //     println!("    {var} has rc {}", range_constraints.get(var));
-            // }
-            continue;
-        }
-        // The original constraint is equivalent to `candidate.expr + smallest_coeff * rest = constant / candidate.coeff`
-        // and the constraint can equivalently be evaluated in the integers.
-        // We now apply `x -> x % smallest_coeff` to the whole constraint.
-        // If it was true before, it will be true afterwards.
-        // So we get `candidate % smallest_coeff = constant % smallest_coeff`.
-        // Now the only remaining task is to check that this new constraint has a unique solution
-        // that does not require the use of the `%` operator.
-
-        if let Some(solution) = candidate_rc
+        if let Some(solution) = find_solution(
+            &candidate.expr,
+            rest,
             // TODO what if the field div here is not a division without remainder in the integers?
-            .has_unique_modular_solution(constant.field_div(&candidate.coeff), smallest_coeff)
-        {
+            constant / candidate.coeff,
+            range_constraints,
+        ) {
             // TODO do we need to modify constant in some way?
 
             // candidate % smallest_coeff == constant only if candidate = solution.
@@ -124,6 +88,54 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         });
         Some(parts)
     }
+}
+
+fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+    expr: &GroupedExpression<T, V>,
+    rest: Vec<Component<T, V>>,
+    constant: T::FieldType,
+    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+) -> Option<T::FieldType> {
+    if rest.is_empty() {
+        // We are done anyway.
+        return None;
+    }
+    // The original constraint is equivalent to `candidate.expr + rest = constant / candidate.coeff`.
+    // Now we try to extract the smallest coefficient in rest.
+    let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
+    assert_ne!(smallest_coeff, 0.into());
+    assert!(smallest_coeff.is_in_lower_half());
+
+    let rest: GroupedExpression<_, _> = rest
+        .into_iter()
+        .map(|comp| GroupedExpression::from(comp / smallest_coeff))
+        .sum();
+
+    let candidate_rc = expr.range_constraint(range_constraints);
+    println!("Trying candidate {expr} [rc: {candidate_rc}] with rest {rest} (smallest coeff: {smallest_coeff})");
+    // TODO do we need to compute the full range constraint of the complete expression?
+    // TODO what about `constant`?
+    if candidate_rc.is_unconstrained()
+        || rest
+            .range_constraint(range_constraints)
+            .multiple(smallest_coeff)
+            .is_unconstrained()
+    {
+        println!(" -> Cannot split out {expr} because its rc {candidate_rc} is not tight enough");
+        // for var in candidate.referenced_unknown_variables() {
+        //     println!("    {var} has rc {}", range_constraints.get(var));
+        // }
+        return None;
+    }
+    // The original constraint is equivalent to `candidate.expr + smallest_coeff * rest = constant / candidate.coeff`
+    // and the constraint can equivalently be evaluated in the integers.
+    // We now apply `x -> x % smallest_coeff` to the whole constraint.
+    // If it was true before, it will be true afterwards.
+    // So we get `candidate % smallest_coeff = constant % smallest_coeff`.
+    // Now the only remaining task is to check that this new constraint has a unique solution
+    // that does not require the use of the `%` operator.
+
+    candidate_rc.has_unique_modular_solution(constant, smallest_coeff)
 }
 
 #[derive(Clone)]
