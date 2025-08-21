@@ -2,8 +2,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 openvm::entry!(main);
 
-use ecdsa::{PowdrVerifyingKey, RecoveryId, Signature};
 use hex_literal::hex;
+use k256::ecdsa::{PowdrVerifyKey, RecoveryId, Signature, VerifyingKey};
 use k256::EncodedPoint;
 
 // Signature recovery test vectors
@@ -43,7 +43,12 @@ pub fn main() {
         ];
         let sig = Signature::try_from(vector.sig.as_slice()).unwrap();
         let recid = vector.recid;
-        let pk = PowdrVerifyingKey::recover_from_prehash(digest.as_slice(), &sig, recid).unwrap();
-        assert_eq!(&vector.pk[..], EncodedPoint::from(&pk.0).as_bytes());
+        let pk = <VerifyingKey as PowdrVerifyKey>::powdr_recover_from_prehash(
+            digest.as_slice(),
+            &sig,
+            recid,
+        )
+        .unwrap();
+        assert_eq!(&vector.pk[..], EncodedPoint::from(&pk).as_bytes());
     }
 }

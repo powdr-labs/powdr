@@ -6,7 +6,6 @@ edition = "2021"
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev="dcf8ee6" }
-k256={git="https://github.com/powdr-labs/elliptic-curves-k256", rev="fa56099",default-features=false, features = ["expose-field", "arithmetic"] }
+k256={ git ="/Users/shuangwu/PowdrCode/elliptic-curves-k256/k256", rev= "8a1c91d",default-features=false, features = ["expose-field", "arithmetic", "ecdsa"] }
 hex-literal = { version = "0.4.1", default-features = false }
-ecdsa = { git = "https://github.com/powdr-labs/signatures", rev= "a7e9ea9",default-features = false, features = ["verifying"]}
 
