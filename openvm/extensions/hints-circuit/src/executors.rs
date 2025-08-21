@@ -140,7 +140,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
             );
         }
         let elem = field10x26_k256::FieldElement10x26(elem);
-        let inv = elem.invert();
+        let inv = elem.invert().normalize();
         // okay to transmute in the opposite direction
         let inv_bytes: [u8; FIELD10X26_BYTES] = unsafe { std::mem::transmute(inv.0) };
         streams.hint_stream = inv_bytes
