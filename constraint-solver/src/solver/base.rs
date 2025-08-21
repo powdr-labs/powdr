@@ -8,7 +8,7 @@ use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
-use crate::solver::boolean_extractor::try_extract_boolean;
+use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
@@ -45,6 +45,8 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
     /// A dispenser for fresh variables.
     var_dispenser: VarDisp,
+    /// The boolean extraction component.
+    boolean_extractor: BooleanExtractor<T, V>,
     /// The linearizing component.
     linearizer: Linearizer<T, V>,
 }
@@ -93,6 +95,7 @@ impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
             assignments_to_return: Default::default(),
             equivalent_expressions_cache: Default::default(),
             var_dispenser: Default::default(),
+            boolean_extractor: Default::default(),
             linearizer: Default::default(),
             bus_interaction_handler,
         }
@@ -133,12 +136,13 @@ where
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
         // Apply the deduced assignments to the substitutions we performed
-        // while linearizing.
+        // while linearizing and boolean extracting.
         // We assume that the user of the solver applies the assignments to
         // their expressions and thus "incoming" expressions used in the functions
         // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
         // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
+        self.boolean_extractor.apply_assignments(&assignments);
         Ok(assignments)
     }
 
@@ -151,7 +155,11 @@ where
         let constraints = constraints
             .into_iter()
             .filter(|c| !c.is_zero())
-            .flat_map(|constr| self.extract_boolean(constr))
+            .flat_map(|constr| {
+                self.try_extract_boolean(&constr)
+                    .into_iter()
+                    .chain(std::iter::once(constr))
+            })
             // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
@@ -257,19 +265,20 @@ where
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
-    /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
+    /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
-    /// This function will always return the original constraint as well as any extracted constraints.
-    fn extract_boolean(
+    fn try_extract_boolean(
         &mut self,
-        constr: GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
-        let extracted = try_extract_boolean(&constr, &mut || {
-            let v = self.var_dispenser.next_boolean();
-            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
-            v
-        });
-        std::iter::once(constr).chain(extracted)
+        constr: &GroupedExpression<T, V>,
+    ) -> Option<GroupedExpression<T, V>> {
+        let (constr, var) = self
+            .boolean_extractor
+            .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
+        if let Some(var) = var {
+            // If we created a boolean variable, we constrain it to be boolean.
+            self.add_range_constraint(&var, RangeConstraint::from_mask(1));
+        }
+        Some(constr)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
