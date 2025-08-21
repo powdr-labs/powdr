@@ -822,6 +822,10 @@ mod tests {
     const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
     const GUEST_ECC_PROJECTIVE_SKIP: u64 = 0;
 
+    const GUEST_ECRECOVER_HINTS: &str = "guest-ecrecover";
+    const GUEST_ECRECOVER_APC_PGO: u64 = 50;
+    const GUEST_ECRECOVER_SKIP: u64 = 0;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1299,6 +1303,25 @@ mod tests {
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_simple(
             GUEST_ECC_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+    }
+
+    #[test]
+    fn ecrecover_prove() {
+        let stdin = StdIn::default();
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECRECOVER_HINTS,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+        prove_simple(
+            GUEST_ECRECOVER_HINTS,
             config.clone(),
             PrecompileImplementation::SingleRowChip,
             stdin.clone(),
