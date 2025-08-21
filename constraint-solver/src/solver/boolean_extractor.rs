@@ -4,9 +4,8 @@ use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
-    constraint_system::ConstraintSystem,
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions,
+    indexed_constraint_system::apply_substitutions_to_expressions,
     runtime_constant::{RuntimeConstant, Substitutable},
     solver::VariableAssignment,
 };
@@ -153,14 +152,7 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
             return;
         }
         let (exprs, vars): (Vec<_>, Vec<_>) = self.substitutions.drain().unzip();
-        let exprs = apply_substitutions(
-            ConstraintSystem {
-                algebraic_constraints: exprs,
-                bus_interactions: vec![],
-            },
-            assignments.iter().cloned(),
-        )
-        .algebraic_constraints;
+        let exprs = apply_substitutions_to_expressions(exprs, assignments.iter().cloned());
         self.substitutions = exprs.into_iter().zip_eq(vars).collect();
     }
 }
