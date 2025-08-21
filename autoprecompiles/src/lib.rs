@@ -38,6 +38,7 @@ pub mod powdr;
 pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
 #[derive(Clone)]
