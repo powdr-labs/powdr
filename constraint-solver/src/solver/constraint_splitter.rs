@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::FieldElement;
@@ -10,53 +12,27 @@ use crate::{
 /// Tries to split the given constraint into a list of equivalent constraints.
 /// This is the case for example if the variables in this expression can
 /// be split into different bit areas.
-pub fn try_split_constraint<T: RuntimeConstant, V: Clone + Ord>(
+pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     constraint: &GroupedExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<Vec<GroupedExpression<T, V>>> {
-    let (quadratic, linear, constant) = constraint.components();
-    if !quadratic.is_empty() {
-        // We cannot split quadratic constraints.
-        return None;
-    }
-    let mut constant = -constant.try_to_number()?;
-
     // Group the linear part by absolute coefficients.
-    let mut components = linear
-        .map(|(var, coeff)| Some((coeff.try_to_number()?, var)))
-        .collect::<Option<Vec<_>>>()?
-        .into_iter()
-        .map(|(coeff, var)| {
-            let is_negative = !coeff.is_in_lower_half();
-            if is_negative {
-                (
-                    -coeff,
-                    -GroupedExpression::from_unknown_variable(var.clone()),
-                )
-            } else {
-                (coeff, GroupedExpression::from_unknown_variable(var.clone()))
-            }
-        })
-        .into_grouping_map()
-        .sum()
-        .into_iter()
-        .filter(|(_, expr)| !expr.is_zero())
-        .sorted_by_key(|(c, _)| c.to_integer())
-        .collect_vec();
+    let (components, constant) = components_grouped_by_absolute_coefficient(constraint)?;
     if components.len() < 2 {
         return None;
     }
+    let mut constant = -constant;
 
     // Now try to split out each one in turn.
     let mut parts = vec![];
     for index in 0..components.len() {
-        // println!(
-        //     "Components: {} = {constant}",
-        //     components
-        //         .iter()
-        //         .map(|(c, e)| format!("{c} * ({e})"))
-        //         .join(" + ")
-        // );
+        println!(
+            "Components: {} = {constant}",
+            components
+                .iter()
+                .map(|(c, e)| format!("{c} * ({e})"))
+                .join(" + ")
+        );
 
         let (candidate_coeff, candidate) = &components[index];
         // println!("Trying to split out {candidate_coeff} * ({candidate})");
@@ -89,7 +65,7 @@ pub fn try_split_constraint<T: RuntimeConstant, V: Clone + Ord>(
             .sum();
 
         let candidate_rc = candidate.range_constraint(range_constraints);
-        // println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
+        println!("Trying candidate {candidate} [rc: {candidate_rc}] with coeff {candidate_coeff} and rest {rest} (smallest coeff: {smallest_coeff})");
         // TODO do we need to compute the full range constraint of the complete expression?
         // TODO what about `constant`?
         if candidate_rc.is_unconstrained()
@@ -98,10 +74,10 @@ pub fn try_split_constraint<T: RuntimeConstant, V: Clone + Ord>(
                 .multiple(smallest_coeff)
                 .is_unconstrained()
         {
-            // println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
-            // for var in candidate.referenced_unknown_variables() {
-            //     println!("    {var} has rc {}", range_constraints.get(var));
-            // }
+            println!(" -> Cannot split out {candidate} because its rc {candidate_rc} is not tight enough");
+            for var in candidate.referenced_unknown_variables() {
+                println!("    {var} has rc {}", range_constraints.get(var));
+            }
             continue;
         }
         // The original constraint is equivalent to `candidate + smallest_coeff * rest = constant`
@@ -157,6 +133,45 @@ pub fn try_split_constraint<T: RuntimeConstant, V: Clone + Ord>(
         });
         Some(parts)
     }
+}
+
+/// Turns an affine constraint `constraint = 0` into a list of expressions grouped by absolute coefficients
+/// and an offset. The list is sorted by the coefficient.
+/// If it returns `Some(([(c1, e1), ..., (cn, en)], o))`, then
+/// `c1 * e1 + ... + cn * en + o = constraint`.
+fn components_grouped_by_absolute_coefficient<
+    T: RuntimeConstant + Display,
+    V: Clone + Ord + Display,
+>(
+    constraint: &GroupedExpression<T, V>,
+) -> Option<(Vec<(T::FieldType, GroupedExpression<T, V>)>, T::FieldType)> {
+    let (quadratic, linear, constant) = constraint.components();
+    if !quadratic.is_empty() {
+        // We cannot split quadratic constraints.
+        return None;
+    }
+    let constant = constant.try_to_number()?;
+
+    // Group the linear part by absolute coefficients.
+    let components = linear
+        .map(|(var, coeff)| Some((coeff.try_to_number()?, var.clone())))
+        .collect::<Option<Vec<_>>>()?
+        .into_iter()
+        .map(|(coeff, var)| {
+            if coeff.is_in_lower_half() {
+                (coeff, GroupedExpression::from_unknown_variable(var))
+            } else {
+                (-coeff, -GroupedExpression::from_unknown_variable(var))
+            }
+        })
+        .into_grouping_map()
+        .sum()
+        .into_iter()
+        .filter(|(_, expr)| !expr.is_zero())
+        .sorted_by_key(|(c, _)| c.to_integer())
+        .collect_vec();
+
+    Some((components, constant))
 }
 
 #[cfg(test)]
