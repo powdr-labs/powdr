@@ -4,9 +4,8 @@ use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
-    constraint_system::ConstraintSystem,
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions,
+    indexed_constraint_system::apply_substitutions_to_expressions,
     runtime_constant::{RuntimeConstant, Substitutable},
     solver::VariableAssignment,
 };
@@ -37,6 +36,8 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
     /// constraint that makes use of a new boolean variable.
     /// NOTE: The boolean constraint is not part of the output.
     ///
+    /// Returns the new constraint and the new variable if required.
+    ///
     /// If the same simplification has been performed before, it will
     /// return None (in particular, it will not request a new variable).
     ///
@@ -50,7 +51,7 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
         &mut self,
         constraint: &GroupedExpression<T, V>,
         mut var_dispenser: impl FnMut() -> V,
-    ) -> Option<GroupedExpression<T, V>> {
+    ) -> Option<(GroupedExpression<T, V>, Option<V>)> {
         let (left, right) = constraint.try_as_single_product()?;
         // We want to check if `left` and `right` differ by a constant offset.
         // Since multiplying the whole constraint by a non-zero constant does
@@ -94,7 +95,7 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
                 None
             } else {
                 self.substitutions.insert(right.clone(), None);
-                Some(right.clone())
+                Some((right.clone(), None))
             }
         } else {
             // We can substitute the initial constraint using a new boolean variable `z`
@@ -132,7 +133,10 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
                 self.substitutions.insert(key, Some(z.clone()));
 
                 // We return `expr + z * offset == 0`, which is equivalent to the original constraint.
-                Some(expr + (GroupedExpression::from_unknown_variable(z) * offset))
+                Some((
+                    expr + (GroupedExpression::from_unknown_variable(z.clone()) * offset),
+                    Some(z),
+                ))
             }
         }
     }
@@ -153,20 +157,14 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
             return;
         }
         let (exprs, vars): (Vec<_>, Vec<_>) = self.substitutions.drain().unzip();
-        let exprs = apply_substitutions(
-            ConstraintSystem {
-                algebraic_constraints: exprs,
-                bus_interactions: vec![],
-            },
-            assignments.iter().cloned(),
-        )
-        .algebraic_constraints;
+        let exprs = apply_substitutions_to_expressions(exprs, assignments.iter().cloned());
         self.substitutions = exprs.into_iter().zip_eq(vars).collect();
     }
 }
 
 #[cfg(test)]
 mod tests {
+
     use crate::test_utils::{constant, var};
 
     use super::*;
@@ -178,8 +176,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        let result = result.unwrap();
+        let (result, z) = result.unwrap();
         assert_eq!(result.to_string(), "-(a + b + 10 * z)");
+        assert_eq!(z, Some("z"));
     }
 
     #[test]
@@ -189,8 +188,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        let result = result.unwrap();
+        let (result, z) = result.unwrap();
         assert_eq!(result.to_string(), "a + b");
+        assert_eq!(z, None);
     }
 
     #[test]
@@ -213,8 +213,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        let result = result.unwrap();
+        let (result, z) = result.unwrap();
         assert_eq!(result.to_string(), "-(a + b + 10 * z)");
+        assert_eq!(z, Some("z"));
 
         assert!(extractor
             .try_extract_boolean(&expr, &mut var_dispenser)
@@ -244,6 +245,7 @@ mod tests {
             extractor
                 .try_extract_boolean(&expr4, &mut var_dispenser)
                 .unwrap()
+                .0
                 .to_string(),
             "-(2 * a + 2 * b + 40 * z)"
         );
@@ -256,7 +258,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().to_string(), "a + b");
+        let (result, z) = result.unwrap();
+        assert_eq!(result.to_string(), "a + b");
+        assert_eq!(z, None);
 
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_none());
@@ -275,7 +279,9 @@ mod tests {
         let mut extractor: BooleanExtractor<_, _> = Default::default();
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().to_string(), "-(a + b + k - 2 * z_0)");
+        let (result, z) = result.unwrap();
+        assert_eq!(result.to_string(), "-(a + b + k - 2 * z_0)");
+        assert_eq!(z, Some("z_0"));
 
         extractor.apply_assignments(&[("k", -constant(9))]);
         let expr2 =

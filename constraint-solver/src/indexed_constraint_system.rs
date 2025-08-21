@@ -26,6 +26,24 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     indexed_constraint_system.into()
 }
 
+/// Applies multiple substitutions to all expressions in a sequence of expressions.
+pub fn apply_substitutions_to_expressions<
+    T: RuntimeConstant + Substitutable<V>,
+    V: Hash + Eq + Clone + Ord,
+>(
+    expressions: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
+) -> Vec<GroupedExpression<T, V>> {
+    apply_substitutions(
+        ConstraintSystem {
+            algebraic_constraints: expressions.into_iter().collect(),
+            bus_interactions: Vec::new(),
+        },
+        substitutions,
+    )
+    .algebraic_constraints
+}
+
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone)]
