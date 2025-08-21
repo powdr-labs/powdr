@@ -14,7 +14,6 @@ use crate::{
 
 use super::{
     chip::{RangeCheckerSend, RowEvaluator},
-    vm::OriginalInstruction,
 };
 use itertools::Itertools;
 use openvm_circuit::{
@@ -27,6 +26,7 @@ use openvm_circuit::{
         OfflineMemory,
     },
 };
+use openvm_instructions::instruction::Instruction;
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
@@ -45,7 +45,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
+    expression::AlgebraicReference, Apc, BasicBlock, InstructionHandler, SymbolicBusInteraction
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -58,9 +58,9 @@ use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
-    instructions: Vec<OriginalInstruction<F>>,
+    composite_to_linear: BTreeMap<AlgebraicReference, usize>,
+    block: BasicBlock<Instr<F>>,
     air_by_opcode_id: OriginalAirs<F>,
-    is_valid_poly_id: u64,
     inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
@@ -68,17 +68,17 @@ pub struct PowdrExecutor<F: PrimeField32> {
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
+        composite_to_linear: BTreeMap<AlgebraicReference, usize>,
+        block: BasicBlock<Instr<F>>,
         air_by_opcode_id: OriginalAirs<F>,
-        is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
-            instructions,
+            composite_to_linear,
+            block,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,
@@ -105,14 +105,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         // execute the original instructions one by one
         let res = self
-            .instructions
+            .block
+            .statements
             .iter()
             .try_fold(from_state, |execution_state, instruction| {
                 let executor = self
                     .inventory
-                    .get_mut_executor(&instruction.opcode())
+                    .get_mut_executor(&instruction.0.opcode)
                     .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
+                executor.execute(memory, &instruction.0, execution_state)
             });
 
         self.number_of_calls += 1;
@@ -150,23 +151,24 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// nodes in the APC circuit.
     pub fn generate_witness<SC>(
         self,
-        column_index_by_poly_id: &BTreeMap<u64, usize>,
+        column_index_by_poly_id: &BTreeMap<AlgebraicReference, usize>,
         bus_interactions: &[SymbolicBusInteraction<F>],
     ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
+        let is_valid_index = column_index_by_poly_id[&AlgebraicReference::IsValid];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         // for each original opcode, the name of the dummy air it corresponds to
         let air_name_by_opcode = self
-            .instructions
+            .block
+            .statements
             .iter()
-            .map(|instruction| instruction.opcode())
+            .map(|instruction| instruction.0.opcode)
             .unique()
             .map(|opcode| {
                 (
@@ -195,13 +197,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 .collect();
 
         let instruction_index_to_table_offset = self
-            .instructions
+            .block.statements
             .iter()
             .enumerate()
             .scan(
                 HashMap::default(),
                 |counts: &mut HashMap<&str, usize>, (index, instruction)| {
-                    let air_name = air_name_by_opcode.get(&instruction.opcode()).unwrap();
+                    let air_name = air_name_by_opcode.get(&instruction.0.opcode).unwrap();
                     let count = counts.entry(air_name).or_default();
                     let current_count = *count;
                     *count += 1;
@@ -211,19 +213,21 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .collect::<HashMap<_, _>>();
 
         let occurrences_by_table_name: HashMap<&String, usize> = self
-            .instructions
+            .block
+            .statements
             .iter()
-            .map(|instruction| air_name_by_opcode.get(&instruction.opcode()).unwrap())
+            .map(|instruction| air_name_by_opcode.get(&instruction.0.opcode).unwrap())
             .counts();
 
         // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .instructions
+            .block
+            .statements
             .iter()
             .map(|instruction| {
                 // look up how many dummy‐cells this AIR produces:
                 let air_width = dummy_trace_by_air_name
-                    .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
+                    .get(air_name_by_opcode.get(&instruction.0.opcode).unwrap())
                     .unwrap()
                     .width();
 
@@ -231,7 +235,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 let mut map = HashMap::with_capacity(air_width);
                 for dummy_trace_index in 0..air_width {
                     if let Ok(apc_index) =
-                        global_index(dummy_trace_index, instruction, column_index_by_poly_id)
+                        (dummy_trace_index, instruction, column_index_by_poly_id)
                     {
                         if map.insert(dummy_trace_index, apc_index).is_some() {
                             panic!(
@@ -247,14 +251,14 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .collect();
 
         assert_eq!(
-            self.instructions.len(),
+            self.block.statements.len(),
             dummy_trace_index_to_apc_index_by_instruction.len()
         );
 
         let dummy_values = (0..self.number_of_calls)
             .into_par_iter()
             .map(|record_index| {
-                (0..self.instructions.len())
+                (0..self.block.statements.len())
                     .map(|index| {
                         // get the air name and offset for this instruction (by index)
                         let (air_name, offset) =
@@ -277,7 +281,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
-            .instructions
+            .block
+            .statements
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
@@ -363,25 +368,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 enum IndexError {
     NotInDummy,
     NotInAutoprecompile,
-}
-
-/// Maps the index of a column in the original AIR of a given instruction to the corresponding
-/// index in the autoprecompile AIR.
-fn global_index<F>(
-    local_index: usize,
-    instruction: &OriginalInstruction<F>,
-    autoprecompile_index_by_poly_id: &BTreeMap<u64, usize>,
-) -> Result<usize, IndexError> {
-    // Map to the poly_id in the original instruction to the poly_id in the autoprecompile.
-    let autoprecompile_poly_id = instruction
-        .subs
-        .get(local_index)
-        .ok_or(IndexError::NotInDummy)?;
-    // Map to the index in the autoprecompile.
-    let variable_index = autoprecompile_index_by_poly_id
-        .get(autoprecompile_poly_id)
-        .ok_or(IndexError::NotInAutoprecompile)?;
-    Ok(*variable_index)
 }
 
 // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.

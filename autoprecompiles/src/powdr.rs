@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_expression::visitors::{AllChildren, ExpressionVisitable};
@@ -25,7 +24,7 @@ pub fn substitute_algebraic<T: Clone>(
 pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     let zero = AlgebraicExpression::Number(T::zero());
     expr.pre_visit_expressions_mut(&mut |expr| {
-        if let AlgebraicExpression::Reference(AlgebraicReference { .. }) = expr {
+        if let AlgebraicExpression::Reference(..) = expr {
             *expr = zero.clone();
         }
     });
@@ -94,62 +93,24 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
     }
 }
 
-/// Globalizes the references in the machine by appending a suffix to their names
-/// and offsetting their IDs to start from `curr_id`.
+/// Globalizes the references in the machine by setting the namespace to the index of the instruction
 /// Returns:
-/// - The updated `next_global_id`.
-/// - The substitutions, mapping the local reference IDs to the global ones.
 /// - The updated machine with globalized references.
 pub fn globalize_references<T: FieldElement>(
-    machine: SymbolicMachine<T>,
-    mut next_global_id: u64,
-    suffix: usize,
-) -> (u64, Vec<u64>, SymbolicMachine<T>) {
-    let unique_reference_ids = machine.unique_references().map(|r| r.id).collect_vec();
-    let machine_size = unique_reference_ids.len() as u64;
-    assert_eq!(
-        *unique_reference_ids.iter().max().unwrap(),
-        machine_size - 1,
-        "The reference ids must be contiguous"
-    );
-
-    let machine = globalize_reference_names(machine, suffix);
-    let machine = offset_reference_ids(machine, next_global_id);
-
-    let subs = (next_global_id..(next_global_id + machine_size)).collect::<Vec<_>>();
-    next_global_id += machine_size;
-    (next_global_id, subs, machine)
-}
-
-/// Globalizes the names of references in the machine by appending a suffix.
-fn globalize_reference_names<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
-    suffix: usize,
-) -> SymbolicMachine<T> {
-    // Allocate a new string for each *unique* reference in the machine
-    let globalized_name = |name| Arc::new(format!("{name}_{suffix}"));
-    let name_by_id = machine
-        .unique_references()
-        .map(|reference| (reference.id, globalized_name(reference.name)))
-        .collect::<BTreeMap<_, _>>();
-
-    // Update the names
-    machine.pre_visit_expressions_mut(&mut |e| {
-        if let AlgebraicExpression::Reference(r) = e {
-            r.name = name_by_id.get(&r.id).unwrap().clone();
-        }
-    });
-
-    machine
-}
-
-fn offset_reference_ids<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    offset: u64,
+    namespace: usize,
 ) -> SymbolicMachine<T> {
     machine.pre_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
-            r.id += offset;
+            match r {
+                AlgebraicReference::IsValid => {
+                    unreachable!();
+                }
+                AlgebraicReference::Original(original) => {
+                    assert_eq!(original.id.namespace, 0);
+                    original.id.namespace = namespace;
+                }
+            }
         }
     });
     machine

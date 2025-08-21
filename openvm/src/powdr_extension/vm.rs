@@ -26,10 +26,10 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     ChipUsageGetter,
 };
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{Apc, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, PrecompileImplementation};
+use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
@@ -45,54 +45,22 @@ pub struct PowdrExtension<F> {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct OriginalInstruction<F> {
-    pub instruction: Instruction<F>,
-    /// The autoprecompile poly_ids that the instruction points to, in the same order as the corresponding original columns
-    pub subs: Vec<u64>,
-}
-
-impl<F> OriginalInstruction<F> {
-    pub fn new(instruction: Instruction<F>, subs: Vec<u64>) -> Self {
-        Self { instruction, subs }
-    }
-
-    pub fn opcode(&self) -> VmOpcode {
-        self.instruction.opcode
-    }
-}
-
-impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
-    fn as_ref(&self) -> &Instruction<F> {
-        &self.instruction
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct PowdrPrecompile<F> {
-    pub name: String,
     pub opcode: PowdrOpcode,
-    pub machine: SymbolicMachine<F>,
-    pub original_instructions: Vec<OriginalInstruction<F>>,
-    pub is_valid_column: AlgebraicReference,
+    pub apc: Apc<F, Instr<F>>,
     pub apc_stats: Option<OvmApcStats>,
 }
 
 impl<F> PowdrPrecompile<F> {
     pub fn new(
-        name: String,
         opcode: PowdrOpcode,
-        machine: SymbolicMachine<F>,
-        original_instructions: Vec<OriginalInstruction<F>>,
-        is_valid_column: AlgebraicReference,
+        apc: Apc<F, Instr<F>>,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
-            name,
             opcode,
-            machine,
-            original_instructions,
-            is_valid_column,
+            apc,
             apc_stats,
         }
     }

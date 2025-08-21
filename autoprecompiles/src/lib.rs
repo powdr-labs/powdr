@@ -12,11 +12,11 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
@@ -173,7 +173,7 @@ pub struct SymbolicMachine<T> {
 
 impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
-        self.unique_references()
+        self.unique_references().collect::<BTreeSet<_>>().into_iter()
     }
 }
 
@@ -302,18 +302,13 @@ pub trait InstructionHandler<T, I> {
     fn is_branching(&self, instruction: &I) -> bool;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Apc<T, I> {
     pub block: BasicBlock<I>,
     pub machine: SymbolicMachine<T>,
-    pub subs: Vec<Vec<u64>>,
 }
 
 impl<T, I> Apc<T, I> {
-    pub fn subs(&self) -> &[Vec<u64>] {
-        &self.subs
-    }
-
     pub fn machine(&self) -> &SymbolicMachine<T> {
         &self.machine
     }
@@ -332,7 +327,7 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, subs) = statements_to_symbolic_machine::<A>(
+    let machine = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
@@ -365,11 +360,7 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine(machine, &A::into_field);
 
-    let apc = Apc {
-        block,
-        machine,
-        subs,
-    };
+    let apc = Apc { block, machine };
 
     if let Some(path) = apc_candidates_dir_path {
         let ser_path = path
@@ -431,12 +422,7 @@ fn add_guards_constraint<T: FieldElement>(
 fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
 
-    let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
-
-    let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
-        name: Arc::new("is_valid".to_string()),
-        id: max_id,
-    });
+    let is_valid = AlgebraicExpression::Reference(AlgebraicReference::IsValid);
 
     machine.constraints = machine
         .constraints

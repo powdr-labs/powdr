@@ -83,11 +83,9 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
+) -> SymbolicMachine<A::PowdrField> {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
-    let mut col_subs: Vec<Vec<u64>> = Vec::new();
-    let mut global_idx: u64 = 3;
 
     for (i, instr) in block.statements.iter().enumerate() {
         let machine = instruction_handler
@@ -108,8 +106,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
             .map(|x| x.map(|f| A::from_field(f)))
             .collect::<Vec<_>>();
 
-        let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
-        global_idx = next_global_idx;
+        let machine = powdr::globalize_references(machine, i);
 
         let pc_lookup = machine
             .bus_interactions
@@ -152,16 +149,12 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
                 }),
         );
         bus_interactions.extend(machine.bus_interactions.iter().cloned());
-        col_subs.push(subs);
     }
 
-    (
-        SymbolicMachine {
-            constraints,
-            bus_interactions,
-        },
-        col_subs,
-    )
+    SymbolicMachine {
+        constraints,
+        bus_interactions,
+    }
 }
 
 fn exec_receive<T: FieldElement>(

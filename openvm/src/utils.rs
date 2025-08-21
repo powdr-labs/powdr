@@ -11,7 +11,7 @@ use openvm_stark_backend::{
     interaction::Interaction,
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::expression::AlgebraicReference;
+use powdr_autoprecompiles::expression::{AlgebraicReference, NamespacedReferenceIdentifier};
 use powdr_expression::AlgebraicExpression;
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -32,7 +32,7 @@ impl fmt::Display for OpenVmReference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OpenVmReference::WitnessColumn(reference, next) => {
-                write!(f, "{}{}", reference.name, if *next { "'" } else { "" })
+                write!(f, "{}{}", reference.to_string(), if *next { "'" } else { "" })
             }
             OpenVmReference::IsFirstRow => write!(f, "is_first_row"),
             OpenVmReference::IsLastRow => write!(f, "is_last_row"),
@@ -59,29 +59,30 @@ impl TryFrom<OpenVmReference> for AlgebraicReference {
 
 pub fn algebraic_to_symbolic<F: PrimeField32>(
     expr: &AlgebraicExpression<F, AlgebraicReference>,
+    composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
 ) -> SymbolicExpression<F> {
     match expr {
         AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
         AlgebraicExpression::BinaryOperation(binary) => match binary.op {
             AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
+                x: Arc::new(algebraic_to_symbolic(&binary.left, composite_to_linear)),
+                y: Arc::new(algebraic_to_symbolic(&binary.right, composite_to_linear)),
                 degree_multiple: 0,
             },
             AlgebraicBinaryOperator::Sub => SymbolicExpression::Sub {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
+                x: Arc::new(algebraic_to_symbolic(&binary.left, composite_to_linear)),
+                y: Arc::new(algebraic_to_symbolic(&binary.right, composite_to_linear)),
                 degree_multiple: 0,
             },
             AlgebraicBinaryOperator::Mul => SymbolicExpression::Mul {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
+                x: Arc::new(algebraic_to_symbolic(&binary.left, composite_to_linear)),
+                y: Arc::new(algebraic_to_symbolic(&binary.right, composite_to_linear)),
                 degree_multiple: 0,
             },
         },
         AlgebraicExpression::UnaryOperation(unary) => match unary.op {
             AlgebraicUnaryOperator::Minus => SymbolicExpression::Neg {
-                x: Arc::new(algebraic_to_symbolic(&unary.expr)),
+                x: Arc::new(algebraic_to_symbolic(&unary.expr, composite_to_linear)),
                 degree_multiple: 0,
             },
         },
@@ -91,7 +92,7 @@ pub fn algebraic_to_symbolic<F: PrimeField32>(
                     part_index: 0,
                     offset: 0,
                 },
-                algebraic_reference.id as usize,
+                composite_to_linear[algebraic_reference]
             ))
         }
     }
@@ -142,10 +143,7 @@ pub fn symbolic_to_algebraic<F: PrimeField32>(
                     panic!("Column index out of bounds: {index}\nColumns: {columns:?}");
                 });
                 AlgebraicExpression::Reference(OpenVmReference::WitnessColumn(
-                    AlgebraicReference {
-                        name: name.clone(),
-                        id: *index as u64,
-                    },
+                    AlgebraicReference::new(*index as u64, name.clone()),
                     next,
                 ))
             }
