@@ -155,7 +155,11 @@ where
         let constraints = constraints
             .into_iter()
             .filter(|c| !c.is_zero())
-            .flat_map(|constr| self.extract_boolean(constr))
+            .flat_map(|constr| {
+                self.try_extract_boolean(&constr)
+                    .into_iter()
+                    .chain(std::iter::once(constr))
+            })
             // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
@@ -261,21 +265,20 @@ where
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
-    /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
+    /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
-    /// This function will always return the original constraint as well as any extracted constraints.
-    fn extract_boolean(
+    fn try_extract_boolean(
         &mut self,
-        constr: GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
-        let extracted = self
+        constr: &GroupedExpression<T, V>,
+    ) -> Option<GroupedExpression<T, V>> {
+        let (constr, var) = self
             .boolean_extractor
-            .try_extract_boolean(&constr, || self.var_dispenser.next_boolean());
-        if let Some((_, Some(v))) = &extracted {
-            // If we extracted a boolean variable, we constrain it to be boolean.
-            self.add_range_constraint(v, RangeConstraint::from_mask(1));
+            .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
+        if let Some(var) = var {
+            // If we created a boolean variable, we constrain it to be boolean.
+            self.add_range_constraint(&var, RangeConstraint::from_mask(1));
         }
-        std::iter::once(constr).chain(extracted.map(|(e, _)| e))
+        Some(constr)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint

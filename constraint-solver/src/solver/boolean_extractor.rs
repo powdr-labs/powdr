@@ -36,6 +36,8 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
     /// constraint that makes use of a new boolean variable.
     /// NOTE: The boolean constraint is not part of the output.
     ///
+    /// Returns the new constraint and the new variable if required.
+    ///
     /// If the same simplification has been performed before, it will
     /// return None (in particular, it will not request a new variable).
     ///
