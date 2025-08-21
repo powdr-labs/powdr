@@ -1348,6 +1348,26 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too much RAM"]
+    fn ecrecover_prove_recursion() {
+        let stdin = StdIn::default();
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECRECOVER_HINTS,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+        prove_recursion(
+            GUEST_ECRECOVER_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
     fn ecc_projective_prove() {
         let stdin = StdIn::default();
         let config =
@@ -1714,6 +1734,54 @@ mod tests {
                         preprocessed: 0,
                         main: 16416,
                         log_up: 26292,
+                    },
+                }
+            "#]]),
+        );
+    }
+
+    #[test]
+    fn ecrecover_machine_pgo_cell() {
+        let stdin = StdIn::default();
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECRECOVER_HINTS, GuestOptions::default(), stdin);
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST_ECRECOVER_HINTS,
+                apc: GUEST_ECRECOVER_APC_PGO,
+                skip: GUEST_ECRECOVER_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 23439,
+                            log_up: 36464,
+                        },
+                        constraints: 15799,
+                        bus_interactions: 15286,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    50
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 153675,
+                        log_up: 208524,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 23439,
+                        log_up: 36464,
                     },
                 }
             "#]]),
