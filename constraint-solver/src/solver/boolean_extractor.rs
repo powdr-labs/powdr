@@ -227,4 +227,27 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
         assert!(result.is_none());
     }
+
+    #[test]
+    fn apply_assignments() {
+        let mut counter = 0;
+        let vars = (0..10).map(|i| format!("z_{i}")).collect_vec();
+        let mut var_dispenser = || {
+            counter += 1;
+            vars[counter - 1].as_str()
+        };
+        let expr =
+            (var("a") + var("b") + var("k")) * (var("a") + var("b") + var("k") - constant(2));
+        let mut extractor: BooleanExtractor<_, _> = Default::default();
+        let result = extractor.try_extract_boolean(&expr, &mut var_dispenser);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().to_string(), "a + b + k + 2 * z_0 - 2");
+
+        extractor.apply_assignments(&[("k", constant(9))]);
+        let expr2 =
+            (var("a") + var("b") + constant(9)) * (var("a") + var("b") + constant(9) - constant(2));
+
+        let result = extractor.try_extract_boolean(&expr2, &mut var_dispenser);
+        assert!(result.is_none());
+    }
 }
