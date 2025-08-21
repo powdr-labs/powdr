@@ -29,7 +29,7 @@ use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::evaluation::AirStats;
-use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo, PgoConfig};
+use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
@@ -64,6 +64,7 @@ pub mod symbolic_instruction_builder;
 mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
+pub use powdr_autoprecompiles::PgoConfig;
 
 type BabyBearSC = BabyBearPoseidon2Config;
 
