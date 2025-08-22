@@ -84,6 +84,7 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     pub fn is_unconstrained(&self) -> bool {
         self.range_width() == Self::unconstrained().range_width()
+            && self.stride.is_one()
             && self.mask == Self::unconstrained().mask
     }
 
@@ -105,20 +106,19 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// Returns the number of elements between the min and the max value, disregarding the mask and
     /// potentially other constraints.
     pub fn range_width(&self) -> T::Integer {
-        // TODO incorporate stride into this but also check that it is always used
-        // as an element counter.
         range_width(self.min, self.max)
-    }
-
-    /// Returns (an upper bound for) the number of field elements included in the constraint.
-    pub fn size_estimate(&self) -> T::Integer {
-        self.range_width()
     }
 
     /// Returns the `stride`, i.e. the distance between two consecutive valid values
     /// between `min` and `max`.
     pub fn stride(&self) -> T {
         self.stride
+    }
+
+    /// Returns (an upper bound for) the number of field elements included in the constraint.
+    pub fn size_estimate(&self) -> T::Integer {
+        self.range_width()
+        // TODO improve using stride
     }
 
     /// Returns true if `v` is an allowed value for this range constraint.
@@ -128,10 +128,17 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             self.min <= v || v <= self.max // TODO
         };
-        // let in_stride = self.stride.is_one()
-        //     || (v - self.min).to_integer() % self.stride.to_integer().is_zero();
+        let in_stride = self.stride.is_one()
+            || (|| {
+                Some(
+                    ((v - self.min).to_integer().try_into_u64()?
+                        % self.stride.to_integer().try_into_u64()?)
+                        == 0,
+                )
+            })()
+            .unwrap_or(true);
         let in_mask = v.to_integer() & self.mask == v.to_integer();
-        in_range && in_mask
+        in_range && in_mask && in_stride
     }
 
     /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
@@ -152,6 +159,7 @@ impl<T: FieldElement> RangeConstraint<T> {
                 ..self.clone()
             },
             Self {
+                // TODO has to be adjusted for stride
                 min: self.min + half_width,
                 ..self.clone()
             },
@@ -171,15 +179,26 @@ impl<T: FieldElement> RangeConstraint<T> {
             (self.mask + other.mask) | self.mask | other.mask
         };
 
-        let (min, max) = if self.range_width().to_arbitrary_integer()
+        let (min, max, stride) = if self.range_width().to_arbitrary_integer()
             + other.range_width().to_arbitrary_integer()
             <= T::modulus().to_arbitrary_integer()
         {
-            (self.min + other.min, self.max + other.max)
+            // TODO it's enough that one stride divides the other, then we take
+            // the smaller one.
+            // TODO should stride be T::Integer?
+            let stride = if self.stride == other.stride {
+                self.stride
+            } else if self.range_width().is_one() {
+                other.stride
+            } else if other.range_width().is_one() {
+                self.stride
+            } else {
+                T::one()
+            };
+            (self.min + other.min, self.max + other.max, stride)
         } else {
-            (T::one(), T::zero())
+            (T::one(), T::zero(), T::one())
         };
-        let stride = 1.into(); // TODO
         Self {
             min,
             max,
@@ -199,6 +218,7 @@ impl<T: FieldElement> RangeConstraint<T> {
             && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
                 < T::modulus().to_arbitrary_integer()
         {
+            // TODO stride?
             Self::from_range(self.min * other.min, self.max * other.max)
         } else {
             Default::default()
@@ -283,16 +303,18 @@ impl<T: FieldElement> RangeConstraint<T> {
             (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
                 .then(|| self.mask << exponent)
         });
-        let (min, max) = if factor.is_in_lower_half() {
-            range_multiple(self.min, self.max, factor)
+        let (min, max, stride) = if factor.is_in_lower_half() {
+            range_multiple(self.min, self.max, self.stride, factor)
         } else {
-            range_multiple(-self.max, -self.min, -factor)
+            // TODO we need to make sure that `max` is hit by stride
+            // In general, we can reduce `max` if stride is larger than one.
+            range_multiple(-self.max, -self.min, T::one(), -factor)
         };
         Self {
             min,
             max,
             mask: mask.unwrap_or_else(|| Self::from_range(min, max).mask),
-            stride: 1.into(), // TODO
+            stride,
         }
     }
 
@@ -313,6 +335,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         // True if the intersection is empty when looking at ranges only.
         let intervals_disjoint =
             interval_intersection((self.min, self.max), (other.min, other.max)).is_none();
+        // TODO stride
         masks_disjoint || intervals_disjoint
     }
 
@@ -320,6 +343,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// Panics if the range width is larger than 2^32 (in which case you
     /// probably don't want to call this function).
     pub fn allowed_values(&self) -> impl Iterator<Item = T> + '_ {
+        // TODO stride
         (0..=self.range_width().try_into_u32().unwrap())
             .map(move |offset| self.min + T::from(offset))
             .filter(|value| self.allows_value(*value))
@@ -354,14 +378,14 @@ fn mask_from_bits<T: FieldElement>(bits: usize) -> T::Integer {
     }
 }
 
-fn range_multiple<T: FieldElement>(min: T, max: T, factor: T) -> (T, T) {
+fn range_multiple<T: FieldElement>(min: T, max: T, stride: T, factor: T) -> (T, T, T) {
     // This is correct by iterated addition.
     if range_width(min, max).to_arbitrary_integer() * factor.to_arbitrary_integer()
         <= T::modulus().to_arbitrary_integer()
     {
-        (min * factor, max * factor)
+        (min * factor, max * factor, stride * factor)
     } else {
-        (T::one(), T::zero())
+        (T::one(), T::zero(), T::one())
     }
 }
 
@@ -641,7 +665,7 @@ mod test {
                 min: 28.into(),
                 max: max_value * GoldilocksField::from(4),
                 mask: u64::MAX.into(),
-                stride: 1.into(),
+                stride: 4.into(),
             }
         );
         assert_eq!(
@@ -911,5 +935,12 @@ mod test {
         assert_eq!(a.stride(), 0x10.into());
         let b: RangeConstraint<GoldilocksField> = RangeConstraint::from_mask(0x11u32);
         assert_eq!(b.stride(), 0x1.into());
+    }
+
+    #[test]
+    fn stride_unconstrained() {
+        let b: RangeConstraint<GoldilocksField> = RangeConstraint::unconstrained();
+        assert_eq!(b.stride(), 1.into());
+        assert!(b.is_unconstrained());
     }
 }
