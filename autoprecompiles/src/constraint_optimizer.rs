@@ -11,13 +11,18 @@ use powdr_constraint_solver::{
     constraint_system::{BusInteractionHandler, ConstraintRef, ConstraintSystem},
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
-    inliner,
+    inliner::{self, DegreeBound},
     journaling_constraint_system::JournalingConstraintSystem,
     solver::Solver,
 };
 use powdr_number::FieldElement;
 
-use crate::stats_logger::StatsLogger;
+use crate::{
+    low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer,
+    memory_optimizer::{optimize_memory, MemoryBusInteraction},
+    range_constraint_optimizer::RangeConstraintHandler,
+    stats_logger::StatsLogger,
+};
 
 mod reachability;
 
@@ -40,12 +45,21 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Panics if the solver fails.
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
-pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+pub fn optimize_constraints<
+    P: FieldElement,
+    V: Ord + Clone + Eq + Hash + Display,
+    M: MemoryBusInteraction<P, V>,
+>(
     constraint_system: JournalingConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + Clone,
     should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
+    memory_bus_id: Option<u64>,
+    degree_bound: DegreeBound,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
@@ -72,13 +86,24 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     stats_logger.log("removing trivial constraints", &constraint_system);
 
     let constraint_system =
-        remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
+        remove_equal_bus_interactions(constraint_system, bus_interaction_handler.clone());
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
     // TODO maybe we should keep learnt range constraints stored somewhere because
     // we might not be able to re-derive them if some constraints are missing.
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
+
+    let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
+    stats_logger.log("memory optimization", &constraint_system);
+
+    let constraint_system = LowDegreeBusInteractionOptimizer::new(
+        solver,
+        bus_interaction_handler.clone(),
+        degree_bound,
+    )
+    .optimize(constraint_system);
+    stats_logger.log("low degree bus interaction optimization", &constraint_system);
 
     Ok(constraint_system)
 }

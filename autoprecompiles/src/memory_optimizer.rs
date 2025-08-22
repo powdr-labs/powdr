@@ -5,6 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 
@@ -16,10 +17,19 @@ pub fn optimize_memory<
     V: Hash + Eq + Clone + Ord + Display,
     M: MemoryBusInteraction<T, V>,
 >(
-    mut system: ConstraintSystem<T, V>,
+    system: JournalingConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
-    memory_bus_id: u64,
-) -> ConstraintSystem<T, V> {
+    memory_bus_id: Option<u64>,
+) -> JournalingConstraintSystem<T, V> {
+    let memory_bus_id = match memory_bus_id {
+        Some(id) => id,
+        None => {
+            return system;
+        }
+    };
+
+    let mut system = system.system().clone();
+
     // TODO use the solver here.
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices::<T, V, M>(&system, solver, memory_bus_id);
@@ -33,7 +43,13 @@ pub fn optimize_memory<
     solver.add_algebraic_constraints(new_constraints.iter().cloned());
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
-    system
+
+    assert!(check_register_operation_consistency::<_, _, M>(
+        &system,
+        memory_bus_id
+    ));
+
+    system.into()
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.

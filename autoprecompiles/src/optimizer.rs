@@ -3,10 +3,8 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
-use powdr_constraint_solver::solver::{new_solver, Solver};
+use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
@@ -14,16 +12,12 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-use crate::constraint_optimizer::IsBusStateful;
-use crate::low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer;
-use crate::memory_optimizer::MemoryBusInteraction;
-use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
+use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
-    memory_optimizer::{check_register_operation_consistency, optimize_memory},
     powdr::{self},
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
@@ -46,15 +40,17 @@ pub fn optimize<A: Adapter>(
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<_>>(
-            constraint_system,
+        constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
+            JournalingConstraintSystem::from(constraint_system),
             &mut solver,
             bus_interaction_handler.clone(),
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
-            bus_map,
+            bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
-        )?;
+        )?
+        .system()
+        .clone();
         if stats == stats_logger::Stats::from(&constraint_system) {
             break;
         }
@@ -100,55 +96,6 @@ pub fn optimize<A: Adapter>(
         "Expected all PC lookups to be removed."
     );
     Ok(constraint_system_to_symbolic_machine(constraint_system))
-}
-
-fn optimization_loop_iteration<
-    P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Debug + Display,
-    C: PartialEq + Eq + Clone + Display,
-    M: MemoryBusInteraction<P, V>,
->(
-    constraint_system: ConstraintSystem<P, V>,
-    solver: &mut impl Solver<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P>
-        + IsBusStateful<P>
-        + RangeConstraintHandler<P>
-        + Clone,
-    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
-    stats_logger: &mut StatsLogger,
-    bus_map: &BusMap<C>,
-    degree_bound: DegreeBound,
-) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystem::from(constraint_system);
-    let constraint_system = optimize_constraints(
-        constraint_system,
-        solver,
-        bus_interaction_handler.clone(),
-        should_inline,
-        stats_logger,
-    )?;
-    let constraint_system = constraint_system.system().clone();
-    let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system =
-            optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
-        assert!(check_register_operation_consistency::<_, _, M>(
-            &constraint_system,
-            memory_bus_id
-        ));
-        stats_logger.log("memory optimization", &constraint_system);
-        constraint_system
-    } else {
-        constraint_system
-    };
-
-    let constraint_system = LowDegreeBusInteractionOptimizer::new(
-        solver,
-        bus_interaction_handler.clone(),
-        degree_bound,
-    )
-    .optimize(constraint_system);
-
-    Ok(constraint_system)
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
