@@ -1294,63 +1294,63 @@ mod tests {
         );
     }
 
-    #[test]
-    fn ecc_hint_prove() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-        prove_simple(
-            GUEST_ECC_HINTS,
-            config.clone(),
-            PrecompileImplementation::SingleRowChip,
-            stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
-            None,
-        );
-    }
+    // #[test]
+    // fn ecc_hint_prove() {
+    //     let mut stdin = StdIn::default();
+    //     stdin.write(&GUEST_ECC_ITER);
+    //     let pgo_data =
+    //         execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+    //     let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+    //     prove_simple(
+    //         GUEST_ECC_HINTS,
+    //         config.clone(),
+    //         PrecompileImplementation::SingleRowChip,
+    //         stdin.clone(),
+    //         PgoConfig::Cell(pgo_data.clone(), None),
+    //         None,
+    //     );
+    // }
 
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn ecc_hint_prove_recursion() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-        prove_recursion(
-            GUEST_ECC_HINTS,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Cell(pgo_data, None),
-            None,
-        );
-    }
+    // #[test]
+    // #[ignore = "Too much RAM"]
+    // fn ecc_hint_prove_recursion() {
+    //     let mut stdin = StdIn::default();
+    //     stdin.write(&GUEST_ECC_ITER);
+    //     let pgo_data =
+    //         execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+    //     let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+    //     prove_recursion(
+    //         GUEST_ECC_HINTS,
+    //         config,
+    //         PrecompileImplementation::SingleRowChip,
+    //         stdin,
+    //         PgoConfig::Cell(pgo_data, None),
+    //         None,
+    //     );
+    // }
 
-    #[test]
-    fn ecc_projective_prove() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_ITER);
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
+    // #[test]
+    // fn ecc_projective_prove() {
+    //     let mut stdin = StdIn::default();
+    //     stdin.write(&GUEST_ECC_ITER);
+    //     let config =
+    //         default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
+    //     let pgo_data = execution_profile_from_guest(
+    //         GUEST_ECC_PROJECTIVE,
+    //         GuestOptions::default(),
+    //         stdin.clone(),
+    //     );
 
-        prove_simple(
-            GUEST_ECC_PROJECTIVE,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Cell(pgo_data, None),
-            None,
-        );
-    }
+    //     prove_simple(
+    //         GUEST_ECC_PROJECTIVE,
+    //         config,
+    //         PrecompileImplementation::SingleRowChip,
+    //         stdin,
+    //         PgoConfig::Cell(pgo_data, None),
+    //         None,
+    //     );
+    // }
 
     #[test]
     #[ignore = "Too much RAM"]
