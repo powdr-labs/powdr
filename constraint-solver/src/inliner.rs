@@ -1,4 +1,4 @@
-use crate::constraint_system::ConstraintRef;
+use crate::constraint_system::{AlgebraicConstraint, ConstraintRef};
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::journaling_constraint_system::JournalingConstraintSystem;
@@ -93,8 +93,11 @@ pub fn substitution_would_not_violate_degree_bound<
         .constraints_referencing_variables(std::iter::once(var.clone()))
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let degree =
-                    expression_degree_with_virtual_substitution(identity, var, replacement_deg);
+                let degree = expression_degree_with_virtual_substitution(
+                    &identity.expression,
+                    var,
+                    replacement_deg,
+                );
                 degree <= degree_bound.identities
             }
             ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
@@ -110,13 +113,13 @@ fn find_inlinable_variables<
     T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    constraint: &GroupedExpression<T, V>,
+    constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
-    let (_, linear, _) = constraint.components();
+    let (_, linear, _) = constraint.expression.components();
     linear
         .rev()
         .filter_map(|(target_var, _)| {
-            let rhs_expr = constraint.try_solve_for(target_var)?;
+            let rhs_expr = constraint.expression.try_solve_for(target_var)?;
             assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
             Some((target_var.clone(), rhs_expr))
         })

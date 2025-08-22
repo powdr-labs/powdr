@@ -9,7 +9,7 @@ use bitvec::vec::BitVec;
 use itertools::Itertools;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem},
+    constraint_system::{AlgebraicConstraint, BusInteraction, ConstraintRef, ConstraintSystem},
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
 };
@@ -36,12 +36,18 @@ pub fn apply_substitutions_to_expressions<
 ) -> Vec<GroupedExpression<T, V>> {
     apply_substitutions(
         ConstraintSystem {
-            algebraic_constraints: expressions.into_iter().collect(),
+            algebraic_constraints: expressions
+                .into_iter()
+                .map(AlgebraicConstraint::from)
+                .collect(),
             bus_interactions: Vec::new(),
         },
         substitutions,
     )
     .algebraic_constraints
+    .into_iter()
+    .map(|constraint| constraint.expression)
+    .collect()
 }
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
@@ -143,7 +149,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         &self.constraint_system
     }
 
-    pub fn algebraic_constraints(&self) -> &[GroupedExpression<T, V>] {
+    pub fn algebraic_constraints(&self) -> &[AlgebraicConstraint<GroupedExpression<T, V>>] {
         &self.constraint_system.algebraic_constraints
     }
 
@@ -164,7 +170,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     /// Removes all constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
-        mut f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+        mut f: impl FnMut(&AlgebraicConstraint<GroupedExpression<T, V>>) -> bool,
     ) {
         retain(
             &mut self.constraint_system.algebraic_constraints,
@@ -239,7 +245,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
     /// Adds new algebraic constraints to the system.
     pub fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.extend(ConstraintSystem {
             algebraic_constraints: constraints.into_iter().collect(),
@@ -386,7 +392,9 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
 ) {
     match item {
         ConstraintSystemItem::AlgebraicConstraint(i) => {
-            constraint_system.algebraic_constraints[i].substitute_by_known(variable, substitution);
+            constraint_system.algebraic_constraints[i]
+                .expression
+                .substitute_by_known(variable, substitution);
         }
         ConstraintSystemItem::BusInteraction(i) => {
             constraint_system.bus_interactions[i]
@@ -405,6 +413,7 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
     match item {
         ConstraintSystemItem::AlgebraicConstraint(i) => {
             constraint_system.algebraic_constraints[i]
+                .expression
                 .substitute_by_unknown(variable, substitution);
         }
         ConstraintSystemItem::BusInteraction(i) => {
@@ -478,7 +487,7 @@ where
 
     pub fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         let initial_len = self
             .constraint_system
@@ -512,7 +521,7 @@ where
 
     pub fn retain_algebraic_constraints(
         &mut self,
-        mut f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+        mut f: impl FnMut(&AlgebraicConstraint<GroupedExpression<T, V>>) -> bool,
     ) {
         self.constraint_system.retain_algebraic_constraints(&mut f);
         if !self.queue.queue.is_empty() {

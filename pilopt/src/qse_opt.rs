@@ -33,7 +33,7 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .filter_map(|identity| match identity {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                Some(algebraic_to_quadratic_symbolic_expression(expression))
+                Some(algebraic_to_quadratic_symbolic_expression(expression).into())
             }
             _ => None,
         })

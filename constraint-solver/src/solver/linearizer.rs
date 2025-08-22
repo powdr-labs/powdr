@@ -3,6 +3,7 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 
+use crate::constraint_system::AlgebraicConstraint;
 use crate::indexed_constraint_system::apply_substitutions_to_expressions;
 use crate::runtime_constant::Substitutable;
 use crate::solver::VariableAssignment;
@@ -23,15 +24,15 @@ impl<T, V> Default for Linearizer<T, V> {
 }
 
 impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
-    /// Linearizes the constraint by introducing new variables for
+    /// Linearizes the expression by introducing new variables for
     /// non-affine parts. The new constraints are appended to
     /// `constraint_collection` and must be added to the system.
     /// The linearized expression is returned.
-    pub fn linearize(
+    pub fn linearize_expression(
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
-        constraint_collection: &mut impl Extend<GroupedExpression<T, V>>,
+        constraint_collection: &mut impl Extend<AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) -> GroupedExpression<T, V> {
         if expr.is_affine() {
             return expr;
@@ -89,9 +90,9 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
-        constraint_collection: &mut impl Extend<GroupedExpression<T, V>>,
+        constraint_collection: &mut impl Extend<AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) -> GroupedExpression<T, V> {
-        let linearized = self.linearize(expr, var_dispenser, constraint_collection);
+        let linearized = self.linearize_expression(expr, var_dispenser, constraint_collection);
         self.substitute_by_var(linearized, var_dispenser, constraint_collection)
     }
 
@@ -104,7 +105,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         &mut self,
         expr: GroupedExpression<T, V>,
         var_dispenser: &mut impl FnMut() -> V,
-        constraint_collection: &mut impl Extend<GroupedExpression<T, V>>,
+        constraint_collection: &mut impl Extend<AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) -> GroupedExpression<T, V> {
         if let Some(var) = self.try_substitute_by_existing_var(&expr) {
             var
@@ -112,7 +113,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
             let var = var_dispenser();
             self.substitutions.insert(expr.clone(), var.clone());
             let var = GroupedExpression::from_unknown_variable(var);
-            constraint_collection.extend([expr - var.clone()]);
+            constraint_collection.extend([AlgebraicConstraint::from(expr - var.clone())]);
             var
         }
     }
@@ -197,7 +198,7 @@ mod tests {
         let mut linearizer = Linearizer::default();
         let expr = var("x") + var("y") * (var("z") + constant(1)) * (var("x") - constant(1));
         let mut constraints_to_add = vec![];
-        let linearized = linearizer.linearize(
+        let linearized = linearizer.linearize_expression(
             expr,
             &mut || {
                 let var = Variable::Linearized(var_counter);
