@@ -3,6 +3,7 @@ use powdr_number::ExpressionConvertible;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
+use crate::constraint_system::AlgebraicConstraint;
 use crate::constraint_system::BusInteractionHandler;
 use crate::constraint_system::ConstraintRef;
 use crate::effect::Effect;
@@ -159,7 +160,7 @@ where
                 for (variable, value) in assignments.iter() {
                     identity.substitute_by_known(variable, &T::from(*value));
                 }
-                identity
+                AlgebraicConstraint::from(&identity.expression)
                     .solve(range_constraints)
                     .map(|result| result.effects)
                     .map_err(|_| ContradictingConstraintError)

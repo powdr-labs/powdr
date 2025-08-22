@@ -185,7 +185,11 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         })
         .filter(|(variable, constraint)| match constraint {
             // Remove the algebraic constraint if we can solve for the variable.
-            ConstraintRef::AlgebraicConstraint(constr) => constr.try_solve_for(variable).is_some(),
+            ConstraintRef::AlgebraicConstraint(constr) => {
+                AlgebraicConstraint::from(&constr.expression)
+                    .try_solve_for(variable)
+                    .is_some()
+            }
             ConstraintRef::BusInteraction(bus_interaction) => {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
                 // Only stateless bus interactions can be removed.

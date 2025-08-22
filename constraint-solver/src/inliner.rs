@@ -126,7 +126,8 @@ fn find_inlinable_variables<
     linear
         .rev()
         .filter_map(|(target_var, _)| {
-            let rhs_expr = constraint.expression.try_solve_for(target_var)?;
+            let rhs_expr =
+                AlgebraicConstraint::from(&constraint.expression).try_solve_for(target_var)?;
             assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
             Some((target_var.clone(), rhs_expr))
         })
