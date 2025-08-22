@@ -66,14 +66,6 @@ pub fn optimize<A: Adapter>(
     .clone();
     stats_logger.log("inlining", &constraint_system);
 
-    let constraint_system = inliner::replace_constrained_witness_columns(
-        constraint_system.into(),
-        inline_everything_below_degree_bound(degree_bound),
-    )
-    .system()
-    .clone();
-    stats_logger.log("inlining", &constraint_system);
-
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
