@@ -23,7 +23,7 @@ jobs:
     runs-on: warp-ubuntu-2404-x64-8x
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
@@ -89,7 +89,7 @@ jobs:
           - "7"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - name: Download build artifacts
@@ -116,7 +116,7 @@ jobs:
     runs-on: warp-ubuntu-2404-x64-4x
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       # Do not use the cache because we are compiling a different version of powdr.
@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
@@ -149,7 +149,7 @@ jobs:
     runs-on: warp-ubuntu-2404-x64-8x
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - name: ⚡ Cache rust
@@ -171,7 +171,7 @@ jobs:
           cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: powdr-labs/openvm-reth-benchmark
           ref: main
