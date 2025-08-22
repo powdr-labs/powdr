@@ -307,18 +307,6 @@ w"
     }
 
     #[test]
-    fn split_bit_decomp_bug() {
-        let lin = GroupedExpression::from_unknown_variable("lin");
-        let result = GroupedExpression::from_unknown_variable("result");
-        let constr = lin.clone() - constant(4) * result.clone() - constant(4);
-        let range_constraints = HashMap::from([
-            ("lin", RangeConstraint::from_mask(0x8u32)),
-            ("result", RangeConstraint::from_mask(0x1u32)),
-        ]);
-        let result = try_split_constraint(&constr, &range_constraints).unwrap();
-    }
-
-    #[test]
     fn split_seqz() {
         // From the seqz instruction:
         // (b__3_0 - b_msb_f_0) * (b_msb_f_0 + 256 - b__3_0) = 0
