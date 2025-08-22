@@ -27,42 +27,35 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
 
     // The original constraint is equivalent to `sum of components + constant`
 
-    // Now try to split out each one in turn.
-    let mut parts = vec![];
+    // Now try to split out each component in turn.
+    let mut extracted_parts = vec![];
     for index in 0..components.len() {
         let candidate = &components[index];
-        // println!("Trying to split out {candidate_coeff} * ({candidate})");
         let rest = components
             .iter()
             .enumerate()
             .filter(|(i, component)| *i != index && component.coeff != Zero::zero())
             .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
+        // The original constraint is equivalent to
+        // `candidate.expr + rest + constant / candidate.coeff = 0`.
+        // Try to find the unique value for `candidate.expr` in this equation.
         if let Some(solution) = find_solution(
             &candidate.expr,
             rest,
-            // TODO what if the field div here is not a division without remainder in the integers?
             constant / candidate.coeff,
             range_constraints,
         ) {
-            // TODO do we need to modify constant in some way?
-
-            // candidate % smallest_coeff == constant only if candidate = solution.
-            // Add `candidate = solution` to the parts
-            parts.push(candidate.expr.clone() - GroupedExpression::from_number(solution));
-            // println!("Split out {}", parts.last().unwrap());
-            // println!(
-            //     "Adjusting constant from {constant} to {}",
-            //     constant - solution * *candidate_coeff
-            // );
+            // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
+            extracted_parts.push(candidate.expr.clone() - GroupedExpression::from_number(solution));
+            // Add `solution * candidate.coeff - candidate` (which is zero) to our expression
+            // by replacing the component by zero and adding `solution * candidate.coeff` to the
+            // constant.
             constant += solution * candidate.coeff;
-            // Substitute `candidate = solution` in our expression
-            // by replacing the component by zero and subtracting
-            // the solution from the constant.
             components[index] = Default::default();
         }
     }
-    if parts.is_empty() {
+    if extracted_parts.is_empty() {
         None
     } else {
         // We found some independent parts, add the remaining components to the parts
@@ -71,23 +64,25 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             .into_iter()
             .filter(|comp| comp.coeff != 0.into())
             .collect_vec();
-        let constant = GroupedExpression::from_number(constant);
-        parts.push(match remaining.as_slice() {
+        extracted_parts.push(match remaining.as_slice() {
             [Component { coeff, expr }] => {
-                expr + &(constant * T::one().field_div(&T::from(*coeff)))
-            } // if there is only one component, we normalize
+                // if there is only one component, we normalize
+                expr + &GroupedExpression::from_number(constant / *coeff)
+            }
             _ => {
                 remaining
                     .into_iter()
                     .map(|comp| comp.into())
                     .sum::<GroupedExpression<_, _>>()
-                    + constant
+                    + GroupedExpression::from_number(constant)
             }
         });
-        Some(parts)
+        Some(extracted_parts)
     }
 }
 
+/// If this returns `Some(x)`, then `x` is the only valid value for `expr` in the equation
+/// `expr + rest + constant = 0`.
 fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     expr: &GroupedExpression<T, V>,
     rest: Vec<Component<T, V>>,
@@ -98,8 +93,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         // We are done anyway.
         return None;
     }
-    // The original constraint is equivalent to `candidate.expr + rest = constant / candidate.coeff`.
-    // Now we try to extract the smallest coefficient in rest.
+
     let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
     assert_ne!(smallest_coeff, 0.into());
     assert!(smallest_coeff.is_in_lower_half());
@@ -252,7 +246,6 @@ mod test {
     use itertools::Itertools;
 
     use crate::{
-        grouped_expression::GroupedExpression,
         range_constraint::RangeConstraint,
         solver::constraint_splitter::try_split_constraint,
         test_utils::{constant, var},
