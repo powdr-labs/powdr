@@ -20,7 +20,6 @@ use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::{
     adapter::Adapter,
-    bitwise_lookup_optimizer::optimize_bitwise_lookup,
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
@@ -43,16 +42,23 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let constraint_system = symbolic_machine_to_constraint_system(machine);
-    let constraint_system =
-        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
+    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
+    loop {
+        let stats = stats_logger::Stats::from(&constraint_system);
+        constraint_system = optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
+            &mut solver,
             bus_interaction_handler.clone(),
             inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map,
             degree_bound,
         )?;
+        if stats == stats_logger::Stats::from(&constraint_system) {
+            break;
+        }
+    }
 
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
@@ -94,40 +100,6 @@ pub fn optimize<A: Adapter>(
         "Expected all PC lookups to be removed."
     );
     Ok(constraint_system_to_symbolic_machine(constraint_system))
-}
-
-fn run_optimization_loop_until_no_change<
-    P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Debug + Display,
-    C: PartialEq + Eq + Clone + Display,
-    M: MemoryBusInteraction<P, V>,
->(
-    mut constraint_system: ConstraintSystem<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P>
-        + IsBusStateful<P>
-        + RangeConstraintHandler<P>
-        + Clone,
-    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
-    stats_logger: &mut StatsLogger,
-    bus_map: &BusMap<C>,
-    degree_bound: DegreeBound,
-) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
-    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
-    loop {
-        let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, _, _, M>(
-            constraint_system,
-            &mut solver,
-            bus_interaction_handler.clone(),
-            &should_inline,
-            stats_logger,
-            bus_map,
-            degree_bound,
-        )?;
-        if stats == stats_logger::Stats::from(&constraint_system) {
-            return Ok(constraint_system);
-        }
-    }
 }
 
 fn optimization_loop_iteration<
@@ -176,20 +148,7 @@ fn optimization_loop_iteration<
     )
     .optimize(constraint_system);
 
-    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::OpenVmBitwiseLookup) {
-        let system = optimize_bitwise_lookup(
-            constraint_system,
-            bitwise_bus_id,
-            solver,
-            bus_interaction_handler.clone(),
-        );
-        stats_logger.log("optimizing bitwise lookup", &system);
-        system
-    } else {
-        constraint_system
-    };
-
-    Ok(system)
+    Ok(constraint_system)
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(

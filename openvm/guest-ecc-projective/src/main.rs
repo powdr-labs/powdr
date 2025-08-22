@@ -1,9 +1,11 @@
 #![cfg_attr(target_os = "zkvm", no_main)]
 #![cfg_attr(target_os = "zkvm", no_std)]
 use hex_literal::hex;
+use k256::elliptic_curve::ops::LinearCombination;
 use k256::elliptic_curve::sec1::FromEncodedPoint;
 use k256::elliptic_curve::PrimeField;
 use k256::{AffinePoint, EncodedPoint, FieldBytes, ProjectivePoint, Scalar};
+use openvm::io::read;
 
 openvm::entry!(main);
 
@@ -40,11 +42,13 @@ pub fn main() {
 
     let scalar_1 = Scalar::from_repr(*FieldBytes::from_slice(
         hex!("BFD5D7FA526B6954945C980C6C804E0E19840F2DA009C8B0C9A511189FB466BF").as_ref(),
-    ));
+    ))
+    .unwrap();
 
     let scalar_2 = Scalar::from_repr(*FieldBytes::from_slice(
         hex!("369E07A2FC32462DD74AB67CE7D7595EC91FC11CC90A3C15A94B57A21E878614").as_ref(),
-    ));
+    ))
+    .unwrap();
 
     let result_x = FieldBytes::from_slice(&[
         112, 170, 75, 207, 229, 212, 237, 2, 131, 65, 143, 232, 168, 46, 48, 240, 56, 164, 245,
@@ -60,6 +64,12 @@ pub fn main() {
     ))
     .expect("AffinePoint should be valid");
 
-    let result = a * scalar_1.unwrap() + b * scalar_2.unwrap();
+    let mut result = ProjectivePoint::lincomb(&a, &scalar_1, &b, &scalar_2);
     assert_eq!(result.to_affine(), result_point);
+
+    // Benchmark
+    let n: u32 = read();
+    for _ in 0..n {
+        result = ProjectivePoint::lincomb(&result, &scalar_1, &result, &scalar_2);
+    }
 }

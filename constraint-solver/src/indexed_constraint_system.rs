@@ -26,6 +26,24 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     indexed_constraint_system.into()
 }
 
+/// Applies multiple substitutions to all expressions in a sequence of expressions.
+pub fn apply_substitutions_to_expressions<
+    T: RuntimeConstant + Substitutable<V>,
+    V: Hash + Eq + Clone + Ord,
+>(
+    expressions: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
+) -> Vec<GroupedExpression<T, V>> {
+    apply_substitutions(
+        ConstraintSystem {
+            algebraic_constraints: expressions.into_iter().collect(),
+            bus_interactions: Vec::new(),
+        },
+        substitutions,
+    )
+    .algebraic_constraints
+}
+
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
 #[derive(Clone)]
@@ -299,6 +317,9 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
     ///
     /// Note this does NOT work properly if the variable is used inside a
     /// known SymbolicExpression.
+    ///
+    /// It does not delete the occurrence of `variable` so that it can be used to check
+    /// which constraints it used to occur in.
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         let items = self
             .variable_occurrences
@@ -446,6 +467,9 @@ where
 
     /// Substitutes a variable with a known value in the whole system.
     /// This function also updates the queue accordingly.
+    ///
+    /// It does not delete the occurrence of `variable` so that it can be used to check
+    /// which constraints it used to occur in.
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         self.constraint_system
             .substitute_by_unknown(variable, substitution);

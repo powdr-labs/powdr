@@ -29,6 +29,7 @@ use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
@@ -45,6 +46,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use tracing::Level;
 
@@ -375,14 +377,48 @@ pub fn compile_exe_with_elf(
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let elf = powdr_riscv_elf::load_elf_from_buffer(elf);
-    let compiled = customize(
-        original_program,
-        elf.text_labels(),
-        elf.debug_info(),
-        config,
-        implementation,
-        pgo_config,
-    );
+    let compiled = match pgo_config {
+        PgoConfig::Cell(pgo_data, max_total_columns) => {
+            let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
+                let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
+
+                let total_non_apc_columns = original_config
+                    .chip_inventory_air_metrics(config.degree_bound.identities)
+                    .values()
+                    .map(|m| m.total_width())
+                    .sum::<usize>();
+                max_total_columns - total_non_apc_columns
+            });
+
+            customize(
+                original_program,
+                elf.text_labels(),
+                elf.debug_info(),
+                config,
+                implementation,
+                CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
+                    pgo_data,
+                    max_total_apc_columns,
+                ),
+            )
+        }
+        PgoConfig::Instruction(pgo_data) => customize(
+            original_program,
+            elf.text_labels(),
+            elf.debug_info(),
+            config,
+            implementation,
+            InstructionPgo::with_pgo_data(pgo_data),
+        ),
+        PgoConfig::None => customize(
+            original_program,
+            elf.text_labels(),
+            elf.debug_info(),
+            config,
+            implementation,
+            NonePgo::default(),
+        ),
+    };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
         &mut BufWriter::new(File::create("debug.pil").unwrap()),
@@ -817,6 +853,9 @@ mod tests {
     const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
     const GUEST_ECC_APC_PGO: u64 = 50;
     const GUEST_ECC_SKIP: u64 = 0;
+    // Even with an iteration of 0, the test does one linear combination
+    // (and asserts that the result is correct)
+    const GUEST_ECC_ITER: u32 = 0;
 
     const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
     const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
@@ -1298,7 +1337,8 @@ mod tests {
 
     #[test]
     fn ecc_hint_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
@@ -1335,7 +1375,8 @@ mod tests {
     #[test]
     #[ignore = "Too much RAM"]
     fn ecc_hint_prove_recursion() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
@@ -1372,7 +1413,8 @@ mod tests {
 
     #[test]
     fn ecc_projective_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let config =
             default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
@@ -1697,7 +1739,8 @@ mod tests {
 
     #[test]
     fn ecc_hint_machine_pgo_cell() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
 

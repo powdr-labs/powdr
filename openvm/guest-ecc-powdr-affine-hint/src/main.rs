@@ -5,6 +5,7 @@ use k256::elliptic_curve::sec1::FromEncodedPoint;
 use k256::elliptic_curve::PrimeField;
 use k256::PowdrAffinePoint;
 use k256::{AffinePoint, EncodedPoint, FieldBytes, FieldElement, Scalar};
+use openvm::io::read;
 
 openvm::entry!(main);
 
@@ -61,7 +62,14 @@ pub fn main() {
     .unwrap();
 
     // Multi scalar multiplication
-    let multiplication = PowdrAffinePoint::lincomb(&[(point1, scalar_1), (point2, scalar_2)]);
-    assert_eq!(multiplication.x().normalize(), result_x);
-    assert_eq!(multiplication.y().normalize(), result_y);
+    let mut result = PowdrAffinePoint::lincomb(&[(point1, scalar_1), (point2, scalar_2)]);
+    assert_eq!(result.x().normalize(), result_x);
+    assert_eq!(result.y().normalize(), result_y);
+
+    // Benchmark
+    let n: u32 = read();
+    for _ in 0..n {
+        result =
+            PowdrAffinePoint::lincomb(&[(result.clone(), scalar_1), (result.clone(), scalar_2)]);
+    }
 }

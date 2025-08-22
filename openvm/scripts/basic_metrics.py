@@ -17,20 +17,38 @@ def extract_metrics(filename):
     normal_instruction_air = non_powdr_air[is_normal_instruction]
     openvm_precompile_air = non_powdr_air[~is_normal_instruction]
 
+    # Compute total proof times
+    app_proof_time_ms = pd.to_numeric(app[app["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
+    leaf_proof_time_ms = pd.to_numeric(leaf[leaf["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
+    internal_proof_time_ms = pd.to_numeric(internal[internal["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
+    total_proof_time_ms = app_proof_time_ms + leaf_proof_time_ms + internal_proof_time_ms
+
+    # Compute total column counts
+    # Note that this sums the columns over *all* segments.
+    # This metric should roughly correlate with leaf proof time.
+    main_cols = pd.to_numeric(app[app["metric"] == "main_cols"]["value"]).sum()
+    prep_cols = pd.to_numeric(app[app["metric"] == "prep_cols"]["value"]).sum()
+    perm_cols = pd.to_numeric(app[app["metric"] == "perm_cols"]["value"]).sum()
+    app_proof_cols = main_cols + prep_cols + perm_cols
+
     metrics["filename"] = filename
 
     metrics["num_segments"] = pd.to_numeric(app[app["metric"] == "num_segments"]["value"]).sum()
 
     metrics["app_proof_cells"] = pd.to_numeric(app[app["metric"] == "total_cells"]["value"]).sum()
 
-    metrics["app_proof_time_ms"] = pd.to_numeric(app[app["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
+    metrics["app_proof_cols"] = app_proof_cols
+
+    metrics["total_proof_time_ms"] = total_proof_time_ms
+
+    metrics["app_proof_time_ms"] = app_proof_time_ms
 
     metrics["app_execute_time_ms"] = pd.to_numeric(app[app["metric"] == "execute_time_ms"]["value"]).sum()
 
     metrics["app_trace_gen_time_ms"] = pd.to_numeric(app[app["metric"] == "trace_gen_time_ms"]["value"]).sum()
 
-    metrics["leaf_proof_time_ms"] = pd.to_numeric(leaf[leaf["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
-    metrics["inner_recursion_proof_time_ms"] = pd.to_numeric(internal[internal["metric"] == "stark_prove_excluding_trace_time_ms"]["value"]).sum()
+    metrics["leaf_proof_time_ms"] = leaf_proof_time_ms
+    metrics["inner_recursion_proof_time_ms"] = internal_proof_time_ms
 
     normal_instruction_cells = pd.to_numeric(normal_instruction_air[normal_instruction_air["metric"] == "cells"]["value"]).sum()
     openvm_precompile_cells = pd.to_numeric(openvm_precompile_air[openvm_precompile_air["metric"] == "cells"]["value"]).sum()
