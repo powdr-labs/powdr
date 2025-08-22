@@ -135,7 +135,6 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     {
         return None;
     }
-    // TODO are the range constraint conditions sufficent?
     candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
 }
 
