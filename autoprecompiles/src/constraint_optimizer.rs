@@ -75,9 +75,6 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    let constraint_system = remove_duplicate_factors(constraint_system);
-    stats_logger.log("removing duplicate factors", &constraint_system);
-
     // TODO maybe we should keep learnt range constraints stored somewhere because
     // we might not be able to re-derive them if some constraints are missing.
     let constraint_system = remove_redundant_constraints(constraint_system);
@@ -328,8 +325,11 @@ pub trait IsBusStateful<T: FieldElement> {
 
 /// Removes constraints that are factors of other constraints.
 fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
+    constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
+    // First, remove duplicate factors from the constraints.
+    let mut constraint_system = remove_duplicate_factors(constraint_system);
+
     // Maps each factor to the set of constraints that contain it.
     let mut constraints_by_factor = HashMap::new();
     // Turns each constraint into a set of factors.
@@ -365,7 +365,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         // Counting the factors is sufficient here.
         redundant.retain(|j| {
             let other_factors = &constraints_as_factors[*j];
-            // This assertion can fail if `remove_duplicate_factors` is not called before this function.
+            // This assertion can fail if `remove_duplicate_factors` is not called at the start of this function.
             assert!(other_factors.len() >= factors.len());
             other_factors.len() > factors.len() || *j > i
         });
