@@ -861,6 +861,11 @@ mod tests {
     const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
     const GUEST_ECC_PROJECTIVE_SKIP: u64 = 0;
 
+    const GUEST_ECRECOVER_HINTS: &str = "guest-ecrecover";
+    const GUEST_ECRECOVER_APC_PGO: u64 = 50;
+    const GUEST_ECRECOVER_SKIP: u64 = 0;
+    const GUEST_ECRECOVER_ITER: u32 = 1;
+
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
@@ -1348,6 +1353,26 @@ mod tests {
     }
 
     #[test]
+    fn ecrecover_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECRECOVER_HINTS,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+        prove_simple(
+            GUEST_ECRECOVER_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+    }
+
+    #[test]
     #[ignore = "Too much RAM"]
     fn ecc_hint_prove_recursion() {
         let mut stdin = StdIn::default();
@@ -1357,6 +1382,27 @@ mod tests {
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_recursion(
             GUEST_ECC_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
+    #[ignore = "Too much RAM"]
+    fn ecrecover_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECRECOVER_HINTS,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+        prove_recursion(
+            GUEST_ECRECOVER_HINTS,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
@@ -1734,6 +1780,55 @@ mod tests {
                         preprocessed: 0,
                         main: 16416,
                         log_up: 26292,
+                    },
+                }
+            "#]]),
+        );
+    }
+
+    #[test]
+    fn ecrecover_machine_pgo_cell() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECRECOVER_HINTS, GuestOptions::default(), stdin);
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST_ECRECOVER_HINTS,
+                apc: GUEST_ECRECOVER_APC_PGO,
+                skip: GUEST_ECRECOVER_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 19754,
+                            log_up: 30204,
+                        },
+                        constraints: 11826,
+                        bus_interactions: 13073,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    50
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 133429,
+                        log_up: 176548,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 19754,
+                        log_up: 30204,
                     },
                 }
             "#]]),

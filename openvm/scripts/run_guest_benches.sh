@@ -90,3 +90,20 @@ run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100
 
 python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
+
+### ECRECOVER
+dir="results/ecrecover"
+input="20"
+
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-ecrecover-manual $input 0 manual
+run_bench guest-ecrecover $input 0 apc000
+run_bench guest-ecrecover $input 3 apc003
+run_bench guest-ecrecover $input 10 apc010
+run_bench guest-ecrecover $input 30 apc030
+run_bench guest-ecrecover $input 100 apc100
+
+python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd
