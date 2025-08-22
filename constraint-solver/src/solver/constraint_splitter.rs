@@ -20,14 +20,12 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<Vec<GroupedExpression<T, V>>> {
     // Group the linear part by absolute coefficients.
-    let (mut components, constant) = components_grouped_by_absolute_coefficient(constraint)?;
+    let (mut components, mut constant) = components_grouped_by_absolute_coefficient(constraint)?;
     if components.len() < 2 {
         return None;
     }
-    let mut constant = -constant;
 
-    // The original constraint is equivalent to
-    // `components.iter().map(|(coeff, expr)| coeff * expr).sum() = constant`
+    // The original constraint is equivalent to `sum of components + constant`
 
     // Now try to split out each one in turn.
     let mut parts = vec![];
@@ -57,7 +55,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             //     "Adjusting constant from {constant} to {}",
             //     constant - solution * *candidate_coeff
             // );
-            constant -= solution * candidate.coeff;
+            constant += solution * candidate.coeff;
             // Substitute `candidate = solution` in our expression
             // by replacing the component by zero and subtracting
             // the solution from the constant.
@@ -76,14 +74,14 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         let constant = GroupedExpression::from_number(constant);
         parts.push(match remaining.as_slice() {
             [Component { coeff, expr }] => {
-                expr - &(constant * T::one().field_div(&T::from(*coeff)))
+                expr + &(constant * T::one().field_div(&T::from(*coeff)))
             } // if there is only one component, we normalize
             _ => {
                 remaining
                     .into_iter()
                     .map(|comp| comp.into())
                     .sum::<GroupedExpression<_, _>>()
-                    - constant
+                    + constant
             }
         });
         Some(parts)
@@ -135,9 +133,10 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // Now the only remaining task is to check that this new constraint has a unique solution
     // that does not require the use of the `%` operator.
 
-    candidate_rc.has_unique_modular_solution(constant, smallest_coeff)
+    candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
 }
 
+/// A component of a constraint. Equivalent to the expression `coeff * expr`.
 #[derive(Clone)]
 struct Component<T: RuntimeConstant, V> {
     coeff: T::FieldType,
