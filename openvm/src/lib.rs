@@ -1157,24 +1157,24 @@ mod tests {
         );
     }
 
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn sha256_prove_large() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_SHA256_ITER_LARGE);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+    // #[test]
+    // #[ignore = "Too much RAM"]
+    // fn sha256_prove_large() {
+    //     let mut stdin = StdIn::default();
+    //     stdin.write(&GUEST_SHA256_ITER_LARGE);
+    //     let pgo_data =
+    //         execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
 
-        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
-        prove_recursion(
-            GUEST_SHA256,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
+    //     let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+    //     prove_recursion(
+    //         GUEST_SHA256,
+    //         config,
+    //         PrecompileImplementation::SingleRowChip,
+    //         stdin,
+    //         PgoConfig::Instruction(pgo_data),
+    //         None,
+    //     );
+    // }
 
     #[test]
     fn sha256_small_prove_simple() {
