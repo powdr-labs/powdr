@@ -13,23 +13,23 @@ use crate::{
     Apc, InstructionHandler, PowdrConfig, VmConfig,
 };
 
-pub struct AdapterApcWithStats<A: Adapter> {
-    apc: AdapterApc<A>,
-    stats: Option<ApcStats<A>>,
+pub struct ApcWithStats<F, I, S> {
+    apc: Apc<F, I>,
+    stats: Option<S>,
 }
-impl<A: Adapter> AdapterApcWithStats<A> {
-    pub fn with_stats(mut self, stats: ApcStats<A>) -> Self {
+impl<F, I, S> ApcWithStats<F, I, S> {
+    pub fn with_stats(mut self, stats: S) -> Self {
         self.stats = Some(stats);
         self
     }
 
-    pub fn into_parts(self) -> (AdapterApc<A>, Option<ApcStats<A>>) {
+    pub fn into_parts(self) -> (Apc<F, I>, Option<S>) {
         (self.apc, self.stats)
     }
 }
 
-impl<A: Adapter> From<AdapterApc<A>> for AdapterApcWithStats<A> {
-    fn from(apc: AdapterApc<A>) -> Self {
+impl<F, I, S> From<Apc<F, I>> for ApcWithStats<F, I, S> {
+    fn from(apc: Apc<F, I>) -> Self {
         Self { apc, stats: None }
     }
 }
@@ -89,6 +89,8 @@ pub trait Adapter: Sized {
     }
 }
 
+pub type AdapterApcWithStats<A> =
+    ApcWithStats<<A as Adapter>::Field, <A as Adapter>::Instruction, <A as Adapter>::ApcStats>;
 pub type ApcStats<A> = <A as Adapter>::ApcStats;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
 pub type AdapterVmConfig<'a, A> = VmConfig<

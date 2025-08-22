@@ -26,7 +26,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter,
+    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
@@ -224,7 +224,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     let extensions = apcs
         .into_iter()
-        .map(AdapterApcWithStats::into_parts)
+        .map(ApcWithStats::into_parts)
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
             let Apc {
@@ -402,7 +402,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     }
 
     fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
-        AdapterApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
+        ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
     }
 }
 
