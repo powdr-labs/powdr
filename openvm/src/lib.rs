@@ -825,6 +825,7 @@ mod tests {
     const GUEST_ECRECOVER_HINTS: &str = "guest-ecrecover";
     const GUEST_ECRECOVER_APC_PGO: u64 = 50;
     const GUEST_ECRECOVER_SKIP: u64 = 0;
+    const GUEST_ECRECOVER_ITER: u32 = 1;
 
     #[test]
     fn guest_prove_simple() {
@@ -1313,7 +1314,8 @@ mod tests {
 
     #[test]
     fn ecrecover_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
         let pgo_data = execution_profile_from_guest(
             GUEST_ECRECOVER_HINTS,
             GuestOptions::default(),
@@ -1350,7 +1352,8 @@ mod tests {
     #[test]
     #[ignore = "Too much RAM"]
     fn ecrecover_prove_recursion() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
         let pgo_data = execution_profile_from_guest(
             GUEST_ECRECOVER_HINTS,
             GuestOptions::default(),
@@ -1742,7 +1745,8 @@ mod tests {
 
     #[test]
     fn ecrecover_machine_pgo_cell() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECRECOVER_HINTS, GuestOptions::default(), stdin);
 
@@ -1758,11 +1762,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 23439,
-                            log_up: 36464,
+                            main: 19754,
+                            log_up: 30204,
                         },
-                        constraints: 15799,
-                        bus_interactions: 15286,
+                        constraints: 11826,
+                        bus_interactions: 13073,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1775,13 +1779,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 153675,
-                        log_up: 208524,
+                        main: 133429,
+                        log_up: 176548,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 23439,
-                        log_up: 36464,
+                        main: 19754,
+                        log_up: 30204,
                     },
                 }
             "#]]),

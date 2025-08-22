@@ -7,6 +7,7 @@ use ecdsa::RecoveryId;
 use hex_literal::hex;
 use openvm_k256::ecdsa::{Signature, VerifyingKey};
 // clippy thinks this is unused, but it's used in the init! macro
+use openvm::io::read;
 #[allow(unused)]
 use openvm_k256::Secp256k1Point;
 
@@ -44,14 +45,17 @@ const RECOVERY_TEST_VECTORS: &[RecoveryTestVector] = &[
 
 // Test public key recovery
 fn main() {
-    for vector in RECOVERY_TEST_VECTORS {
-        let digest = [
-            173, 132, 205, 11, 16, 252, 2, 135, 56, 151, 27, 7, 129, 36, 174, 194, 160, 231, 198,
-            217, 134, 163, 129, 190, 11, 56, 111, 50, 190, 232, 135, 175,
-        ];
-        let sig = Signature::try_from(vector.sig.as_slice()).unwrap();
-        let recid = vector.recid;
-        let pk = VerifyingKey::recover_from_prehash(digest.as_slice(), &sig, recid).unwrap();
-        assert_eq!(&vector.pk[..], &pk.to_sec1_bytes(true));
+    let n: u32 = read();
+    for _ in 0..n {
+        for vector in RECOVERY_TEST_VECTORS {
+            let digest = [
+                173, 132, 205, 11, 16, 252, 2, 135, 56, 151, 27, 7, 129, 36, 174, 194, 160, 231,
+                198, 217, 134, 163, 129, 190, 11, 56, 111, 50, 190, 232, 135, 175,
+            ];
+            let sig = Signature::try_from(vector.sig.as_slice()).unwrap();
+            let recid = vector.recid;
+            let pk = VerifyingKey::recover_from_prehash(digest.as_slice(), &sig, recid).unwrap();
+            assert_eq!(&vector.pk[..], &pk.to_sec1_bytes(true));
+        }
     }
 }

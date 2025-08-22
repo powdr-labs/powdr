@@ -5,6 +5,7 @@ openvm::entry!(main);
 use hex_literal::hex;
 use k256::ecdsa::{PowdrVerifyKey, RecoveryId, Signature, VerifyingKey};
 use k256::EncodedPoint;
+use openvm::io::read;
 
 // Signature recovery test vectors
 struct RecoveryTestVector {
@@ -36,19 +37,22 @@ const RECOVERY_TEST_VECTORS: &[RecoveryTestVector] = &[
 
 //Test public key recovery
 pub fn main() {
-    for vector in RECOVERY_TEST_VECTORS {
-        let digest = [
-            173, 132, 205, 11, 16, 252, 2, 135, 56, 151, 27, 7, 129, 36, 174, 194, 160, 231, 198,
-            217, 134, 163, 129, 190, 11, 56, 111, 50, 190, 232, 135, 175,
-        ];
-        let sig = Signature::try_from(vector.sig.as_slice()).unwrap();
-        let recid = vector.recid;
-        let pk = <VerifyingKey as PowdrVerifyKey>::powdr_recover_from_prehash(
-            digest.as_slice(),
-            &sig,
-            recid,
-        )
-        .unwrap();
-        assert_eq!(&vector.pk[..], EncodedPoint::from(&pk).as_bytes());
+    let n: u32 = read();
+    for _ in 0..n {
+        for vector in RECOVERY_TEST_VECTORS {
+            let digest = [
+                173, 132, 205, 11, 16, 252, 2, 135, 56, 151, 27, 7, 129, 36, 174, 194, 160, 231,
+                198, 217, 134, 163, 129, 190, 11, 56, 111, 50, 190, 232, 135, 175,
+            ];
+            let sig = Signature::try_from(vector.sig.as_slice()).unwrap();
+            let recid = vector.recid;
+            let pk = <VerifyingKey as PowdrVerifyKey>::powdr_recover_from_prehash(
+                digest.as_slice(),
+                &sig,
+                recid,
+            )
+            .unwrap();
+            assert_eq!(&vector.pk[..], EncodedPoint::from(&pk).as_bytes());
+        }
     }
 }
