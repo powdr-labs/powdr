@@ -19,8 +19,20 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     constraint: &GroupedExpression<T, V>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<Vec<GroupedExpression<T, V>>> {
+    let (quadratic, linear, constant) = constraint.components();
+    if !quadratic.is_empty() {
+        // We cannot split quadratic constraints.
+        return None;
+    }
+    let mut constant = constant.try_to_number()?;
+
     // Group the linear part by absolute coefficients.
-    let (mut components, mut constant) = components_grouped_by_absolute_coefficient(constraint)?;
+    let mut components = group_components_by_absolute_coefficients(
+        linear
+            .map(|(var, coeff)| Component::try_from((var, coeff)).ok())
+            .collect::<Option<Vec<_>>>()?,
+    )
+    .collect_vec();
     if components.len() < 2 {
         return None;
     }
@@ -34,7 +46,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         let rest = components
             .iter()
             .enumerate()
-            .filter(|(i, component)| *i != index && component.coeff != Zero::zero())
+            .filter(|(i, component)| *i != index && !component.is_zero())
             .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
         // The original constraint is equivalent to
@@ -52,7 +64,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             // by replacing the component by zero and adding `solution * candidate.coeff` to the
             // constant.
             constant += solution * candidate.coeff;
-            components[index] = Default::default();
+            components[index] = Zero::zero();
         }
     }
     if extracted_parts.is_empty() {
@@ -60,25 +72,29 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     } else {
         // We found some independent parts, add the remaining components to the parts
         // and return them.
-        let remaining = components
-            .into_iter()
-            .filter(|comp| comp.coeff != 0.into())
-            .collect_vec();
-        extracted_parts.push(match remaining.as_slice() {
-            [Component { coeff, expr }] => {
-                // if there is only one component, we normalize
-                expr + &GroupedExpression::from_number(constant / *coeff)
-            }
-            _ => {
-                remaining
-                    .into_iter()
-                    .map(|comp| comp.into())
-                    .sum::<GroupedExpression<_, _>>()
-                    + GroupedExpression::from_number(constant)
-            }
-        });
+        extracted_parts.push(recombine_rest(components, constant));
         Some(extracted_parts)
     }
+}
+
+/// Groups a sequence of components (thought of as a sum) by absolute coefficients
+/// so that its sum does not change.
+/// The list is sorted by the coefficient.
+fn group_components_by_absolute_coefficients<
+    T: RuntimeConstant + Display,
+    V: Clone + Ord + Display,
+>(
+    components: impl IntoIterator<Item = Component<T, V>>,
+) -> impl Iterator<Item = Component<T, V>> {
+    components
+        .into_iter()
+        .map(|c| c.normalize())
+        .into_grouping_map_by(|c| c.coeff)
+        .sum()
+        .into_iter()
+        .filter(|(_, expr)| !expr.is_zero())
+        .map(|(_, comp)| comp)
+        .sorted_by_key(|comp| comp.coeff.to_integer())
 }
 
 /// If this returns `Some(x)`, then `x` is the only valid value for `expr` in the equation
@@ -121,6 +137,29 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     }
     // TODO are the range constraint conditions sufficent?
     candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
+}
+
+fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+    components: Vec<Component<T, V>>,
+    constant: T::FieldType,
+) -> GroupedExpression<T, V> {
+    let remaining = components
+        .into_iter()
+        .filter(|comp| !comp.is_zero())
+        .collect_vec();
+    match remaining.as_slice() {
+        [Component { coeff, expr }] => {
+            // if there is only one component, we normalize
+            expr + &GroupedExpression::from_number(constant / *coeff)
+        }
+        _ => {
+            remaining
+                .into_iter()
+                .map(|comp| comp.into())
+                .sum::<GroupedExpression<_, _>>()
+                + GroupedExpression::from_number(constant)
+        }
+    }
 }
 
 /// A component of a constraint. Equivalent to the expression `coeff * expr`.
@@ -189,47 +228,17 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> From<Component<T, V>> for GroupedE
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord> Default for Component<T, V> {
-    fn default() -> Self {
+impl<T: RuntimeConstant, V: Clone + Ord> Zero for Component<T, V> {
+    fn zero() -> Self {
         Self {
             coeff: T::FieldType::zero(),
             expr: GroupedExpression::zero(),
         }
     }
-}
 
-/// Turns an affine constraint `constraint = 0` into a list of expressions grouped by absolute coefficients
-/// and an offset. The list is sorted by the coefficient.
-/// If it returns `Some(([(c1, e1), ..., (cn, en)], o))`, then
-/// `c1 * e1 + ... + cn * en + o = constraint`.
-fn components_grouped_by_absolute_coefficient<
-    T: RuntimeConstant + Display,
-    V: Clone + Ord + Display,
->(
-    constraint: &GroupedExpression<T, V>,
-) -> Option<(Vec<Component<T, V>>, T::FieldType)> {
-    let (quadratic, linear, constant) = constraint.components();
-    if !quadratic.is_empty() {
-        // We cannot split quadratic constraints.
-        return None;
+    fn is_zero(&self) -> bool {
+        self.coeff.is_zero() || self.expr.is_zero()
     }
-    let constant = constant.try_to_number()?;
-
-    // Group the linear part by absolute coefficients.
-    let components = linear
-        .map(|(var, coeff)| Component::try_from((var, coeff)).ok())
-        .collect::<Option<Vec<_>>>()?
-        .into_iter()
-        .map(|c| c.normalize())
-        .into_grouping_map_by(|c| c.coeff)
-        .sum()
-        .into_iter()
-        .filter(|(_, expr)| !expr.coeff.is_zero())
-        .map(|(_, comp)| comp)
-        .sorted_by_key(|comp| comp.coeff.to_integer())
-        .collect_vec();
-
-    Some((components, constant))
 }
 
 #[cfg(test)]
