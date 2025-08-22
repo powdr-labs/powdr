@@ -303,6 +303,8 @@ impl<T: FieldElement> RangeConstraint<T> {
             (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
                 .then(|| self.mask << exponent)
         });
+        // TODO if the factor is the inverse of the stride, we can probably
+        // reduce the width.
         let (min, max, stride) = if factor.is_in_lower_half() {
             range_multiple(self.min, self.max, self.stride, factor)
         } else {
