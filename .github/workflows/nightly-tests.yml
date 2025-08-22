@@ -20,7 +20,7 @@ jobs:
       status: ${{ steps.count.outputs.status }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Count recent commits
         id: count
         run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
@@ -51,7 +51,7 @@ jobs:
     if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - name: ⚡ Cache rust
@@ -85,7 +85,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - name: ⚡ Restore rust cache
@@ -126,7 +126,7 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - name: ⚡ Cache rust
@@ -167,7 +167,7 @@ jobs:
           bash ./openvm/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: powdr-labs/openvm-reth-benchmark
           ref: main
