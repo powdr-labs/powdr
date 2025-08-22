@@ -41,15 +41,30 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let constraint_system = symbolic_machine_to_constraint_system(machine);
-    let constraint_system =
-        run_optimization_loop_until_no_change::<_, _, _, A::MemoryBusInteraction<_>>(
+    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
+    loop {
+        let stats = stats_logger::Stats::from(&constraint_system);
+        constraint_system = optimization_loop_iteration::<_, _, _, A::MemoryBusInteraction<_>>(
             constraint_system,
+            &mut solver,
             bus_interaction_handler.clone(),
             &mut stats_logger,
             bus_map,
             degree_bound,
         )?;
+        if stats == stats_logger::Stats::from(&constraint_system) {
+            break;
+        }
+    }
+
+    let constraint_system = inliner::replace_constrained_witness_columns(
+        constraint_system.into(),
+        inline_everything_below_degree_bound(degree_bound),
+    )
+    .system()
+    .clone();
+    stats_logger.log("inlining", &constraint_system);
 
     let constraint_system = inliner::replace_constrained_witness_columns(
         constraint_system.into(),
@@ -107,38 +122,6 @@ pub fn optimize<A: Adapter>(
         "Expected all PC lookups to be removed."
     );
     Ok(constraint_system_to_symbolic_machine(constraint_system))
-}
-
-fn run_optimization_loop_until_no_change<
-    P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Debug + Display,
-    C: PartialEq + Eq + Clone + Display,
-    M: MemoryBusInteraction<P, V>,
->(
-    mut constraint_system: ConstraintSystem<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P>
-        + IsBusStateful<P>
-        + RangeConstraintHandler<P>
-        + Clone,
-    stats_logger: &mut StatsLogger,
-    bus_map: &BusMap<C>,
-    degree_bound: DegreeBound,
-) -> Result<ConstraintSystem<P, V>, crate::constraint_optimizer::Error> {
-    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
-    loop {
-        let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration::<_, _, _, M>(
-            constraint_system,
-            &mut solver,
-            bus_interaction_handler.clone(),
-            stats_logger,
-            bus_map,
-            degree_bound,
-        )?;
-        if stats == stats_logger::Stats::from(&constraint_system) {
-            return Ok(constraint_system);
-        }
-    }
 }
 
 fn optimization_loop_iteration<
