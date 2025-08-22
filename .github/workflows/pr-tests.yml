@@ -47,14 +47,14 @@ jobs:
       ##### The block below is shared between cache build and PR build workflows #####
       - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt
-      - name: Install Rust toolchain 1.85 (stable)
-        run: rustup toolchain install 1.85
+      - name: Install Rust toolchain 1.88 (stable)
+        run: rustup toolchain install 1.88
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Cargo check with Rust 1.85 (default features)
-        run: cargo +1.85 check --all-targets
+      - name: Cargo check with Rust 1.88 (default features)
+        run: cargo +1.88 check --all-targets
       - name: Lint no default features
         run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
       - name: Lint all features
@@ -84,6 +84,9 @@ jobs:
           - "2"
           - "3"
           - "4"
+          - "5"
+          - "6"
+          - "7"
 
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +108,7 @@ jobs:
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/4 --no-tests=warn
+        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
         env:
           POWDR_STD: ${{ github.workspace }}/std/
 
@@ -161,7 +164,11 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        run: cargo install --git 'http://github.com/powdr-labs/openvm.git' --rev acbd2ba cargo-openvm
+        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
+        run: |
+          rustup toolchain install 1.88
+          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4

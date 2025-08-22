@@ -6,8 +6,8 @@ use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
     ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
 };
-use crate::solver::base::BaseSolver;
-use crate::solver::boolean_extracted::{BooleanExtractedSolver, Variable};
+use crate::solver::base::{BaseSolver, VarDispenserImpl};
+use crate::solver::var_transformation::{VarTransformation, Variable};
 
 use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
 
@@ -16,9 +16,11 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 mod base;
-mod boolean_extracted;
+mod boolean_extractor;
 mod exhaustive_search;
+mod linearizer;
 mod quadratic_equivalences;
+mod var_transformation;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
@@ -26,11 +28,12 @@ pub fn solve_system<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
         + Display
+        + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
         + Substitutable<Variable<V>>
         + Hash,
@@ -45,21 +48,23 @@ pub fn new_solver<T, V>(
     bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
 ) -> impl Solver<T, V>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
+    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
         + ReferencedSymbols<Variable<V>>
         + Display
+        + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
         + Substitutable<Variable<V>>
         + Hash,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let solver = BaseSolver::new(bus_interaction_handler);
-    let mut boolean_extracted_solver = BooleanExtractedSolver::new(solver);
-    boolean_extracted_solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
-    boolean_extracted_solver.add_bus_interactions(constraint_system.bus_interactions);
-    boolean_extracted_solver
+    let mut solver = VarTransformation::new(BaseSolver::<_, _, _, VarDispenserImpl>::new(
+        bus_interaction_handler,
+    ));
+    solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
+    solver.add_bus_interactions(constraint_system.bus_interactions);
+    solver
 }
 
 pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> + Sized {

@@ -50,6 +50,9 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
+    let constraint_system = remove_trivial_constraints(constraint_system);
+    stats_logger.log("removing trivial constraints", &constraint_system);
+
     let constraint_system =
         remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing free variables", &constraint_system);
@@ -86,11 +89,60 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> Result<JournalingConstraintSystem<T, V>, Error> {
     let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
-    for (var, value) in assignments.iter() {
-        log::trace!("  {var} = {value}");
+    if log::log_enabled!(log::Level::Trace) {
+        for (var, value) in assignments.iter() {
+            log::trace!("  {var} = {value}");
+        }
     }
+    // Assert that all substitutions are affine so that the degree
+    // does not increase.
+    assert!(assignments.iter().all(|(_, expr)| expr.is_affine()));
     constraint_system.apply_substitutions(assignments);
+
+    // Now try to replace bus interaction fields that the solver knows to be constant
+    let mut bus_interactions = vec![];
+    let mut new_algebraic_constraints = vec![];
+    // We remove all bus interactions because we do not want to change the order.
+    constraint_system.retain_bus_interactions(|bus_interaction| {
+        let mut modified = false;
+        let replacement = bus_interaction
+            .fields()
+            .map(|field| {
+                if let Some(n) = try_replace_by_number(field, solver) {
+                    modified = true;
+                    new_algebraic_constraints.push(&n - field);
+                    n
+                } else {
+                    field.clone()
+                }
+            })
+            .collect();
+        if modified {
+            log::trace!("Replacing bus interaction {bus_interaction} with {replacement}");
+        }
+        bus_interactions.push(replacement);
+        false
+    });
+    constraint_system.add_bus_interactions(bus_interactions);
+    constraint_system.add_algebraic_constraints(new_algebraic_constraints);
     Ok(constraint_system)
+}
+
+/// Tries to find a number that is equivalent to the expression and returns it
+/// as a GroupedExpression.
+/// Returns None if it was unsuccessful or if the expression already is a number.
+fn try_replace_by_number<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    expr: &GroupedExpression<T, V>,
+    solver: &impl Solver<T, V>,
+) -> Option<GroupedExpression<T, V>> {
+    if expr.try_to_number().is_some() {
+        return None;
+    }
+    Some(GroupedExpression::from_number(
+        solver
+            .range_constraint_for_expression(expr)
+            .try_to_single_value()?,
+    ))
 }
 
 /// Removes free variables from the constraint system, under some conditions.
@@ -125,12 +177,8 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 .map(|constraint| (variable.clone(), constraint))
         })
         .filter(|(variable, constraint)| match constraint {
-            // TODO: These constraints could be removed also if they are linear in the free variable.
-            // The problem with this currently is that this removes constraints like
-            // `writes_aux__prev_data__3_0 - BusInteractionField(15, 7)` (`writes_aux__prev_data__3_0` is a free variable)
-            // which causes `remove_bus_interaction_variables` to fail, because it doesn't know the definition of the
-            // bus interaction variable.
-            ConstraintRef::AlgebraicConstraint(..) => false,
+            // Remove the algebraic constraint if we can solve for the variable.
+            ConstraintRef::AlgebraicConstraint(constr) => constr.try_solve_for(variable).is_some(),
             ConstraintRef::BusInteraction(bus_interaction) => {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
                 // Only stateless bus interactions can be removed.
@@ -277,8 +325,11 @@ pub trait IsBusStateful<T: FieldElement> {
 
 /// Removes constraints that are factors of other constraints.
 fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
+    constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
+    // First, remove duplicate factors from the constraints.
+    let mut constraint_system = remove_duplicate_factors(constraint_system);
+
     // Maps each factor to the set of constraints that contain it.
     let mut constraints_by_factor = HashMap::new();
     // Turns each constraint into a set of factors.
@@ -287,6 +338,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         .enumerate()
         .map(|(i, c)| {
             let factors = c.to_factors();
+            assert!(!factors.is_empty());
             for f in &factors {
                 constraints_by_factor
                     .entry(f.clone())
@@ -313,6 +365,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         // Counting the factors is sufficient here.
         redundant.retain(|j| {
             let other_factors = &constraints_as_factors[*j];
+            // This assertion can fail if `remove_duplicate_factors` is not called at the start of this function.
             assert!(other_factors.len() >= factors.len());
             other_factors.len() > factors.len() || *j > i
         });
@@ -324,5 +377,31 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         counter += 1;
         retain
     });
+    constraint_system
+}
+
+/// If a constraint contains the same factor multiple times removes the duplicate factors.
+fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
+    let mut constraint_to_add = vec![];
+    constraint_system.retain_algebraic_constraints(|constraint| {
+        let factors = constraint.to_factors();
+        assert!(!factors.is_empty());
+        let factor_count = factors.len();
+        let unique_factors = factors.into_iter().unique().collect_vec();
+        if unique_factors.len() < factor_count {
+            constraint_to_add.push(
+                unique_factors
+                    .into_iter()
+                    .reduce(|acc, factor| acc * factor)
+                    .unwrap(),
+            );
+            false
+        } else {
+            true
+        }
+    });
+    constraint_system.add_algebraic_constraints(constraint_to_add);
     constraint_system
 }

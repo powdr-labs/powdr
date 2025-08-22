@@ -38,15 +38,13 @@ mult=is_valid * -1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 + o
 mult=is_valid * 1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 + opcode_loadb_flag0_0 - (2 * shift_most_sig_bit_0 + 1), shift_most_sig_bit_0 * shifted_read_data__2_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__0_0, shift_most_sig_bit_0 * shifted_read_data__3_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__1_0, shift_most_sig_bit_0 * shifted_read_data__0_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__2_0, shift_most_sig_bit_0 * shifted_read_data__1_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__3_0, from_state__timestamp_0 + 1]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
+mult=is_valid * 1, args=[shifted_read_data__0_0 * opcode_loadb_flag0_0 + shifted_read_data__1_0 * (1 - opcode_loadb_flag0_0) - 128 * data_most_sig_bit_0, 7]
 mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * rs1_aux_cols__base__prev_timestamp_0 + 15360 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[1006632960 * shift_most_sig_bit_0 + 503316480 - (503316480 * mem_ptr_limbs__0_0 + 503316480 * opcode_loadb_flag0_0), 14]
 mult=is_valid * 1, args=[mem_ptr_limbs__1_0, 13]
 mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_0 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
-
-// Bus 6 (OPENVM_BITWISE_LOOKUP):
-mult=is_valid * 1, args=[2 * shifted_read_data__0_0 * opcode_loadb_flag0_0 + 2 * shifted_read_data__1_0 * (1 - opcode_loadb_flag0_0) - 256 * data_most_sig_bit_0, 0, 0, 0]
 
 // Algebraic constraints:
 opcode_loadb_flag0_0 * (opcode_loadb_flag0_0 - 1) = 0

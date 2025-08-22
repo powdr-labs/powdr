@@ -15,6 +15,7 @@ pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
 pub enum OpenVmBusType {
     VariableRangeChecker,
     TupleRangeChecker,
+    BitwiseLookup,
 }
 
 pub type BusMap = powdr_autoprecompiles::bus_map::BusMap<OpenVmBusType>;
@@ -24,6 +25,7 @@ impl Display for OpenVmBusType {
         match self {
             OpenVmBusType::VariableRangeChecker => write!(f, "VARIABLE_RANGE_CHECKER"),
             OpenVmBusType::TupleRangeChecker => write!(f, "TUPLE_RANGE_CHECKER"),
+            OpenVmBusType::BitwiseLookup => write!(f, "BITWISE_LOOKUP"),
         }
     }
 }
@@ -37,7 +39,10 @@ pub fn default_openvm_bus_map() -> BusMap {
             DEFAULT_VARIABLE_RANGE_CHECKER,
             BusType::Other(OpenVmBusType::VariableRangeChecker),
         ),
-        (DEFAULT_BITWISE_LOOKUP, BusType::OpenVmBitwiseLookup),
+        (
+            DEFAULT_BITWISE_LOOKUP,
+            BusType::Other(OpenVmBusType::BitwiseLookup),
+        ),
         (
             DEFAULT_TUPLE_RANGE_CHECKER,
             BusType::Other(OpenVmBusType::TupleRangeChecker),

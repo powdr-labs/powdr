@@ -102,11 +102,17 @@ impl<T: FieldElement> RangeConstraint<T> {
         (self.min, self.max)
     }
 
-    /// Returns (an upper bound for) the number of field elements included in the constraint.
+    /// Returns the number of elements between the min and the max value, disregarding the mask and
+    /// potentially other constraints.
     pub fn range_width(&self) -> T::Integer {
         // TODO incorporate stride into this but also check that it is always used
         // as an element counter.
         range_width(self.min, self.max)
+    }
+
+    /// Returns (an upper bound for) the number of field elements included in the constraint.
+    pub fn size_estimate(&self) -> T::Integer {
+        self.range_width()
     }
 
     /// Returns the `stride`, i.e. the distance between two consecutive valid values

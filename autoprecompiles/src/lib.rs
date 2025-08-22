@@ -1,12 +1,13 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
-pub use blocks::{pgo_config, BasicBlock, PgoConfig, PgoType};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -21,7 +22,6 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 pub mod adapter;
-mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -29,12 +29,15 @@ pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
+pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
+pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
 #[derive(Clone)]
@@ -94,7 +97,14 @@ impl<T: Display> Display for SymbolicConstraint<T> {
 
 impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     fn from(expr: AlgebraicExpression<T>) -> Self {
-        SymbolicConstraint { expr }
+        let expr = match expr {
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: AlgebraicUnaryOperator::Minus,
+                expr,
+            }) => *expr, // Remove the negation at the outside.
+            other => other,
+        };
+        Self { expr }
     }
 }
 
