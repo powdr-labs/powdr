@@ -11,9 +11,6 @@ pub enum BusType<C> {
     Memory,
     /// A lookup to fetch the instruction arguments for a given PC.
     PcLookup,
-    /// A "bitwise lookup" bus (specific to OpenVM), used in `autoprecompiles/src/bitwise_lookup_optimizer.rs`.
-    // TODO: Generalize this to a more generic bus type.
-    OpenVmBitwiseLookup,
     /// Other types, specific to the VM integration. Powdr largely ignores these.
     Other(C),
 }
@@ -24,7 +21,6 @@ impl<C: Display> std::fmt::Display for BusType<C> {
             BusType::ExecutionBridge => "EXECUTION_BRIDGE",
             BusType::Memory => "MEMORY",
             BusType::PcLookup => "PC_LOOKUP",
-            BusType::OpenVmBitwiseLookup => "OPENVM_BITWISE_LOOKUP",
             BusType::Other(other_type) => &other_type.to_string(),
         };
         write!(f, "{name}")
