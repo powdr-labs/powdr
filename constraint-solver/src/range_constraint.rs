@@ -118,8 +118,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// `offset = k * modulus + x`.
     pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
         println!(
-            "has_unique_modular_solution on self = {self}: offset = {}, modulus = {}",
-            offset, modulus
+            "has_unique_modular_solution on self = {self}: offset = {offset}, modulus = {modulus}"
         );
         // If the modulus is larger than half the field, the mapping to integers
         // is not obvious. Also, if the number of values in the range constraint

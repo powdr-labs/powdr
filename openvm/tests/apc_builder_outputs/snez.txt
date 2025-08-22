@@ -51,7 +51,7 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * 
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
 
-// Bus 6 (OPENVM_BITWISE_LOOKUP):
+// Bus 6 (BITWISE_LOOKUP):
 mult=diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0, args=[diff_val_0 - 1, 0, 0, 0]
 mult=is_valid * 1, args=[c_msb_f_0, 0, 0, 0]
 

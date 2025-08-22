@@ -3,8 +3,7 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 
-use crate::constraint_system::ConstraintSystem;
-use crate::indexed_constraint_system::apply_substitutions;
+use crate::indexed_constraint_system::apply_substitutions_to_expressions;
 use crate::runtime_constant::Substitutable;
 use crate::solver::VariableAssignment;
 use crate::{grouped_expression::GroupedExpression, runtime_constant::RuntimeConstant};
@@ -158,14 +157,7 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> L
             return;
         }
         let (exprs, vars): (Vec<_>, Vec<_>) = self.substitutions.drain().unzip();
-        let exprs = apply_substitutions(
-            ConstraintSystem {
-                algebraic_constraints: exprs,
-                bus_interactions: vec![],
-            },
-            assignments.iter().cloned(),
-        )
-        .algebraic_constraints;
+        let exprs = apply_substitutions_to_expressions(exprs, assignments.iter().cloned());
         self.substitutions = exprs
             .into_iter()
             .zip_eq(vars)

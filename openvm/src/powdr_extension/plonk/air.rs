@@ -148,7 +148,7 @@ where
 
         builder.push_interaction(
             self.bus_map
-                .get_bus_id(&BusType::OpenVmBitwiseLookup)
+                .get_bus_id(&BusType::Other(OpenVmBusType::BitwiseLookup))
                 .expect("BusType::BitwiseLookup not found in bus_map") as u16,
             vec![*a, *b, *c, *d],
             *e * *q_bitwise,
