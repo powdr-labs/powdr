@@ -94,6 +94,12 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         return None;
     }
 
+    // We try to find some `k` such that the equation has the form
+    // `expr + k * rest + constant = 0` and it is equivalent to
+    // the same expression in the integers. Then we apply `x -> x % k` to the whole equation
+    // to obtain `expr % k + constant % k = 0` and then we hope that this has a unique solution.
+
+    // GCD would be best, but we just try the samllest coefficient in `rest`.
     let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
     assert_ne!(smallest_coeff, 0.into());
     assert!(smallest_coeff.is_in_lower_half());
@@ -104,29 +110,16 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         .sum();
 
     let candidate_rc = expr.range_constraint(range_constraints);
-    println!("Trying candidate {expr} [rc: {candidate_rc}] with rest {rest} (smallest coeff: {smallest_coeff})");
-    // TODO do we need to compute the full range constraint of the complete expression?
-    // TODO what about `constant`?
+
     if candidate_rc.is_unconstrained()
         || rest
             .range_constraint(range_constraints)
             .multiple(smallest_coeff)
             .is_unconstrained()
     {
-        println!(" -> Cannot split out {expr} because its rc {candidate_rc} is not tight enough");
-        // for var in candidate.referenced_unknown_variables() {
-        //     println!("    {var} has rc {}", range_constraints.get(var));
-        // }
         return None;
     }
-    // The original constraint is equivalent to `candidate.expr + smallest_coeff * rest = constant / candidate.coeff`
-    // and the constraint can equivalently be evaluated in the integers.
-    // We now apply `x -> x % smallest_coeff` to the whole constraint.
-    // If it was true before, it will be true afterwards.
-    // So we get `candidate % smallest_coeff = constant % smallest_coeff`.
-    // Now the only remaining task is to check that this new constraint has a unique solution
-    // that does not require the use of the `%` operator.
-
+    // TODO are the range constraint conditions sufficent?
     candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
 }
 
