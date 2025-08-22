@@ -217,7 +217,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
                     T::one()
                 }
             } else if !self.linear.is_empty() {
-                // Otherwise, we divide by the factor of the smallest variable.
+                // Otherwise, we divide by the coefficient of the smallest variable.
                 self.linear.iter().next().unwrap().1.clone()
             } else {
                 // This is a sum of quadratic expressions, we cannot really normalize this part.

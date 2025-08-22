@@ -338,6 +338,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         .enumerate()
         .map(|(i, c)| {
             let factors = c.to_factors();
+            assert!(!factors.is_empty());
             for f in &factors {
                 constraints_by_factor
                     .entry(f.clone())
@@ -386,6 +387,7 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
     let mut constraint_to_add = vec![];
     constraint_system.retain_algebraic_constraints(|constraint| {
         let factors = constraint.to_factors();
+        assert!(!factors.is_empty());
         let factor_count = factors.len();
         let unique_factors = factors.into_iter().unique().collect_vec();
         if unique_factors.len() < factor_count {
