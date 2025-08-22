@@ -10,6 +10,7 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_constraint_solver::{
+    constraint_system::AlgebraicConstraint,
     effect::Condition,
     grouped_expression::{Error, ProcessResult, RangeConstraintProvider},
     range_constraint::RangeConstraint,
@@ -241,7 +242,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &mut self,
         equation: &QuadraticSymbolicExpression<T, Variable>,
     ) -> Result<Vec<Variable>, Error> {
-        let ProcessResult { effects, complete } = equation.solve(self)?;
+        let ProcessResult { effects, complete } =
+            AlgebraicConstraint::from(equation).solve(self)?;
         let effects = effects.into_iter().map(Into::into).collect();
         self.ingest_effects(effects, complete, None)
     }

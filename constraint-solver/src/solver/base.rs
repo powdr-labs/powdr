@@ -369,7 +369,8 @@ where
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
-                    c.solve(&self.range_constraints)
+                    AlgebraicConstraint::from(&c.expression)
+                        .solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
                         .effects
                 }
@@ -482,7 +483,9 @@ where
                 ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
                 ConstraintRef::BusInteraction(_) => None,
             })
-            .flat_map(|constr| constr.try_solve_for_expr(expression))
+            .flat_map(|constr| {
+                AlgebraicConstraint::from(&constr.expression).try_solve_for_expr(expression)
+            })
             .collect_vec();
         if exprs.is_empty() {
             // If we cannot solve for the expression, we just take the expression unmodified.

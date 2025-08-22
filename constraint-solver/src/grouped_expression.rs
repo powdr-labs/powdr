@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::{
+    constraint_system::AlgebraicConstraint,
     effect::Condition,
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable},
 };
@@ -474,7 +475,7 @@ impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
 impl<
         T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
         V: Ord + Clone + Eq + Hash + Display,
-    > GroupedExpression<T, V>
+    > AlgebraicConstraint<&GroupedExpression<T, V>>
 {
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
@@ -527,7 +528,7 @@ impl<
         if !self.linear.get(variable)?.is_known_nonzero() {
             return None;
         }
-        let mut result = self.clone();
+        let mut result = self.expression.clone();
         let coefficient = result.linear.remove(variable)?;
         Some(result * (-T::one().field_div(&coefficient)))
     }
@@ -562,7 +563,7 @@ impl<
                 }
             })
             .unwrap_or(T::one());
-        let result = expr - &(self.clone() * normalization_factor);
+        let result = expr - &(self.expression.clone() * normalization_factor);
 
         // Check that the operations removed all variables in `expr` from `self`.
         if !expr
@@ -780,8 +781,8 @@ impl<
         };
         // Now we have `left * right = 0`, i.e. one (or both) of them has to be zero.
         let (left_solution, right_solution) = match (
-            left.solve(range_constraints),
-            right.solve(range_constraints),
+            AlgebraicConstraint::from(left).solve(range_constraints),
+            AlgebraicConstraint::from(right).solve(range_constraints),
         ) {
             // If one of them is always unsatisfiable, it is equivalent to just solving the other one for zero.
             (Err(_), o) | (o, Err(_)) => {
