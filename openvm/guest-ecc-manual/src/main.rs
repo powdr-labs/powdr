@@ -4,8 +4,8 @@
 use hex_literal::hex;
 use openvm::io::read;
 use openvm_algebra_guest::IntMod;
-use openvm_ecc_guest::{msm, weierstrass::WeierstrassPoint};
-use openvm_k256::{Secp256k1Coord, Secp256k1Point, Secp256k1Scalar};
+use openvm_ecc_guest::{weierstrass::WeierstrassPoint, weierstrass::IntrinsicCurve};
+use openvm_k256::{Secp256k1Coord, Secp256k1Point, Secp256k1Scalar, Secp256k1};
 
 openvm::init!();
 
@@ -47,7 +47,7 @@ pub fn main() {
         225, 222, 233, 182, 14, 157, 47, 22, 177, 249, 107, 145, 57, 77, 133, 68, 6, 102, 101, 78,
         5, 249, 10, 81, 202, 112, 204, 76, 117, 7, 231, 160,
     ]);
-    let mut result = msm(&[scalar_1, scalar_2], &[p1, p2]);
+    let mut result = <Secp256k1 as IntrinsicCurve>::msm(&[scalar_1, scalar_2], &[p1, p2]);
 
     assert_eq!(result.x(), &result_x);
     assert_eq!(result.y(), &result_y);
@@ -55,6 +55,6 @@ pub fn main() {
     // Benchmark
     let n: u32 = read();
     for _ in 0..n {
-        result = msm(&[scalar_1, scalar_2], &[result.clone(), result.clone()]);
+        result = <Secp256k1 as IntrinsicCurve>::msm(&[scalar_1, scalar_2], &[result.clone(), result.clone()]);
     }
 }
