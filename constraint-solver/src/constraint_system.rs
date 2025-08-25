@@ -5,7 +5,6 @@ use crate::{
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
 };
 use itertools::Itertools;
-use num_traits::{One, Zero};
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
