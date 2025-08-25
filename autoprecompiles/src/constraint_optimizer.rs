@@ -324,8 +324,11 @@ pub trait IsBusStateful<T: FieldElement> {
 
 /// Removes constraints that are factors of other constraints.
 fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
+    constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
+    // First, remove duplicate factors from the constraints.
+    let mut constraint_system = remove_duplicate_factors(constraint_system);
+
     // Maps each factor to the set of constraints that contain it.
     let mut constraints_by_factor = HashMap::new();
     // Turns each constraint into a set of factors.
@@ -334,6 +337,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         .enumerate()
         .map(|(i, c)| {
             let factors = c.to_factors();
+            assert!(!factors.is_empty());
             for f in &factors {
                 constraints_by_factor
                     .entry(f.clone())
@@ -360,6 +364,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         // Counting the factors is sufficient here.
         redundant.retain(|j| {
             let other_factors = &constraints_as_factors[*j];
+            // This assertion can fail if `remove_duplicate_factors` is not called at the start of this function.
             assert!(other_factors.len() >= factors.len());
             other_factors.len() > factors.len() || *j > i
         });
@@ -371,5 +376,31 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         counter += 1;
         retain
     });
+    constraint_system
+}
+
+/// If a constraint contains the same factor multiple times removes the duplicate factors.
+fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: JournalingConstraintSystem<P, V>,
+) -> JournalingConstraintSystem<P, V> {
+    let mut constraint_to_add = vec![];
+    constraint_system.retain_algebraic_constraints(|constraint| {
+        let factors = constraint.to_factors();
+        assert!(!factors.is_empty());
+        let factor_count = factors.len();
+        let unique_factors = factors.into_iter().unique().collect_vec();
+        if unique_factors.len() < factor_count {
+            constraint_to_add.push(
+                unique_factors
+                    .into_iter()
+                    .reduce(|acc, factor| acc * factor)
+                    .unwrap(),
+            );
+            false
+        } else {
+            true
+        }
+    });
+    constraint_system.add_algebraic_constraints(constraint_to_add);
     constraint_system
 }
