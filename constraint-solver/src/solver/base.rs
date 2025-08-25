@@ -159,7 +159,7 @@ where
             .into_iter()
             .filter(|c| !c.expression.is_zero())
             .flat_map(|constr| {
-                self.try_extract_boolean(&constr)
+                self.try_extract_boolean(constr.as_ref())
                     .into_iter()
                     .chain(std::iter::once(constr))
             })
@@ -272,7 +272,7 @@ where
     /// by introducing new boolean variables.
     fn try_extract_boolean(
         &mut self,
-        constr: &AlgebraicConstraint<GroupedExpression<T, V>>,
+        constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
     ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
         let result = self
             .boolean_extractor
@@ -365,11 +365,11 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = is_simple_equivalence(&c.expression) {
+                    if let Some((v1, expr)) = is_simple_equivalence(c.expression) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
-                    AlgebraicConstraint::from(&c.expression)
+                    AlgebraicConstraint::from(c.expression)
                         .solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
                         .effects
@@ -484,7 +484,7 @@ where
                 ConstraintRef::BusInteraction(_) => None,
             })
             .flat_map(|constr| {
-                AlgebraicConstraint::from(&constr.expression).try_solve_for_expr(expression)
+                AlgebraicConstraint::from(constr.expression).try_solve_for_expr(expression)
             })
             .collect_vec();
         if exprs.is_empty() {

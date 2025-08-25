@@ -101,7 +101,7 @@ pub fn substitution_would_not_violate_degree_bound<
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
                 let degree = expression_degree_with_virtual_substitution(
-                    &identity.expression,
+                    identity.expression,
                     var,
                     replacement_deg,
                 );
