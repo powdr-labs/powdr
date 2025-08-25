@@ -110,8 +110,9 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     let to_constrain = to_constrain
         .into_iter()
         .filter(|(expr, rc)| {
-            let bit_range_constraint =
-                AlgebraicConstraint::assert_zero(expr.clone() * (expr.clone() - GroupedExpression::one()));
+            let bit_range_constraint = AlgebraicConstraint::assert_zero(
+                expr.clone() * (expr.clone() - GroupedExpression::one()),
+            );
             if rc == &RangeConstraint::from_mask(1)
                 && bit_range_constraint.degree() <= degree_bound.identities
             {

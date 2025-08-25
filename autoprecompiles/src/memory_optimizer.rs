@@ -174,7 +174,9 @@ fn redundant_memory_interactions_indices<
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
-                        new_constraints.push(AlgebraicConstraint::assert_zero(existing.clone() - new.clone()));
+                        new_constraints.push(AlgebraicConstraint::assert_zero(
+                            existing.clone() - new.clone(),
+                        ));
                     }
                     to_remove.extend([index, previous_send]);
                 }

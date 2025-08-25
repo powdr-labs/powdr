@@ -54,8 +54,10 @@ impl<
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
-                if let Some(LowDegreeValue { constraint: replacement, range_constraints }) =
-                    self.try_replace_bus_interaction(&bus_int)
+                if let Some(LowDegreeValue {
+                    constraint: replacement,
+                    range_constraints,
+                }) = self.try_replace_bus_interaction(&bus_int)
                 {
                     // If we found a replacement, add the polynomial constraints (unless it is
                     // trivially zero) and replace the bus interaction with interactions implementing
@@ -130,7 +132,10 @@ impl<
                         .into_iter()
                         .map(|field| (field.expression, field.range_constraint))
                         .collect();
-                    Some(LowDegreeValue { constraint: polynomial_constraint, range_constraints })
+                    Some(LowDegreeValue {
+                        constraint: polynomial_constraint,
+                        range_constraints,
+                    })
                 } else {
                     None
                 }

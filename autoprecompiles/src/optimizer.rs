@@ -230,7 +230,9 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
-            .map(|constraint| AlgebraicConstraint::assert_zero(algebraic_to_grouped_expression(&constraint.expr)))
+            .map(|constraint| {
+                AlgebraicConstraint::assert_zero(algebraic_to_grouped_expression(&constraint.expr))
+            })
             .collect(),
         bus_interactions: symbolic_machine
             .bus_interactions

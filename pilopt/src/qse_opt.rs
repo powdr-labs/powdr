@@ -7,7 +7,9 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
     Analyzed, Challenge, Identity, PolynomialIdentity,
 };
-use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, ConstraintSystem, DefaultBusInteractionHandler};
+use powdr_constraint_solver::constraint_system::{
+    AlgebraicConstraint, ConstraintSystem, DefaultBusInteractionHandler,
+};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::apply_substitutions;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
@@ -33,7 +35,9 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .filter_map(|identity| match identity {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                Some(AlgebraicConstraint::assert_zero(algebraic_to_quadratic_symbolic_expression(expression)))
+                Some(AlgebraicConstraint::assert_zero(
+                    algebraic_to_quadratic_symbolic_expression(expression),
+                ))
             }
             _ => None,
         })

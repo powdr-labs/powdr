@@ -8,7 +8,9 @@ use std::{
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::{AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem},
+    constraint_system::{
+        AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
+    },
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner,
@@ -394,7 +396,7 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
                 unique_factors
                     .into_iter()
                     .reduce(|acc, factor| acc * factor)
-                    .unwrap()
+                    .unwrap(),
             ));
             false
         } else {
