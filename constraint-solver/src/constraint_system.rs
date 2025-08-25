@@ -110,6 +110,13 @@ impl<V> AlgebraicConstraint<V> {
     pub fn assert_zero(expression: V) -> Self {
         AlgebraicConstraint { expression }
     }
+
+    /// Returns a constraint over a reference to the expression. This is useful to interact with the solver.
+    pub fn as_ref(&self) -> AlgebraicConstraint<&V> {
+        AlgebraicConstraint {
+            expression: &self.expression,
+        }
+    }
 }
 
 impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
