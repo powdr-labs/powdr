@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, BusInteractionHandler};
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
@@ -242,7 +242,9 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
-            .map(|constraint| algebraic_to_grouped_expression(&constraint.expr))
+            .map(|constraint| {
+                AlgebraicConstraint::assert_zero(algebraic_to_grouped_expression(&constraint.expr))
+            })
             .collect(),
         bus_interactions: symbolic_machine
             .bus_interactions
