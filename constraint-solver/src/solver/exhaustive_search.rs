@@ -156,7 +156,7 @@ where
         .constraints_referencing_variables(assignments.keys().cloned())
         .map(|constraint| match constraint {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let mut identity = identity.clone();
+                let mut identity = identity.cloned();
                 for (variable, value) in assignments.iter() {
                     identity.substitute_by_known(variable, &T::from(*value));
                 }

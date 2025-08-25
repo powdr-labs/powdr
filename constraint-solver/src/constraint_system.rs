@@ -51,6 +51,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         Box::new(
             self.algebraic_constraints
                 .iter()
+                .map(|c| c.as_ref())
                 .map(ConstraintRef::AlgebraicConstraint)
                 .chain(
                     self.bus_interactions
@@ -119,6 +120,14 @@ impl<V> AlgebraicConstraint<V> {
     }
 }
 
+impl<V: Clone> AlgebraicConstraint<&V> {
+    pub(crate) fn cloned(&self) -> AlgebraicConstraint<V> {
+        AlgebraicConstraint {
+            expression: self.expression.clone(),
+        }
+    }
+}
+
 impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
@@ -165,6 +174,13 @@ impl<V: Display> Display for AlgebraicConstraint<V> {
 }
 
 impl<T: ReferencedSymbols<V>, V> AlgebraicConstraint<GroupedExpression<T, V>> {
+    /// Returns the set of referenced variables, both know and unknown.
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_variables()
+    }
+}
+
+impl<T: ReferencedSymbols<V>, V> AlgebraicConstraint<&GroupedExpression<T, V>> {
     /// Returns the set of referenced variables, both know and unknown.
     pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         self.expression.referenced_variables()
@@ -346,7 +362,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
 }
 
 pub enum ConstraintRef<'a, T, V> {
-    AlgebraicConstraint(&'a AlgebraicConstraint<GroupedExpression<T, V>>),
+    AlgebraicConstraint(AlgebraicConstraint<&'a GroupedExpression<T, V>>),
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 
