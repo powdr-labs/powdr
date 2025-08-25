@@ -10,9 +10,10 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_constraint_solver::{
+    algebraic_constraint::solve::{Error, ProcessResult},
     constraint_system::AlgebraicConstraint,
     effect::Condition,
-    grouped_expression::{Error, ProcessResult, RangeConstraintProvider},
+    grouped_expression::RangeConstraintProvider,
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
     symbolic_expression::SymbolicExpression,

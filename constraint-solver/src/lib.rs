@@ -1,5 +1,6 @@
 //! Tooling used for analysis and solving of constraints.
 
+pub mod algebraic_constraint;
 pub mod constraint_system;
 pub mod effect;
 pub mod grouped_expression;
