@@ -77,10 +77,12 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 .for_each(|(identity, simplified)| {
                     // We can ignore the negation because it is a polynomial identity
                     // that is equated to zero.
-                    let (constraint, _) = extract_negation_if_possible(
-                        quadratic_symbolic_expression_to_algebraic(&simplified),
-                    );
-                    *identity = constraint;
+                    let (constraint, _) = extract_negation_if_possible(AlgebraicConstraint {
+                        expression: quadratic_symbolic_expression_to_algebraic(
+                            &simplified.expression,
+                        ),
+                    });
+                    *identity = constraint.expression;
                 });
             // We add all assignments because we did not send all references to witnesses to the solver.
             // It might have removed some variable that are hard-constrained to some value.
@@ -154,14 +156,14 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     let items = quadratic
         .iter()
         .map(|(l, r)| {
-            let l = quadratic_symbolic_expression_to_algebraic(l);
+            let l = AlgebraicConstraint::from(quadratic_symbolic_expression_to_algebraic(l));
             let (l, l_negated) = extract_negation_if_possible(l);
-            let r = quadratic_symbolic_expression_to_algebraic(r);
+            let r = AlgebraicConstraint::from(quadratic_symbolic_expression_to_algebraic(r));
             let (r, r_negated) = extract_negation_if_possible(r);
             if l_negated == r_negated {
-                l * r
+                l.expression * r.expression
             } else {
-                -(l * r)
+                -(l.expression * r.expression)
             }
         })
         .chain(linear.map(|(v, c)| {
@@ -172,11 +174,12 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
                     return -variable_to_algebraic_expression(v.clone());
                 }
             }
-            let (c, negated) = extract_negation_if_possible(symbolic_expression_to_algebraic(c));
+            let (c, negated) =
+                extract_negation_if_possible(symbolic_expression_to_algebraic(c).into());
             if negated {
-                -(c * variable_to_algebraic_expression(v.clone()))
+                -(c.expression * variable_to_algebraic_expression(v.clone()))
             } else {
-                c * variable_to_algebraic_expression(v.clone())
+                c.expression * variable_to_algebraic_expression(v.clone())
             }
         }))
         .chain((!constant.is_known_zero()).then(|| symbolic_expression_to_algebraic(constant)));
@@ -185,11 +188,11 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     let mut positive = vec![];
     let mut negated = vec![];
     for item in items {
-        let (item, item_negated) = extract_negation_if_possible(item);
+        let (item, item_negated) = extract_negation_if_possible(item.into());
         if item_negated {
-            negated.push(item);
+            negated.push(item.expression);
         } else {
-            positive.push(item);
+            positive.push(item.expression);
         }
     }
     let positive = positive.into_iter().reduce(|acc, item| acc + item);
@@ -246,14 +249,19 @@ fn variable_to_algebraic_expression<T>(var: Variable) -> AlgebraicExpression<T> 
     }
 }
 
-/// If `e` is negated, returns the expression without negation and `true`,
-/// otherwise returns the un-modified expression and `false`.
-fn extract_negation_if_possible<T>(e: AlgebraicExpression<T>) -> (AlgebraicExpression<T>, bool) {
-    match e {
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-            op: AlgebraicUnaryOperator::Minus,
-            expr,
-        }) => (*expr, true),
-        _ => (e, false),
+/// If `constraint` is negated, returns the constraint without negation and `true`,
+/// otherwise returns the un-modified constraint and `false`.
+fn extract_negation_if_possible<T>(
+    constraint: AlgebraicConstraint<AlgebraicExpression<T>>,
+) -> (AlgebraicConstraint<AlgebraicExpression<T>>, bool) {
+    match constraint {
+        AlgebraicConstraint {
+            expression:
+                AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                    op: AlgebraicUnaryOperator::Minus,
+                    expr,
+                }),
+        } => (AlgebraicConstraint { expression: *expr }, true),
+        _ => (constraint, false),
     }
 }

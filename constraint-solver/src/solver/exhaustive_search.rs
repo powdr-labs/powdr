@@ -3,6 +3,7 @@ use powdr_number::ExpressionConvertible;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
+use crate::constraint_system::AlgebraicConstraint;
 use crate::constraint_system::BusInteractionHandler;
 use crate::constraint_system::ConstraintRef;
 use crate::effect::Effect;
@@ -155,11 +156,11 @@ where
         .constraints_referencing_variables(assignments.keys().cloned())
         .map(|constraint| match constraint {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let mut identity = identity.clone();
+                let mut identity = identity.cloned();
                 for (variable, value) in assignments.iter() {
                     identity.substitute_by_known(variable, &T::from(*value));
                 }
-                identity
+                AlgebraicConstraint::from(&identity.expression)
                     .solve(range_constraints)
                     .map(|result| result.effects)
                     .map_err(|_| ContradictingConstraintError)

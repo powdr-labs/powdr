@@ -11,8 +11,9 @@ use crate::runtime_constant::{
 use crate::solver::base::{BaseSolver, VarDispenserImpl};
 use crate::solver::var_transformation::{VarTransformation, Variable};
 
-use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
+use super::grouped_expression::RangeConstraintProvider;
 
+use crate::algebraic_constraint::solve::Error as QseError;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;

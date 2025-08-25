@@ -6,10 +6,7 @@ use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_constraint_solver::variable_update::UpdateKind;
-use powdr_constraint_solver::{
-    grouped_expression::{self},
-    variable_update::VariableUpdate,
-};
+use powdr_constraint_solver::{algebraic_constraint::solve, variable_update::VariableUpdate};
 use powdr_number::FieldElement;
 
 use crate::witgen::jit::QuadraticSymbolicExpression;
@@ -287,7 +284,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
         identity_queue: &mut IdentityQueue<'a, T>,
-    ) -> Result<(), grouped_expression::Error> {
+    ) -> Result<(), solve::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
                 QueueItem::Equation { expr, .. } => witgen.process_equation(expr),

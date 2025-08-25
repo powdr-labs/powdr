@@ -101,7 +101,7 @@ pub fn substitution_would_not_violate_degree_bound<
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
                 let degree = expression_degree_with_virtual_substitution(
-                    &identity.expression,
+                    identity.expression,
                     var,
                     replacement_deg,
                 );
@@ -126,7 +126,7 @@ fn find_inlinable_variables<
     linear
         .rev()
         .filter_map(|(target_var, _)| {
-            let rhs_expr = constraint.expression.try_solve_for(target_var)?;
+            let rhs_expr = constraint.as_ref().try_solve_for(target_var)?;
             assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
             Some((target_var.clone(), rhs_expr))
         })
