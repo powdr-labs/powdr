@@ -157,7 +157,7 @@ where
 
         let constraints = constraints
             .into_iter()
-            .filter(|c| !c.is_zero())
+            .filter(|c| !c.expression.is_zero())
             .flat_map(|constr| {
                 self.try_extract_boolean(&constr)
                     .into_iter()
@@ -170,7 +170,7 @@ where
             .collect_vec();
 
         self.constraint_system
-            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.expression.is_zero()));
     }
 
     fn add_bus_interactions(
@@ -293,7 +293,7 @@ where
         constr: AlgebraicConstraint<GroupedExpression<T, V>>,
     ) -> impl Iterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>> {
         let mut constrs = vec![constr.clone()];
-        if !constr.is_affine() {
+        if !constr.expression.is_affine() {
             let linearized = self.linearizer.linearize_expression(
                 constr.expression,
                 &mut || self.var_dispenser.next_linear(),
@@ -365,7 +365,7 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = is_simple_equivalence(c) {
+                    if let Some((v1, expr)) = is_simple_equivalence(&c.expression) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }

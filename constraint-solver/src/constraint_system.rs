@@ -2,7 +2,7 @@ use crate::{
     effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant},
+    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
 use num_traits::{One, Zero};
@@ -112,26 +112,14 @@ impl<V> AlgebraicConstraint<V> {
     }
 }
 
-impl<V> std::ops::Deref for AlgebraicConstraint<V> {
-    type Target = V;
-
-    fn deref(&self) -> &V {
-        &self.expression
-    }
-}
-
-impl<V> std::ops::DerefMut for AlgebraicConstraint<V> {
-    fn deref_mut(&mut self) -> &mut V {
-        &mut self.expression
-    }
-}
-
-impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
+impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         self.expression.referenced_unknown_variables()
     }
+}
 
+impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns a constraint which asserts that the two expressions are equal.
     pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
         Self::assert_zero(expression - other)
@@ -146,6 +134,20 @@ impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V
 impl<V: Zero> AlgebraicConstraint<V> {
     pub fn is_redundant(&self) -> bool {
         self.expression.is_zero()
+    }
+}
+
+impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Eq + Ord>
+    AlgebraicConstraint<GroupedExpression<T, V>>
+{
+    /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
+    /// If it was already known, it will be substituted in the known expressions.
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
+        self.expression.substitute_by_known(variable, substitution);
+    }
+
+    pub fn degree(&self) -> usize {
+        self.expression.degree()
     }
 }
 

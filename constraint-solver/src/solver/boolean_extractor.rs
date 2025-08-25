@@ -58,7 +58,7 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
         constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
         mut var_dispenser: impl FnMut() -> V,
     ) -> Option<BooleanExtractionValue<T, V>> {
-        let (left, right) = constraint.try_as_single_product()?;
+        let (left, right) = constraint.expression.try_as_single_product()?;
         // We want to check if `left` and `right` differ by a constant offset.
         // Since multiplying the whole constraint by a non-zero constant does
         // not change the constraint, we also transform `left` by a constant
