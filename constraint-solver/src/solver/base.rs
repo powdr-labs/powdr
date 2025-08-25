@@ -9,6 +9,7 @@ use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
 use crate::solver::boolean_extractor::BooleanExtractor;
+use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
@@ -367,9 +368,16 @@ where
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
-                    c.solve(&self.range_constraints)
+                    let effects = c
+                        .solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
-                        .effects
+                        .effects;
+                    if let Some(components) = try_split_constraint(c, &self.range_constraints) {
+                        // TODO avoid adding constraints that already exist
+                        self.constraint_system.add_algebraic_constraints(components);
+                        progress |= true;
+                    }
+                    effects
                 }
                 ConstraintRef::BusInteraction(b) => b
                     .solve(&self.bus_interaction_handler, &self.range_constraints)
