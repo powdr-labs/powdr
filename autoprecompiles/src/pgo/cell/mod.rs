@@ -32,21 +32,18 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(
-        &self,
-        apc_candidates_dir_path: &Path,
-    ) -> ApcCandidateJsonExport<A::Instruction>;
+    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ApcCandidateJsonExport<I> {
+pub struct ApcCandidateJsonExport {
     // execution_frequency
     pub execution_frequency: usize,
-    // original instructions
-    pub original_block: BasicBlock<I>,
+    // original instructions (pretty printed)
+    pub original_block: BasicBlock<String>,
     // before and after optimization stats
     pub stats: EvaluationResult,
     // width before optimisation, used for software version cells in effectiveness plot
