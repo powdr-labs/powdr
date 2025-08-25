@@ -347,7 +347,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         .algebraic_constraints()
         .enumerate()
         .map(|(i, c)| {
-            let factors = c.to_factors();
+            let factors = c.expression.to_factors();
             assert!(!factors.is_empty());
             for f in &factors {
                 constraints_by_factor
@@ -396,7 +396,7 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> JournalingConstraintSystem<P, V> {
     let mut constraint_to_add = vec![];
     constraint_system.retain_algebraic_constraints(|constraint| {
-        let factors = constraint.to_factors();
+        let factors = constraint.expression.to_factors();
         assert!(!factors.is_empty());
         let factor_count = factors.len();
         let unique_factors = factors.into_iter().unique().collect_vec();

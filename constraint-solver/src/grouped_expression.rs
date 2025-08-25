@@ -487,16 +487,18 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        if !self
+        let expression = self.expression;
+
+        if !expression
             .range_constraint(range_constraints)
             .allows_value(Zero::zero())
         {
             return Err(Error::ConstraintUnsatisfiable(self.to_string()));
         }
 
-        Ok(if self.is_quadratic() {
+        Ok(if expression.is_quadratic() {
             self.solve_quadratic(range_constraints)?
-        } else if let Some(k) = self.try_to_known() {
+        } else if let Some(k) = expression.try_to_known() {
             if k.is_known_nonzero() {
                 return Err(Error::ConstraintUnsatisfiable(self.to_string()));
             } else {
@@ -515,7 +517,9 @@ impl<
     ///
     /// Returns the resulting solved grouped expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
-        if self
+        let expression = self.expression;
+
+        if expression
             .quadratic
             .iter()
             .flat_map(|(l, r)| [l, r])
@@ -525,7 +529,7 @@ impl<
             // The variable is in the quadratic component, we cannot solve for it.
             return None;
         }
-        if !self.linear.get(variable)?.is_known_nonzero() {
+        if !expression.linear.get(variable)?.is_known_nonzero() {
             return None;
         }
         let mut result = self.expression.clone();
@@ -542,11 +546,13 @@ impl<
         &self,
         expr: &GroupedExpression<T, V>,
     ) -> Option<GroupedExpression<T, V>> {
+        let expression = self.expression;
+
         assert!(
             expr.is_affine(),
             "Tried to solve for quadratic expression {expr}"
         );
-        if self.is_quadratic() {
+        if expression.is_quadratic() {
             return None;
         }
 
@@ -554,7 +560,7 @@ impl<
         let normalization_factor = expr
             .referenced_unknown_variables()
             .find_map(|var| {
-                let coeff = self.coefficient_of_variable(var)?;
+                let coeff = expression.coefficient_of_variable(var)?;
                 // We can only divide if we know the coefficient is non-zero.
                 if coeff.is_known_nonzero() {
                     Some(expr.coefficient_of_variable(var).unwrap().field_div(coeff))
@@ -585,8 +591,10 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        Ok(if self.linear.len() == 1 {
-            let (var, coeff) = self.linear.iter().next().unwrap();
+        let expression = self.expression;
+
+        Ok(if expression.linear.len() == 1 {
+            let (var, coeff) = expression.linear.iter().next().unwrap();
             // Solve "coeff * X + self.constant = 0" by division.
             assert!(
                 !coeff.is_known_zero(),
@@ -594,16 +602,16 @@ impl<
             );
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
-                let value = self.constant.field_div(&-coeff.clone());
+                let value = expression.constant.field_div(&-coeff.clone());
                 ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
                     var.clone(),
                     value,
                     range_constraints,
                 )?])
-            } else if self.constant.is_known_nonzero() {
+            } else if expression.constant.is_known_nonzero() {
                 // If the offset is not zero, then the coefficient must be non-zero,
                 // otherwise the constraint is violated.
-                let value = self.constant.field_div(&-coeff.clone());
+                let value = expression.constant.field_div(&-coeff.clone());
                 ProcessResult::complete(vec![
                     Assertion::assert_is_nonzero(coeff.clone()),
                     assignment_if_satisfies_range_constraints(
@@ -633,14 +641,18 @@ impl<
     }
 
     /// Tries to solve a bit-decomposition equation.
+    /// Assumptions:
+    /// - The constraint is linear
     fn solve_bit_decomposition(
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        assert!(!self.is_quadratic());
+        let expression = self.expression;
+
+        assert!(!expression.is_quadratic());
         // All the coefficients need to be known numbers and the
         // variables need to be range-constrained.
-        let constrained_coefficients = self
+        let constrained_coefficients = expression
             .linear
             .iter()
             .map(|(var, coeff)| {
@@ -664,7 +676,7 @@ impl<
 
         // If the offset is a known number, we gradually remove the
         // components from this number.
-        let mut offset = self.constant.try_to_number();
+        let mut offset = expression.constant.try_to_number();
         let mut concrete_assignments = vec![];
 
         let any_negative = constrained_coefficients
@@ -742,26 +754,31 @@ impl<
                     return Err(Error::ConstraintUnsatisfiable(self.to_string()));
                 }
             }
-            assert_eq!(concrete_assignments.len(), self.linear.len());
+            assert_eq!(concrete_assignments.len(), expression.linear.len());
             Ok(ProcessResult::complete(concrete_assignments))
         } else {
             Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
                 BitDecomposition {
-                    value: self.constant.clone(),
+                    value: expression.constant.clone(),
                     components,
                 },
             )]))
         }
     }
 
+    /// Extract the range constraints from the expression.
+    /// Assumptions:
+    /// - The expression is linear
     fn transfer_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Vec<Effect<T, V>> {
+        let expression = self.expression;
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
-        assert!(!self.is_quadratic());
-        self.linear
+        assert!(!expression.is_quadratic());
+        expression
+            .linear
             .iter()
             .filter_map(|(var, _)| {
                 let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
@@ -776,7 +793,8 @@ impl<
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        let Some((left, right)) = self.try_as_single_product() else {
+        let expression = self.expression;
+        let Some((left, right)) = expression.try_as_single_product() else {
             return Ok(ProcessResult::empty());
         };
         // Now we have `left * right = 0`, i.e. one (or both) of them has to be zero.
@@ -1358,7 +1376,8 @@ mod tests {
 
     #[test]
     fn unsolvable() {
-        let r = Qse::from_number(GoldilocksField::from(10)).solve(&NoRangeConstraints);
+        let r = AlgebraicConstraint::from(&Qse::from_number(GoldilocksField::from(10)))
+            .solve(&NoRangeConstraints);
         assert!(r.is_err());
     }
 
@@ -1368,10 +1387,14 @@ mod tests {
         let y = &Qse::from_known_symbol("Y", Default::default());
         let mut constr = x + y - constant(10);
         // We cannot solve it, but we can also not learn anything new from it.
-        let result = constr.solve(&NoRangeConstraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&NoRangeConstraints)
+            .unwrap();
         assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
-        assert!(constant(10).solve(&NoRangeConstraints).is_err());
+        assert!(AlgebraicConstraint::from(&constant(10))
+            .solve(&NoRangeConstraints)
+            .is_err());
 
         // The same with range constraints that disallow zero.
         constr.substitute_by_known(
@@ -1385,13 +1408,17 @@ mod tests {
                 RangeConstraint::from_range(100.into(), 102.into()),
             ),
         );
-        assert!(constant(10).solve(&NoRangeConstraints).is_err());
+        assert!(AlgebraicConstraint::from(&constant(10))
+            .solve(&NoRangeConstraints)
+            .is_err());
     }
 
     #[test]
     fn solvable_without_vars() {
         let constr = constant(0);
-        let result = constr.solve(&NoRangeConstraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&NoRangeConstraints)
+            .unwrap();
         assert!(result.complete && result.effects.is_empty());
     }
 
@@ -1404,7 +1431,9 @@ mod tests {
         let seven = constant(7);
         let ten = constant(10);
         let constr = two * x + seven * y - ten;
-        let result = constr.solve(&NoRangeConstraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&NoRangeConstraints)
+            .unwrap();
         assert!(result.complete);
         assert_eq!(result.effects.len(), 1);
         let Effect::Assignment(var, expr) = &result.effects[0] else {
@@ -1424,7 +1453,9 @@ mod tests {
         let ten = constant(10);
         let mut constr = z * x + seven * y - ten.clone();
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
-        let result = constr.solve(&NoRangeConstraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&NoRangeConstraints)
+            .unwrap();
         assert!(!result.complete && result.effects.is_empty());
         let z_rc = RangeConstraint::from_range(1.into(), 2.into());
         let range_constraints: HashMap<&'static str, RangeConstraint<GoldilocksField>> =
@@ -1433,11 +1464,15 @@ mod tests {
         // does not help either. Note that the argument `&range_constraints` to
         // `solve()` is only used for unknown variables and not for known variables.
         // For the latter to take effect, we need to call `apply_update`.
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(!result.complete && result.effects.is_empty());
         constr.substitute_by_known(&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
         // Now it should work.
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(result.complete);
         let effects = result.effects;
         let Effect::Assignment(var, expr) = &effects[0] else {
@@ -1463,11 +1498,15 @@ mod tests {
             + z.clone();
         // Without range constraints on a, this is not solvable.
         let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         range_constraints.insert("a", rc.clone());
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(result.complete);
 
         let [effect] = &result.effects[..] else {
@@ -1512,7 +1551,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // We try to solve `lin - 4 * result = 4` and the problem is
         // that we cannot assign `lin = 4 & mask` for some mask, since
         // it needs to be assigned `8`.
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(!result.complete);
         // The algorithm has a bug, so we exect no bit decomposition.
         let has_bit_decomp = result
@@ -1538,7 +1579,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let constr =
             a * constant(0x100) + b * constant(0x10000) + c * constant(0x1000000) + ten.clone()
                 - z.clone();
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(!result.complete);
         let effects = result
             .effects
@@ -1567,7 +1610,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let ten = constant(10);
         let two_pow8 = constant(0x100);
         let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(result.complete);
         let effects = result
             .effects
@@ -1595,7 +1640,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // The result should be an unconditional assignment to b + 10 = 12.
         let mut constr = constr;
         constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
-        let result = constr.solve(&range_constraints).unwrap();
+        let result = AlgebraicConstraint::from(&constr)
+            .solve(&range_constraints)
+            .unwrap();
         assert!(result.complete);
         let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
             panic!("Expected 1 assignment");
@@ -1634,7 +1681,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         ];
 
         for constraint in constraints {
-            let result = constraint.solve(&NoRangeConstraints).unwrap();
+            let result = AlgebraicConstraint::from(&constraint)
+                .solve(&NoRangeConstraints)
+                .unwrap();
             assert!(result.complete);
             let (var, rc) = unpack_range_constraint(&result);
             assert_eq!(var.to_string(), "a");
@@ -1653,7 +1702,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // marked as complete.
         let constraint = (a.clone() - three) * (a - four);
 
-        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        let result = AlgebraicConstraint::from(&constraint)
+            .solve(&NoRangeConstraints)
+            .unwrap();
         assert!(result.complete);
         let (var, rc) = unpack_range_constraint(&result);
         assert_eq!(var.to_string(), "a");
@@ -1676,7 +1727,9 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // the identity would loose information.
         let constraint = (a.clone() - three) * (a - five);
 
-        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        let result = AlgebraicConstraint::from(&constraint)
+            .solve(&NoRangeConstraints)
+            .unwrap();
         assert!(!result.complete);
         let (var, rc) = unpack_range_constraint(&result);
         assert_eq!(var.to_string(), "a");
@@ -1786,61 +1839,68 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let expr = var("a") + constant(1);
         let rc = RangeConstraint::from_mask(0x1u64);
         let range_constraints = HashMap::from([("a", rc.clone())]);
-        assert!(expr.solve(&range_constraints).is_err());
+        assert!(AlgebraicConstraint::from(&expr)
+            .solve(&range_constraints)
+            .is_err());
     }
 
     #[test]
     fn solve_for() {
         let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
+        let constr = AlgebraicConstraint::from(&expr);
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
-            expr.try_solve_for(&"x").unwrap().to_string(),
+            constr.try_solve_for(&"x").unwrap().to_string(),
             "-(w + 3 * y + 5)"
         );
         assert_eq!(
-            expr.try_solve_for(&"y").unwrap().to_string(),
+            constr.try_solve_for(&"y").unwrap().to_string(),
             "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
-        assert!(expr.try_solve_for(&"t").is_none());
+        assert!(constr.try_solve_for(&"t").is_none());
     }
 
     #[test]
     fn solve_for_expr() {
         let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
+        let constr = AlgebraicConstraint::from(&expr);
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
-            expr.try_solve_for_expr(&var("x")).unwrap().to_string(),
+            constr.try_solve_for_expr(&var("x")).unwrap().to_string(),
             "-(w + 3 * y + 5)"
         );
         assert_eq!(
-            expr.try_solve_for_expr(&var("y")).unwrap().to_string(),
+            constr.try_solve_for_expr(&var("y")).unwrap().to_string(),
             "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert_eq!(
-            expr.try_solve_for_expr(&-(constant(3) * var("y")))
+            constr
+                .try_solve_for_expr(&-(constant(3) * var("y")))
                 .unwrap()
                 .to_string(),
             "w + x + 5"
         );
         assert_eq!(
-            expr.try_solve_for_expr(&-(constant(3) * var("y") + constant(2)))
+            constr
+                .try_solve_for_expr(&-(constant(3) * var("y") + constant(2)))
                 .unwrap()
                 .to_string(),
             "w + x + 3"
         );
         assert_eq!(
-            expr.try_solve_for_expr(&(var("x") + constant(3) * var("y") + constant(2)))
+            constr
+                .try_solve_for_expr(&(var("x") + constant(3) * var("y") + constant(2)))
                 .unwrap()
                 .to_string(),
             "-(w + 3)"
         );
         // We cannot solve these because the constraint does not contain a linear multiple
         // of the expression.
-        assert!(expr
+        assert!(constr
             .try_solve_for_expr(&(var("x") + constant(2) * var("y")))
             .is_none());
-        assert!(expr.try_solve_for_expr(&(var("x") + var("y"))).is_none());
-        assert!(expr
+        assert!(constr.try_solve_for_expr(&(var("x") + var("y"))).is_none());
+        assert!(constr
             .try_solve_for_expr(&(constant(2) * var("x") + var("y")))
             .is_none());
     }
@@ -1851,9 +1911,11 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let t = SymbolicExpression::from_symbol("t", Default::default());
         let r = SymbolicExpression::from_symbol("r", Default::default());
         let expr = var("x") * r.clone() + var("y") * t;
-        assert_eq!(expr.to_string(), "r * x + t * y");
+        let constr = AlgebraicConstraint::from(&expr);
+        assert_eq!(constr.to_string(), "r * x + t * y");
         assert_eq!(
-            expr.try_solve_for_expr(&(var("x") * r))
+            constr
+                .try_solve_for_expr(&(var("x") * r))
                 .unwrap()
                 .to_string(),
             "-t * y"

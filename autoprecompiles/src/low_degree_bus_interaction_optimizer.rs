@@ -63,7 +63,7 @@ impl<
                     // trivially zero) and replace the bus interaction with interactions implementing
                     // the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
-                    if !replacement.is_zero() {
+                    if !replacement.expression.is_zero() {
                         new_constraints.push(replacement);
                     }
 
