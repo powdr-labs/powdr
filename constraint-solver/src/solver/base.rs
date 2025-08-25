@@ -276,7 +276,7 @@ where
     ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
         let result = self
             .boolean_extractor
-            .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
+            .try_extract_boolean(&constr, || self.var_dispenser.next_boolean())?;
         if let Some(var) = result.new_unconstrained_boolean_variable {
             // If we created a boolean variable, we constrain it to be boolean.
             self.add_range_constraint(&var, RangeConstraint::from_mask(1));
