@@ -1,0 +1,17 @@
+[workspace]
+[package]
+name = "openvm-k256-test-programs"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-ecc-sw-macros = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git",package = "k256" }
+
+elliptic-curve = { version = "0.13.8" }
+ecdsa = { version = "0.16.9" }
+hex-literal = { version = "0.4.1", default-features = false }
