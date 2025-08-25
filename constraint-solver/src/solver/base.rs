@@ -363,6 +363,10 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
+                    if let Some((v1, expr)) = is_simple_equivalence(c) {
+                        self.apply_assignment(&v1, &expr);
+                        continue;
+                    }
                     c.solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
                         .effects
@@ -553,6 +557,24 @@ where
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
         true
+    }
+}
+
+fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+    expr: &GroupedExpression<T, V>,
+) -> Option<(V, GroupedExpression<T, V>)> {
+    if !expr.is_affine() {
+        return None;
+    }
+    let (_, linear, offset) = expr.components();
+    let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
+    if offset.is_zero() && (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+        Some((
+            v2.clone(),
+            GroupedExpression::from_unknown_variable(v1.clone()),
+        ))
+    } else {
+        None
     }
 }
 

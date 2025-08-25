@@ -32,20 +32,27 @@ pub fn replace_constrained_witness_columns<
         .indexed_system()
         .algebraic_constraints()
         .len();
-    for curr_idx in (0..constraint_count).rev() {
-        let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
+    loop {
+        let inlined_vars_count = inlined_vars.len();
+        for curr_idx in (0..constraint_count).rev() {
+            let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
 
-        for (var, expr) in find_inlinable_variables(constraint) {
-            if should_inline(&var, &expr, constraint_system.indexed_system()) {
-                log::trace!("Substituting {var} = {expr}");
-                log::trace!("  (from identity {constraint})");
+            for (var, expr) in find_inlinable_variables(constraint) {
+                if should_inline(&var, &expr, constraint_system.indexed_system()) {
+                    log::trace!("Substituting {var} = {expr}");
+                    log::trace!("  (from identity {constraint})");
 
-                constraint_system.substitute_by_unknown(&var, &expr);
-                to_remove_idx.insert(curr_idx);
-                inlined_vars.insert(var);
+                    constraint_system.substitute_by_unknown(&var, &expr);
+                    to_remove_idx.insert(curr_idx);
+                    inlined_vars.insert(var);
 
-                break;
+                    break;
+                }
             }
+        }
+        if inlined_vars.len() == inlined_vars_count {
+            // No more variables to inline
+            break;
         }
     }
 

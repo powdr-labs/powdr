@@ -2,11 +2,11 @@ Instructions:
   BGEU 8 5 2 1 1
 
 APC advantage:
-  - Main columns: 32 -> 22 (1.45x reduction)
-  - Bus interactions: 13 -> 12 (1.08x reduction)
-  - Constraints: 25 -> 19 (1.32x reduction)
+  - Main columns: 32 -> 20 (1.60x reduction)
+  - Bus interactions: 13 -> 11 (1.18x reduction)
+  - Constraints: 25 -> 17 (1.47x reduction)
 
-Symbolic machine using 22 unique main columns:
+Symbolic machine using 20 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -21,8 +21,6 @@ Symbolic machine using 22 unique main columns:
   b__2_0
   b__3_0
   cmp_result_0
-  a_msb_f_0
-  b_msb_f_0
   diff_marker__0_0
   diff_marker__1_0
   diff_marker__2_0
@@ -48,15 +46,12 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * 
 
 // Bus 6 (BITWISE_LOOKUP):
 mult=diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0, args=[diff_val_0 - 1, 0, 0, 0]
-mult=is_valid * 1, args=[a_msb_f_0, b_msb_f_0, 0, 0]
 
 // Algebraic constraints:
 cmp_result_0 * (cmp_result_0 - 1) = 0
-(a__3_0 - a_msb_f_0) * (a_msb_f_0 + 256 - a__3_0) = 0
-(b__3_0 - b_msb_f_0) * (b_msb_f_0 + 256 - b__3_0) = 0
 diff_marker__3_0 * (diff_marker__3_0 - 1) = 0
-(1 - diff_marker__3_0) * ((b_msb_f_0 - a_msb_f_0) * (1 - 2 * cmp_result_0)) = 0
-diff_marker__3_0 * ((a_msb_f_0 - b_msb_f_0) * (1 - 2 * cmp_result_0) + diff_val_0) = 0
+(1 - diff_marker__3_0) * ((b__3_0 - a__3_0) * (1 - 2 * cmp_result_0)) = 0
+diff_marker__3_0 * ((a__3_0 - b__3_0) * (1 - 2 * cmp_result_0) + diff_val_0) = 0
 diff_marker__2_0 * (diff_marker__2_0 - 1) = 0
 (1 - (diff_marker__2_0 + diff_marker__3_0)) * ((b__2_0 - a__2_0) * (1 - 2 * cmp_result_0)) = 0
 diff_marker__2_0 * ((a__2_0 - b__2_0) * (1 - 2 * cmp_result_0) + diff_val_0) = 0
