@@ -560,6 +560,10 @@ where
     }
 }
 
+/// Returns true if the expression is equivalent to `X = Y` for
+/// some variables `X` and `Y`.
+/// In this case, returns the "larger" variable and the result
+/// of solving for the variable.
 fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
     expr: &GroupedExpression<T, V>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
