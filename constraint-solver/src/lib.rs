@@ -5,7 +5,6 @@ pub mod effect;
 pub mod grouped_expression;
 pub mod indexed_constraint_system;
 pub mod inliner;
-pub mod journaling_constraint_system;
 pub mod range_constraint;
 pub mod runtime_constant;
 pub mod solver;

@@ -1,9 +1,10 @@
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
+use powdr_constraint_solver::constraint_system::{
+    BusInteraction, BusInteractionHandler, ConstraintSystem,
+};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::inliner::DegreeBound;
-use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::runtime_constant::RuntimeConstant;
 use powdr_constraint_solver::solver::Solver;
@@ -42,11 +43,8 @@ impl<
         }
     }
 
-    pub fn optimize(
-        self,
-        system: JournalingConstraintSystem<T, V>,
-    ) -> JournalingConstraintSystem<T, V> {
-        let mut system = system.system().clone();
+    pub fn optimize(self, system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
+        let mut system = system.clone();
         let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
         system.bus_interactions = system
             .bus_interactions
@@ -87,7 +85,7 @@ impl<
             .add_algebraic_constraints(new_constraints.iter().cloned());
 
         system.algebraic_constraints.extend(new_constraints);
-        system.into()
+        system
     }
 
     /// Checks whether a bus interaction can be replaced by a low-degree constraint + range checks.

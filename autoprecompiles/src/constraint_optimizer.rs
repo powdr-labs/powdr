@@ -12,7 +12,6 @@ use powdr_constraint_solver::{
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::{self, DegreeBound},
-    journaling_constraint_system::JournalingConstraintSystem,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -50,7 +49,7 @@ pub fn optimize_constraints<
     V: Ord + Clone + Eq + Hash + Display,
     M: MemoryBusInteraction<P, V>,
 >(
-    constraint_system: JournalingConstraintSystem<P, V>,
+    constraint_system: ConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P>
         + IsBusStateful<P>
@@ -60,7 +59,10 @@ pub fn optimize_constraints<
     stats_logger: &mut StatsLogger,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
-) -> Result<JournalingConstraintSystem<P, V>, Error> {
+) -> Result<ConstraintSystem<P, V>, Error> {
+    // Index the constraint system for the first time
+    let constraint_system = IndexedConstraintSystem::from(constraint_system);
+
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
@@ -79,7 +81,7 @@ pub fn optimize_constraints<
     // TODO should we inline here at all during solving (instead if only inside the solver)?
     let constraint_system =
         inliner::replace_constrained_witness_columns(constraint_system, should_inline);
-    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().cloned());
+    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().iter().cloned());
     stats_logger.log("in-lining witness columns", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
@@ -94,6 +96,9 @@ pub fn optimize_constraints<
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
+    // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
+    let constraint_system = constraint_system.into_system();
+
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
     stats_logger.log("memory optimization", &constraint_system);
 
@@ -103,15 +108,18 @@ pub fn optimize_constraints<
         degree_bound,
     )
     .optimize(constraint_system);
-    stats_logger.log("low degree bus interaction optimization", &constraint_system);
+    stats_logger.log(
+        "low degree bus interaction optimization",
+        &constraint_system,
+    );
 
     Ok(constraint_system)
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<T, V>,
+    mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
-) -> Result<JournalingConstraintSystem<T, V>, Error> {
+) -> Result<IndexedConstraintSystem<T, V>, Error> {
     let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
     if log::log_enabled!(log::Level::Trace) {
@@ -179,10 +187,10 @@ fn try_replace_by_number<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ///
 /// This function removes *some* constraints like this (see TODOs below).
 fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<T, V>,
+    mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
-) -> JournalingConstraintSystem<T, V> {
+) -> IndexedConstraintSystem<T, V> {
     let all_variables = constraint_system
         .system()
         .expressions()
@@ -195,7 +203,6 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         // Find variables that are referenced in exactly one constraint
         .filter_map(|variable| {
             constraint_system
-                .indexed_system()
                 .constraints_referencing_variables(once(variable.clone()))
                 .exactly_one()
                 .ok()
@@ -267,10 +274,10 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
 fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<T, V>,
+    mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
-) -> JournalingConstraintSystem<T, V> {
+) -> IndexedConstraintSystem<T, V> {
     let initial_variables = variables_in_stateful_bus_interactions(
         constraint_system.system(),
         bus_interaction_handler.clone(),
@@ -315,8 +322,8 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
-) -> JournalingConstraintSystem<P, V> {
+    mut constraint_system: IndexedConstraintSystem<P, V>,
+) -> IndexedConstraintSystem<P, V> {
     let zero = GroupedExpression::zero();
     constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
     constraint_system
@@ -325,9 +332,9 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord
 }
 
 fn remove_equal_bus_interactions<P: FieldElement, V: Ord + Clone + Eq + Hash>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
+    mut constraint_system: IndexedConstraintSystem<P, V>,
     bus_interaction_handler: impl IsBusStateful<P>,
-) -> JournalingConstraintSystem<P, V> {
+) -> IndexedConstraintSystem<P, V> {
     let mut seen = HashSet::new();
     constraint_system.retain_bus_interactions(|interaction| {
         // We only touch interactions with non-stateful buses.
@@ -350,8 +357,8 @@ pub trait IsBusStateful<T: FieldElement> {
 
 /// Removes constraints that are factors of other constraints.
 fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: JournalingConstraintSystem<P, V>,
-) -> JournalingConstraintSystem<P, V> {
+    constraint_system: IndexedConstraintSystem<P, V>,
+) -> IndexedConstraintSystem<P, V> {
     // First, remove duplicate factors from the constraints.
     let mut constraint_system = remove_duplicate_factors(constraint_system);
 
@@ -360,6 +367,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
     // Turns each constraint into a set of factors.
     let constraints_as_factors = constraint_system
         .algebraic_constraints()
+        .iter()
         .enumerate()
         .map(|(i, c)| {
             let factors = c.to_factors();
@@ -407,8 +415,8 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
 
 /// If a constraint contains the same factor multiple times removes the duplicate factors.
 fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<P, V>,
-) -> JournalingConstraintSystem<P, V> {
+    mut constraint_system: IndexedConstraintSystem<P, V>,
+) -> IndexedConstraintSystem<P, V> {
     let mut constraint_to_add = vec![];
     constraint_system.retain_algebraic_constraints(|constraint| {
         let factors = constraint.to_factors();

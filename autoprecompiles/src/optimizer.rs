@@ -8,7 +8,6 @@ use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
-    journaling_constraint_system::JournalingConstraintSystem,
 };
 use powdr_number::FieldElement;
 
@@ -41,7 +40,7 @@ pub fn optimize<A: Adapter>(
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
-            JournalingConstraintSystem::from(constraint_system),
+            constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
             inline_everything_below_degree_bound(degree_bound),
@@ -49,7 +48,6 @@ pub fn optimize<A: Adapter>(
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
         )?
-        .system()
         .clone();
         if stats == stats_logger::Stats::from(&constraint_system) {
             break;

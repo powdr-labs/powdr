@@ -5,7 +5,6 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
 
@@ -17,10 +16,10 @@ pub fn optimize_memory<
     V: Hash + Eq + Clone + Ord + Display,
     M: MemoryBusInteraction<T, V>,
 >(
-    system: JournalingConstraintSystem<T, V>,
+    system: ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     memory_bus_id: Option<u64>,
-) -> JournalingConstraintSystem<T, V> {
+) -> ConstraintSystem<T, V> {
     let memory_bus_id = match memory_bus_id {
         Some(id) => id,
         None => {
@@ -28,7 +27,7 @@ pub fn optimize_memory<
         }
     };
 
-    let mut system = system.system().clone();
+    let mut system = system.clone();
 
     // TODO use the solver here.
     let (to_remove, new_constraints) =
@@ -49,7 +48,7 @@ pub fn optimize_memory<
         memory_bus_id
     ));
 
-    system.into()
+    system
 }
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.

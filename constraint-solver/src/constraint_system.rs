@@ -84,6 +84,10 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
     }
+
+    pub fn algebraic_constraints(&self) -> &[GroupedExpression<T, V>] {
+        &self.algebraic_constraints
+    }
 }
 
 /// A bus interaction.

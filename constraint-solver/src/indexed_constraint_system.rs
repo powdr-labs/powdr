@@ -186,6 +186,10 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
             ConstraintSystemItem::BusInteraction,
         );
     }
+
+    pub fn into_system(self) -> ConstraintSystem<T, V> {
+        self.constraint_system
+    }
 }
 
 /// Behaves like `list.retain(f)` but also updates the variable occurrences
@@ -342,6 +346,17 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
                 .entry(var.clone())
                 .or_default()
                 .extend(items.iter().cloned());
+        }
+    }
+
+    /// Applies multiple substitutions to the constraint system in an efficient manner.
+    pub fn apply_substitutions(
+        &mut self,
+        substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
+    ) {
+        // We do not track substitutions yet, but we could.
+        for (variable, substitution) in substitutions {
+            self.substitute_by_unknown(&variable, &substitution);
         }
     }
 }
