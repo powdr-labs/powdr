@@ -631,19 +631,18 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
-            algebraic_constraints: vec![
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
                 y.clone() - z.clone(),
-            ],
-            bus_interactions: vec![BusInteraction {
+            ])
+            .with_bus_interactions(vec![BusInteraction {
                 bus_id: x,
                 payload: vec![y.clone(), z],
                 multiplicity: y,
-            }],
-        }
-        .into();
+            }])
+            .into();
 
         s.substitute_by_unknown(&"x", &Ge::from_unknown_variable("z"));
 
@@ -666,13 +665,13 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
-            algebraic_constraints: vec![
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
                 y.clone() - z.clone(),
-            ],
-            bus_interactions: vec![
+            ])
+            .with_bus_interactions(vec![
                 BusInteraction {
                     bus_id: x.clone(),
                     payload: vec![y.clone(), z],
@@ -683,9 +682,8 @@ mod tests {
                     payload: vec![x.clone(), x.clone()],
                     multiplicity: x,
                 },
-            ],
-        }
-        .into();
+            ])
+            .into();
 
         s.retain_algebraic_constraints(|c| !c.referenced_unknown_variables().any(|v| *v == "y"));
         s.retain_bus_interactions(|b| {

@@ -151,12 +151,13 @@ where
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+        constraints: impl IntoIterator<Item = impl Into<AlgebraicConstraint<GroupedExpression<T, V>>>>,
     ) {
         self.equivalent_expressions_cache.clear();
 
         let constraints = constraints
             .into_iter()
+            .map(Into::into)
             .filter(|c| !c.is_zero())
             .flat_map(|constr| {
                 self.try_extract_boolean(&constr)

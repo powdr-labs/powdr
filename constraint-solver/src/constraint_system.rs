@@ -46,7 +46,25 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 }
 
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
-    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
+    pub fn with_constraints(
+        mut self,
+        constraints: Vec<impl Into<AlgebraicConstraint<GroupedExpression<T, V>>>>,
+    ) -> Self {
+        self.algebraic_constraints
+            .extend(constraints.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn with_bus_interactions(
+        mut self,
+        bus_interactions: Vec<impl Into<BusInteraction<GroupedExpression<T, V>>>>,
+    ) -> Self {
+        self.bus_interactions
+            .extend(bus_interactions.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<'_, T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()

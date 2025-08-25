@@ -77,7 +77,7 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
     /// Adds a new algebraic constraint to the system.
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+        constraints: impl IntoIterator<Item = impl Into<AlgebraicConstraint<GroupedExpression<T, V>>>>,
     );
 
     /// Adds a new bus interaction to the system.

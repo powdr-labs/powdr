@@ -117,10 +117,14 @@ where
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+        constraints: impl IntoIterator<Item = impl Into<AlgebraicConstraint<GroupedExpression<T, V>>>>,
     ) {
-        self.solver
-            .add_algebraic_constraints(constraints.into_iter().map(|c| transform_constraint(&c)));
+        self.solver.add_algebraic_constraints(
+            constraints
+                .into_iter()
+                .map(Into::into)
+                .map(|c| transform_constraint(&c)),
+        );
     }
 
     fn add_bus_interactions(

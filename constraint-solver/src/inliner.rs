@@ -169,14 +169,12 @@ mod test {
 
     #[test]
     fn test_no_substitution() {
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("a") * var("b") + var("c") * var("d"),
                 var("e") * var("e") - constant(2),
-            ],
-            bus_interactions: vec![],
-        }
-        .into();
+            ])
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -192,15 +190,14 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("a") + var("b") + var("c"),
                 var("b") + var("d") - constant(1),
                 var("c") + var("b") + var("a") + var("d") - var("0result"),
-            ],
-            bus_interactions,
-        }
-        .into();
+            ])
+            .with_bus_interactions(bus_interactions)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -249,11 +246,10 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions,
-        }
-        .into();
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(identities)
+            .with_bus_interactions(bus_interactions)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -284,11 +280,9 @@ mod test {
         identities.push(expr_constraint);
 
         // no columns to keep
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions: vec![],
-        }
-        .into();
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(identities)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -306,15 +300,14 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("y") - (var("x") + constant(3)),
                 var("z") - (var("y") + constant(2)),
                 var("result") - (var("z") + constant(1)),
-            ],
-            bus_interactions,
-        }
-        .into();
+            ])
+            .with_bus_interactions(bus_interactions)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -334,31 +327,32 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("a") - (var("b") + constant(1)),
                 var("c") - (var("a") * var("a")),
                 var("d") - (var("c") * var("a")),
                 var("e") - (var("d") * var("a")),
                 var("f") - (var("e") + constant(5)),
                 var("result") - (var("f") * constant(2)),
-            ],
-            // Get all variables
-            bus_interactions: vec![BusInteraction {
-                bus_id: constant(1),
-                payload: vec![
-                    var("a"),
-                    var("b"),
-                    var("c"),
-                    var("d"),
-                    var("e"),
-                    var("f"),
-                    var("result"),
-                ],
-                multiplicity: constant(1),
-            }],
-        }
-        .into();
+            ])
+            .with_bus_interactions(
+                // Get all variables
+                vec![BusInteraction {
+                    bus_id: constant(1),
+                    payload: vec![
+                        var("a"),
+                        var("b"),
+                        var("c"),
+                        var("d"),
+                        var("e"),
+                        var("f"),
+                        var("result"),
+                    ],
+                    multiplicity: constant(1),
+                }],
+            )
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -424,17 +418,13 @@ mod test {
         suboptimal_order_identities.push(constraint2.clone()); // b = c + d
         suboptimal_order_identities.push(constraint4.clone()); // c = d * d
 
-        let optimal_system = ConstraintSystem {
-            algebraic_constraints: optimal_order_identities,
-            bus_interactions: vec![],
-        }
-        .into();
+        let optimal_system = ConstraintSystem::default()
+            .with_constraints(optimal_order_identities)
+            .into();
 
-        let suboptimal_system = ConstraintSystem {
-            algebraic_constraints: suboptimal_order_identities,
-            bus_interactions: vec![],
-        }
-        .into();
+        let suboptimal_system = ConstraintSystem::default()
+            .with_constraints(suboptimal_order_identities)
+            .into();
 
         // Apply the same optimization to both systems
         let optimal_system = replace_constrained_witness_columns(optimal_system, bounds(5, 5));
