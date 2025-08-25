@@ -5,6 +5,10 @@ use crate::{
     runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
 };
 
+use num_traits::{One, Zero};
+
+use powdr_number::FieldElement;
+
 pub mod solve;
 
 /// An algebraic constraint
@@ -47,6 +51,24 @@ impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         self.expression.referenced_unknown_variables()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
+    /// Returns a constraint which asserts that the two expressions are equal.
+    pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
+        Self::assert_zero(expression - other)
+    }
+
+    /// Returns a constraint which asserts that the expression is a boolean.
+    pub fn assert_bool(expression: GroupedExpression<T, V>) -> Self {
+        Self::assert_zero(expression.clone() * (expression - GroupedExpression::one()))
+    }
+}
+
+impl<V: Zero> AlgebraicConstraint<V> {
+    pub fn is_redundant(&self) -> bool {
+        self.expression.is_zero()
     }
 }
 
