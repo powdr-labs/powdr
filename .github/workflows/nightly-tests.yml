@@ -1,0 +1,240 @@
+name: Nightly tests
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *" # run at 2 AM UTC
+
+env:
+  CARGO_TERM_COLOR: always
+  IS_NIGHTLY_TEST: true
+  POWDR_GENERATE_PROOFS: "true"
+  RUSTFLAGS: "-C target-cpu=native"
+  RUST_BACKTRACE: 1
+  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
+  POWDR_OPENVM_SEGMENT_DELTA: 10000
+
+jobs:
+  check_if_needs_running:
+    runs-on: ubuntu-24.04
+    outputs:
+      status: ${{ steps.count.outputs.status }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Count recent commits
+        id: count
+        run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
+
+  udeps:
+    runs-on: ubuntu-22.04
+    needs: check_if_needs_running
+    if: needs.check_if_needs_running.outputs.status > 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
+      - name: Run cargo-udeps
+        run: cargo udeps --all-targets
+
+  test_release:
+    runs-on: ubuntu-24.04
+    needs: check_if_needs_running
+    if: needs.check_if_needs_running.outputs.status > 0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+      - name: Install Rust toolchain 1.88
+        run: rustup toolchain install 1.88
+      - name: Install nightly
+        run: rustup toolchain install nightly-2025-05-14 --component rust-src
+      - name: Install nightly
+        run: rustup toolchain install nightly-2025-02-14 --component rust-src
+      - name: Install riscv target
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Build
+        run: cargo build --all --release --all-features
+      - name: Run tests
+        run: cargo test --all --release --verbose --all-features --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
+
+  bench:
+    runs-on: warp-ubuntu-2404-x64-4x
+    permissions:
+      contents: write
+      deployments: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Restore rust cache
+        id: cache
+        uses: WarpBuilds/cache/restore@v1
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            Cargo.lock
+          key: ${{ runner.os }}-cargo-pr-tests
+      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
+      - name: Install Rust toolchain 1.88
+        run: rustup toolchain install 1.88
+      - name: Install riscv target
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Run benchmarks
+        # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
+        run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Benchmarks
+          tool: "cargo"
+          output-file-path: output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: "120%"
+          comment-on-alert: true
+          summary-always: true
+
+  test_apc:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+
+      - name: Install cargo openvm
+        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
+        run: |
+          rustup toolchain install 1.88
+          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm/scripts/requirements.txt
+          pip install -r autoprecompiles/scripts/requirements.txt
+
+      - name: Remove old results if present
+        run: |
+          rm -rf results
+          mkdir -p results
+
+      - name: Run guest benchmarks
+        run: |
+          source .venv/bin/activate
+          bash ./openvm/scripts/run_guest_benches.sh
+
+      - name: Checkout openvm-reth-benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: powdr-labs/openvm-reth-benchmark
+          ref: main
+          path: openvm-reth-benchmark
+
+      - name: Patch openvm-reth-benchmark to use local powdr
+        run: |
+          cd openvm-reth-benchmark
+          mkdir -p .cargo
+          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+
+      - name: Run reth benchmark
+        run: |
+          source .venv/bin/activate
+          cd openvm-reth-benchmark
+          RES_DIR=reth
+          mkdir -p $RES_DIR
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+
+          # prove with no APCs
+          MODE="prove-stark" APC=0 ./run.sh || exit 1
+          echo "Finished proving with no APCs"
+          mv metrics.json $RES_DIR/noapc.json
+
+          # prove with 100 APCs, recording mem usage
+          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
+          echo "Finished proving with 100 APCs"
+          mv metrics.json $RES_DIR/100apc.json
+
+          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
+
+          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/noapc.json $RES_DIR/100apc.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells.png $RES_DIR/100apc.json > $RES_DIR/trace_cells.txt
+          python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
+
+          mv $RES_DIR ../results/
+
+      - name: Save revisions and run info
+        run: |
+          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > results/run.txt
+          echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: |
+            results/*
+
+      - name: get the date/time
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: commit to bench results
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          external_repository: powdr-labs/bench-results
+          publish_dir: ./results
+          destination_dir: results/${{ steps.date.outputs.value }}/
+          keep_files: true
+          enable_jekyll: true
+
+      - name: Run tests
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
