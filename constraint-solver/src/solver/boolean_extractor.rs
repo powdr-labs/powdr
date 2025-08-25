@@ -182,7 +182,7 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
         assert!(result.is_some());
         let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "-(a + b + 10 * z)");
+        assert_eq!(result.to_string(), "-(a + b + 10 * z) = 0");
         assert_eq!(z, Some("z"));
     }
 
@@ -194,7 +194,7 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
         assert!(result.is_some());
         let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "a + b");
+        assert_eq!(result.to_string(), "a + b = 0");
         assert_eq!(z, None);
     }
 
@@ -219,7 +219,7 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr.clone().into(), &mut var_dispenser);
         assert!(result.is_some());
         let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "-(a + b + 10 * z)");
+        assert_eq!(result.to_string(), "-(a + b + 10 * z) = 0");
         assert_eq!(z, Some("z"));
 
         assert!(extractor
@@ -252,7 +252,7 @@ mod tests {
                 .unwrap()
                 .0
                 .to_string(),
-            "-(2 * a + 2 * b + 40 * z)"
+            "-(2 * a + 2 * b + 40 * z) = 0"
         );
     }
 
@@ -264,7 +264,7 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr.clone().into(), &mut var_dispenser);
         assert!(result.is_some());
         let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "a + b");
+        assert_eq!(result.to_string(), "a + b = 0");
         assert_eq!(z, None);
 
         let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
@@ -285,7 +285,7 @@ mod tests {
         let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
         assert!(result.is_some());
         let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "-(a + b + k - 2 * z_0)");
+        assert_eq!(result.to_string(), "-(a + b + k - 2 * z_0) = 0");
         assert_eq!(z, Some("z_0"));
 
         extractor.apply_assignments(&[("k", -constant(9))]);

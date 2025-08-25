@@ -275,8 +275,8 @@ fn add_with_carry() {
         .to_string();
     assert_eq!(
         final_state,
-        "(7 * A - 7 * X - 1792) * (7 * A - 7 * X)
-(A - X - 256) * (A - X)"
+        "(7 * A - 7 * X - 1792) * (7 * A - 7 * X) = 0
+(A - X - 256) * (A - X) = 0"
     );
 }
 

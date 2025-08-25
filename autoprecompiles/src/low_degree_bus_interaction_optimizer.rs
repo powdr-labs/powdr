@@ -488,7 +488,7 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.to_string(), "x + z - 255");
+        assert_eq!(replacement.to_string(), "x + z - 255 = 0");
     }
 
     #[test]
@@ -505,7 +505,7 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.to_string(), "(2 * x) * (y) - x - y + z");
+        assert_eq!(replacement.to_string(), "(2 * x) * (y) - x - y + z = 0");
     }
 
     #[test]
@@ -522,6 +522,6 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.to_string(), "-(x + y - z)");
+        assert_eq!(replacement.to_string(), "-(x + y - z) = 0");
     }
 }

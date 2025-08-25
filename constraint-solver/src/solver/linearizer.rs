@@ -210,7 +210,7 @@ mod tests {
         assert_eq!(linearized.to_string(), "x + lin_3");
         assert_eq!(
             constraints_to_add.into_iter().format("\n").to_string(),
-            "z - lin_0 + 1\n(y) * (lin_0) - lin_1\nx - lin_2 - 1\n(lin_1) * (lin_2) - lin_3"
+            "z - lin_0 + 1 = 0\n(y) * (lin_0) - lin_1 = 0\nx - lin_2 - 1 = 0\n(lin_1) * (lin_2) - lin_3 = 0"
         );
     }
 

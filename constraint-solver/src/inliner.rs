@@ -374,7 +374,7 @@ mod test {
         // In-lining c would violate the degree bound, so it is kept as a symbol
         // with a constraint to enforce the equality.
         assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "-((a) * (a) - c)");
+        assert_eq!(identity.to_string(), "-((a) * (a) - c) = 0");
         // From third identity: d = c * a
         assert_eq!(d.to_string(), "(c) * (a)");
         // From fourth identity: e = d * a
