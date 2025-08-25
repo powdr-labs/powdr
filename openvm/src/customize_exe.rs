@@ -28,7 +28,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Instruction, Program};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
@@ -382,13 +382,19 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     }
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(
-        &self,
-        apc_candidates_dir_path: &Path,
-    ) -> ApcCandidateJsonExport<Instr<BabyBear>> {
+    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
-            original_block: self.apc.block.clone(),
+            original_block: BasicBlock {
+                start_pc: self.apc.block.start_pc,
+                statements: self
+                    .apc
+                    .block
+                    .statements
+                    .iter()
+                    .map(|instr| openvm_instruction_formatter(&instr.0))
+                    .collect(),
+            },
             stats: self.stats,
             width_before: self.widths.before.total(),
             value: self.value(),
