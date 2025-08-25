@@ -3,15 +3,8 @@ use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
 mod detection;
-/// Tools to generate autoprecompiles using different PGO strategies
-mod pgo;
-/// Tools to select autoprecompiles using a knapsack-like algorithm
-mod selection;
 
 pub use detection::collect_basic_blocks;
-pub use pgo::{generate_apcs_with_pgo, ApcCandidateJsonExport, Candidate};
-pub use pgo::{pgo_config, PgoConfig, PgoType};
-pub use selection::KnapsackItem;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<I> {
