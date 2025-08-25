@@ -5,6 +5,7 @@ use crate::{
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
 };
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
@@ -46,24 +47,6 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 }
 
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
-    pub fn with_constraints(
-        mut self,
-        constraints: Vec<impl Into<AlgebraicConstraint<GroupedExpression<T, V>>>>,
-    ) -> Self {
-        self.algebraic_constraints
-            .extend(constraints.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn with_bus_interactions(
-        mut self,
-        bus_interactions: Vec<impl Into<BusInteraction<GroupedExpression<T, V>>>>,
-    ) -> Self {
-        self.bus_interactions
-            .extend(bus_interactions.into_iter().map(Into::into));
-        self
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<'_, T, V>> {
         Box::new(
             self.algebraic_constraints
@@ -143,10 +126,26 @@ impl<V> std::ops::DerefMut for AlgebraicConstraint<V> {
     }
 }
 
-impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
+impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         self.expression.referenced_unknown_variables()
+    }
+
+    /// Returns a constraint which asserts that the two expressions are equal.
+    pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
+        Self::assert_zero(expression - other)
+    }
+
+    /// Returns a constraint which asserts that the expression is a boolean.
+    pub fn assert_bool(expression: GroupedExpression<T, V>) -> Self {
+        Self::assert_zero(expression.clone() * (expression - GroupedExpression::one()))
+    }
+}
+
+impl<V: Zero> AlgebraicConstraint<V> {
+    pub fn is_redundant(&self) -> bool {
+        self.expression.is_zero()
     }
 }
 

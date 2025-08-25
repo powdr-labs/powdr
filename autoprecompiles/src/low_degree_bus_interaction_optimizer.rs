@@ -26,7 +26,7 @@ pub struct LowDegreeBusInteractionOptimizer<'a, T, V, S, B> {
     _phantom: PhantomData<(T, V)>,
 }
 
-struct LowDegreeValue<T: FieldElement, V> {
+struct LowDegreeReplacement<T: FieldElement, V> {
     constraint: AlgebraicConstraint<GroupedExpression<T, V>>,
     range_constraints: RangeConstraints<T, V>,
 }
@@ -54,7 +54,7 @@ impl<
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
-                if let Some(LowDegreeValue {
+                if let Some(LowDegreeReplacement {
                     constraint: replacement,
                     range_constraints,
                 }) = self.try_replace_bus_interaction(&bus_int)
@@ -99,7 +99,7 @@ impl<
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> Option<LowDegreeValue<T, V>> {
+    ) -> Option<LowDegreeReplacement<T, V>> {
         let bus_id = bus_interaction.bus_id.try_to_number()?;
         if self.bus_interaction_handler.is_stateful(bus_id) {
             return None;
@@ -119,8 +119,9 @@ impl<
                     .map(|input| input.expression)
                     .collect();
                 let low_degree_function = low_degree_function(symbolic_inputs);
-                let polynomial_constraint = AlgebraicConstraint::assert_zero(
-                    symbolic_function.output.expression.clone() - low_degree_function,
+                let polynomial_constraint = AlgebraicConstraint::assert_eq(
+                    symbolic_function.output.expression,
+                    low_degree_function,
                 );
 
                 // Check degree
@@ -132,7 +133,7 @@ impl<
                         .into_iter()
                         .map(|field| (field.expression, field.range_constraint))
                         .collect();
-                    Some(LowDegreeValue {
+                    Some(LowDegreeReplacement {
                         constraint: polynomial_constraint,
                         range_constraints,
                     })
