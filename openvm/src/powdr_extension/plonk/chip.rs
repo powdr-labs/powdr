@@ -58,7 +58,7 @@ impl<F: PrimeField32> PlonkChip<F> {
     ) -> Self {
         let PowdrPrecompile {
             original_instructions,
-            is_valid_column,
+            is_valid_poly_id,
             name,
             opcode,
             machine,
@@ -72,7 +72,7 @@ impl<F: PrimeField32> PlonkChip<F> {
         let executor = PowdrExecutor::new(
             original_instructions,
             original_airs,
-            is_valid_column,
+            is_valid_poly_id,
             memory,
             base_config,
             periphery,
