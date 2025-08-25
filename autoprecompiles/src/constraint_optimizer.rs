@@ -12,8 +12,6 @@ use powdr_constraint_solver::{
         AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::IndexedConstraintSystem,
-    inliner,
     journaling_constraint_system::JournalingConstraintSystem,
     solver::Solver,
 };
@@ -46,7 +44,6 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
     constraint_system: JournalingConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P> + IsBusStateful<P> + Clone,
-    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
 ) -> Result<JournalingConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
@@ -63,13 +60,19 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
-    // TODO should we remove inlined columns in the solver?
-    // TODO should we inline here at all during solving (instead if only inside the solver)?
-    let constraint_system =
-        inliner::replace_constrained_witness_columns(constraint_system, should_inline);
-    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().cloned());
-    stats_logger.log("in-lining witness columns", &constraint_system);
+    Ok(trivial_simplifications(
+        constraint_system,
+        bus_interaction_handler,
+        stats_logger,
+    ))
+}
 
+/// Performs some very easy simplifications that only remove constraints.
+pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+    constraint_system: JournalingConstraintSystem<P, V>,
+    bus_interaction_handler: impl IsBusStateful<P>,
+    stats_logger: &mut StatsLogger,
+) -> JournalingConstraintSystem<P, V> {
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
 
@@ -77,12 +80,13 @@ pub fn optimize_constraints<P: FieldElement, V: Ord + Clone + Eq + Hash + Displa
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    // TODO maybe we should keep learnt range constraints stored somewhere because
-    // we might not be able to re-derive them if some constraints are missing.
+    let constraint_system = remove_duplicate_factors(constraint_system);
+    stats_logger.log("removing duplicate factors", &constraint_system);
+
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
-    Ok(constraint_system)
+    constraint_system
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(

@@ -1,3 +1,4 @@
+use expect_test::expect;
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
@@ -17,15 +18,16 @@ fn replace_fixed() {
     X * one = X * zero - zero + Y;
     one * Y = zero * Y + 7 * X * X;
 "#;
-    let expectation = r#"namespace N(65536);
-    col witness Y;
-    query |i| {
-        let _: expr = 1_expr;
-    };
-    N::Y = 7 * N::Y * N::Y;
-"#;
+    let expectation = expect![[r#"
+        namespace N(65536);
+            col witness X;
+            query |i| {
+                let _: expr = 1_expr;
+            };
+            N::X = 7 * N::X * N::X;
+    "#]];
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
+    expectation.assert_eq(&optimized);
 }
 
 #[test]
@@ -138,16 +140,17 @@ fn zero_sized_array() {
             let t: col = |i| std::array::len(y);
             x[0] = t;
     "#;
-    let expectation = r#"namespace std::array(65536);
-    let<T> len: T[] -> int = [];
-namespace N(65536);
-    col witness x[1];
-    col witness y[0];
-    col fixed t(i) { std::array::len::<expr>(N::y) };
-    N::x[0] = N::t;
-"#;
+    let expectation = expect![[r#"
+        namespace std::array(65536);
+            let<T> len: T[] -> int = [];
+        namespace N(65536);
+            col witness x[1];
+            col witness y[0];
+            col fixed t(i) { std::array::len::<expr>(N::y) };
+            N::t = N::x[0];
+    "#]];
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
+    expectation.assert_eq(&optimized);
 }
 
 #[test]
@@ -212,14 +215,16 @@ fn remove_unreferenced_parts_of_arrays() {
         let inte: inter[5] = x;
         x[2] = inte[4];
     "#;
-    let expectation = r#"namespace N(65536);
-    col witness x[5];
-    col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
-    N::x[2] = N::inte[4];
-"#;
+    let expectation = expect![[r#"
+        namespace N(65536);
+            col witness x[5];
+            col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
+            N::inte[4] = N::x[2];
+    "#]];
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
     assert_eq!(optimized.intermediate_count(), 5);
-    assert_eq!(optimized.to_string(), expectation);
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    expectation.assert_eq(&optimized);
 }
 
 #[test]
@@ -398,12 +403,13 @@ fn equal_constrained_array_elements_empty() {
         col witness w[20];
         w[4] = w[7];
     "#;
-    let expectation = r#"namespace N(65536);
-    col witness w[20];
-    N::w[4] = N::w[7];
-"#;
+    let expectation = expect![[r#"
+        namespace N(65536);
+            col witness w[20];
+            N::w[7] = N::w[4];
+    "#]];
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
+    expectation.assert_eq(&optimized);
 }
 
 #[test]
@@ -415,15 +421,16 @@ fn equal_constrained_array_elements_query() {
             let _ = w[4] + w[7] - w[5];
         };
     "#;
-    let expectation = r#"namespace N(65536);
-    col witness w[20];
-    N::w[4] = N::w[7];
-    query |i| {
-        let _: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
-    };
-"#;
+    let expectation = expect![[r#"
+        namespace N(65536);
+            col witness w[20];
+            query |i| {
+                let _: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
+            };
+            N::w[7] = N::w[4];
+    "#]];
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
+    expectation.assert_eq(&optimized);
 }
 
 #[test]
@@ -436,14 +443,16 @@ fn equal_constrained_array_elements() {
         x = w[3];
         w[7] + w[1] + x = 5;
     "#;
-    let expectation = r#"namespace N(65536);
+    let expectation = expect![
+        r#"namespace N(65536);
     col witness w[20];
-    N::w[4] = N::w[7];
-    N::w[3] = N::w[5];
-    N::w[1] + N::w[3] + N::w[7] = 5;
-"#;
+    N::w[1] + N::w[3] + N::w[4] = 5;
+    N::w[7] = N::w[4];
+    N::w[5] = N::w[3];
+"#
+    ];
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
+    expectation.assert_eq(&optimized);
 }
 
 #[test]
