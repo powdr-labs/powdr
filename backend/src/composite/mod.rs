@@ -115,7 +115,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                             .into_iter()
                             .map(|(name, values)| (name, values.to_vec().into()))
                             .collect();
-                        let pil = set_size(pil.clone(), size as DegreeType);
+                        let pil = set_size(pil.clone(), size);
                         // Set up readers for the setup and verification key
                         let mut setup_cursor = setup_bytes.as_ref().map(Cursor::new);
                         let setup = setup_cursor.as_mut().map(|cursor| cursor as &mut dyn Read);
@@ -277,7 +277,7 @@ fn process_witness_for_machine<F: FieldElement>(
         .expect("All witness columns of a machine must have the same size")
         as DegreeType;
 
-    (witness, size as DegreeType)
+    (witness, size)
 }
 
 fn time_stage<'a, F: FieldElement>(
