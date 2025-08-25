@@ -16,18 +16,17 @@ pub fn optimize_memory<
     V: Hash + Eq + Clone + Ord + Display,
     M: MemoryBusInteraction<T, V>,
 >(
-    system: ConstraintSystem<T, V>,
+    mut system: ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     memory_bus_id: Option<u64>,
 ) -> ConstraintSystem<T, V> {
+    // In the absence of memory bus, we return the system unchanged
     let memory_bus_id = match memory_bus_id {
         Some(id) => id,
         None => {
             return system;
         }
     };
-
-    let mut system = system.clone();
 
     // TODO use the solver here.
     let (to_remove, new_constraints) =

@@ -43,8 +43,7 @@ impl<
         }
     }
 
-    pub fn optimize(self, system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
-        let mut system = system.clone();
+    pub fn optimize(self, mut system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
         let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
         system.bus_interactions = system
             .bus_interactions

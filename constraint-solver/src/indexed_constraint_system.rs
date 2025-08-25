@@ -20,9 +20,7 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
 ) -> ConstraintSystem<T, V> {
     let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
-    for (variable, substitution) in substitutions {
-        indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
-    }
+    indexed_constraint_system.apply_substitutions(substitutions);
     indexed_constraint_system.into()
 }
 
@@ -185,10 +183,6 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
             &mut f,
             ConstraintSystemItem::BusInteraction,
         );
-    }
-
-    pub fn into_system(self) -> ConstraintSystem<T, V> {
-        self.constraint_system
     }
 }
 

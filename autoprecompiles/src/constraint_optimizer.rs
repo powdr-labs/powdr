@@ -97,7 +97,7 @@ pub fn optimize_constraints<
     stats_logger.log("removing redundant constraints", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
-    let constraint_system = constraint_system.into_system();
+    let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
 
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
     stats_logger.log("memory optimization", &constraint_system);
