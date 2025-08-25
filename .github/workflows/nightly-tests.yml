@@ -109,7 +109,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Run benchmarks
         # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
-        run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
+        run: cargo bench --workspace --all-features --exclude powdr-openvm-hints-circuit --exclude powdr-openvm-hints-guest --exclude powdr-openvm-hints-transpiler -- --output-format bencher | tee output.txt || exit 1
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
