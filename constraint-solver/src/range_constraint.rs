@@ -19,6 +19,9 @@ pub struct RangeConstraint<T: FieldElement> {
     /// Min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
     min: T,
     max: T,
+    /// For a value `v` to fulfill the range constraint, there has to be a (small) `k` such that
+    /// `v = min + k * stride`.
+    stride: T,
 }
 
 impl<T: FieldElement> RangeConstraint<T> {
@@ -33,10 +36,16 @@ impl<T: FieldElement> RangeConstraint<T> {
     pub fn from_mask<M: Into<T::Integer>>(mask: M) -> Self {
         let mask = mask.into();
         let max = T::from(cmp::min(mask, (T::from(-1)).to_integer()));
+        let stride = mask
+            .to_arbitrary_integer()
+            .trailing_zeros()
+            .map(|i| T::from(1u64 << i))
+            .unwrap_or(T::one());
         Self {
             mask,
             min: T::zero(),
             max,
+            stride,
         }
     }
 
@@ -46,6 +55,7 @@ impl<T: FieldElement> RangeConstraint<T> {
             mask: value.to_integer(),
             min: value,
             max: value,
+            stride: T::one(),
         }
     }
 
@@ -59,7 +69,12 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             !T::Integer::from(0)
         };
-        Self { mask, min, max }
+        Self {
+            mask,
+            min,
+            max,
+            stride: T::one(),
+        }
     }
 
     /// Returns a constraint that allows any value.
@@ -69,6 +84,7 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     pub fn is_unconstrained(&self) -> bool {
         self.range_width() == Self::unconstrained().range_width()
+            && self.stride.is_one()
             && self.mask == Self::unconstrained().mask
     }
 
@@ -93,9 +109,16 @@ impl<T: FieldElement> RangeConstraint<T> {
         range_width(self.min, self.max)
     }
 
+    /// Returns the `stride`, i.e. the distance between two consecutive valid values
+    /// between `min` and `max`.
+    pub fn stride(&self) -> T {
+        self.stride
+    }
+
     /// Returns (an upper bound for) the number of field elements included in the constraint.
     pub fn size_estimate(&self) -> T::Integer {
         self.range_width()
+        // TODO improve using stride
     }
 
     /// Returns true if `v` is an allowed value for this range constraint.
@@ -103,10 +126,19 @@ impl<T: FieldElement> RangeConstraint<T> {
         let in_range = if self.min <= self.max {
             self.min <= v && v <= self.max
         } else {
-            self.min <= v || v <= self.max
+            self.min <= v || v <= self.max // TODO
         };
+        let in_stride = self.stride.is_one()
+            || (|| {
+                Some(
+                    ((v - self.min).to_integer().try_into_u64()?
+                        % self.stride.to_integer().try_into_u64()?)
+                        == 0,
+                )
+            })()
+            .unwrap_or(true);
         let in_mask = v.to_integer() & self.mask == v.to_integer();
-        in_range && in_mask
+        in_range && in_mask && in_stride
     }
 
     /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
@@ -127,6 +159,7 @@ impl<T: FieldElement> RangeConstraint<T> {
                 ..self.clone()
             },
             Self {
+                // TODO has to be adjusted for stride
                 min: self.min + half_width,
                 ..self.clone()
             },
@@ -146,15 +179,32 @@ impl<T: FieldElement> RangeConstraint<T> {
             (self.mask + other.mask) | self.mask | other.mask
         };
 
-        let (min, max) = if self.range_width().to_arbitrary_integer()
+        let (min, max, stride) = if self.range_width().to_arbitrary_integer()
             + other.range_width().to_arbitrary_integer()
             <= T::modulus().to_arbitrary_integer()
         {
-            (self.min + other.min, self.max + other.max)
+            // TODO it's enough that one stride divides the other, then we take
+            // the smaller one.
+            // TODO should stride be T::Integer?
+            let stride = if self.stride == other.stride {
+                self.stride
+            } else if self.range_width().is_one() {
+                other.stride
+            } else if other.range_width().is_one() {
+                self.stride
+            } else {
+                T::one()
+            };
+            (self.min + other.min, self.max + other.max, stride)
         } else {
-            (T::one(), T::zero())
+            (T::one(), T::zero(), T::one())
         };
-        Self { min, max, mask }
+        Self {
+            min,
+            max,
+            mask,
+            stride,
+        }
     }
 
     /// The range constraint of the product of two expressions.
@@ -168,6 +218,7 @@ impl<T: FieldElement> RangeConstraint<T> {
             && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
                 < T::modulus().to_arbitrary_integer()
         {
+            // TODO stride?
             Self::from_range(self.min * other.min, self.max * other.max)
         } else {
             Default::default()
@@ -204,8 +255,14 @@ impl<T: FieldElement> RangeConstraint<T> {
         if min <= max {
             mask &= Self::from_range(min, max).mask;
         }
+        let stride = 1.into(); // TODO
 
-        Self { min, max, mask }
+        Self {
+            min,
+            max,
+            mask,
+            stride,
+        }
     }
 
     /// Returns the disjunction of this constraint and the other.
@@ -216,6 +273,7 @@ impl<T: FieldElement> RangeConstraint<T> {
                 min: cmp::min(self.min, other.min),
                 max: cmp::max(self.max, other.max),
                 mask,
+                stride: 1.into(), // TODO
             },
             (true, false) | (false, true) => {
                 // These cases are too complicated - we could refine them in the future.
@@ -228,7 +286,12 @@ impl<T: FieldElement> RangeConstraint<T> {
                     // The ranges cover the full field.
                     Self::from_mask(mask)
                 } else {
-                    Self { min, max, mask }
+                    Self {
+                        min,
+                        max,
+                        mask,
+                        stride: 1.into(), // TODO
+                    }
                 }
             }
         }
@@ -240,15 +303,20 @@ impl<T: FieldElement> RangeConstraint<T> {
             (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
                 .then(|| self.mask << exponent)
         });
-        let (min, max) = if factor.is_in_lower_half() {
-            range_multiple(self.min, self.max, factor)
+        // TODO if the factor is the inverse of the stride, we can probably
+        // reduce the width.
+        let (min, max, stride) = if factor.is_in_lower_half() {
+            range_multiple(self.min, self.max, self.stride, factor)
         } else {
-            range_multiple(-self.max, -self.min, -factor)
+            // TODO we need to make sure that `max` is hit by stride
+            // In general, we can reduce `max` if stride is larger than one.
+            range_multiple(-self.max, -self.min, T::one(), -factor)
         };
         Self {
             min,
             max,
             mask: mask.unwrap_or_else(|| Self::from_range(min, max).mask),
+            stride,
         }
     }
 
@@ -269,6 +337,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         // True if the intersection is empty when looking at ranges only.
         let intervals_disjoint =
             interval_intersection((self.min, self.max), (other.min, other.max)).is_none();
+        // TODO stride
         masks_disjoint || intervals_disjoint
     }
 
@@ -276,6 +345,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// Panics if the range width is larger than 2^32 (in which case you
     /// probably don't want to call this function).
     pub fn allowed_values(&self) -> impl Iterator<Item = T> + '_ {
+        // TODO stride
         (0..=self.range_width().try_into_u32().unwrap())
             .map(move |offset| self.min + T::from(offset))
             .filter(|value| self.allows_value(*value))
@@ -310,14 +380,14 @@ fn mask_from_bits<T: FieldElement>(bits: usize) -> T::Integer {
     }
 }
 
-fn range_multiple<T: FieldElement>(min: T, max: T, factor: T) -> (T, T) {
+fn range_multiple<T: FieldElement>(min: T, max: T, stride: T, factor: T) -> (T, T, T) {
     // This is correct by iterated addition.
     if range_width(min, max).to_arbitrary_integer() * factor.to_arbitrary_integer()
         <= T::modulus().to_arbitrary_integer()
     {
-        (min * factor, max * factor)
+        (min * factor, max * factor, stride * factor)
     } else {
-        (T::one(), T::zero())
+        (T::one(), T::zero(), T::one())
     }
 }
 
@@ -410,7 +480,8 @@ mod test {
             RCg {
                 min: 9.into(),
                 max: 9.into(),
-                mask: 9u32.into()
+                mask: 9u32.into(),
+                stride: 1.into(),
             }
         );
     }
@@ -422,7 +493,8 @@ mod test {
             RCg {
                 min: 3.into(),
                 max: 9.into(),
-                mask: 15u32.into()
+                mask: 15u32.into(),
+                stride: 1.into(),
             }
         );
         assert_eq!(
@@ -430,7 +502,8 @@ mod test {
             RCg {
                 min: 9.into(),
                 max: 3.into(),
-                mask: u64::MAX.into()
+                mask: u64::MAX.into(),
+                stride: 1.into(),
             }
         );
     }
@@ -462,7 +535,8 @@ mod test {
             RCg {
                 min: 18.into(),
                 max: 307.into(),
-                mask: 1023u32.into()
+                mask: 1023u32.into(),
+                stride: 1.into(),
             }
         );
         assert_eq!(
@@ -470,7 +544,8 @@ mod test {
             RCg {
                 min: 0.into(),
                 max: 0x11ffu32.into(),
-                mask: 0x11ffu32.into()
+                mask: 0x11ffu32.into(),
+                stride: 1.into(),
             }
         );
         assert_eq!(
@@ -478,7 +553,8 @@ mod test {
             RCg {
                 min: 0.into(),
                 max: 0x120fu32.into(),
-                mask: 0x13ffu32.into()
+                mask: 0x13ffu32.into(),
+                stride: 1.into(),
             }
         );
 
@@ -489,7 +565,8 @@ mod test {
             RCg {
                 min: 1.into(),
                 max: 0.into(),
-                mask: u64::MAX.into()
+                mask: u64::MAX.into(),
+                stride: 1.into(),
             }
         );
     }
@@ -511,6 +588,7 @@ mod test {
                 min: 14.into(),
                 max: 11.into(), // (modulus - 1) / 2 * 2 + 12 - modulus = 11
                 mask: u64::MAX.into(),
+                stride: 1.into(),
             }
         );
 
@@ -527,6 +605,7 @@ mod test {
                 min: 64.into(),
                 max: 62.into(),
                 mask: u64::MAX.into(),
+                stride: 1.into(),
             }
         );
 
@@ -539,6 +618,7 @@ mod test {
                 min: 1.into(),
                 max: 0.into(),
                 mask: u64::MAX.into(),
+                stride: 1.into(),
             }
         );
     }
@@ -586,7 +666,8 @@ mod test {
             RangeConstraint {
                 min: 28.into(),
                 max: max_value * GoldilocksField::from(4),
-                mask: u64::MAX.into()
+                mask: u64::MAX.into(),
+                stride: 4.into(),
             }
         );
         assert_eq!(
@@ -594,7 +675,8 @@ mod test {
             RangeConstraint {
                 min: 1.into(),
                 max: 0.into(),
-                mask: u64::MAX.into()
+                mask: u64::MAX.into(),
+                stride: 1.into(),
             }
         );
     }
@@ -735,6 +817,7 @@ mod test {
                 min: 0.into(),
                 max: 70.into(),
                 mask: 127u32.into(), // This mask is refined from the max value
+                stride: 1.into(),
             },
         );
 
@@ -746,6 +829,7 @@ mod test {
                 min: 0.into(),
                 max: 0xf000u32.into(), // this max value is derived from the mask.
                 mask: 0xf000u32.into(),
+                stride: 1.into(),
             },
         );
     }
@@ -845,5 +929,20 @@ mod test {
         assert!(!c.is_disjoint(&b));
         let d = c.conjunction(&RangeConstraint::from_range(1.into(), 5000.into()));
         assert!(d.is_disjoint(&b));
+    }
+
+    #[test]
+    fn stride_from_mask() {
+        let a: RangeConstraint<GoldilocksField> = RangeConstraint::from_mask(0x10u32);
+        assert_eq!(a.stride(), 0x10.into());
+        let b: RangeConstraint<GoldilocksField> = RangeConstraint::from_mask(0x11u32);
+        assert_eq!(b.stride(), 0x1.into());
+    }
+
+    #[test]
+    fn stride_unconstrained() {
+        let b: RangeConstraint<GoldilocksField> = RangeConstraint::unconstrained();
+        assert_eq!(b.stride(), 1.into());
+        assert!(b.is_unconstrained());
     }
 }
