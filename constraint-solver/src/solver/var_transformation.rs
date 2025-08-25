@@ -1,4 +1,4 @@
-use crate::constraint_system::BusInteraction;
+use crate::constraint_system::{AlgebraicConstraint, BusInteraction};
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{RuntimeConstant, VarTransformable};
@@ -117,10 +117,10 @@ where
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.solver
-            .add_algebraic_constraints(constraints.into_iter().map(|c| transform(&c)));
+            .add_algebraic_constraints(constraints.into_iter().map(|c| transform_constraint(&c)));
     }
 
     fn add_bus_interactions(
@@ -130,7 +130,7 @@ where
         self.solver.add_bus_interactions(
             bus_interactions
                 .into_iter()
-                .map(|bus_interaction| bus_interaction.fields().map(transform).collect()),
+                .map(|bus_interaction| bus_interaction.fields().map(transform_expr).collect()),
         )
     }
 
@@ -154,7 +154,7 @@ where
         expr: &GroupedExpression<T, V>,
     ) -> RangeConstraint<T::FieldType> {
         self.solver
-            .range_constraint_for_expression(&transform(expr))
+            .range_constraint_for_expression(&transform_expr(expr))
     }
 
     fn are_expressions_known_to_be_different(
@@ -162,17 +162,26 @@ where
         a: &GroupedExpression<T, V>,
         b: &GroupedExpression<T, V>,
     ) -> bool {
-        let a = transform(a);
-        let b = transform(b);
+        let a = transform_expr(a);
+        let b = transform_expr(b);
         self.solver.are_expressions_known_to_be_different(&a, &b)
     }
 }
 
-fn transform<T, V: Ord + Clone>(
+fn transform_expr<T, V: Ord + Clone>(
     expr: &GroupedExpression<T, V>,
 ) -> GroupedExpression<T::Transformed, Variable<V>>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>>,
 {
     expr.transform_var_type(&mut |v| v.into())
+}
+
+fn transform_constraint<T, V: Ord + Clone>(
+    constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
+) -> AlgebraicConstraint<GroupedExpression<T::Transformed, Variable<V>>>
+where
+    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
+{
+    AlgebraicConstraint::assert_zero(transform_expr(&constraint.expression))
 }

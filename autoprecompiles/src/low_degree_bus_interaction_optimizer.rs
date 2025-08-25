@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::constraint_system::{
-    BusInteraction, BusInteractionHandler, ConstraintSystem,
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::inliner::DegreeBound;
@@ -26,6 +26,11 @@ pub struct LowDegreeBusInteractionOptimizer<'a, T, V, S, B> {
     _phantom: PhantomData<(T, V)>,
 }
 
+struct LowDegreeReplacement<T: FieldElement, V> {
+    constraint: AlgebraicConstraint<GroupedExpression<T, V>>,
+    range_constraints: RangeConstraints<T, V>,
+}
+
 impl<
         'a,
         T: FieldElement,
@@ -44,13 +49,15 @@ impl<
     }
 
     pub fn optimize(self, mut system: ConstraintSystem<T, V>) -> ConstraintSystem<T, V> {
-        let mut new_constraints: Vec<GroupedExpression<T, V>> = vec![];
+        let mut new_constraints = vec![];
         system.bus_interactions = system
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
-                if let Some((replacement, range_constraints)) =
-                    self.try_replace_bus_interaction(&bus_int)
+                if let Some(LowDegreeReplacement {
+                    constraint: replacement,
+                    range_constraints,
+                }) = self.try_replace_bus_interaction(&bus_int)
                 {
                     // If we found a replacement, add the polynomial constraints (unless it is
                     // trivially zero) and replace the bus interaction with interactions implementing
@@ -92,7 +99,7 @@ impl<
     fn try_replace_bus_interaction(
         &self,
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> Option<(GroupedExpression<T, V>, RangeConstraints<T, V>)> {
+    ) -> Option<LowDegreeReplacement<T, V>> {
         let bus_id = bus_interaction.bus_id.try_to_number()?;
         if self.bus_interaction_handler.is_stateful(bus_id) {
             return None;
@@ -112,8 +119,10 @@ impl<
                     .map(|input| input.expression)
                     .collect();
                 let low_degree_function = low_degree_function(symbolic_inputs);
-                let polynomial_constraint =
-                    symbolic_function.output.expression.clone() - low_degree_function;
+                let polynomial_constraint = AlgebraicConstraint::assert_eq(
+                    symbolic_function.output.expression,
+                    low_degree_function,
+                );
 
                 // Check degree
                 let within_degree_bound =
@@ -124,7 +133,10 @@ impl<
                         .into_iter()
                         .map(|field| (field.expression, field.range_constraint))
                         .collect();
-                    Some((polynomial_constraint, range_constraints))
+                    Some(LowDegreeReplacement {
+                        constraint: polynomial_constraint,
+                        range_constraints,
+                    })
                 } else {
                     None
                 }
@@ -439,7 +451,7 @@ mod tests {
     fn compute_replacement(
         mut solver: impl Solver<BabyBearField, Var>,
         bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, Var>>,
-    ) -> Option<GroupedExpression<BabyBearField, Var>> {
+    ) -> Option<AlgebraicConstraint<GroupedExpression<BabyBearField, Var>>> {
         let optimizer = LowDegreeBusInteractionOptimizer {
             solver: &mut solver,
             bus_interaction_handler: XorBusHandler,
@@ -451,7 +463,7 @@ mod tests {
         };
         optimizer
             .try_replace_bus_interaction(bus_interaction)
-            .map(|(replacement, _)| replacement)
+            .map(|v| v.constraint)
     }
 
     #[test]
@@ -482,7 +494,7 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.to_string(), "x + z - 255");
+        assert_eq!(replacement.to_string(), "x + z - 255 = 0");
     }
 
     #[test]
@@ -499,7 +511,7 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.to_string(), "(2 * x) * (y) - x - y + z");
+        assert_eq!(replacement.to_string(), "(2 * x) * (y) - x - y + z = 0");
     }
 
     #[test]
@@ -516,6 +528,6 @@ mod tests {
         let Some(replacement) = compute_replacement(solver, &bus_interaction) else {
             panic!("Expected a replacement")
         };
-        assert_eq!(replacement.to_string(), "-(x + y - z)");
+        assert_eq!(replacement.to_string(), "-(x + y - z) = 0");
     }
 }
