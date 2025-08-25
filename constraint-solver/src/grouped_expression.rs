@@ -193,6 +193,8 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// `c * f1 * f2 * ... * fn` for some constant `c`.
     /// Tries to find as many factors as possible and also tries to normalize
     /// the factors as much as possible.
+    /// Each factor always references at least one variable, except if the
+    /// expression is a constant.
     pub fn to_factors(&self) -> Vec<Self> {
         let summands = self.quadratic.len()
             + self.linear.len()
@@ -205,7 +207,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             } else if let Some((var, _)) = self.linear.iter().next() {
                 vec![Self::from_unknown_variable(var.clone())]
             } else {
-                vec![]
+                vec![Self::one()]
             }
         } else {
             // Try to normalize
