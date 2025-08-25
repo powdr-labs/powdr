@@ -26,10 +26,10 @@ pub struct LowDegreeBusInteractionOptimizer<'a, T, V, S, B> {
     _phantom: PhantomData<(T, V)>,
 }
 
-type LowDegreeValue<T, V> = (
-    AlgebraicConstraint<GroupedExpression<T, V>>,
-    RangeConstraints<T, V>,
-);
+struct LowDegreeValue<T: FieldElement, V> {
+    constraint: AlgebraicConstraint<GroupedExpression<T, V>>,
+    range_constraints: RangeConstraints<T, V>,
+}
 
 impl<
         'a,
@@ -54,7 +54,7 @@ impl<
             .bus_interactions
             .into_iter()
             .flat_map(|bus_int| {
-                if let Some((replacement, range_constraints)) =
+                if let Some(LowDegreeValue { constraint: replacement, range_constraints }) =
                     self.try_replace_bus_interaction(&bus_int)
                 {
                     // If we found a replacement, add the polynomial constraints (unless it is
@@ -117,7 +117,7 @@ impl<
                     .map(|input| input.expression)
                     .collect();
                 let low_degree_function = low_degree_function(symbolic_inputs);
-                let polynomial_constraint = AlgebraicConstraint::from(
+                let polynomial_constraint = AlgebraicConstraint::assert_zero(
                     symbolic_function.output.expression.clone() - low_degree_function,
                 );
 
@@ -130,7 +130,7 @@ impl<
                         .into_iter()
                         .map(|field| (field.expression, field.range_constraint))
                         .collect();
-                    Some((polynomial_constraint, range_constraints))
+                    Some(LowDegreeValue { constraint: polynomial_constraint, range_constraints })
                 } else {
                     None
                 }
@@ -457,7 +457,7 @@ mod tests {
         };
         optimizer
             .try_replace_bus_interaction(bus_interaction)
-            .map(|(replacement, _)| replacement)
+            .map(|v| v.constraint)
     }
 
     #[test]

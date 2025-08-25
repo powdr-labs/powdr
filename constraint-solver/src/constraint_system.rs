@@ -115,6 +115,20 @@ pub struct AlgebraicConstraint<V> {
     pub expression: V,
 }
 
+// We implement `From` to make writing tests easier. However, we recommend using `AlgebraicConstraint::assert_zero` for clarity
+impl<V> From<V> for AlgebraicConstraint<V> {
+    fn from(expression: V) -> Self {
+        AlgebraicConstraint::assert_zero(expression)
+    }
+}
+
+impl<V> AlgebraicConstraint<V> {
+    /// Create a constraint which asserts that the expression evaluates to 0.
+    pub fn assert_zero(expression: V) -> Self {
+        AlgebraicConstraint { expression }
+    }
+}
+
 impl<V> std::ops::Deref for AlgebraicConstraint<V> {
     type Target = V;
 
@@ -129,34 +143,12 @@ impl<V> std::ops::DerefMut for AlgebraicConstraint<V> {
     }
 }
 
-impl<V> From<V> for AlgebraicConstraint<V> {
-    fn from(expression: V) -> Self {
-        AlgebraicConstraint { expression }
-    }
-}
-
 impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         self.expression.referenced_unknown_variables()
     }
 }
-
-// impl<T, V> TryFrom<GroupedExpression<T, V>> for AlgebraicConstraint<GroupedExpression<T, V>>
-// where
-//     T: RuntimeConstant + Display,
-//     V: Clone + Ord + Display,
-// {
-//     type Error = ();
-
-//     fn try_from(expression: GroupedExpression<T, V>) -> Result<Self, Self::Error> {
-//         if expression.is_zero() {
-//             Err(())
-//         } else {
-//             Ok(AlgebraicConstraint { expression })
-//         }
-//     }
-// }
 
 impl<V: Display> Display for AlgebraicConstraint<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

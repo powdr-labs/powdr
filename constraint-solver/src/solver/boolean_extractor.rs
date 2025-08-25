@@ -32,7 +32,10 @@ impl<T, V> Default for BooleanExtractor<T, V> {
     }
 }
 
-type BooleanExtractionValue<T, V> = (AlgebraicConstraint<GroupedExpression<T, V>>, Option<V>);
+pub struct BooleanExtractionValue<T, V> {
+    pub constraint: AlgebraicConstraint<GroupedExpression<T, V>>,
+    pub new_unconstrained_boolean_variable: Option<V>,
+}
 
 impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, V> {
     /// Tries to simplify a quadratic constraint by transforming it into an affine
@@ -98,7 +101,10 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
                 None
             } else {
                 self.substitutions.insert(right.clone(), None);
-                Some((AlgebraicConstraint::from(right.clone()), None))
+                Some(BooleanExtractionValue {
+                    constraint: AlgebraicConstraint::assert_zero(right.clone()),
+                    new_unconstrained_boolean_variable: None,
+                })
             }
         } else {
             // We can substitute the initial constraint using a new boolean variable `z`
@@ -136,12 +142,12 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
                 self.substitutions.insert(key, Some(z.clone()));
 
                 // We return `expr + z * offset == 0`, which is equivalent to the original constraint.
-                Some((
-                    AlgebraicConstraint::from(
+                Some(BooleanExtractionValue {
+                    constraint: AlgebraicConstraint::assert_zero(
                         expr + (GroupedExpression::from_unknown_variable(z.clone()) * offset),
                     ),
-                    Some(z),
-                ))
+                    new_unconstrained_boolean_variable: Some(z),
+                })
             }
         }
     }
@@ -179,11 +185,11 @@ mod tests {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b") + constant(10));
         let mut extractor: BooleanExtractor<_, _> = Default::default();
-        let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
-        assert!(result.is_some());
-        let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "-(a + b + 10 * z) = 0");
-        assert_eq!(z, Some("z"));
+        let result = extractor
+            .try_extract_boolean(&expr.into(), &mut var_dispenser)
+            .unwrap();
+        assert_eq!(result.constraint.to_string(), "-(a + b + 10 * z) = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, Some("z"));
     }
 
     #[test]
@@ -191,11 +197,11 @@ mod tests {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b"));
         let mut extractor: BooleanExtractor<_, _> = Default::default();
-        let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
-        assert!(result.is_some());
-        let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "a + b = 0");
-        assert_eq!(z, None);
+        let result = extractor
+            .try_extract_boolean(&expr.into(), &mut var_dispenser)
+            .unwrap();
+        assert_eq!(result.constraint.to_string(), "a + b = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, None);
     }
 
     #[test]
@@ -216,11 +222,11 @@ mod tests {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b") + constant(10));
         let mut extractor: BooleanExtractor<_, _> = Default::default();
-        let result = extractor.try_extract_boolean(&expr.clone().into(), &mut var_dispenser);
-        assert!(result.is_some());
-        let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "-(a + b + 10 * z) = 0");
-        assert_eq!(z, Some("z"));
+        let result = extractor
+            .try_extract_boolean(&expr.clone().into(), &mut var_dispenser)
+            .unwrap();
+        assert_eq!(result.constraint.to_string(), "-(a + b + 10 * z) = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, Some("z"));
 
         assert!(extractor
             .try_extract_boolean(&expr.into(), &mut var_dispenser)
@@ -250,7 +256,7 @@ mod tests {
             extractor
                 .try_extract_boolean(&expr4.into(), &mut var_dispenser)
                 .unwrap()
-                .0
+                .constraint
                 .to_string(),
             "-(2 * a + 2 * b + 40 * z) = 0"
         );
@@ -261,11 +267,12 @@ mod tests {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b"));
         let mut extractor: BooleanExtractor<_, _> = Default::default();
-        let result = extractor.try_extract_boolean(&expr.clone().into(), &mut var_dispenser);
-        assert!(result.is_some());
-        let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "a + b = 0");
-        assert_eq!(z, None);
+        let result = extractor
+            .try_extract_boolean(&expr.clone().into(), &mut var_dispenser)
+            .unwrap();
+
+        assert_eq!(result.constraint.to_string(), "a + b = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, None);
 
         let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
         assert!(result.is_none());
@@ -282,11 +289,11 @@ mod tests {
         let expr =
             (var("a") + var("b") + var("k")) * (var("a") + var("b") + var("k") - constant(2));
         let mut extractor: BooleanExtractor<_, _> = Default::default();
-        let result = extractor.try_extract_boolean(&expr.into(), &mut var_dispenser);
-        assert!(result.is_some());
-        let (result, z) = result.unwrap();
-        assert_eq!(result.to_string(), "-(a + b + k - 2 * z_0) = 0");
-        assert_eq!(z, Some("z_0"));
+        let result = extractor
+            .try_extract_boolean(&expr.into(), &mut var_dispenser)
+            .unwrap();
+        assert_eq!(result.constraint.to_string(), "-(a + b + k - 2 * z_0) = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, Some("z_0"));
 
         extractor.apply_assignments(&[("k", -constant(9))]);
         let expr2 =

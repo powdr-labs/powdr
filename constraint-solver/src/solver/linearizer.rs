@@ -113,7 +113,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
             let var = var_dispenser();
             self.substitutions.insert(expr.clone(), var.clone());
             let var = GroupedExpression::from_unknown_variable(var);
-            constraint_collection.extend([AlgebraicConstraint::from(expr - var.clone())]);
+            constraint_collection.extend([AlgebraicConstraint::assert_zero(expr - var.clone())]);
             var
         }
     }
@@ -218,10 +218,14 @@ mod tests {
     fn solver_transforms() {
         let mut solver =
             BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
-        solver.add_algebraic_constraints(vec![
-            (var("x") + var("y")) * (var("z") + constant(1)) * (var("x") - constant(1)),
-            (var("a") + var("b")) * (var("c") - constant(2)),
-        ]);
+        solver.add_algebraic_constraints(
+            [
+                (var("x") + var("y")) * (var("z") + constant(1)) * (var("x") - constant(1)),
+                (var("a") + var("b")) * (var("c") - constant(2)),
+            ]
+            .into_iter()
+            .map(AlgebraicConstraint::assert_zero),
+        );
         solver.add_bus_interactions(vec![BusInteraction {
             bus_id: constant(1),
             payload: vec![var("x") + var("y"), -var("a"), var("a")],

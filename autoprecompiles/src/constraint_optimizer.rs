@@ -8,7 +8,7 @@ use std::{
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteractionHandler, ConstraintRef, ConstraintSystem},
+    constraint_system::{AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem},
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner,
@@ -110,7 +110,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
             .map(|field| {
                 if let Some(n) = try_replace_by_number(field, solver) {
                     modified = true;
-                    new_algebraic_constraints.push((&n - field).into());
+                    new_algebraic_constraints.push(AlgebraicConstraint::assert_zero(&n - field));
                     n
                 } else {
                     field.clone()
@@ -292,9 +292,9 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: JournalingConstraintSystem<P, V>,
 ) -> JournalingConstraintSystem<P, V> {
-    constraint_system.retain_algebraic_constraints(|constraint| constraint.is_zero());
+    constraint_system.retain_algebraic_constraints(|constraint| !constraint.is_zero());
     constraint_system
-        .retain_bus_interactions(|bus_interaction| bus_interaction.multiplicity.is_zero());
+        .retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
     constraint_system
 }
 
@@ -390,13 +390,12 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
         let factor_count = factors.len();
         let unique_factors = factors.into_iter().unique().collect_vec();
         if unique_factors.len() < factor_count {
-            constraint_to_add.push(
+            constraint_to_add.push(AlgebraicConstraint::assert_zero(
                 unique_factors
                     .into_iter()
                     .reduce(|acc, factor| acc * factor)
                     .unwrap()
-                    .into(),
-            );
+            ));
             false
         } else {
             true

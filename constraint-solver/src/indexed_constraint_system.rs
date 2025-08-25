@@ -38,7 +38,7 @@ pub fn apply_substitutions_to_expressions<
         ConstraintSystem {
             algebraic_constraints: expressions
                 .into_iter()
-                .map(AlgebraicConstraint::from)
+                .map(AlgebraicConstraint::assert_zero)
                 .collect(),
             bus_interactions: Vec::new(),
         },

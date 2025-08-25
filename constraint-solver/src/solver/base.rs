@@ -151,13 +151,12 @@ where
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = impl Into<AlgebraicConstraint<GroupedExpression<T, V>>>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.equivalent_expressions_cache.clear();
 
         let constraints = constraints
             .into_iter()
-            .map(Into::into)
             .filter(|c| !c.is_zero())
             .flat_map(|constr| {
                 self.try_extract_boolean(&constr)
@@ -275,14 +274,14 @@ where
         &mut self,
         constr: &AlgebraicConstraint<GroupedExpression<T, V>>,
     ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
-        let (constr, var) = self
+        let result = self
             .boolean_extractor
             .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
-        if let Some(var) = var {
+        if let Some(var) = result.new_unconstrained_boolean_variable {
             // If we created a boolean variable, we constrain it to be boolean.
             self.add_range_constraint(&var, RangeConstraint::from_mask(1));
         }
-        Some(constr)
+        Some(result.constraint)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
@@ -300,7 +299,7 @@ where
                 &mut || self.var_dispenser.next_linear(),
                 &mut constrs,
             );
-            constrs.push(linearized.into());
+            constrs.push(AlgebraicConstraint::assert_zero(linearized));
         }
         constrs.into_iter()
     }
@@ -540,11 +539,11 @@ where
                 ConstraintRef::BusInteraction(_) => None,
             })
             .flat_map(|constr| {
-                let (constr, new_var) = self
+                let result = self
                     .boolean_extractor
                     .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
-                vars_to_boolean_constrain.extend(new_var);
-                Some(constr)
+                vars_to_boolean_constrain.extend(result.new_unconstrained_boolean_variable);
+                Some(result.constraint)
             })
             .collect_vec();
         for v in vars_to_boolean_constrain {
