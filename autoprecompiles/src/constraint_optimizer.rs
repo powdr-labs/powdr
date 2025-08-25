@@ -394,7 +394,8 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
                 unique_factors
                     .into_iter()
                     .reduce(|acc, factor| acc * factor)
-                    .unwrap(),
+                    .unwrap()
+                    .into(),
             );
             false
         } else {
