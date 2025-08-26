@@ -1,4 +1,5 @@
-use itertools::Itertools;
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -13,17 +14,13 @@ pub struct BasicBlock<I> {
     pub statements: Vec<I>,
 }
 
-impl<I> BasicBlock<I> {
-    pub fn pretty_print(&self, instr_formatter: impl Fn(&I) -> String) -> String {
-        format!("BasicBlock(start_pc: {}, statements: [\n", self.start_pc)
-            + &self
-                .statements
-                .iter()
-                .enumerate()
-                .map(|(i, instr)| format!("   instr {i:>3}:   {}", instr_formatter(instr)))
-                .format("\n")
-                .to_string()
-            + "\n])"
+impl<I: Display> Display for BasicBlock<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
+        for (i, instr) in self.statements.iter().enumerate() {
+            writeln!(f, "   instr {i:>3}:   {instr}")?;
+        }
+        write!(f, "])")
     }
 }
 
@@ -46,7 +43,7 @@ pub trait Program<I> {
     fn length(&self) -> u32;
 }
 
-pub trait Instruction<T>: Clone {
+pub trait Instruction<T>: Clone + Display {
     /// Returns a list of concrete values that the LHS of the PC lookup should be assigned to.
     /// An entry can be `None` to indicate that the value is not known at compile time.
     /// The provided PC will in practice be provided for the first instruction of the block.

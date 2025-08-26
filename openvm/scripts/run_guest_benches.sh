@@ -70,8 +70,7 @@ popd
 
 ### ECC
 dir="results/ecc"
-# TODO: guest-ecc-powdr-affine-hint fails for larger inputs
-input="20"
+input="50"
 
 mkdir -p "$dir"
 pushd "$dir"

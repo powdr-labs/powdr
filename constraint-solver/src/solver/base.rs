@@ -364,7 +364,7 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = is_simple_equivalence(c.expression) {
+                    if let Some((v1, expr)) = try_to_simple_equivalence(c.clone()) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
@@ -561,15 +561,24 @@ where
     }
 }
 
-fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    expr: &GroupedExpression<T, V>,
+/// If the constraint is equivalent to `X = Y` for some variables `X` and `Y`,
+/// returns the "larger" variable and the result of solving the constraint
+/// for the variable.
+///
+/// Note: Does not find all cases of equivalence.
+fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+    constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
-    if !expr.is_affine() {
+    if !constr.expression.is_affine() {
         return None;
     }
-    let (_, linear, offset) = expr.components();
+    let (_, linear, offset) = constr.expression.components();
+    if !offset.is_zero() {
+        return None;
+    }
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
-    if offset.is_zero() && (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+    // c1 = 1, c2 = -1 or vice-versa
+    if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
         Some((
             v2.clone(),
             GroupedExpression::from_unknown_variable(v1.clone()),
