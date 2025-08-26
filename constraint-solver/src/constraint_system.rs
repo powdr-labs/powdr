@@ -126,7 +126,7 @@ impl<V> std::ops::DerefMut for AlgebraicConstraint<V> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
+impl<T: RuntimeConstant, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns the referenced unknown variables. Might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         self.expression.referenced_unknown_variables()
