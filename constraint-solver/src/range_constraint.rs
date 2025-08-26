@@ -117,10 +117,10 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// integer `x` in the allowed values seen as integers such that
     /// `offset = k * modulus + x`.
     pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
-        println!(
-            "has_unique_modular_solution: self = {self}, offset = {}, modulus = {}",
-            offset, modulus
-        );
+        // println!(
+        //     "has_unique_modular_solution: self = {self}, offset = {}, modulus = {}",
+        //     offset, modulus
+        // );
         // If the modulus is larger than half the field, the mapping to integers
         // is not obvious. Also, if the number of values in the range constraint
         // is at least two times the modulus, there are always at least to solutions.
@@ -131,7 +131,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
         if !offset.is_in_lower_half() {
             if (modulus + offset).is_in_lower_half() {
-                println!("Running negated");
+                //println!("Running negated");
                 return self.has_unique_modular_solution(modulus + offset, modulus);
             } else {
                 // TODO this should still be solvable.
@@ -142,6 +142,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         let modulus = modulus.to_integer().try_into_u64()?;
         let offset = offset.to_integer().try_into_u64()?;
         let offset = offset % modulus;
+        //println!("Normalized offset = {offset}");
 
         let first_candidate = if self.min.is_in_lower_half() && self.min <= self.max {
             let min = self.min.to_integer().try_into_u64()?;
