@@ -1,0 +1,2 @@
+[profile.default]
+test-timeout = "10m"
