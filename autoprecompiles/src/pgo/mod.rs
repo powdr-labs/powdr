@@ -87,8 +87,8 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .take(n_acc)
         .filter(|block| block.start_pc == 2100356)
         .map(|block| {
-            tracing::debug!(
-                "Accelerating block of length {} and start pc {}",
+            println!(
+                "Accelerating block of length {} and start pc {}:\n{block}",
                 block.statements.len(),
                 block.start_pc
             );

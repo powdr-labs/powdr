@@ -547,4 +547,43 @@ mod pseudo_instruction_tests {
         ];
         assert_machine_output(program.to_vec(), "ret");
     }
+
+    #[test]
+    fn failing_split() {
+        // BasicBlock(start_pc: 2100356, statements: [
+        //    instr   0:   ADD rd_ptr = 8, rs1_ptr = 8, rs2 = 16776960, rs2_as = 0
+        //    instr   1:   STOREW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 252, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   2:   STOREW rd_rs2_ptr = 32, rs1_ptr = 8, imm = 248, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   3:   STOREW rd_rs2_ptr = 36, rs1_ptr = 8, imm = 244, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   4:   STOREW rd_rs2_ptr = 72, rs1_ptr = 8, imm = 240, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   5:   STOREW rd_rs2_ptr = 76, rs1_ptr = 8, imm = 236, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   6:   STOREW rd_rs2_ptr = 80, rs1_ptr = 8, imm = 232, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   7:   STOREW rd_rs2_ptr = 84, rs1_ptr = 8, imm = 228, mem_as = 2, needs_write = 1, imm_sign = 0
+        //    instr   8:   ADD rd_ptr = 32, rs1_ptr = 48, rs2 = 0, rs2_as = 0
+        //    instr   9:   ADD rd_ptr = 36, rs1_ptr = 44, rs2 = 0, rs2_as = 0
+        //    instr  10:   ADD rd_ptr = 44, rs1_ptr = 40, rs2 = 0, rs2_as = 0
+        //    instr  11:   ADD rd_ptr = 40, rs1_ptr = 8, rs2 = 8, rs2_as = 0
+        //    instr  12:   ADD rd_ptr = 48, rs1_ptr = 0, rs2 = 216, rs2_as = 0
+        //    instr  13:   AUIPC 4 0 16 1 0
+        //    instr  14:   JALR 4 4 240 1 0
+        // ])
+        let program = [
+            add(8, 8, 16776960, 0),
+            storew(4, 8, 252, 2, 1, 0),
+            storew(32, 8, 248, 2, 1, 0),
+            storew(36, 8, 244, 2, 1, 0),
+            storew(72, 8, 240, 2, 1, 0),
+            storew(76, 8, 236, 2, 1, 0),
+            storew(80, 8, 232, 2, 1, 0),
+            storew(84, 8, 228, 2, 1, 0),
+            add(32, 48, 0, 0),
+            add(36, 44, 0, 0),
+            add(44, 40, 0, 0),
+            add(40, 8, 8, 0),
+            add(48, 0, 216, 0),
+            auipc(4, 0, 16, 1, 0),
+            jalr(4, 4, 240, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "failing_split");
+    }
 }
