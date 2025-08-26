@@ -44,9 +44,7 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::IntoParallelIterator,
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
-};
+use powdr_autoprecompiles::{InstructionHandler, SymbolicBusInteraction};
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -70,7 +68,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
         instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: OriginalAirs<F>,
-        is_valid_column: AlgebraicReference,
+        is_valid_poly_id: u64,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
@@ -78,7 +76,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         Self {
             instructions,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id,
+            is_valid_poly_id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,
