@@ -76,6 +76,7 @@ input="20"
 mkdir -p "$dir"
 pushd "$dir"
 
+# TODO: Fix 100-APC tests
 run_bench guest-ecc-manual $input 0 manual
 run_bench guest-ecc-projective $input 0 projective-apc000
 run_bench guest-ecc-projective $input 3 projective-apc003

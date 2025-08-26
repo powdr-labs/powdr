@@ -183,6 +183,7 @@ jobs:
           echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
           echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
 
+      # TODO: Currently failing
       # - name: Run reth benchmark
       #   run: |
       #     source .venv/bin/activate
