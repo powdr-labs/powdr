@@ -249,6 +249,7 @@ mod test {
     use std::collections::HashMap;
 
     use itertools::Itertools;
+    use powdr_number::BabyBearField;
 
     use super::*;
     use crate::{
@@ -402,5 +403,21 @@ l1 - 3
 l2 - 2
 l3 - 1"
         );
+    }
+
+    #[test]
+    fn invalid_split() {
+        // 7864320 * a__0_12 - bool_113 + 314572801
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let bit_rc = RangeConstraint::from_mask(0x1u32);
+        let rcs = [("a__0_12", byte_rc.clone()), ("bool_113", bit_rc.clone())]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        let expr: GroupedExpression<BabyBearField, _> =
+            GroupedExpression::from_unknown_variable("a__0_12")
+                * GroupedExpression::from_number(BabyBearField::from(7864320))
+                - GroupedExpression::from_unknown_variable("bool_113")
+                + GroupedExpression::from_number(BabyBearField::from(314572801));
+        assert!(try_split(expr, &rcs).is_none());
     }
 }
