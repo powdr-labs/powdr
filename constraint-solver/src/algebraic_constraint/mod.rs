@@ -7,8 +7,6 @@ use crate::{
 
 use num_traits::{One, Zero};
 
-use powdr_number::FieldElement;
-
 pub mod solve;
 
 /// An algebraic constraint
@@ -54,7 +52,7 @@ impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
+impl<T: RuntimeConstant, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns a constraint which asserts that the two expressions are equal.
     pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
         Self::assert_zero(expression - other)
