@@ -8,6 +8,7 @@ use num_traits::Zero;
 use powdr_number::FieldElement;
 
 use crate::{
+    constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     runtime_constant::RuntimeConstant,
 };
@@ -16,10 +17,10 @@ use crate::{
 /// This is the case for example if the variables in this expression can
 /// be split into different bit areas.
 pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
-    constraint: &GroupedExpression<T, V>,
+    constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-) -> Option<Vec<GroupedExpression<T, V>>> {
-    let (quadratic, linear, constant) = constraint.components();
+) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
+    let (quadratic, linear, constant) = constraint.expression.components();
     if !quadratic.is_empty() {
         // We cannot split quadratic constraints.
         return None;
@@ -59,7 +60,10 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             range_constraints,
         ) {
             // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
-            extracted_parts.push(candidate.expr.clone() - GroupedExpression::from_number(solution));
+            extracted_parts.push(AlgebraicConstraint::assert_eq(
+                candidate.expr.clone(),
+                GroupedExpression::from_number(solution),
+            ));
             // Add `solution * candidate.coeff - candidate` (which is zero) to our expression
             // by replacing the component by zero and adding `solution * candidate.coeff` to the
             // constant.
