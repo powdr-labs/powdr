@@ -8,10 +8,12 @@ use std::{
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteractionHandler, ConstraintRef, ConstraintSystem},
+    constraint_system::{
+        AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
+    },
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
-    inliner::{self, DegreeBound},
+    inliner::DegreeBound,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -55,7 +57,6 @@ pub fn optimize_constraints<
         + IsBusStateful<P>
         + RangeConstraintHandler<P>
         + Clone,
-    should_inline: impl Fn(&V, &GroupedExpression<P, V>, &IndexedConstraintSystem<P, V>) -> bool,
     stats_logger: &mut StatsLogger,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
@@ -77,24 +78,11 @@ pub fn optimize_constraints<
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
-    // TODO should we remove inlined columns in the solver?
-    // TODO should we inline here at all during solving (instead if only inside the solver)?
-    let constraint_system =
-        inliner::replace_constrained_witness_columns(constraint_system, should_inline);
-    solver.add_algebraic_constraints(constraint_system.algebraic_constraints().iter().cloned());
-    stats_logger.log("in-lining witness columns", &constraint_system);
-
-    let constraint_system = remove_trivial_constraints(constraint_system);
-    stats_logger.log("removing trivial constraints", &constraint_system);
-
-    let constraint_system =
-        remove_equal_bus_interactions(constraint_system, bus_interaction_handler.clone());
-    stats_logger.log("removing equal bus interactions", &constraint_system);
-
-    // TODO maybe we should keep learnt range constraints stored somewhere because
-    // we might not be able to re-derive them if some constraints are missing.
-    let constraint_system = remove_redundant_constraints(constraint_system);
-    stats_logger.log("removing redundant constraints", &constraint_system);
+    let constraint_system = trivial_simplifications(
+        constraint_system,
+        bus_interaction_handler.clone(),
+        stats_logger,
+    );
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
@@ -114,6 +102,31 @@ pub fn optimize_constraints<
     );
 
     Ok(constraint_system)
+}
+
+/// Performs some very easy simplifications that only remove constraints.
+pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+    constraint_system: IndexedConstraintSystem<P, V>,
+    bus_interaction_handler: impl BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + Clone,
+    stats_logger: &mut StatsLogger,
+) -> IndexedConstraintSystem<P, V> {
+    let constraint_system = remove_trivial_constraints(constraint_system);
+    stats_logger.log("removing trivial constraints", &constraint_system);
+
+    let constraint_system =
+        remove_equal_bus_interactions(constraint_system, bus_interaction_handler.clone());
+    stats_logger.log("removing equal bus interactions", &constraint_system);
+
+    let constraint_system = remove_duplicate_factors(constraint_system);
+    stats_logger.log("removing duplicate factors", &constraint_system);
+
+    let constraint_system = remove_redundant_constraints(constraint_system);
+    stats_logger.log("removing redundant constraints", &constraint_system);
+
+    constraint_system
 }
 
 fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
@@ -143,7 +156,8 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
             .map(|field| {
                 if let Some(n) = try_replace_by_number(field, solver) {
                     modified = true;
-                    new_algebraic_constraints.push(&n - field);
+                    new_algebraic_constraints
+                        .push(AlgebraicConstraint::assert_eq(n.clone(), field.clone()));
                     n
                 } else {
                     field.clone()
@@ -324,10 +338,9 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: IndexedConstraintSystem<P, V>,
 ) -> IndexedConstraintSystem<P, V> {
-    let zero = GroupedExpression::zero();
-    constraint_system.retain_algebraic_constraints(|constraint| constraint != &zero);
+    constraint_system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
     constraint_system
-        .retain_bus_interactions(|bus_interaction| bus_interaction.multiplicity != zero);
+        .retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
     constraint_system
 }
 
@@ -424,12 +437,12 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
         let factor_count = factors.len();
         let unique_factors = factors.into_iter().unique().collect_vec();
         if unique_factors.len() < factor_count {
-            constraint_to_add.push(
+            constraint_to_add.push(AlgebraicConstraint::assert_zero(
                 unique_factors
                     .into_iter()
                     .reduce(|acc, factor| acc * factor)
                     .unwrap(),
-            );
+            ));
             false
         } else {
             true

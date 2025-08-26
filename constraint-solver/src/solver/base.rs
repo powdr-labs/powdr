@@ -2,7 +2,9 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef};
+use crate::constraint_system::{
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintRef,
+};
 use crate::effect::Effect;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
@@ -149,7 +151,7 @@ where
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.equivalent_expressions_cache.clear();
 
@@ -164,7 +166,7 @@ where
             // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
-            .flat_map(|constr| self.linearize_expression(constr))
+            .flat_map(|constr| self.linearize_constraint(constr))
             .collect_vec();
 
         self.constraint_system
@@ -270,34 +272,34 @@ where
     /// by introducing new boolean variables.
     fn try_extract_boolean(
         &mut self,
-        constr: &GroupedExpression<T, V>,
-    ) -> Option<GroupedExpression<T, V>> {
-        let (constr, var) = self
+        constr: &AlgebraicConstraint<GroupedExpression<T, V>>,
+    ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
+        let result = self
             .boolean_extractor
             .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
-        if let Some(var) = var {
+        if let Some(var) = result.new_unconstrained_boolean_variable {
             // If we created a boolean variable, we constrain it to be boolean.
             self.add_range_constraint(&var, RangeConstraint::from_mask(1));
         }
-        Some(constr)
+        Some(result.constraint)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
     /// by new variables.
     /// This function will always return the original constraint as well as the linearized constraints
     /// and equivalences needed after linearization.
-    fn linearize_expression(
+    fn linearize_constraint(
         &mut self,
-        constr: GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        constr: AlgebraicConstraint<GroupedExpression<T, V>>,
+    ) -> impl Iterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>> {
         let mut constrs = vec![constr.clone()];
         if !constr.is_affine() {
-            let linearized = self.linearizer.linearize(
-                constr,
+            let linearized = self.linearizer.linearize_expression(
+                constr.expression,
                 &mut || self.var_dispenser.next_linear(),
                 &mut constrs,
             );
-            constrs.push(linearized);
+            constrs.push(AlgebraicConstraint::assert_zero(linearized));
         }
         constrs.into_iter()
     }
@@ -310,7 +312,7 @@ where
     fn linearize_bus_interaction(
         &mut self,
         bus_interaction: BusInteraction<GroupedExpression<T, V>>,
-        constraint_collection: &mut Vec<GroupedExpression<T, V>>,
+        constraint_collection: &mut Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) -> BusInteraction<GroupedExpression<T, V>> {
         bus_interaction
             .fields()
@@ -363,6 +365,10 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
+                    if let Some((v1, expr)) = is_simple_equivalence(c) {
+                        self.apply_assignment(&v1, &expr);
+                        continue;
+                    }
                     c.solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
                         .effects
@@ -537,11 +543,11 @@ where
                 ConstraintRef::BusInteraction(_) => None,
             })
             .flat_map(|constr| {
-                let (constr, new_var) = self
+                let result = self
                     .boolean_extractor
                     .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
-                vars_to_boolean_constrain.extend(new_var);
-                Some(constr)
+                vars_to_boolean_constrain.extend(result.new_unconstrained_boolean_variable);
+                Some(result.constraint)
             })
             .collect_vec();
         for v in vars_to_boolean_constrain {
@@ -553,6 +559,24 @@ where
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
         true
+    }
+}
+
+fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+    expr: &GroupedExpression<T, V>,
+) -> Option<(V, GroupedExpression<T, V>)> {
+    if !expr.is_affine() {
+        return None;
+    }
+    let (_, linear, offset) = expr.components();
+    let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
+    if offset.is_zero() && (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+        Some((
+            v2.clone(),
+            GroupedExpression::from_unknown_variable(v1.clone()),
+        ))
+    } else {
+        None
     }
 }
 

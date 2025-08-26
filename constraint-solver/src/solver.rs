@@ -1,6 +1,8 @@
 use powdr_number::ExpressionConvertible;
 
-use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem};
+use crate::constraint_system::{
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
+};
 use crate::grouped_expression::GroupedExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
@@ -75,7 +77,7 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
     /// Adds a new algebraic constraint to the system.
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     );
 
     /// Adds a new bus interaction to the system.

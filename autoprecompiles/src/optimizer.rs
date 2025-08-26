@@ -3,7 +3,8 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::inliner::inline_everything_below_degree_bound;
+use powdr_constraint_solver::constraint_system::AlgebraicConstraint;
+use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
@@ -11,6 +12,7 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
+use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
@@ -43,7 +45,6 @@ pub fn optimize<A: Adapter>(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
-            inline_everything_below_degree_bound(degree_bound),
             &mut stats_logger,
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
@@ -54,6 +55,14 @@ pub fn optimize<A: Adapter>(
         }
     }
 
+    let constraint_system = inliner::replace_constrained_witness_columns(
+        constraint_system.into(),
+        inline_everything_below_degree_bound(degree_bound),
+    )
+    .system()
+    .clone();
+    stats_logger.log("inlining", &constraint_system);
+
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
@@ -62,6 +71,14 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+
+    let constraint_system = trivial_simplifications(
+        constraint_system.into(),
+        bus_interaction_handler,
+        &mut stats_logger,
+    )
+    .system()
+    .clone();
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
@@ -175,7 +192,9 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
-            .map(|constraint| algebraic_to_grouped_expression(&constraint.expr))
+            .map(|constraint| {
+                AlgebraicConstraint::assert_zero(algebraic_to_grouped_expression(&constraint.expr))
+            })
             .collect(),
         bus_interactions: symbolic_machine
             .bus_interactions
