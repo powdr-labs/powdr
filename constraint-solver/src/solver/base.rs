@@ -562,17 +562,17 @@ where
     }
 }
 
-/// Returns true if the expression is equivalent to `X = Y` for
+/// Returns true if the constraint is equivalent to `X = Y` for
 /// some variables `X` and `Y`.
 /// In this case, returns the "larger" variable and the result
-/// of solving for the variable.
+/// of solving the expression for the variable.
 fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    expr: &GroupedExpression<T, V>,
+    constr: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
-    if !expr.is_affine() {
+    if !constr.expression.is_affine() {
         return None;
     }
-    let (_, linear, offset) = expr.components();
+    let (_, linear, offset) = constr.expression.components();
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
     if offset.is_zero() && (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
         Some((
