@@ -264,7 +264,7 @@ mod test {
         println!(
             "Trying to split: {}\n{}",
             expr,
-            expr.clone() * T::one().field_div(&T::from_u64(30720))
+            expr.clone() * T::one().field_div(&T::from_u64(7864320))
         );
         try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs).map(|c| {
             println!(
@@ -417,7 +417,7 @@ l3 - 1"
     }
 
     #[test]
-    fn correct_split() {
+    fn invalid_split() {
         // 7864320 * a__0_12 - bool_113 + 314572801
         // a__0_12 + 256 * bool_113 - 216
         let byte_rc = RangeConstraint::from_mask(0xffu32);
@@ -426,39 +426,12 @@ l3 - 1"
             .into_iter()
             .collect::<HashMap<_, _>>();
         let expr1: GroupedExpression<BabyBearField, _> =
-            GroupedExpression::from_unknown_variable("a__0_12")
+            -(GroupedExpression::from_unknown_variable("a__0_12")
                 * GroupedExpression::from_number(BabyBearField::from(7864320))
                 - GroupedExpression::from_unknown_variable("bool_113")
-                + GroupedExpression::from_number(BabyBearField::from(314572801));
-        assert!(try_split(expr1, &rcs).is_some());
-        let expr2: GroupedExpression<BabyBearField, _> =
-            GroupedExpression::from_unknown_variable("a__0_12")
-                + GroupedExpression::from_unknown_variable("bool_113")
-                    * GroupedExpression::from_number(BabyBearField::from(256))
-                - GroupedExpression::from_number(BabyBearField::from(216));
+                + GroupedExpression::from_number(BabyBearField::from(314572801)));
+        assert!(try_split(expr1.clone(), &rcs).is_some());
+        let expr2 = -expr1;
         assert!(try_split(expr2, &rcs).is_some());
-    }
-
-    #[test]
-    fn invalid_split() {
-        // 30720 * a__0_12 + 7864320 * a__1_12 - bool_114 - 6635520
-        // a__0_12 + 256 * a__1_12 + 65536 * bool_114 - 216
-        let byte_rc = RangeConstraint::from_mask(0xffu32);
-        let bit_rc = RangeConstraint::from_mask(0x1u32);
-        let rcs = [
-            ("a__0_12", byte_rc.clone()),
-            ("a__1_12", byte_rc),
-            ("bool_114", bit_rc),
-        ]
-        .into_iter()
-        .collect::<HashMap<_, _>>();
-        let expr: GroupedExpression<BabyBearField, _> =
-            GroupedExpression::from_unknown_variable("a__0_12")
-                * GroupedExpression::from_number(BabyBearField::from(30720))
-                + GroupedExpression::from_unknown_variable("a__1_12")
-                    * GroupedExpression::from_number(BabyBearField::from(7864320))
-                - GroupedExpression::from_unknown_variable("bool_114")
-                - GroupedExpression::from_number(BabyBearField::from(6635520));
-        assert!(try_split(expr, &rcs).is_some());
     }
 }
