@@ -5,11 +5,12 @@ use std::{
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
     constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
+    range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
 };
 
@@ -129,17 +130,29 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         .map(|comp| GroupedExpression::from(comp / smallest_coeff))
         .sum();
 
+    println!("Finding solution for:");
+    println!("  expr = {}", expr);
+    println!("  rest = ({rest}) * {smallest_coeff}",);
+    println!("  constant = {}", constant);
+
+    // TODO ignore large fields.
+    let modulus = T::FieldType::modulus().try_into_u64()?;
+    let max_value = (modulus - 1) / 2;
+    let integer_equiv =
+        RangeConstraint::from_range(-(T::FieldType::from(max_value)), max_value.into());
+
     let candidate_rc = expr.range_constraint(range_constraints);
 
-    if candidate_rc.is_unconstrained()
-        || rest
+    if candidate_rc.is_subset(&integer_equiv)
+        && rest
             .range_constraint(range_constraints)
             .multiple(smallest_coeff)
-            .is_unconstrained()
+            .is_subset(&integer_equiv)
     {
+        candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
+    } else {
         return None;
     }
-    candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
 }
 
 fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(

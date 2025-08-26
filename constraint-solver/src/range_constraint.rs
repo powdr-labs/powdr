@@ -117,6 +117,10 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// integer `x` in the allowed values seen as integers such that
     /// `offset = k * modulus + x`.
     pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
+        println!(
+            "has_unique_modular_solution: self = {self}, offset = {}, modulus = {}",
+            offset, modulus
+        );
         // If the modulus is larger than half the field, the mapping to integers
         // is not obvious. Also, if the number of values in the range constraint
         // is at least two times the modulus, there are always at least to solutions.
@@ -127,6 +131,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
         if !offset.is_in_lower_half() {
             if (modulus + offset).is_in_lower_half() {
+                println!("Running negated");
                 return self.has_unique_modular_solution(modulus + offset, modulus);
             } else {
                 // TODO this should still be solvable.
@@ -315,6 +320,10 @@ impl<T: FieldElement> RangeConstraint<T> {
         let intervals_disjoint =
             interval_intersection((self.min, self.max), (other.min, other.max)).is_none();
         masks_disjoint || intervals_disjoint
+    }
+
+    pub fn is_subset(&self, other: &RangeConstraint<T>) -> bool {
+        self.conjunction(other) == *self
     }
 
     /// Returns the allowed values of this range constraint.
