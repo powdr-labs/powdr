@@ -103,6 +103,12 @@ impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Instr<F>(pub OpenVmInstruction<F>);
 
+impl<F: PrimeField32> Display for Instr<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", openvm_instruction_formatter(&self.0))
+    }
+}
+
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
     fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
         let args = [
@@ -205,10 +211,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
                 .try_get_one_or_preceding(block.start_pc)
                 .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
                 .unwrap_or_default();
-            tracing::debug!(
-                "Basic block (executed {count} times), {name}:\n{}",
-                block.pretty_print(|n| openvm_instruction_formatter(&n.0))
-            );
+            tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
         }
     }
 
@@ -392,7 +395,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
                     .block
                     .statements
                     .iter()
-                    .map(|instr| openvm_instruction_formatter(&instr.0))
+                    .map(ToString::to_string)
                     .collect(),
             },
             stats: self.stats,
