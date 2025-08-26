@@ -1206,7 +1206,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let r = SymbolicExpression::from_symbol("r", Default::default());
         let expr = var("x") * r.clone() + var("y") * t;
         let constr = AlgebraicConstraint::assert_zero(&expr);
-        assert_eq!(constr.to_string(), "r * x + t * y");
+        assert_eq!(constr.to_string(), "r * x + t * y = 0");
         assert_eq!(
             constr
                 .try_solve_for_expr(&(var("x") * r))
