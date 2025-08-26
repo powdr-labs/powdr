@@ -142,6 +142,9 @@ jobs:
       - name: Build
         run: cargo build --release -p powdr-openvm
 
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
       # - name: Install cargo openvm
       #   # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
       #   # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
@@ -236,8 +239,11 @@ jobs:
       #     keep_files: true
       #     enable_jekyll: true
 
-      - name: Run test1
-        run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
+      - name: Run tests using nextest
+        run: cargo nextest run --release --verbose -p powdr-openvm --run-ignored all --nocapture --test-threads=1
 
-      - name: Run test2
-        run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- keccak_prove_large --include-ignored --nocapture --test-threads=1
+      # - name: Run test1
+      #   run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
+
+      # - name: Run test2
+      #   run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- keccak_prove_large --include-ignored --nocapture --test-threads=1
