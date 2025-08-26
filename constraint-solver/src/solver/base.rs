@@ -372,9 +372,17 @@ where
                     }
                     let effects = c
                         .solve(&self.range_constraints)
-                        .map_err(Error::QseSolvingError)?
+                        .map_err(|e| {
+                            println!("Error while solving constraint {c}.");
+                            //                            panic!();
+                            Error::QseSolvingError(e)
+                        })?
                         .effects;
                     if let Some(components) = try_split_constraint(c, &self.range_constraints) {
+                        println!("Splitting constraint {c} into components:");
+                        for comp in &components {
+                            println!(" - {comp}");
+                        }
                         // TODO avoid adding constraints that already exist
                         self.constraint_system.add_algebraic_constraints(components);
                         progress |= true;
