@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use num_traits::Zero;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
@@ -157,7 +156,7 @@ where
 
         let constraints = constraints
             .into_iter()
-            .filter(|c| !c.expression.is_zero())
+            .filter(|c| !c.is_redundant())
             .flat_map(|constr| {
                 self.try_extract_boolean(constr.as_ref())
                     .into_iter()
@@ -170,7 +169,7 @@ where
             .collect_vec();
 
         self.constraint_system
-            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.expression.is_zero()));
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_redundant()));
     }
 
     fn add_bus_interactions(
@@ -369,8 +368,7 @@ where
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
-                    AlgebraicConstraint::from(c.expression)
-                        .solve(&self.range_constraints)
+                    c.solve(&self.range_constraints)
                         .map_err(Error::QseSolvingError)?
                         .effects
                 }
@@ -483,9 +481,7 @@ where
                 ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
                 ConstraintRef::BusInteraction(_) => None,
             })
-            .flat_map(|constr| {
-                AlgebraicConstraint::from(constr.expression).try_solve_for_expr(expression)
-            })
+            .flat_map(|constr| constr.try_solve_for_expr(expression))
             .collect_vec();
         if exprs.is_empty() {
             // If we cannot solve for the expression, we just take the expression unmodified.

@@ -244,7 +244,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         equation: &QuadraticSymbolicExpression<T, Variable>,
     ) -> Result<Vec<Variable>, Error> {
         let ProcessResult { effects, complete } =
-            AlgebraicConstraint::from(equation).solve(self)?;
+            AlgebraicConstraint::assert_zero(equation).solve(self)?;
         let effects = effects.into_iter().map(Into::into).collect();
         self.ingest_effects(effects, complete, None)
     }

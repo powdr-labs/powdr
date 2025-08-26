@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use num_traits::Zero;
 use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
@@ -63,7 +62,7 @@ impl<
                     // trivially zero) and replace the bus interaction with interactions implementing
                     // the range constraints.
                     // Note that many of these may be optimized away by the range constraint optimizer.
-                    if !replacement.expression.is_zero() {
+                    if !replacement.is_redundant() {
                         new_constraints.push(replacement);
                     }
 

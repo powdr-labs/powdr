@@ -13,7 +13,7 @@ use crate::solver::var_transformation::{VarTransformation, Variable};
 
 use super::grouped_expression::RangeConstraintProvider;
 
-use crate::algebraic_constraint::solve::Error as QseError;
+use crate::algebraic_constraint::solve::Error as AlgebraicSolverError;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -116,7 +116,7 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// An error occurred while calling `GroupedExpression::solve`
-    QseSolvingError(QseError),
+    QseSolvingError(AlgebraicSolverError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
     /// During exhaustive search, we came across a combination of variables for which

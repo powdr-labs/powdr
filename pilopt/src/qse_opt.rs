@@ -77,11 +77,10 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 .for_each(|(identity, simplified)| {
                     // We can ignore the negation because it is a polynomial identity
                     // that is equated to zero.
-                    let (constraint, _) = extract_negation_if_possible(AlgebraicConstraint {
-                        expression: quadratic_symbolic_expression_to_algebraic(
-                            &simplified.expression,
-                        ),
-                    });
+                    let (constraint, _) =
+                        extract_negation_if_possible(AlgebraicConstraint::assert_zero(
+                            quadratic_symbolic_expression_to_algebraic(&simplified.expression),
+                        ));
                     *identity = constraint.expression;
                 });
             // We add all assignments because we did not send all references to witnesses to the solver.
@@ -156,9 +155,9 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     let items = quadratic
         .iter()
         .map(|(l, r)| {
-            let l = AlgebraicConstraint::from(quadratic_symbolic_expression_to_algebraic(l));
+            let l = AlgebraicConstraint::assert_zero(quadratic_symbolic_expression_to_algebraic(l));
             let (l, l_negated) = extract_negation_if_possible(l);
-            let r = AlgebraicConstraint::from(quadratic_symbolic_expression_to_algebraic(r));
+            let r = AlgebraicConstraint::assert_zero(quadratic_symbolic_expression_to_algebraic(r));
             let (r, r_negated) = extract_negation_if_possible(r);
             if l_negated == r_negated {
                 l.expression * r.expression
@@ -174,8 +173,9 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
                     return -variable_to_algebraic_expression(v.clone());
                 }
             }
-            let (c, negated) =
-                extract_negation_if_possible(symbolic_expression_to_algebraic(c).into());
+            let (c, negated) = extract_negation_if_possible(AlgebraicConstraint::assert_zero(
+                symbolic_expression_to_algebraic(c),
+            ));
             if negated {
                 -(c.expression * variable_to_algebraic_expression(v.clone()))
             } else {
@@ -188,7 +188,8 @@ pub fn quadratic_symbolic_expression_to_algebraic<T: FieldElement>(
     let mut positive = vec![];
     let mut negated = vec![];
     for item in items {
-        let (item, item_negated) = extract_negation_if_possible(item.into());
+        let (item, item_negated) =
+            extract_negation_if_possible(AlgebraicConstraint::assert_zero(item));
         if item_negated {
             negated.push(item.expression);
         } else {

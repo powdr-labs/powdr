@@ -368,8 +368,8 @@ impl<
         };
         // Now we have `left * right = 0`, i.e. one (or both) of them has to be zero.
         let (left_solution, right_solution) = match (
-            AlgebraicConstraint::from(left).solve(range_constraints),
-            AlgebraicConstraint::from(right).solve(range_constraints),
+            AlgebraicConstraint::assert_zero(left).solve(range_constraints),
+            AlgebraicConstraint::assert_zero(right).solve(range_constraints),
         ) {
             // If one of them is always unsatisfiable, it is equivalent to just solving the other one for zero.
             (Err(_), o) | (o, Err(_)) => {
@@ -670,7 +670,7 @@ mod tests {
 
     #[test]
     fn unsolvable() {
-        let r = AlgebraicConstraint::from(&Qse::from_number(GoldilocksField::from(10)))
+        let r = AlgebraicConstraint::assert_zero(&Qse::from_number(GoldilocksField::from(10)))
             .solve(&NoRangeConstraints);
         assert!(r.is_err());
     }
@@ -681,12 +681,12 @@ mod tests {
         let y = &Qse::from_known_symbol("Y", Default::default());
         let mut constr = x + y - constant(10);
         // We cannot solve it, but we can also not learn anything new from it.
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&NoRangeConstraints)
             .unwrap();
         assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
-        assert!(AlgebraicConstraint::from(&constant(10))
+        assert!(AlgebraicConstraint::assert_zero(&constant(10))
             .solve(&NoRangeConstraints)
             .is_err());
 
@@ -702,7 +702,7 @@ mod tests {
                 RangeConstraint::from_range(100.into(), 102.into()),
             ),
         );
-        assert!(AlgebraicConstraint::from(&constant(10))
+        assert!(AlgebraicConstraint::assert_zero(&constant(10))
             .solve(&NoRangeConstraints)
             .is_err());
     }
@@ -710,7 +710,7 @@ mod tests {
     #[test]
     fn solvable_without_vars() {
         let constr = constant(0);
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&NoRangeConstraints)
             .unwrap();
         assert!(result.complete && result.effects.is_empty());
@@ -725,7 +725,7 @@ mod tests {
         let seven = constant(7);
         let ten = constant(10);
         let constr = two * x + seven * y - ten;
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&NoRangeConstraints)
             .unwrap();
         assert!(result.complete);
@@ -747,7 +747,7 @@ mod tests {
         let ten = constant(10);
         let mut constr = z * x + seven * y - ten.clone();
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&NoRangeConstraints)
             .unwrap();
         assert!(!result.complete && result.effects.is_empty());
@@ -758,13 +758,13 @@ mod tests {
         // does not help either. Note that the argument `&range_constraints` to
         // `solve()` is only used for unknown variables and not for known variables.
         // For the latter to take effect, we need to call `apply_update`.
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(!result.complete && result.effects.is_empty());
         constr.substitute_by_known(&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
         // Now it should work.
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(result.complete);
@@ -792,13 +792,13 @@ mod tests {
             + z.clone();
         // Without range constraints on a, this is not solvable.
         let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         range_constraints.insert("a", rc.clone());
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(result.complete);
@@ -845,7 +845,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // We try to solve `lin - 4 * result = 4` and the problem is
         // that we cannot assign `lin = 4 & mask` for some mask, since
         // it needs to be assigned `8`.
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(!result.complete);
@@ -873,7 +873,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let constr =
             a * constant(0x100) + b * constant(0x10000) + c * constant(0x1000000) + ten.clone()
                 - z.clone();
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(!result.complete);
@@ -904,7 +904,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let ten = constant(10);
         let two_pow8 = constant(0x100);
         let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(result.complete);
@@ -934,7 +934,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // The result should be an unconditional assignment to b + 10 = 12.
         let mut constr = constr;
         constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
-        let result = AlgebraicConstraint::from(&constr)
+        let result = AlgebraicConstraint::assert_zero(&constr)
             .solve(&range_constraints)
             .unwrap();
         assert!(result.complete);
@@ -975,7 +975,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         ];
 
         for constraint in constraints {
-            let result = AlgebraicConstraint::from(&constraint)
+            let result = AlgebraicConstraint::assert_zero(&constraint)
                 .solve(&NoRangeConstraints)
                 .unwrap();
             assert!(result.complete);
@@ -996,7 +996,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // marked as complete.
         let constraint = (a.clone() - three) * (a - four);
 
-        let result = AlgebraicConstraint::from(&constraint)
+        let result = AlgebraicConstraint::assert_zero(&constraint)
             .solve(&NoRangeConstraints)
             .unwrap();
         assert!(result.complete);
@@ -1021,7 +1021,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         // the identity would loose information.
         let constraint = (a.clone() - three) * (a - five);
 
-        let result = AlgebraicConstraint::from(&constraint)
+        let result = AlgebraicConstraint::assert_zero(&constraint)
             .solve(&NoRangeConstraints)
             .unwrap();
         assert!(!result.complete);
@@ -1133,7 +1133,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let expr = var("a") + constant(1);
         let rc = RangeConstraint::from_mask(0x1u64);
         let range_constraints = HashMap::from([("a", rc.clone())]);
-        assert!(AlgebraicConstraint::from(&expr)
+        assert!(AlgebraicConstraint::assert_zero(&expr)
             .solve(&range_constraints)
             .is_err());
     }
@@ -1141,7 +1141,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn solve_for() {
         let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
-        let constr = AlgebraicConstraint::from(&expr);
+        let constr = AlgebraicConstraint::assert_zero(&expr);
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
             constr.try_solve_for(&"x").unwrap().to_string(),
@@ -1157,7 +1157,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
     #[test]
     fn solve_for_expr() {
         let expr = var("w") + var("x") + constant(3) * var("y") + constant(5);
-        let constr = AlgebraicConstraint::from(&expr);
+        let constr = AlgebraicConstraint::assert_zero(&expr);
         assert_eq!(expr.to_string(), "w + x + 3 * y + 5");
         assert_eq!(
             constr.try_solve_for_expr(&var("x")).unwrap().to_string(),
@@ -1205,7 +1205,7 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
         let t = SymbolicExpression::from_symbol("t", Default::default());
         let r = SymbolicExpression::from_symbol("r", Default::default());
         let expr = var("x") * r.clone() + var("y") * t;
-        let constr = AlgebraicConstraint::from(&expr);
+        let constr = AlgebraicConstraint::assert_zero(&expr);
         assert_eq!(constr.to_string(), "r * x + t * y");
         assert_eq!(
             constr
