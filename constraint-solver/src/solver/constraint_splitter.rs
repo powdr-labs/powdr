@@ -145,12 +145,12 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
 fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     components: Vec<Component<T, V>>,
     constant: T::FieldType,
-) -> GroupedExpression<T, V> {
+) -> AlgebraicConstraint<GroupedExpression<T, V>> {
     let remaining = components
         .into_iter()
         .filter(|comp| !comp.is_zero())
         .collect_vec();
-    match remaining.as_slice() {
+    AlgebraicConstraint::assert_zero(match remaining.as_slice() {
         [Component { coeff, expr }] => {
             // if there is only one component, we normalize
             expr + &GroupedExpression::from_number(constant / *coeff)
@@ -162,7 +162,7 @@ fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
                 .sum::<GroupedExpression<_, _>>()
                 + GroupedExpression::from_number(constant)
         }
-    }
+    })
 }
 
 /// A component of a constraint. Equivalent to the expression `coeff * expr`.
@@ -250,11 +250,18 @@ mod test {
 
     use itertools::Itertools;
 
+    use super::*;
     use crate::{
         range_constraint::RangeConstraint,
-        solver::constraint_splitter::try_split_constraint,
         test_utils::{constant, var},
     };
+
+    fn try_split<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+        expr: GroupedExpression<T, V>,
+        rcs: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
+        try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs)
+    }
 
     #[test]
     fn split_simple() {
@@ -268,7 +275,7 @@ mod test {
         .into_iter()
         .collect::<HashMap<_, _>>();
         let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
-        let items = try_split_constraint(&expr, &rcs).unwrap().iter().join("\n");
+        let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "-(a - x)
@@ -294,7 +301,7 @@ b + y"
             - var("r") * constant(6000)
             + var("s") * constant(6000)
             + var("w") * constant(1200000);
-        let items = try_split_constraint(&expr, &rcs).unwrap().iter().join("\n");
+        let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "-(a - x)
@@ -323,20 +330,14 @@ w"
         .into_iter()
         .collect::<HashMap<_, _>>();
         let expr1 = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
-        let items = try_split_constraint(&expr1, &rcs)
-            .unwrap()
-            .iter()
-            .join("\n");
+        let items = try_split(expr1, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "b__3_0 - b_msb_f_0
 x"
         );
         let expr2 = var("b__3_0") - var("b_msb_f_0") + constant(256) * (var("x") - constant(1));
-        let items = try_split_constraint(&expr2, &rcs)
-            .unwrap()
-            .iter()
-            .join("\n");
+        let items = try_split(expr2, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "b__3_0 - b_msb_f_0
@@ -366,7 +367,7 @@ x - 1"
             + var("w") * constant(0x1000000)
             - constant(5 * 0x1000000 - 6 + 64 - 5 * 65536);
 
-        let items = try_split_constraint(&expr, &rcs).unwrap().iter().join("\n");
+        let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "-(a - x - 6)
@@ -393,7 +394,7 @@ w - 5"
             + var("l3") * constant(0x1000)
             - constant(0x1234);
 
-        let items = try_split_constraint(&expr, &rcs).unwrap().iter().join("\n");
+        let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
             "l0 - 4
