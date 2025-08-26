@@ -240,7 +240,7 @@ jobs:
       #     enable_jekyll: true
 
       - name: Run tests using nextest
-        run: cargo nextest run --release --verbose -p powdr-openvm --run-ignored all --nocapture --test-threads=1
+        run: cargo nextest run --release --verbose -p powdr-openvm --run-ignored all --nocapture
 
       # - name: Run test1
       #   run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
