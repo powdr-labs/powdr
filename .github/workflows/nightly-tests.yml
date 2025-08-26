@@ -236,5 +236,8 @@ jobs:
       #     keep_files: true
       #     enable_jekyll: true
 
-      - name: Run tests
+      - name: Run test1
         run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
+
+      - name: Run test2
+        run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- keccak_prove_large --include-ignored --nocapture --test-threads=1
