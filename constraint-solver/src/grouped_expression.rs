@@ -621,7 +621,7 @@ impl<
             // If the min value is zero, then all variables have to assume their min value.
             if rc.range_width() < RangeConstraint::<T::FieldType>::unconstrained().range_width()
                 && rc.range().0.is_zero()
-                && self.constant.is_zero()
+//                && self.constant.is_zero()
                 && self.linear.iter().all(|(_, coeff)| {
                     coeff
                         .try_to_number()
@@ -631,6 +631,7 @@ impl<
             {
                 // TODO what about negative coefficients?
                 // TODO what if some addition wraps (for example of the offset)
+                //                println!("Solving {self} by setting all variables to their minimum value");
                 return Ok(ProcessResult {
                     effects: self
                         .linear
