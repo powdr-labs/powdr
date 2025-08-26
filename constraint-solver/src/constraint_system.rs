@@ -5,6 +5,7 @@ use crate::{
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
 };
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
@@ -12,7 +13,7 @@ use std::{fmt::Display, hash::Hash};
 #[derive(Clone)]
 pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
-    pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
+    pub algebraic_constraints: Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
@@ -34,7 +35,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
             "{}",
             self.algebraic_constraints
                 .iter()
-                .map(|expr| format!("{expr} = 0"))
+                .map(|constraint| format!("{constraint}"))
                 .chain(
                     self.bus_interactions
                         .iter()
@@ -46,7 +47,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 }
 
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
-    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
+    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<'_, T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()
@@ -63,17 +64,21 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         Box::new(
             self.algebraic_constraints
                 .iter()
+                .map(|c| &c.expression)
                 .chain(self.bus_interactions.iter().flat_map(|b| b.fields())),
         )
     }
 
     pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut GroupedExpression<T, V>> {
         Box::new(
-            self.algebraic_constraints.iter_mut().chain(
-                self.bus_interactions
-                    .iter_mut()
-                    .flat_map(|b| b.fields_mut()),
-            ),
+            self.algebraic_constraints
+                .iter_mut()
+                .map(|c| &mut c.expression)
+                .chain(
+                    self.bus_interactions
+                        .iter_mut()
+                        .flat_map(|b| b.fields_mut()),
+                ),
         )
     }
 
@@ -83,6 +88,77 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
+    }
+}
+
+/// An algebraic constraint
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct AlgebraicConstraint<V> {
+    /// The expression representing the constraint, which must evaluate to 0 for the constraint to be satisfied.
+    pub expression: V,
+}
+
+// We implement `From` to make writing tests easier. However, we recommend using `AlgebraicConstraint::assert_zero` for clarity
+impl<V> From<V> for AlgebraicConstraint<V> {
+    fn from(expression: V) -> Self {
+        AlgebraicConstraint::assert_zero(expression)
+    }
+}
+
+impl<V> AlgebraicConstraint<V> {
+    /// Create a constraint which asserts that the expression evaluates to 0.
+    pub fn assert_zero(expression: V) -> Self {
+        AlgebraicConstraint { expression }
+    }
+}
+
+impl<V> std::ops::Deref for AlgebraicConstraint<V> {
+    type Target = V;
+
+    fn deref(&self) -> &V {
+        &self.expression
+    }
+}
+
+impl<V> std::ops::DerefMut for AlgebraicConstraint<V> {
+    fn deref_mut(&mut self) -> &mut V {
+        &mut self.expression
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_unknown_variables()
+    }
+
+    /// Returns a constraint which asserts that the two expressions are equal.
+    pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
+        Self::assert_zero(expression - other)
+    }
+
+    /// Returns a constraint which asserts that the expression is a boolean.
+    pub fn assert_bool(expression: GroupedExpression<T, V>) -> Self {
+        Self::assert_zero(expression.clone() * (expression - GroupedExpression::one()))
+    }
+}
+
+impl<V: Zero> AlgebraicConstraint<V> {
+    pub fn is_redundant(&self) -> bool {
+        self.expression.is_zero()
+    }
+}
+
+impl<V: Display> Display for AlgebraicConstraint<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = 0", self.expression)
+    }
+}
+
+impl<T: ReferencedSymbols<V>, V> AlgebraicConstraint<GroupedExpression<T, V>> {
+    /// Returns the set of referenced variables, both know and unknown.
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_variables()
     }
 }
 
@@ -265,7 +341,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
 }
 
 pub enum ConstraintRef<'a, T, V> {
-    AlgebraicConstraint(&'a GroupedExpression<T, V>),
+    AlgebraicConstraint(&'a AlgebraicConstraint<GroupedExpression<T, V>>),
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 
