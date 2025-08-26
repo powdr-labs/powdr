@@ -365,7 +365,7 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = is_simple_equivalence(c) {
+                    if let Some((v1, expr)) = try_to_simple_equivalence(c) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
@@ -562,11 +562,12 @@ where
     }
 }
 
-/// Returns true if the constraint is equivalent to `X = Y` for
-/// some variables `X` and `Y`.
-/// In this case, returns the "larger" variable and the result
-/// of solving the expression for the variable.
-fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+/// If the constraint is equivalent to `X = Y` for some variables `X` and `Y`,
+/// returns the "larger" variable and the result of solving the constraint
+/// for the variable.
+///
+/// Note: Does not find all cases of equivalence.
+fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
     constr: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
     if !constr.expression.is_affine() {
