@@ -261,7 +261,18 @@ mod test {
         expr: GroupedExpression<T, V>,
         rcs: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
-        try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs)
+        println!(
+            "Trying to split: {}\n{}",
+            expr,
+            expr.clone() * T::one().field_div(&T::from_u64(7864320))
+        );
+        try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs).map(|c| {
+            println!(
+                "Split into:\n{}",
+                c.iter().map(|c| c.to_string()).join("\n")
+            );
+            c
+        })
     }
 
     #[test]
@@ -408,16 +419,23 @@ l3 - 1"
     #[test]
     fn invalid_split() {
         // 7864320 * a__0_12 - bool_113 + 314572801
+        // a__0_12 + 256 * bool_113 - 216
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let bit_rc = RangeConstraint::from_mask(0x1u32);
         let rcs = [("a__0_12", byte_rc.clone()), ("bool_113", bit_rc.clone())]
             .into_iter()
             .collect::<HashMap<_, _>>();
-        let expr: GroupedExpression<BabyBearField, _> =
+        let expr1: GroupedExpression<BabyBearField, _> =
             GroupedExpression::from_unknown_variable("a__0_12")
                 * GroupedExpression::from_number(BabyBearField::from(7864320))
                 - GroupedExpression::from_unknown_variable("bool_113")
                 + GroupedExpression::from_number(BabyBearField::from(314572801));
-        assert!(try_split(expr, &rcs).is_none());
+        assert!(try_split(expr1, &rcs).is_some());
+        let expr2: GroupedExpression<BabyBearField, _> =
+            GroupedExpression::from_unknown_variable("a__0_12")
+                + GroupedExpression::from_unknown_variable("bool_113")
+                    * GroupedExpression::from_number(BabyBearField::from(256))
+                - GroupedExpression::from_number(BabyBearField::from(216));
+        assert!(try_split(expr2, &rcs).is_some());
     }
 }
