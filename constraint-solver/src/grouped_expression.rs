@@ -617,6 +617,38 @@ impl<
                 ProcessResult::empty()
             }
         } else {
+            let rc = self.range_constraint(range_constraints);
+            // If the min value is zero, then all variables have to assume their min value.
+            if rc.range_width() < RangeConstraint::<T::FieldType>::unconstrained().range_width()
+                && rc.range().0.is_zero()
+                && self.constant.is_zero()
+                && self.linear.iter().all(|(_, coeff)| {
+                    coeff
+                        .try_to_number()
+                        .map(|n| n.is_in_lower_half())
+                        .unwrap_or(false)
+                })
+            {
+                // TODO what about negative coefficients?
+                // TODO what if some addition wraps (for example of the offset)
+                return Ok(ProcessResult {
+                    effects: self
+                        .linear
+                        .iter()
+                        .map(|(var, coeff)| {
+                            Effect::Assignment(
+                                var.clone(),
+                                T::from(range_constraints.get(var).range().0),
+                            )
+                        })
+                        .collect(),
+                    complete: true,
+                });
+                // 0 <= a + b =>
+                //                println!("rc of {self} is {rc}");
+            }
+            // TODO could do the same with max
+
             // Solve expression of the form `a * X + b * Y + ... + self.constant = 0`
             let r = self.solve_bit_decomposition(range_constraints)?;
 
