@@ -237,4 +237,4 @@ jobs:
       #     enable_jekyll: true
 
       - name: Run tests
-        run: /use/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
+        run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
