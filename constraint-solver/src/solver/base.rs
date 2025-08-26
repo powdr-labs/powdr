@@ -573,8 +573,12 @@ fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
         return None;
     }
     let (_, linear, offset) = constr.expression.components();
+    if !offset.is_zero() {
+        return None;
+    }
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
-    if offset.is_zero() && (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+    // c1 = 1, c2 = -1 or vice-versa
+    if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
         Some((
             v2.clone(),
             GroupedExpression::from_unknown_variable(v1.clone()),
