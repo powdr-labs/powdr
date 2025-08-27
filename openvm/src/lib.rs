@@ -1805,15 +1805,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 7215,
-                            log_up: 9596,
+                            main: 192,
+                            log_up: 380,
                         },
-                        constraints: 3685,
-                        bus_interactions: 4654,
+                        constraints: 62,
+                        bus_interactions: 159,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    50
+                    13
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1822,13 +1822,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 37565,
-                        log_up: 48144,
+                        main: 908,
+                        log_up: 1188,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 7215,
-                        log_up: 9596,
+                        main: 192,
+                        log_up: 380,
                     },
                 }
             "#]]),

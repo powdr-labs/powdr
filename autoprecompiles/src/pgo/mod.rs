@@ -85,13 +85,13 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .into_par_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .filter(|block| block.start_pc == 2100356)
+        //        .filter(|block| block.start_pc == 2100356)
         .map(|block| {
-            println!(
-                "Accelerating block of length {} and start pc {}:\n{block}",
-                block.statements.len(),
-                block.start_pc
-            );
+            // println!(
+            //     "Accelerating block of length {} and start pc {}:\n{block}",
+            //     block.statements.len(),
+            //     block.start_pc
+            // );
 
             let start_pc = block.start_pc;
             let r = crate::build::<A>(

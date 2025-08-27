@@ -170,26 +170,8 @@ where
             .flat_map(|constr| self.linearize_constraint(constr))
             .collect_vec();
 
-        let size_before = self
-            .constraint_system
-            .system()
-            .algebraic_constraints()
-            .len();
-
         self.constraint_system
             .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
-        let size_after = self
-            .constraint_system
-            .system()
-            .algebraic_constraints()
-            .len();
-
-        if size_after > 3067 {
-            println!(
-                "Constr: {}",
-                self.constraint_system.system().algebraic_constraints()[3067]
-            );
-        }
     }
 
     fn add_bus_interactions(

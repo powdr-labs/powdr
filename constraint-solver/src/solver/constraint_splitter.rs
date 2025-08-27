@@ -135,32 +135,46 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // println!("  rest = ({rest}) * {smallest_coeff}",);
     // println!("  constant = {}", constant);
 
-    // TODO ignore large fields.
+    // rc(a): [min1,max1]
+    // rc(b): [min2,max2]
+    // replace a by a' = a - min1,
+    // replace b by b' = b - min2
+    // a + k * b + c = 0 <=>
+    // a' + k * b' + (c + min1 + k * min2) = 0 <=>
+    // a' + k * b'= -(c + min1 + k * min2)
+    // assume (max1 - min1) + k * (max2 - min2) < P
+    // compute c' = -(c + min1 + k * min2) mod P (as a non-negative number)
+    // Then the following equation is true in the integers:
+    // a' + k * b' = c'
+    // then apply mod: a' % k = c' % k
+
+    // TODO this ignores large fields.
     let modulus = T::FieldType::modulus().try_into_u64()?;
-    let max_value = (modulus - 1) / 4;
-    let integer_equiv =
-        RangeConstraint::from_range(-(T::FieldType::from(max_value)), max_value.into());
+    let full_range_width = RangeConstraint::<T::FieldType>::unconstrained().range_width();
 
     let candidate_rc = expr.range_constraint(range_constraints);
-
-    if candidate_rc.is_subset(&integer_equiv)
-        && rest
-            .range_constraint(range_constraints)
-            .multiple(smallest_coeff)
-            .is_subset(&integer_equiv)
+    let rest_rc = rest.range_constraint(range_constraints);
+    if candidate_rc.range_width().to_arbitrary_integer()
+        + smallest_coeff.to_arbitrary_integer() * rest_rc.range_width().to_arbitrary_integer()
+        >= modulus.into()
     {
-        // if RangeConstraint::from_value(constant).is_subset(&integer_equiv) {
-        //     println!("Constant in integers");
-        // } else {
-        //     println!(
-        //         "Constant {} is not in integers, but reducing mod {}",
-        //         constant, modulus
-        //     );
-        // }
-        candidate_rc.has_unique_modular_solution(-constant, smallest_coeff)
-    } else {
         return None;
     }
+    // Now we know that the equation can be translated to the natural numbers
+    // by shifting by the minima.
+    let expr = expr - &GroupedExpression::from_number(candidate_rc.range().0);
+    let rest = rest - GroupedExpression::from_number(rest_rc.range().0);
+    let constant = constant + candidate_rc.range().0 + smallest_coeff * rest_rc.range().0;
+
+    expr.range_constraint(range_constraints)
+        .has_unique_modular_solution(
+            T::FieldType::from(
+                (-constant).to_integer().try_into_u64().unwrap()
+                    % smallest_coeff.to_integer().try_into_u64().unwrap(),
+            ),
+            smallest_coeff,
+        )
+        .map(|s| s + candidate_rc.range().0)
 }
 
 fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
@@ -337,10 +351,10 @@ b + y"
         let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "-(a - x)
-b + y
--(r - s)
-w"
+            "-(a - x) = 0
+b + y = 0
+-(r - s) = 0
+w = 0"
         );
     }
 
@@ -366,15 +380,15 @@ w"
         let items = try_split(expr1, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "b__3_0 - b_msb_f_0
-x"
+            "b__3_0 - b_msb_f_0 = 0
+x = 0"
         );
         let expr2 = var("b__3_0") - var("b_msb_f_0") + constant(256) * (var("x") - constant(1));
         let items = try_split(expr2, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "b__3_0 - b_msb_f_0
-x - 1"
+            "b__3_0 - b_msb_f_0 = 0
+x - 1 = 0"
         );
     }
 
@@ -403,10 +417,10 @@ x - 1"
         let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "-(a - x - 6)
--(b - y + 1)
--(r - s - 5)
-w - 5"
+            "-(a - x - 6) = 0
+-(b - y + 1) = 0
+-(r - s - 5) = 0
+w - 5 = 0"
         );
     }
 
@@ -430,10 +444,10 @@ w - 5"
         let items = try_split(expr, &rcs).unwrap().iter().join("\n");
         assert_eq!(
             items,
-            "l0 - 4
-l1 - 3
-l2 - 2
-l3 - 1"
+            "l0 - 4 = 0
+l1 - 3 = 0
+l2 - 2 = 0
+l3 - 1 = 0"
         );
     }
 
@@ -452,7 +466,45 @@ l3 - 1"
                 - GroupedExpression::from_unknown_variable("bool_113")
                 + GroupedExpression::from_number(BabyBearField::from(314572801)));
         assert!(try_split(expr1.clone(), &rcs).is_some());
-        // let expr2 = -expr1;
-        // assert!(try_split(expr2, &rcs).is_some());
+        let expr2 = -expr1;
+        assert!(try_split(expr2, &rcs).is_some());
+
+        // TODO assert that the result is the same
+    }
+
+    #[test]
+    fn challenge() {
+        // -(c__1_3) + 256 * (30720 * c__0_3 - c__2_3) = 1226833928
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let rcs = [
+            ("c__0_3", byte_rc.clone()),
+            ("c__1_3", byte_rc.clone()),
+            ("c__2_3", byte_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr: GroupedExpression<BabyBearField, _> =
+            -GroupedExpression::from_unknown_variable("c__1_3")
+                + GroupedExpression::from_number(BabyBearField::from(256))
+                    * (GroupedExpression::from_number(BabyBearField::from(30720))
+                        * GroupedExpression::from_unknown_variable("c__0_3")
+                        - GroupedExpression::from_unknown_variable("c__2_3"))
+                - GroupedExpression::from_number(BabyBearField::from(1226833928));
+        try_split(expr, &rcs).unwrap();
+    }
+
+    #[test]
+    fn challenge2() {
+        // bool_17 + 943718400 * (a__0_0) = 1069547521
+        let bit_rc = RangeConstraint::from_mask(0x1u32);
+        let rcs = [("bool_17", bit_rc.clone()), ("a__0_0", bit_rc.clone())]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        let expr: GroupedExpression<BabyBearField, _> =
+            GroupedExpression::from_unknown_variable("bool_17")
+                + GroupedExpression::from_number(BabyBearField::from(943718400))
+                    * GroupedExpression::from_unknown_variable("a__0_0")
+                - GroupedExpression::from_number(BabyBearField::from(1069547521));
+        try_split(expr, &rcs).unwrap();
     }
 }
