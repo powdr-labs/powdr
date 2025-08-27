@@ -830,7 +830,7 @@ mod tests {
     const GUEST_KECCAK: &str = "guest-keccak";
     const GUEST_KECCAK_ITER: u32 = 1_000;
     const GUEST_KECCAK_ITER_SMALL: u32 = 10;
-    const GUEST_KECCAK_ITER_LARGE: u32 = 20_000;
+    const GUEST_KECCAK_ITER_LARGE: u32 = 25_000;
     const GUEST_KECCAK_APC: u64 = 1;
     const GUEST_KECCAK_APC_PGO: u64 = 10;
     const GUEST_KECCAK_APC_PGO_LARGE: u64 = 100;
@@ -838,7 +838,7 @@ mod tests {
 
     const GUEST_SHA256_ITER: u32 = 1_000;
     const GUEST_SHA256_ITER_SMALL: u32 = 10;
-    const GUEST_SHA256_ITER_LARGE: u32 = 20_000;
+    const GUEST_SHA256_ITER_LARGE: u32 = 25_000;
     const GUEST_SHA256: &str = "guest-sha256";
     const GUEST_SHA256_APC_PGO: u64 = 10;
     const GUEST_SHA256_APC_PGO_LARGE: u64 = 50;

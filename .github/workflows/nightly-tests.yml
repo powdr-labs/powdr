@@ -239,11 +239,11 @@ jobs:
       #     keep_files: true
       #     enable_jekyll: true
 
-      - name: Run tests using nextest
-        run: cargo nextest run --release --verbose -p powdr-openvm --run-ignored all --nocapture
+      - name: Run tests except larger ones
+        run: cargo nextest run --release --verbose -p powdr-openvm --run-ignored all --nocapture --filter-expr 'not test(_prove_large)'
 
-      # - name: Run test1
-      #   run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture --test-threads=1
+      - name: Run sha256 large
+        run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- sha256_prove_large --include-ignored --nocapture
 
-      # - name: Run test2
-      #   run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- keccak_prove_large --include-ignored --nocapture --test-threads=1
+      - name: Run keccak large
+        run: /usr/bin/time -v cargo test --release --verbose -p powdr-openvm -- keccak_prove_large --include-ignored --nocapture
