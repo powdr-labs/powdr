@@ -22,10 +22,7 @@ use openvm_circuit::{
 };
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
-    system::memory::{
-        online::{ApcRange, MemoryLogEntry},
-        OfflineMemory,
-    },
+    system::memory::{online::MemoryLogEntry, OfflineMemory},
 };
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
@@ -136,11 +133,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             to_record_id,
             last_read_write.unwrap_or(to_record_id)
         );
-
-        memory
-            .memory
-            .apc_ranges
-            .push(ApcRange::new(from_record_id, to_record_id, last_read_write));
 
         res
     }
