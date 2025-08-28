@@ -154,8 +154,8 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
 
     let candidate_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
-    if candidate_rc.range_width().to_arbitrary_integer()
-        + smallest_coeff.to_arbitrary_integer() * rest_rc.range_width().to_arbitrary_integer()
+    if (candidate_rc.range_width().to_arbitrary_integer() - 1)
+        + smallest_coeff.to_arbitrary_integer() * (rest_rc.range_width().to_arbitrary_integer() - 1)
         >= modulus.into()
     {
         return None;
