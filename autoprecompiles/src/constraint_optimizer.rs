@@ -80,9 +80,6 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    let constraint_system = remove_duplicate_factors(constraint_system);
-    stats_logger.log("removing duplicate factors", &constraint_system);
-
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
