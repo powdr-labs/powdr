@@ -1,5 +1,0 @@
-mod B;
-
-machine Machine {
-
-}

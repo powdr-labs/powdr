@@ -1,3 +1,0 @@
-machine Foo {
-    Bar foo;
-}

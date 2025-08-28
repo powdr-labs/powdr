@@ -1,4 +1,0 @@
-machine Foo {
-}
-machine Foo {
-}
