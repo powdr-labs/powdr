@@ -1,0 +1,66 @@
+name: Generate rust cache for PR builds
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: warp-ubuntu-2404-x64-4x
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Save date of cache build
+      run: mkdir target && date -R -u > target/cache-build-date.txt
+    - name: Save commit hash of cache build
+      run: git rev-parse HEAD > target/cache-commit-hash.txt
+
+    ##### The block below is shared between cache build and PR build workflows #####
+    - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt
+    - name: Install Rust toolchain
+      run: rustup toolchain install nightly-2025-02-14 --component rust-src
+    - name: Install Rust toolchain 1.85 (stable)
+      run: rustup toolchain install 1.85
+    - name: Set cargo to perform shallow clones
+      run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+    - name: Format
+      run: cargo fmt --all --check --verbose
+    - name: Cargo check with Rust 1.85 (default features)
+      run: cargo +1.85 check --all-targets
+    - name: Lint no default features
+      run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
+    - name: Lint all features
+      run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
+    - name: Build
+      run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+    ###############################################################################
+
+    - name: Delete the old cache
+      uses: WarpBuilds/cache@v1
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests
+        delete-cache: true
+    
+    - name: ⚡ Save rust cache
+      uses: WarpBuilds/cache/save@v1
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests

@@ -1,0 +1,194 @@
+name: PR tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+
+# cancel any previous running workflows for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  POWDR_GENERATE_PROOFS: "true"
+  MAX_DEGREE_LOG: "20"
+
+jobs:
+  build:
+    runs-on: warp-ubuntu-2404-x64-8x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: ⚡ Restore rust cache
+        id: cache
+        uses: WarpBuilds/cache/restore@v1
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            Cargo.lock
+          key: ${{ runner.os }}-cargo-pr-tests
+      - name: Date of the restored cache
+        run: cat target/cache-build-date.txt
+        continue-on-error: true
+      - name: Check out cache commit state and update mtime accordingly.
+        run: git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git ls-files -z | xargs -0 -n1 touch -d "Fri, 18 Apr 2025 03:30:58 +0000" && git checkout HEAD@{1}
+
+      ##### The block below is shared between cache build and PR build workflows #####
+      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt
+      - name: Install Rust toolchain 1.88 (stable)
+        run: rustup toolchain install 1.88
+      - name: Set cargo to perform shallow clones
+        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      - name: Format
+        run: cargo fmt --all --check --verbose
+      - name: Cargo check with Rust 1.88 (default features)
+        run: cargo +1.88 check --all-targets
+      - name: Lint no default features
+        run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
+      - name: Lint all features
+        run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
+      - name: Build
+        run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+      ###############################################################################
+
+      - uses: taiki-e/install-action@nextest
+      - name: Create tests archive
+        run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests_archive
+          path: |
+            tests.tar.zst
+            pil-stark-prover-deps.tar.zst
+
+  test_quick:
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        test:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+          - "6"
+          - "7"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tests_archive
+      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
+      - name: Install riscv target
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      - name: Install Rust deps
+        run: rustup install nightly-2025-05-14 --component rust-src
+      - name: Install Rust deps
+        run: rustup install nightly-2025-02-14 --component rust-src
+      - uses: taiki-e/install-action@nextest
+      - name: Run default tests
+        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+        env:
+          POWDR_STD: ${{ github.workspace }}/std/
+
+  run_examples:
+    runs-on: warp-ubuntu-2404-x64-4x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      # Do not use the cache because we are compiling a different version of powdr.
+      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
+      - name: Install riscv target
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+
+  udeps:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
+      - name: Run cargo-udeps
+        run: cargo udeps --all-targets
+
+  test_apc_reth_compilation:
+    runs-on: warp-ubuntu-2404-x64-8x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+
+      - name: Install cargo openvm
+        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
+        run: |
+          rustup toolchain install 1.88
+          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
+
+      - name: Checkout openvm-reth-benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: powdr-labs/openvm-reth-benchmark
+          ref: main
+          path: openvm-reth-benchmark
+
+      - name: Patch openvm-reth-benchmark to use local powdr
+        run: |
+          cd openvm-reth-benchmark
+          mkdir -p .cargo
+          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+
+      - name: Run small execution test with APCs
+        run: |
+          cd openvm-reth-benchmark
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+          MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
