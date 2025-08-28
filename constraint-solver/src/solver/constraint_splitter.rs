@@ -283,6 +283,7 @@ impl<T: RuntimeConstant, V: Clone + Ord> Zero for Component<T, V> {
 mod test {
     use std::collections::HashMap;
 
+    use expect_test::expect;
     use itertools::Itertools;
     use powdr_number::BabyBearField;
 
@@ -296,18 +297,7 @@ mod test {
         expr: GroupedExpression<T, V>,
         rcs: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
-        // println!(
-        //     "Trying to split: {}\n{}",
-        //     expr,
-        //     expr.clone() * T::one().field_div(&T::from_u64(7864320))
-        // );
-        try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs).map(|c| {
-            // println!(
-            //     "Split into:\n{}",
-            //     c.iter().map(|c| c.to_string()).join("\n")
-            // );
-            c
-        })
+        try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs)
     }
 
     #[test]
@@ -322,12 +312,9 @@ mod test {
         .into_iter()
         .collect::<HashMap<_, _>>();
         let expr = var("x") + var("y") * constant(255) - var("a") + var("b") * constant(255);
-        let items = try_split(expr, &rcs).unwrap().iter().join("\n");
-        assert_eq!(
-            items,
-            "-(a - x)
-b + y"
-        );
+        let items = try_split(expr, &rcs).unwrap().iter().join(", ");
+
+        expect!["-(a - x) = 0, b + y = 0"].assert_eq(&items);
     }
 
     #[test]
@@ -506,5 +493,32 @@ l3 - 1 = 0"
                     * GroupedExpression::from_unknown_variable("a__0_0")
                 - GroupedExpression::from_number(BabyBearField::from(1069547521));
         try_split(expr, &rcs).unwrap();
+    }
+
+    #[test]
+    fn split_at_boundary() {
+        // 2013265922 Cannot split because the ranges are too large: expr bool_103 in [0,1], rest to_pc_least_sig_bit_4 + 2 * to_pc_limbs__0_4 in [0,65535], smallest_coeff = 30720
+        let bit_rc = RangeConstraint::from_mask(0x1u32);
+        let limb_rc = RangeConstraint::from_mask(0x7fffu32);
+        let rcs = [
+            ("bool_103", bit_rc.clone()),
+            ("to_pc_least_sig_bit_4", bit_rc.clone()),
+            ("to_pc_limbs__0_4", limb_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr: GroupedExpression<BabyBearField, _> =
+            GroupedExpression::from_unknown_variable("bool_103")
+                + GroupedExpression::from_number(BabyBearField::from(30720))
+                    * (GroupedExpression::from_unknown_variable("to_pc_least_sig_bit_4")
+                        + GroupedExpression::from_number(BabyBearField::from(2))
+                            * GroupedExpression::from_unknown_variable("to_pc_limbs__0_4"))
+                - GroupedExpression::from_number(BabyBearField::from(30720 * 123 + 1));
+        println!("Expression: {expr}");
+        let items = try_split(expr, &rcs).unwrap().iter().join(", ");
+        assert_eq!(
+            items,
+            "bool_103 - 1 = 0, to_pc_least_sig_bit_4 - 1 = 0, to_pc_limbs__0_4 - 61 = 0"
+        );
     }
 }
