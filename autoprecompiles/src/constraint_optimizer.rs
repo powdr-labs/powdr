@@ -80,9 +80,6 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
         remove_equal_bus_interactions(constraint_system, bus_interaction_handler);
     stats_logger.log("removing equal bus interactions", &constraint_system);
 
-    let constraint_system = remove_duplicate_factors(constraint_system);
-    stats_logger.log("removing duplicate factors", &constraint_system);
-
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
@@ -185,7 +182,9 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         })
         .filter(|(variable, constraint)| match constraint {
             // Remove the algebraic constraint if we can solve for the variable.
-            ConstraintRef::AlgebraicConstraint(constr) => constr.try_solve_for(variable).is_some(),
+            ConstraintRef::AlgebraicConstraint(constr) => {
+                can_always_be_zero_via_free_variable(constr, variable)
+            }
             ConstraintRef::BusInteraction(bus_interaction) => {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
                 // Only stateless bus interactions can be removed.
@@ -238,6 +237,23 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     });
 
     constraint_system
+}
+
+/// Returns true if the given expression can always be made to evaluate to 0 by setting the
+/// free variable, regardless of the values of other variables.
+fn can_always_be_zero_via_free_variable<T: FieldElement, V: Clone + Hash + Eq + Ord + Display>(
+    expression: &GroupedExpression<T, V>,
+    free_variable: &V,
+) -> bool {
+    if expression.try_solve_for(free_variable).is_some() {
+        true
+    } else if let Some((left, right)) = expression.try_as_single_product() {
+        // If either `left` or `right` can be set to 0, the constraint is satisfied.
+        can_always_be_zero_via_free_variable(left, free_variable)
+            || can_always_be_zero_via_free_variable(right, free_variable)
+    } else {
+        false
+    }
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),

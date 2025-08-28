@@ -1,9 +1,0 @@
-[book]
-authors = ["powdr labs"]
-language = "en"
-multilingual = false
-src = "src"
-title = "powdr"
-
-[output.html.playground]
-runnable = false

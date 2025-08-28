@@ -1,9 +1,0 @@
-[package]
-name = "vec_median"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
-
-[workspace]
