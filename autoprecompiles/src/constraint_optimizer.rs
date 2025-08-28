@@ -242,12 +242,12 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 /// Returns true if the given expression can always be made to evaluate to 0 by setting the
 /// free variable, regardless of the values of other variables.
 fn can_always_be_zero_via_free_variable<T: FieldElement, V: Clone + Hash + Eq + Ord + Display>(
-    constraint: &GroupedExpression<T, V>,
+    expression: &GroupedExpression<T, V>,
     free_variable: &V,
 ) -> bool {
-    if constraint.try_solve_for(free_variable).is_some() {
+    if expression.try_solve_for(free_variable).is_some() {
         true
-    } else if let Some((left, right)) = constraint.try_as_single_product() {
+    } else if let Some((left, right)) = expression.try_as_single_product() {
         // If either `left` or `right` can be set to 0, the constraint is satisfied.
         can_always_be_zero_via_free_variable(&left, free_variable)
             || can_always_be_zero_via_free_variable(right, free_variable)
