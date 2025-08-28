@@ -249,7 +249,7 @@ fn can_always_be_zero_via_free_variable<T: FieldElement, V: Clone + Hash + Eq + 
         true
     } else if let Some((left, right)) = expression.try_as_single_product() {
         // If either `left` or `right` can be set to 0, the constraint is satisfied.
-        can_always_be_zero_via_free_variable(&left, free_variable)
+        can_always_be_zero_via_free_variable(left, free_variable)
             || can_always_be_zero_via_free_variable(right, free_variable)
     } else {
         false
