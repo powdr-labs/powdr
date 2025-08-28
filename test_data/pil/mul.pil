@@ -1,5 +1,0 @@
-namespace Mul(8);
-    let a;
-    let b;
-    let c;
-    a * b = c;
