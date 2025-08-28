@@ -22,10 +22,7 @@ use openvm_circuit::{
 };
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
-    system::memory::{
-        online::{ApcRange, MemoryLogEntry},
-        OfflineMemory,
-    },
+    system::memory::{online::MemoryLogEntry, OfflineMemory},
 };
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
