@@ -97,6 +97,7 @@ impl SharedPeripheryChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
+        println!("\n\nApplying bus interaction:\nbus_id: {bus_id}, mult: {mult}");
         match bus_id {
             id if Some(id) == self.bitwise_lookup_8.as_ref().map(|c| c.bus().inner.index) => {
                 // bitwise operation lookup
@@ -107,6 +108,9 @@ impl SharedPeripheryChips {
                     args.next().unwrap(),
                     args.next().unwrap(),
                 ];
+                println!(
+                    "Bitwise lookup\nx: {x}, y: {y}, x_xor_y: {x_xor_y}, selector: {selector}"
+                );
 
                 for _ in 0..mult {
                     match selector {
@@ -126,6 +130,7 @@ impl SharedPeripheryChips {
             id if id == self.range_checker.bus().index() => {
                 // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
                 let [value, max_bits] = [args.next().unwrap(), args.next().unwrap()];
+                println!("Range checker\nvalue: {value}, max_bits: {max_bits}");
 
                 for _ in 0..mult {
                     self.range_checker.add_count(value, max_bits as usize);
@@ -140,7 +145,9 @@ impl SharedPeripheryChips {
                 // tuple range checker
                 // We pass a slice. It is checked inside `add_count`.
                 let args = args.collect_vec();
+                println!("Tuple range checker\nargs: {args:?}");
                 for _ in 0..mult {
+                    println!("Inside loop\nargs: {args:?}");
                     self.tuple_range_checker.as_ref().unwrap().add_count(&args);
                 }
             }

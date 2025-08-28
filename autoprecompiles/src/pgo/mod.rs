@@ -92,6 +92,8 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
+            let mut block = block;
+            block.statements.truncate(2);
             crate::build::<A>(
                 block,
                 vm_config.clone(),

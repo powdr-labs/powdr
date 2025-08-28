@@ -344,6 +344,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // replay the side effects of this row on the main periphery
                 // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
                 for bus_interaction in &bus_interactions {
+                    println!("Before applying bus interaction:\n{bus_interaction:#?}");
                     let mult = evaluator
                         .eval_expr(&bus_interaction.mult)
                         .as_canonical_u32();

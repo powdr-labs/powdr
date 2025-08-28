@@ -181,9 +181,12 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
                 part_index: 0,
                 offset: 0,
             } => {
+                println!("inside eval_var");
                 let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
+                    println!("witness_id_to_index exists");
                     witness_id_to_index[&(symbolic_var.index as u64)]
                 } else {
+                    println!("witness_id_to_index does NOT exist");
                     symbolic_var.index
                 };
                 self.row[index]
@@ -332,6 +335,7 @@ impl<F: PrimeField32> BaseAirWithPublicValues<F> for PowdrAir<F> {}
 impl<AB: InteractionBuilder> Air<AB> for PowdrAir<AB::F>
 where
     AB::F: PrimeField32,
+    AB::Var: std::fmt::Debug,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -344,6 +348,7 @@ where
             .zip_eq(witnesses.iter().cloned())
             .collect();
 
+        println!("witness values: {witness_values:?}");
         let witness_evaluator = WitnessEvaluator::<AB>::new(&witness_values);
 
         let eval_expr = |expr: &AlgebraicExpression<_>| {
@@ -352,6 +357,7 @@ where
         };
 
         for constraint in &self.machine.constraints {
+            println!("constraint equals zero:\n{}", constraint.expr);
             let e = eval_expr(&constraint.expr);
             builder.assert_zero(e);
         }
@@ -364,6 +370,7 @@ where
             // TODO: is this correct?
             let count_weight = 1;
 
+            println!("bus_interaction:\n{interaction}");
             builder.push_interaction(*id as u16, args, mult, count_weight);
         }
     }
@@ -385,11 +392,14 @@ impl<AB: InteractionBuilder> SymbolicEvaluator<AB::F, AB::Expr> for WitnessEvalu
     }
 
     fn eval_var(&self, symbolic_var: SymbolicVariable<AB::F>) -> AB::Expr {
+        println!("inside eval_var 2");
         match symbolic_var.entry {
             Entry::Main { part_index, offset } => {
                 assert_eq!(part_index, 0);
                 assert_eq!(offset, 0);
-                (*self.witness.get(&(symbolic_var.index as u64)).unwrap()).into()
+                let v = (*self.witness.get(&(symbolic_var.index as u64)).unwrap()).into();
+                println!("symbolic var index: {}, v: {v:?}", symbolic_var.index);
+                v
             }
             Entry::Public => unreachable!("Public variables are not supported"),
             Entry::Challenge => unreachable!("Challenges are not supported"),
