@@ -137,11 +137,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             last_read_write.unwrap_or(to_record_id)
         );
 
-        memory
-            .memory
-            .apc_ranges
-            .push(ApcRange::new(from_record_id, to_record_id, last_read_write));
-
         res
     }
 
