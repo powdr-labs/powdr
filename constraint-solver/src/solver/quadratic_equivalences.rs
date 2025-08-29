@@ -106,7 +106,7 @@ struct QuadraticEqualityCandidate<T: RuntimeConstant, V: Ord + Clone + Hash + Eq
 
 impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
     fn try_from_constraint(constr: &AlgebraicConstraint<GroupedExpression<T, V>>) -> Option<Self> {
-        let (left, right) = constr.try_as_single_product()?;
+        let (left, right) = constr.expression.try_as_single_product()?;
         if !left.is_affine() || !right.is_affine() {
             return None;
         }
