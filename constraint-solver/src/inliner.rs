@@ -26,7 +26,7 @@ pub fn replace_constrained_witness_columns<
     mut constraint_system: JournalingConstraintSystem<T, V>,
     should_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
 ) -> JournalingConstraintSystem<T, V> {
-    let mut to_remove_idx = HashSet::new();
+    let mut constraints_to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
     let constraint_count = constraint_system
         .indexed_system()
@@ -35,6 +35,9 @@ pub fn replace_constrained_witness_columns<
     loop {
         let inlined_vars_count = inlined_vars.len();
         for curr_idx in (0..constraint_count).rev() {
+            if constraints_to_remove_idx.contains(&curr_idx) {
+                continue;
+            }
             let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
 
             for (var, expr) in find_inlinable_variables(constraint) {
@@ -43,7 +46,7 @@ pub fn replace_constrained_witness_columns<
                     log::trace!("  (from identity {constraint})");
 
                     constraint_system.substitute_by_unknown(&var, &expr);
-                    to_remove_idx.insert(curr_idx);
+                    constraints_to_remove_idx.insert(curr_idx);
                     inlined_vars.insert(var);
 
                     break;
@@ -59,7 +62,7 @@ pub fn replace_constrained_witness_columns<
     // remove inlined constraints from system
     let mut counter = 0;
     constraint_system.retain_algebraic_constraints(|_| {
-        let retain = !to_remove_idx.contains(&(counter));
+        let retain = !constraints_to_remove_idx.contains(&(counter));
         counter += 1;
         retain
     });
