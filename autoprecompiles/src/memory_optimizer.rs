@@ -20,8 +20,16 @@ pub fn optimize_memory<
 >(
     mut system: ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
-    memory_bus_id: u64,
+    memory_bus_id: Option<u64>,
 ) -> ConstraintSystem<T, V> {
+    // In the absence of memory bus, we return the system unchanged
+    let memory_bus_id = match memory_bus_id {
+        Some(id) => id,
+        None => {
+            return system;
+        }
+    };
+
     // TODO use the solver here.
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices::<T, V, M>(&system, solver, memory_bus_id);
@@ -35,6 +43,12 @@ pub fn optimize_memory<
     solver.add_algebraic_constraints(new_constraints.iter().cloned());
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
+
+    assert!(check_register_operation_consistency::<_, _, M>(
+        &system,
+        memory_bus_id
+    ));
+
     system
 }
 
