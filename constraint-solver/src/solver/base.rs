@@ -364,7 +364,7 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = try_to_simple_equivalence(c.clone()) {
+                    if let Some((v1, expr)) = try_to_simple_equivalence(c) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
