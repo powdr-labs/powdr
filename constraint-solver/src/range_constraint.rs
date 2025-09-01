@@ -272,10 +272,6 @@ impl<T: FieldElement> RangeConstraint<T> {
         masks_disjoint || intervals_disjoint
     }
 
-    pub fn is_subset(&self, other: &RangeConstraint<T>) -> bool {
-        self.conjunction(other) == *self
-    }
-
     /// Returns the allowed values of this range constraint.
     /// Panics if the range width is larger than 2^32 (in which case you
     /// probably don't want to call this function).
