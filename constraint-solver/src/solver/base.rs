@@ -365,7 +365,7 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = try_to_simple_equivalence(c.clone()) {
+                    if let Some((v1, expr)) = try_to_simple_equivalence(c) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
@@ -374,9 +374,7 @@ where
                         .map_err(Error::AlgebraicSolverError)?
                         .effects;
                     if let Some(components) = try_split_constraint(&c, &self.range_constraints) {
-                        // TODO avoid adding constraints that already exist
-                        self.constraint_system.add_algebraic_constraints(components);
-                        progress |= true;
+                        progress |= self.add_algebraic_constraints_if_new(components);
                     }
                     effects
                 }
@@ -566,6 +564,37 @@ where
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
         true
+    }
+
+    /// Adds constraints that do not yet exist in the system.
+    /// Returns true if at least one new constraint was added.
+    fn add_algebraic_constraints_if_new(
+        &mut self,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+    ) -> bool {
+        let constraints_to_add = constraints
+            .into_iter()
+            .filter(|constraint_to_add| !self.contains_algebraic_constraint(constraint_to_add))
+            .collect_vec();
+        if constraints_to_add.is_empty() {
+            false
+        } else {
+            self.add_algebraic_constraints(constraints_to_add);
+            true
+        }
+    }
+
+    /// Returns true if the system contains the given algebraic constraint.
+    fn contains_algebraic_constraint(
+        &self,
+        constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
+    ) -> bool {
+        let constraint_ref = ConstraintRef::AlgebraicConstraint(constraint.as_ref());
+        let vars = constraint.referenced_unknown_variables().cloned();
+        self.constraint_system
+            .system()
+            .constraints_referencing_variables(vars)
+            .contains(&constraint_ref)
     }
 }
 
