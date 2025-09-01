@@ -10,7 +10,7 @@ use num_traits::{One, Zero};
 pub mod solve;
 
 /// An algebraic constraint
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct AlgebraicConstraint<V> {
     /// The expression representing the constraint, which must evaluate to 0 for the constraint to be satisfied.
     pub expression: V,
