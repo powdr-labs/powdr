@@ -3,7 +3,7 @@ use std::{fmt::Display, time::Instant};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
-use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_number::FieldElement;
 
 use crate::{powdr::UniqueReferences, SymbolicMachine};
@@ -71,10 +71,8 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&ConstraintSystem<P, V>> 
     }
 }
 
-impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&JournalingConstraintSystem<P, V>>
-    for Stats
-{
-    fn from(constraint_system: &JournalingConstraintSystem<P, V>) -> Self {
+impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&IndexedConstraintSystem<P, V>> for Stats {
+    fn from(constraint_system: &IndexedConstraintSystem<P, V>) -> Self {
         Stats::from(constraint_system.system())
     }
 }
