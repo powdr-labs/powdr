@@ -241,7 +241,10 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 
 /// Returns true if the given constraint can always be made to be satisfied by setting the
 /// free variable, regardless of the values of other variables.
-fn can_always_be_satisfied_via_free_variable<T: FieldElement, V: Clone + Hash + Eq + Ord + Display>(
+fn can_always_be_satisfied_via_free_variable<
+    T: FieldElement,
+    V: Clone + Hash + Eq + Ord + Display,
+>(
     constraint: AlgebraicConstraint<&GroupedExpression<T, V>>,
     free_variable: &V,
 ) -> bool {
@@ -250,7 +253,10 @@ fn can_always_be_satisfied_via_free_variable<T: FieldElement, V: Clone + Hash + 
     } else if let Some((left, right)) = constraint.expression.try_as_single_product() {
         // If either `left` or `right` can be set to 0, the constraint is satisfied.
         can_always_be_satisfied_via_free_variable(AlgebraicConstraint::from(left), free_variable)
-            || can_always_be_satisfied_via_free_variable(AlgebraicConstraint::from(right), free_variable)
+            || can_always_be_satisfied_via_free_variable(
+                AlgebraicConstraint::from(right),
+                free_variable,
+            )
     } else {
         false
     }
