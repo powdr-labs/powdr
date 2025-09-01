@@ -60,6 +60,7 @@ pub fn optimize_constraints<
         + RangeConstraintHandler<P>
         + Clone,
     stats_logger: &mut StatsLogger,
+    new_var: &mut impl FnMut() -> V,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, Error> {
@@ -80,8 +81,12 @@ pub fn optimize_constraints<
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
-    let constraint_system =
-        replace_equal_zero_checks(constraint_system, solver, bus_interaction_handler.clone());
+    let constraint_system = replace_equal_zero_checks(
+        constraint_system,
+        solver,
+        bus_interaction_handler.clone(),
+        new_var,
+    );
 
     let constraint_system = trivial_simplifications(
         constraint_system,

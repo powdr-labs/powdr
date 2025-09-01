@@ -1571,10 +1571,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 41,
+                            main: 38,
                             log_up: 56,
                         },
-                        constraints: 15,
+                        constraints: 16,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1599,10 +1599,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 41,
+                            main: 38,
                             log_up: 56,
                         },
-                        constraints: 15,
+                        constraints: 16,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1621,7 +1621,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 41,
+                        main: 38,
                         log_up: 56,
                     },
                 }

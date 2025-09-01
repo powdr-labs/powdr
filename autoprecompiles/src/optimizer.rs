@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::sync::Arc;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
@@ -39,6 +40,11 @@ pub fn optimize<A: Adapter>(
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
+    let mut counter = constraint_system
+        .unknown_variables()
+        .map(|v| v.id)
+        .max()
+        .unwrap_or(0);
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
@@ -46,6 +52,14 @@ pub fn optimize<A: Adapter>(
             &mut solver,
             bus_interaction_handler.clone(),
             &mut stats_logger,
+            &mut || {
+                counter += 1;
+                let id = counter;
+                AlgebraicReference {
+                    name: Arc::new(format!("new_var_{id}")),
+                    id,
+                }
+            },
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
         )?

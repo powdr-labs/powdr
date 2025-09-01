@@ -19,6 +19,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    new_var: &mut impl FnMut() -> V,
 ) -> IndexedConstraintSystem<T, V> {
     let binary_range_constraint = RangeConstraint::from_mask(1);
     let binary_variables = constraint_system
@@ -32,6 +33,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
                 &mut constraint_system,
                 bus_interaction_handler.clone(),
                 solver,
+                new_var,
                 var.clone(),
                 value,
             );
@@ -43,7 +45,8 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
 fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: &mut IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    rc: &impl RangeConstraintProvider<T, V>,
+    solver: &mut impl Solver<T, V>,
+    new_var: &mut impl FnMut() -> V,
     output: V,
     value: T,
 ) {
@@ -115,7 +118,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // Check that each input is non-negative and that the sum of inputs cannot wrap.
     let min_input = inputs
         .iter()
-        .map(|v| rc.get(v))
+        .map(|v| solver.get(v))
         .reduce(|a, b| a.disjunction(&b))
         .unwrap()
         .range()
@@ -125,7 +128,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     }
     let sum_of_inputs = inputs
         .iter()
-        .map(|v| rc.get(v))
+        .map(|v| solver.get(v))
         .reduce(|a, b| a.combine_sum(&b))
         .unwrap();
     if sum_of_inputs.is_unconstrained() {
@@ -159,16 +162,20 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // at least one variable in `variables_to_remove`.
     // All other variables in such a constraint should either be inputs,
     // the output or other variables we can remove.
+    println!("----------------------");
     for constr in constraint_system.system().iter() {
         if constr
             .referenced_variables()
             .any(|var| variables_to_remove.contains(var))
         {
+            println!("{constr}");
             assert!(constr.referenced_variables().all(|var| {
                 inputs.contains(var) || var == &output || variables_to_remove.contains(var)
             }));
         }
     }
+    println!("======================");
+
     constraint_system.retain_algebraic_constraints(|constr| {
         !constr
             .referenced_variables()
@@ -179,8 +186,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             .referenced_variables()
             .any(|var| variables_to_remove.contains(var))
     });
-
-    let new_var = || todo!();
 
     // New we build the more efficient version of the function.
     let output_expr = GroupedExpression::from_unknown_variable(output.clone());
@@ -205,7 +210,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             GroupedExpression::one() - sum_inv.clone() * sum_of_inputs,
         ),
     ];
-    constraint_system.add_algebraic_constraints(new_constraints);
+    constraint_system.add_algebraic_constraints(new_constraints.clone());
+    solver.add_algebraic_constraints(new_constraints);
 
     // Verify that the modified system still has the same property (optional)
 
