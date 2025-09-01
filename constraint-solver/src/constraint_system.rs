@@ -267,7 +267,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum ConstraintRef<'a, T, V> {
     AlgebraicConstraint(AlgebraicConstraint<&'a GroupedExpression<T, V>>),
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
