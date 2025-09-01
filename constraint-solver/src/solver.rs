@@ -116,7 +116,7 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// An error occurred while calling `GroupedExpression::solve`
-    QseSolvingError(AlgebraicSolverError),
+    AlgebraicSolverError(AlgebraicSolverError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
     /// During exhaustive search, we came across a combination of variables for which

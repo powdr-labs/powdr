@@ -369,7 +369,7 @@ where
                         continue;
                     }
                     c.solve(&self.range_constraints)
-                        .map_err(Error::QseSolvingError)?
+                        .map_err(Error::AlgebraicSolverError)?
                         .effects
                 }
                 ConstraintRef::BusInteraction(b) => b
