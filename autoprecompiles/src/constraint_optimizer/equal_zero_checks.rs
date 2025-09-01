@@ -162,19 +162,16 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // at least one variable in `variables_to_remove`.
     // All other variables in such a constraint should either be inputs,
     // the output or other variables we can remove.
-    println!("----------------------");
     for constr in constraint_system.system().iter() {
         if constr
             .referenced_variables()
             .any(|var| variables_to_remove.contains(var))
         {
-            println!("{constr}");
             assert!(constr.referenced_variables().all(|var| {
                 inputs.contains(var) || var == &output || variables_to_remove.contains(var)
             }));
         }
     }
-    println!("======================");
 
     constraint_system.retain_algebraic_constraints(|constr| {
         !constr
