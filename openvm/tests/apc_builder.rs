@@ -568,4 +568,10 @@ mod pseudo_instruction_tests {
         ];
         assert_machine_output(program.to_vec(), "ret");
     }
+
+    #[test]
+    fn failing_split() {
+        let program = [add(48, 0, 216, 0)];
+        assert_machine_output(program.to_vec(), "failing_split");
+    }
 }

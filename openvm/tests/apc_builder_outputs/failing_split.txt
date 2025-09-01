@@ -1,12 +1,12 @@
 Instructions:
-  ADD rd_ptr = 8, rs1_ptr = 5, rs2 = 0, rs2_as = 0
+  ADD rd_ptr = 48, rs1_ptr = 0, rs2 = 216, rs2_as = 0
 
 APC advantage:
-  - Main columns: 36 -> 14 (2.57x reduction)
+  - Main columns: 36 -> 10 (3.60x reduction)
   - Bus interactions: 20 -> 10 (2.00x reduction)
   - Constraints: 22 -> 1 (22.00x reduction)
 
-Symbolic machine using 14 unique main columns:
+Symbolic machine using 10 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -16,10 +16,6 @@ Symbolic machine using 14 unique main columns:
   writes_aux__prev_data__1_0
   writes_aux__prev_data__2_0
   writes_aux__prev_data__3_0
-  a__0_0
-  a__1_0
-  a__2_0
-  a__3_0
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -27,10 +23,10 @@ mult=is_valid * -1, args=[0, from_state__timestamp_0]
 mult=is_valid * 1, args=[4, from_state__timestamp_0 + 3]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 5, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 5, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0]
-mult=is_valid * -1, args=[1, 8, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0 + 2]
+mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__0__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, from_state__timestamp_0]
+mult=is_valid * -1, args=[1, 48, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 48, 216, 0, 0, 0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
