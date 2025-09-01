@@ -105,14 +105,20 @@ pub fn optimize<A: Adapter>(
 
     // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
     let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
-    assert!(
-        !constraint_system
-            .bus_interactions
-            .iter()
-            .any(|b| b.bus_id
-                == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
-        "Expected all PC lookups to be removed."
-    );
+    let pc_lookups = constraint_system
+        .bus_interactions
+        .iter()
+        .filter(|b| {
+            b.bus_id == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))
+        })
+        .collect::<Vec<_>>();
+    if !pc_lookups.is_empty() {
+        log::error!("PC lookups remaining after optimization:");
+        for pc_lookup in pc_lookups {
+            log::error!(" - {}", pc_lookup);
+        }
+        log::error!("Expected all PC lookups to be removed.");
+    }
     Ok(constraint_system_to_symbolic_machine(constraint_system))
 }
 
