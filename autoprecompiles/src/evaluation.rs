@@ -71,7 +71,6 @@ pub fn evaluate_apc<
         .map(|instruction| {
             instruction_handler
                 .get_instruction_air_stats(instruction)
-                .unwrap()
         })
         .sum();
     let after = AirStats::new(machine);
