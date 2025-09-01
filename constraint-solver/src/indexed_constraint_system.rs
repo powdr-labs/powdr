@@ -20,9 +20,7 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
 ) -> ConstraintSystem<T, V> {
     let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
-    for (variable, substitution) in substitutions {
-        indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
-    }
+    indexed_constraint_system.apply_substitutions(substitutions);
     indexed_constraint_system.into()
 }
 
@@ -114,9 +112,9 @@ impl ConstraintSystemItem {
         constraint_system: &'a ConstraintSystem<T, V>,
     ) -> ConstraintRef<'a, T, V> {
         match self {
-            ConstraintSystemItem::AlgebraicConstraint(i) => {
-                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[i])
-            }
+            ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
+                constraint_system.algebraic_constraints[i].as_ref(),
+            ),
             ConstraintSystemItem::BusInteraction(i) => {
                 ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
             }
@@ -348,6 +346,17 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
                 .entry(var.clone())
                 .or_default()
                 .extend(items.iter().cloned());
+        }
+    }
+
+    /// Applies multiple substitutions to the constraint system in an efficient manner.
+    pub fn apply_substitutions(
+        &mut self,
+        substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
+    ) {
+        // We do not track substitutions yet, but we could.
+        for (variable, substitution) in substitutions {
+            self.substitute_by_unknown(&variable, &substitution);
         }
     }
 }

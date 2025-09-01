@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use num_traits::Zero;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
@@ -158,9 +157,9 @@ where
 
         let constraints = constraints
             .into_iter()
-            .filter(|c| !c.is_zero())
+            .filter(|c| !c.is_redundant())
             .flat_map(|constr| {
-                self.try_extract_boolean(&constr)
+                self.try_extract_boolean(constr.as_ref())
                     .into_iter()
                     .chain(std::iter::once(constr))
             })
@@ -171,7 +170,7 @@ where
             .collect_vec();
 
         self.constraint_system
-            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_redundant()));
     }
 
     fn add_bus_interactions(
@@ -273,7 +272,7 @@ where
     /// by introducing new boolean variables.
     fn try_extract_boolean(
         &mut self,
-        constr: &AlgebraicConstraint<GroupedExpression<T, V>>,
+        constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
     ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
         let result = self
             .boolean_extractor
@@ -294,7 +293,7 @@ where
         constr: AlgebraicConstraint<GroupedExpression<T, V>>,
     ) -> impl Iterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>> {
         let mut constrs = vec![constr.clone()];
-        if !constr.is_affine() {
+        if !constr.expression.is_affine() {
             let linearized = self.linearizer.linearize_expression(
                 constr.expression,
                 &mut || self.var_dispenser.next_linear(),
@@ -366,19 +365,15 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
-                    if let Some((v1, expr)) = is_simple_equivalence(c) {
+                    if let Some((v1, expr)) = try_to_simple_equivalence(c.clone()) {
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
                     let effects = c
                         .solve(&self.range_constraints)
-                        .map_err(|e| {
-                            println!("Error while solving constraint {c}.");
-                            //                            panic!();
-                            Error::QseSolvingError(e)
-                        })?
+                        .map_err(Error::AlgebraicSolverError)?
                         .effects;
-                    if let Some(components) = try_split_constraint(c, &self.range_constraints) {
+                    if let Some(components) = try_split_constraint(&c, &self.range_constraints) {
                         println!("Splitting constraint {c} into components:");
                         for comp in &components {
                             println!(" - {comp}");
@@ -578,15 +573,24 @@ where
     }
 }
 
-fn is_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
-    expr: &GroupedExpression<T, V>,
+/// If the constraint is equivalent to `X = Y` for some variables `X` and `Y`,
+/// returns the "larger" variable and the result of solving the constraint
+/// for the variable.
+///
+/// Note: Does not find all cases of equivalence.
+fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+    constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
-    if !expr.is_affine() {
+    if !constr.expression.is_affine() {
         return None;
     }
-    let (_, linear, offset) = expr.components();
+    let (_, linear, offset) = constr.expression.components();
+    if !offset.is_zero() {
+        return None;
+    }
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
-    if offset.is_zero() && (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+    // c1 = 1, c2 = -1 or vice-versa
+    if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
         Some((
             v2.clone(),
             GroupedExpression::from_unknown_variable(v1.clone()),

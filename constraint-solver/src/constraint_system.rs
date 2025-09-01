@@ -5,9 +5,10 @@ use crate::{
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
 };
 use itertools::Itertools;
-use num_traits::{One, Zero};
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
+
+pub use crate::algebraic_constraint::AlgebraicConstraint;
 
 /// Description of a constraint system.
 #[derive(Clone)]
@@ -51,6 +52,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         Box::new(
             self.algebraic_constraints
                 .iter()
+                .map(|c| c.as_ref())
                 .map(ConstraintRef::AlgebraicConstraint)
                 .chain(
                     self.bus_interactions
@@ -88,77 +90,6 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
-    }
-}
-
-/// An algebraic constraint
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct AlgebraicConstraint<V> {
-    /// The expression representing the constraint, which must evaluate to 0 for the constraint to be satisfied.
-    pub expression: V,
-}
-
-// We implement `From` to make writing tests easier. However, we recommend using `AlgebraicConstraint::assert_zero` for clarity
-impl<V> From<V> for AlgebraicConstraint<V> {
-    fn from(expression: V) -> Self {
-        AlgebraicConstraint::assert_zero(expression)
-    }
-}
-
-impl<V> AlgebraicConstraint<V> {
-    /// Create a constraint which asserts that the expression evaluates to 0.
-    pub fn assert_zero(expression: V) -> Self {
-        AlgebraicConstraint { expression }
-    }
-}
-
-impl<V> std::ops::Deref for AlgebraicConstraint<V> {
-    type Target = V;
-
-    fn deref(&self) -> &V {
-        &self.expression
-    }
-}
-
-impl<V> std::ops::DerefMut for AlgebraicConstraint<V> {
-    fn deref_mut(&mut self) -> &mut V {
-        &mut self.expression
-    }
-}
-
-impl<T: RuntimeConstant, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
-    /// Returns the referenced unknown variables. Might contain repetitions.
-    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        self.expression.referenced_unknown_variables()
-    }
-
-    /// Returns a constraint which asserts that the two expressions are equal.
-    pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
-        Self::assert_zero(expression - other)
-    }
-
-    /// Returns a constraint which asserts that the expression is a boolean.
-    pub fn assert_bool(expression: GroupedExpression<T, V>) -> Self {
-        Self::assert_zero(expression.clone() * (expression - GroupedExpression::one()))
-    }
-}
-
-impl<V: Zero> AlgebraicConstraint<V> {
-    pub fn is_redundant(&self) -> bool {
-        self.expression.is_zero()
-    }
-}
-
-impl<V: Display> Display for AlgebraicConstraint<V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} = 0", self.expression)
-    }
-}
-
-impl<T: ReferencedSymbols<V>, V> AlgebraicConstraint<GroupedExpression<T, V>> {
-    /// Returns the set of referenced variables, both know and unknown.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        self.expression.referenced_variables()
     }
 }
 
@@ -254,15 +185,12 @@ impl<
             .zip_eq(range_constraints.fields())
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
-                // if expr.referenced_unknown_variables().next().is_some() {
-                //     println!("Got rc {rc} for expr {expr}");
-                // }
-                expr.referenced_unknown_variables().filter_map(|var| {
+                expr.referenced_unknown_variables().filter_map(move |var| {
                     // `k * var + e` is in range rc <=>
                     // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
                     // If we solve `expr` for `var`, we get `-e / k`.
                     let k = expr.coefficient_of_variable(var).unwrap().try_to_number()?;
-                    let expr = expr.try_solve_for(var)?;
+                    let expr = AlgebraicConstraint::assert_zero(expr).try_solve_for(var)?;
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
@@ -341,7 +269,7 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
 }
 
 pub enum ConstraintRef<'a, T, V> {
-    AlgebraicConstraint(&'a AlgebraicConstraint<GroupedExpression<T, V>>),
+    AlgebraicConstraint(AlgebraicConstraint<&'a GroupedExpression<T, V>>),
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 

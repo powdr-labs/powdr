@@ -6,8 +6,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  IS_NIGHTLY_TEST: true
-  POWDR_GENERATE_PROOFS: "true"
   RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
@@ -24,26 +22,6 @@ jobs:
       - name: Count recent commits
         id: count
         run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
-
-  udeps:
-    runs-on: ubuntu-22.04
-    needs: check_if_needs_running
-    if: needs.check_if_needs_running.outputs.status > 0
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-
-      - name: Install cargo-udeps
-        run: cargo install cargo-udeps --locked
-      - name: Run cargo-udeps
-        run: cargo udeps --all-targets
 
   test_release:
     runs-on: ubuntu-24.04
@@ -236,5 +214,11 @@ jobs:
           keep_files: true
           enable_jekyll: true
 
-      - name: Run tests
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1
+      - name: Run tests (excluding larger ones)
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 --skip _prove_large
+
+      - name: Run keccak_prove_large
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 keccak_prove_large
+
+      - name: Run sha256_prove_large
+        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 sha256_prove_large

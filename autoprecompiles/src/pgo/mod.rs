@@ -101,7 +101,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 config.apc_candidates_dir_path.as_deref(),
             );
             if let Err(e) = &r {
-                println!("Failed to build APC for block starting at pc {}", start_pc,);
+                println!("Failed to build APC for block starting at pc {start_pc}",);
             }
             r.unwrap()
         })

@@ -1,9 +1,0 @@
-[package]
-name = "poseidon_gl_via_coprocessor"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
-
-[workspace]

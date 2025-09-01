@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="book/src/powdr_wires.png" width="600">
+  <img src="assets/powdr_wires.png" width="600">
 </p>
 
 # powdr
@@ -19,11 +19,15 @@ The main components are:
 - Constraint Solver: compile-time solver used to detect potential optimizations and security issues.
 - powdr-OpenVM: powdr extensions for [OpenVM](https://github.com/openvm-org/openvm/).
 
-For detailed documentation on powdr-asm, powdr-pil and podwrVM please visit [the powdr book](https://docs.powdr.org/).
+## powdr-legacy
+
+The previous versions of powdr are now archived in the [powdr-legacy](https://github.com/powdr-labs/powdr-legacy) repository.
+It contains all previous crates regarding provers, powdr-asm, powdr-pil, powdrVM, stdlib circuits and RISC-V support.
 
 ### Project structure
 
 For an overview of the project structure, run:
+
 ```
 cargo doc --workspace --no-deps --open
 ```

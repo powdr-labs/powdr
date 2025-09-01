@@ -18,7 +18,7 @@ use crate::{
 /// This is the case for example if the variables in this expression can
 /// be split into different bit areas.
 pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
-    constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
+    constraint: &AlgebraicConstraint<&GroupedExpression<T, V>>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
     let (quadratic, linear, constant) = constraint.expression.components();
@@ -297,7 +297,7 @@ mod test {
         expr: GroupedExpression<T, V>,
         rcs: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
-        try_split_constraint(&AlgebraicConstraint::assert_zero(expr), rcs)
+        try_split_constraint(&AlgebraicConstraint::assert_zero(&expr), rcs)
     }
 
     #[test]
