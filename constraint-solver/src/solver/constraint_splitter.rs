@@ -13,9 +13,13 @@ use crate::{
     runtime_constant::RuntimeConstant,
 };
 
-/// Tries to split the given constraint into a list of equivalent constraints.
+/// Tries to split the given algebraic constraint into a list of equivalent
+/// algebraic constraints.
 /// This is the case for example if the variables in this expression can
 /// be split into different bit areas.
+/// The general strategy is to find an offset and a multiplier such that
+/// the equation is equivalent to an equation in the integers,
+/// and then apply a modulo operation to find independent parts.
 pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     constraint: &AlgebraicConstraint<&GroupedExpression<T, V>>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
@@ -38,15 +42,18 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         return None;
     }
 
-    // The original constraint is equivalent to `sum of components + constant`
+    // The original constraint is equivalent to `sum of components + constant = 0`
 
-    // Now try to split out each component in turn.
+    // Now try to split out each component in turn, modifying `components`
+    // and `constant` for every successful split.
     let mut extracted_parts = vec![];
     for index in 0..components.len() {
         let candidate = &components[index];
         let rest = components
             .iter()
             .enumerate()
+            // Filter out the candidate itself and all zero components
+            // because we set split components to zero when we extract them.
             .filter(|(i, component)| *i != index && !component.is_zero())
             .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
@@ -64,9 +71,9 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
                 candidate.expr.clone(),
                 GroupedExpression::from_number(solution),
             ));
-            // Add `solution * candidate.coeff - candidate` (which is zero) to our expression
-            // by replacing the component by zero and adding `solution * candidate.coeff` to the
-            // constant.
+            // We remove the candidate (`candidate.coeff * candidate.expr`) from the expression.
+            // To balance this out, we add `candidate.coeff * candidate.expr = candidate.coeff * solution`
+            // to the constant.
             constant += solution * candidate.coeff;
             components[index] = Zero::zero();
         }
@@ -103,6 +110,7 @@ fn group_components_by_absolute_coefficients<
 
 /// If this returns `Some(x)`, then `x` is the only valid value for `expr` in the equation
 /// `expr + rest + constant = 0`.
+/// It does not make assumptions about its inputs.
 fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     expr: &GroupedExpression<T, V>,
     rest: Vec<Component<T, V>>,
@@ -129,44 +137,74 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         .map(|comp| GroupedExpression::from(comp / smallest_coeff))
         .sum();
 
-    // rc(a): [min1,max1]
-    // rc(b): [min2,max2]
-    // replace a by a' = a - min1,
-    // replace b by b' = b - min2
-    // a + k * b + c = 0 <=>
-    // a' + k * b' + (c + min1 + k * min2) = 0 <=>
-    // a' + k * b'= -(c + min1 + k * min2)
-    // assume (max1 - min1) + k * (max2 - min2) < P
-    // compute c' = -(c + min1 + k * min2) mod P (as a non-negative number)
-    // Then the following equation is true in the integers:
-    // a' + k * b' = c'
-    // then apply mod: a' % k = c' % k
+    // Normalize the constraint by shifting by the minima of the range constraints
+    // (note that once we find the solution, we need to un-do the shift).
+    // expr := expr - expr_rc.min
+    // rest := rest - rest_rc.min
+    // constant := constant + expr_rc.min + smallest_coeff * rest_rc.min
+    let expr_shift = expr.range_constraint(range_constraints).range().0;
+    let rest_shift = rest.range_constraint(range_constraints).range().0;
+    let expr = expr - &GroupedExpression::from_number(expr_shift);
+    let rest = rest - GroupedExpression::from_number(rest_shift);
+    let constant = constant + expr_shift + smallest_coeff * rest_shift;
 
-    // TODO this ignores large fields.
-    let modulus = T::FieldType::modulus().try_into_u64()?;
+    // rc(expr): [0,max_expr]
+    // rc(rest): [0,max_rest]
+    // If max_expr + k * max_rest < P, then we can translate the equation to the natural numbers:
+    // expr + k * rest = (-constant) % modulus
 
-    let candidate_rc = expr.range_constraint(range_constraints);
+    // TODO this does not work for large fields.
+    let expr_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
-    if (candidate_rc.range_width().to_arbitrary_integer() - 1)
-        + smallest_coeff.to_arbitrary_integer() * (rest_rc.range_width().to_arbitrary_integer() - 1)
-        >= modulus.into()
+    if !expr_rc.range().0.is_zero() || !rest_rc.range().0.is_zero() {
+        // The range constraints were unconstrained to begin with.
+        return None;
+    }
+
+    let max_expr = expr_rc.range().1;
+    let max_rest = rest_rc.range().1;
+
+    // Evaluate `expr + smallest_coeff * rest` for the largest possible value
+    // and see if it wraps around in the field.
+    if max_expr.to_arbitrary_integer()
+        + smallest_coeff.to_arbitrary_integer() * max_rest.to_arbitrary_integer()
+        >= T::FieldType::modulus().to_arbitrary_integer()
     {
         return None;
     }
-    // Now we know that the equation can be translated to the natural numbers
-    // by shifting by the minima.
-    let expr = expr - &GroupedExpression::from_number(candidate_rc.range().0);
-    let constant = constant + candidate_rc.range().0 + smallest_coeff * rest_rc.range().0;
+    // It does not wrap around, so we know that the equation can be translated to the
+    // natural numbers:
+    // expr + smallest_coeff * rest = (-constant) % modulus
 
-    expr.range_constraint(range_constraints)
-        .has_unique_modular_solution(
-            T::FieldType::from(
-                (-constant).to_integer().try_into_u64().unwrap()
-                    % smallest_coeff.to_integer().try_into_u64().unwrap(),
-            ),
-            smallest_coeff,
-        )
-        .map(|s| s + candidate_rc.range().0)
+    // Next, we apply `x -> x % smallest_coeff` to both sides of the equation to get
+    // expr % smallest_coeff = ((-constant) % modulus) % smallest_coeff
+    // Note that at this point, we only get an implication, not an equivalence,
+    // but if the range constraints of `expr` only allow a unique solution,
+    // we it still holds unconditionally.
+
+    if max_expr.to_integer() >= smallest_coeff.to_integer() + smallest_coeff.to_integer() {
+        // In this case, there are always at least two solutions (ignoring masks and other
+        // constraints).
+        return None;
+    }
+
+    let rhs = T::FieldType::from(
+        (-constant).to_integer().try_into_u64().unwrap()
+            % smallest_coeff.to_integer().try_into_u64().unwrap(),
+    );
+
+    // Now we try `rhs`, `rhs + smallest_coeff`, `rhs + 2 * smallest_coeff`, ...
+    // But because of the check above, we can stop at `2 * smallest_coeff`.
+    let solution = (0..=2)
+        .map(|i| rhs + T::FieldType::from(i) * smallest_coeff)
+        .filter(|candidate| expr_rc.allows_value(*candidate))
+        .exactly_one()
+        .ok()?;
+
+    // There is exactly one solution to the equation
+    // `expr % smallest_coeff = rhs`.
+    // Now we translate this back to the un-shifted expression.
+    Some(solution + expr_shift)
 }
 
 fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(

@@ -466,10 +466,9 @@ where
 
     /// Removes the next item from the queue and returns it.
     pub fn pop_front<'a>(&'a mut self) -> Option<ConstraintRef<'a, T, V>> {
-        self.queue.pop_front().map(|item| {
-            //println!("Item: {}", item.flat_id() / 2);
-            item.to_constraint_ref(&self.constraint_system.constraint_system)
-        })
+        self.queue
+            .pop_front()
+            .map(|item| item.to_constraint_ref(&self.constraint_system.constraint_system))
     }
 
     /// Notifies the system that a variable has been updated and causes all constraints

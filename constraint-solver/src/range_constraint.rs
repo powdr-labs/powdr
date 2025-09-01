@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::{cmp, ops};
 
-use itertools::Itertools;
 use num_traits::Zero;
 
 use powdr_number::{log2_exact, FieldElement, LargeInt};
@@ -108,63 +107,6 @@ impl<T: FieldElement> RangeConstraint<T> {
         };
         let in_mask = v.to_integer() & self.mask == v.to_integer();
         in_range && in_mask
-    }
-
-    /// Returns `Some(x)` if `x` is the only value in the set of values
-    /// allowed by the range constraint such that (in the natural numbers)
-    /// `x = offset (mod modulus)`.
-    /// In other words, there is a unique integer `k` and a unique
-    /// integer `x` in the allowed values seen as integers such that
-    /// `offset = k * modulus + x`.
-    pub fn has_unique_modular_solution(&self, offset: T, modulus: T) -> Option<T> {
-        // println!(
-        //     "has_unique_modular_solution: self = {self}, offset = {}, modulus = {}",
-        //     offset, modulus
-        // );
-        // If the modulus is larger than half the field, the mapping to integers
-        // is not obvious. Also, if the number of values in the range constraint
-        // is at least two times the modulus, there are always at least to solutions.
-        if self.range_width() >= modulus.to_integer() + modulus.to_integer() {
-            return None;
-        }
-        // if !modulus.is_in_lower_half()
-        //     || self.range_width() >= modulus.to_integer() + modulus.to_integer()
-        // {
-        //     return None;
-        // }
-        // if !offset.is_in_lower_half() {
-        //     if (modulus + offset).is_in_lower_half() {
-        //         //println!("Running negated");
-        //         return self.has_unique_modular_solution(modulus + offset, modulus);
-        //     } else {
-        //         // TODO this should still be solvable.
-        //         return None;
-        //     }
-        // }
-        // This routine is essentially only implemented for fields that fit 64 bits.
-        let modulus = modulus.to_integer().try_into_u64()?;
-        let offset = offset.to_integer().try_into_u64()?;
-        let offset = offset % modulus;
-        //println!("Normalized offset = {offset}");
-        assert!(self.min.is_zero());
-
-        let first_candidate = T::from(offset);
-        /*if self.min.is_in_lower_half() && self.min <= self.max {
-            let min = self.min.to_integer().try_into_u64()?;
-            T::from(offset + (min / modulus) * modulus)
-        } else if (-self.min).is_in_lower_half() && self.min > self.max {
-            panic!();
-            // let min = (-self.min).to_integer().try_into_u64()?;
-            // T::from(offset) - T::from((min / modulus) * modulus) - T::from(modulus)
-        } else {
-            panic!();
-            //            return None;
-        };*/
-        (0..3)
-            .map(|i| first_candidate + T::from(i * modulus))
-            .filter(|x| self.allows_value(*x))
-            .exactly_one()
-            .ok()
     }
 
     /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
