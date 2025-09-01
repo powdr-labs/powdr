@@ -1,12 +1,13 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
-pub use blocks::{pgo_config, BasicBlock, PgoConfig, PgoType};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -21,7 +22,6 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 pub mod adapter;
-mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -29,11 +29,15 @@ pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
+pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
+pub mod pgo;
 pub mod powdr;
+pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
 #[derive(Clone)]
@@ -93,7 +97,14 @@ impl<T: Display> Display for SymbolicConstraint<T> {
 
 impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     fn from(expr: AlgebraicExpression<T>) -> Self {
-        SymbolicConstraint { expr }
+        let expr = match expr {
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: AlgebraicUnaryOperator::Minus,
+                expr,
+            }) => *expr, // Remove the negation at the outside.
+            other => other,
+        };
+        Self { expr }
     }
 }
 
@@ -181,9 +192,11 @@ impl<T: Display> Display for SymbolicMachine<T> {
 
 impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
+        let main_columns = self.main_columns().sorted().collect_vec();
         let mut output = format!(
-            "// Symbolic machine using {} unique main columns\n",
-            self.main_columns().count()
+            "Symbolic machine using {} unique main columns:\n  {}\n",
+            main_columns.len(),
+            main_columns.iter().join("\n  ")
         );
         let bus_interactions_by_bus = self
             .bus_interactions
@@ -318,11 +331,21 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let start = std::time::Instant::now();
+
     let (machine, subs) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
+
+    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    metrics::counter!("before_opt_cols", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_constraints", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_interactions", &labels)
+        .absolute(machine.unique_references().count() as u64);
 
     let machine = optimizer::optimize::<A>(
         machine,
@@ -333,6 +356,13 @@ pub fn build<A: Adapter>(
 
     // add guards to constraints that are not satisfied by zeroes
     let machine = add_guards(machine);
+
+    metrics::counter!("after_opt_cols", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_constraints", &labels)
+        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_interactions", &labels)
+        .absolute(machine.unique_references().count() as u64);
 
     let machine = convert_machine(machine, &A::into_field);
 
@@ -352,6 +382,8 @@ pub fn build<A: Adapter>(
         let writer = BufWriter::new(file);
         serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
     }
+
+    metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
 }

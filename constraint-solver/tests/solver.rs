@@ -72,10 +72,7 @@ fn assert_expected_state(
 #[test]
 fn single_variable() {
     assert_solve_result(
-        ConstraintSystem {
-            algebraic_constraints: vec![var("x") - constant(5)],
-            bus_interactions: vec![],
-        },
+        ConstraintSystem::default().with_constraints(vec![var("x") - constant(5)]),
         DefaultBusInteractionHandler::default(),
         vec![("x", 5.into())],
     );
@@ -83,17 +80,14 @@ fn single_variable() {
 
 #[test]
 fn concretely_solvable() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
-            var("a") - constant(2),
-            var("b") - constant(3),
-            // c = a * b = 6
-            var("c") - var("a") * var("b"),
-            // d = c * 4 - a = 22
-            var("d") - (var("c") * constant(4) - var("a")),
-        ],
-        bus_interactions: vec![],
-    };
+    let constraint_system = ConstraintSystem::default().with_constraints(vec![
+        var("a") - constant(2),
+        var("b") - constant(3),
+        // c = a * b = 6
+        var("c") - var("a") * var("b"),
+        // d = c * 4 - a = 22
+        var("d") - (var("c") * constant(4) - var("a")),
+    ]);
     assert_solve_result(
         constraint_system,
         DefaultBusInteractionHandler::default(),
@@ -108,19 +102,16 @@ fn concretely_solvable() {
 
 #[test]
 fn bit_decomposition() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
-            // 4 bit-constrained variables:
-            var("b0") * (var("b0") - constant(1)),
-            var("b1") * (var("b1") - constant(1)),
-            var("b2") * (var("b2") - constant(1)),
-            var("b3") * (var("b3") - constant(1)),
-            // Bit-decomposition of a concrete value:
-            var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
-                - constant(0b1110),
-        ],
-        bus_interactions: vec![],
-    };
+    let constraint_system = ConstraintSystem::default().with_constraints(vec![
+        // 4 bit-constrained variables:
+        var("b0") * (var("b0") - constant(1)),
+        var("b1") * (var("b1") - constant(1)),
+        var("b2") * (var("b2") - constant(1)),
+        var("b3") * (var("b3") - constant(1)),
+        // Bit-decomposition of a concrete value:
+        var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
+            - constant(0b1110),
+    ]);
 
     assert_solve_result(
         constraint_system,
@@ -205,20 +196,21 @@ fn send(
 
 #[test]
 fn byte_decomposition() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::default()
+        .with_constraints(vec![
             // Byte-decomposition of a concrete value:
             var("b0")
                 + var("b1") * constant(1 << 8)
                 + var("b2") * constant(1 << 16)
                 + var("b3") * constant(1 << 24)
                 - constant(0xabcdef12),
-        ],
-        // Byte range constraints on b0..3
-        bus_interactions: (0..4)
-            .map(|i| send(BYTE_BUS_ID, vec![var(format!("b{i}").leak())]))
-            .collect(),
-    };
+        ])
+        .with_bus_interactions(
+            // Byte range constraints on b0..3
+            (0..4)
+                .map(|i| send(BYTE_BUS_ID, vec![var(format!("b{i}").leak())]))
+                .collect(),
+        );
 
     assert_solve_result(
         constraint_system,
@@ -234,17 +226,16 @@ fn byte_decomposition() {
 
 #[test]
 fn xor() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::default()
+        .with_constraints(vec![
             // a and b are the byte decomposition of 0xa00b
             // Note that solving this requires range constraints on a and b
             constant(1 << 8) * var("a") + var("b") - constant(0xa00b),
-        ],
+        ])
         // Send (a, b, c) to the XOR table.
         // Initially, this should return the required range constraints for a and b.
         // Once a and b are known concretely, c can be computed concretely as well.
-        bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
-    };
+        .with_bus_interactions(vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])]);
 
     assert_solve_result(
         constraint_system,
@@ -255,16 +246,13 @@ fn xor() {
 
 #[test]
 fn xor_invalid() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::default()
+        .with_constraints(vec![
             var("a") - constant(0xa0),
             var("b") - constant(0x0b),
             var("c") - constant(0xff),
-        ],
-        // Send (a, b, c) to the XOR table.
-        // Note that this violates the bus rules, because 0xa0 ^ 0x0b != 0xff.
-        bus_interactions: vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])],
-    };
+        ])
+        .with_bus_interactions(vec![send(XOR_BUS_ID, vec![var("a"), var("b"), var("c")])]);
 
     match solve_system(constraint_system, TestBusInteractionHandler) {
         Err(e) => assert_eq!(e, Error::BusInteractionError),
@@ -280,18 +268,17 @@ fn add_with_carry() {
     // A or A - 256, depending on whether the value of A is between
     // 0 and 255 or not.
     // A is the result of an addition with carry.
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
+    let constraint_system = ConstraintSystem::default()
+        .with_constraints(vec![
             (var("X") * constant(7) - var("A") * constant(7) + constant(256) * constant(7))
                 * (var("X") * constant(7) - var("A") * constant(7)),
             (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
-        ],
-        // Byte range constraints on X and Y
-        bus_interactions: vec![
+        ])
+        .with_bus_interactions(vec![
+            // Byte range constraints on X and Y
             send(BYTE_BUS_ID, vec![var("X")]),
             send(BYTE_BUS_ID, vec![var("Y")]),
-        ],
-    };
+        ]);
 
     let final_state = solve_system(constraint_system.clone(), TestBusInteractionHandler).unwrap();
     let final_state = apply_substitutions(constraint_system, final_state)
@@ -301,31 +288,28 @@ fn add_with_carry() {
         .to_string();
     assert_eq!(
         final_state,
-        "(7 * A - 7 * X - 1792) * (7 * A - 7 * X)
-(A - X - 256) * (A - X)"
+        "(7 * A - 7 * X - 1792) * (7 * A - 7 * X) = 0
+(A - X - 256) * (A - X) = 0"
     );
 }
 
 #[test]
 fn one_hot_flags() {
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
-            // Boolean flags
-            var("flag0") * (var("flag0") - constant(1)),
-            var("flag1") * (var("flag1") - constant(1)),
-            var("flag2") * (var("flag2") - constant(1)),
-            var("flag3") * (var("flag3") - constant(1)),
-            // Exactly one flag is active
-            var("flag0") + var("flag1") + var("flag2") + var("flag3") - constant(1),
-            // Flag 2 is active
-            var("flag0") * constant(0)
-                + var("flag1") * constant(1)
-                + var("flag2") * constant(2)
-                + var("flag3") * constant(3)
-                - constant(2),
-        ],
-        bus_interactions: vec![],
-    };
+    let constraint_system = ConstraintSystem::default().with_constraints(vec![
+        // Boolean flags
+        var("flag0") * (var("flag0") - constant(1)),
+        var("flag1") * (var("flag1") - constant(1)),
+        var("flag2") * (var("flag2") - constant(1)),
+        var("flag3") * (var("flag3") - constant(1)),
+        // Exactly one flag is active
+        var("flag0") + var("flag1") + var("flag2") + var("flag3") - constant(1),
+        // Flag 2 is active
+        var("flag0") * constant(0)
+            + var("flag1") * constant(1)
+            + var("flag2") * constant(2)
+            + var("flag3") * constant(3)
+            - constant(2),
+    ]);
 
     // This can be solved via backtracking: There are 16 possible assignments
     // for the 4 flags, but only 1 of them satisfies all the constraints.
@@ -352,24 +336,21 @@ fn binary_flags() {
             .map(move |j| bit_to_expression(i & (1 << j) != 0, var(format!("flag{j}").leak())))
             .fold(constant(1), |acc, x| acc * x)
     };
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
-            // Boolean flags
-            var("flag0") * (var("flag0") - constant(1)),
-            var("flag1") * (var("flag1") - constant(1)),
-            var("flag2") * (var("flag2") - constant(1)),
-            index_to_expression(0b000) * constant(101)
-                + index_to_expression(0b001) * constant(102)
-                + index_to_expression(0b010) * constant(103)
-                + index_to_expression(0b011) * constant(104)
-                + index_to_expression(0b100) * constant(105)
-                + index_to_expression(0b101) * constant(106)
-                + index_to_expression(0b110) * constant(107)
-                + index_to_expression(0b111) * constant(108)
-                - constant(104),
-        ],
-        bus_interactions: vec![],
-    };
+    let constraint_system = ConstraintSystem::default().with_constraints(vec![
+        // Boolean flags
+        var("flag0") * (var("flag0") - constant(1)),
+        var("flag1") * (var("flag1") - constant(1)),
+        var("flag2") * (var("flag2") - constant(1)),
+        index_to_expression(0b000) * constant(101)
+            + index_to_expression(0b001) * constant(102)
+            + index_to_expression(0b010) * constant(103)
+            + index_to_expression(0b011) * constant(104)
+            + index_to_expression(0b100) * constant(105)
+            + index_to_expression(0b101) * constant(106)
+            + index_to_expression(0b110) * constant(107)
+            + index_to_expression(0b111) * constant(108)
+            - constant(104),
+    ]);
 
     assert_solve_result(
         constraint_system,
@@ -411,43 +392,62 @@ fn ternary_flags() {
         var("flag1") * var("flag3"),
         var("flag2") * var("flag3"),
     ];
-    let constraint_system = ConstraintSystem {
-        algebraic_constraints: vec![
-            // All flags are either 0, 1, or 2.
-            var("flag0") * (var("flag0") - constant(1)) * (var("flag0") - constant(2)),
-            var("flag1") * (var("flag1") - constant(1)) * (var("flag1") - constant(2)),
-            var("flag2") * (var("flag2") - constant(1)) * (var("flag2") - constant(2)),
-            var("flag3") * (var("flag3") - constant(1)) * (var("flag3") - constant(2)),
-            // The sum of flags is either 1 or 2.
-            (sum.clone() - constant(1)) * (sum.clone() - constant(2)),
-            // Of the expressions in `cases`, exactly one must evaluate to 1.
-            // From this constraint, it can be derived that it must be one of case 3, 4, 5, or 6.
-            cases[0].clone() * constant(1)
-                + (cases[1].clone() + cases[2].clone()) * constant(2)
-                + (cases[3].clone() + cases[4].clone() + cases[5].clone() + cases[6].clone())
-                    * constant(3)
-                + cases[7].clone() * constant(4)
-                + (cases[8].clone() + cases[9].clone()) * constant(5)
-                + (cases[10].clone() + cases[11].clone() + cases[12].clone() + cases[13].clone())
-                    * constant(6)
-                - constant(3),
-            // We don't know which case is active, but for any of the cases that it could be,
-            // is_load would be 1, so we should be able to solve for it.
-            var("is_load")
-                - (cases[0].clone()
-                    + cases[1].clone()
-                    + cases[2].clone()
-                    + cases[3].clone()
-                    + cases[4].clone()
-                    + cases[5].clone()
-                    + cases[6].clone()),
-        ],
-        bus_interactions: vec![],
-    };
+    let constraint_system = ConstraintSystem::default().with_constraints(vec![
+        // All flags are either 0, 1, or 2.
+        var("flag0") * (var("flag0") - constant(1)) * (var("flag0") - constant(2)),
+        var("flag1") * (var("flag1") - constant(1)) * (var("flag1") - constant(2)),
+        var("flag2") * (var("flag2") - constant(1)) * (var("flag2") - constant(2)),
+        var("flag3") * (var("flag3") - constant(1)) * (var("flag3") - constant(2)),
+        // The sum of flags is either 1 or 2.
+        (sum.clone() - constant(1)) * (sum.clone() - constant(2)),
+        // Of the expressions in `cases`, exactly one must evaluate to 1.
+        // From this constraint, it can be derived that it must be one of case 3, 4, 5, or 6.
+        cases[0].clone() * constant(1)
+            + (cases[1].clone() + cases[2].clone()) * constant(2)
+            + (cases[3].clone() + cases[4].clone() + cases[5].clone() + cases[6].clone())
+                * constant(3)
+            + cases[7].clone() * constant(4)
+            + (cases[8].clone() + cases[9].clone()) * constant(5)
+            + (cases[10].clone() + cases[11].clone() + cases[12].clone() + cases[13].clone())
+                * constant(6)
+            - constant(3),
+        // We don't know which case is active, but for any of the cases that it could be,
+        // is_load would be 1, so we should be able to solve for it.
+        var("is_load")
+            - (cases[0].clone()
+                + cases[1].clone()
+                + cases[2].clone()
+                + cases[3].clone()
+                + cases[4].clone()
+                + cases[5].clone()
+                + cases[6].clone()),
+    ]);
 
     assert_solve_result(
         constraint_system,
         DefaultBusInteractionHandler::default(),
         vec![("is_load", 1.into())],
+    );
+}
+
+#[test]
+fn bit_decomposition_bug() {
+    let algebraic_constraints = vec![
+        var("cmp_result_0") * (var("cmp_result_0") - constant(1)),
+        var("imm_0") - constant(8),
+        var("cmp_result_0") * var("imm_0")
+            - constant(4) * var("cmp_result_0")
+            - var("BusInteractionField(10, 2)")
+            + constant(4),
+        (var("BusInteractionField(10, 2)") - constant(4))
+            * (var("BusInteractionField(10, 2)") - constant(8)),
+    ];
+    let constraint_system = ConstraintSystem::default().with_constraints(algebraic_constraints);
+    // The solver used to infer more assignments due to a bug
+    // in the bit decomposition logic.
+    assert_solve_result(
+        constraint_system,
+        DefaultBusInteractionHandler::default(),
+        vec![("imm_0", 8.into())],
     );
 }

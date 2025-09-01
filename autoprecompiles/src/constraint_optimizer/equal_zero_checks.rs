@@ -3,10 +3,9 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use num_traits::One;
-use powdr_constraint_solver::constraint_system::{BusInteractionHandler, ConstraintSystem};
+use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, BusInteractionHandler};
 use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
-use powdr_constraint_solver::journaling_constraint_system::JournalingConstraintSystem;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::{self, Solver, VariableAssignment};
 use powdr_number::FieldElement;
@@ -17,14 +16,12 @@ use crate::constraint_optimizer::{variables_in_stateful_bus_interactions, IsBusS
 /// Tries to find variables that represent a zero check on a conjunction of other variables
 /// and replaces the involved constraints by a more efficient version.
 pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: JournalingConstraintSystem<T, V>,
+    mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    new_var: &mut impl FnMut() -> V,
-) -> JournalingConstraintSystem<T, V> {
+) -> IndexedConstraintSystem<T, V> {
     let binary_range_constraint = RangeConstraint::from_mask(1);
     let binary_variables = constraint_system
-        .indexed_system()
         .unknown_variables()
         .filter(|v| solver.get(v) == binary_range_constraint)
         .cloned()
@@ -35,7 +32,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
                 &mut constraint_system,
                 bus_interaction_handler.clone(),
                 solver,
-                new_var,
                 var.clone(),
                 value,
             );
@@ -45,15 +41,14 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
 }
 
 fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &mut JournalingConstraintSystem<T, V>,
+    constraint_system: &mut IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
     rc: &impl RangeConstraintProvider<T, V>,
-    new_var: &mut impl FnMut() -> V,
     output: V,
     value: T,
 ) {
     let Ok(solution) = solve_with_assignments(
-        constraint_system.indexed_system(),
+        constraint_system,
         bus_interaction_handler.clone(),
         [(output.clone(), value)],
     ) else {
@@ -66,7 +61,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // We know: if `var = value`, then `inputs` are all zero.
     // Now check that `var == 1 - value` is inconsistent with `inputs` all being zero.
     if solve_with_assignments(
-        constraint_system.indexed_system(),
+        constraint_system,
         bus_interaction_handler.clone(),
         inputs
             .iter()
@@ -104,7 +99,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
 
     // Let's verify the condition again.
     if solve_with_assignments(
-        constraint_system.indexed_system(),
+        constraint_system,
         bus_interaction_handler.clone(),
         inputs
             .iter()
@@ -185,6 +180,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             .any(|var| variables_to_remove.contains(var))
     });
 
+    let new_var = || todo!();
+
     // New we build the more efficient version of the function.
     let output_expr = GroupedExpression::from_unknown_variable(output.clone());
     let output_expr = if value == T::from(1) {
@@ -202,18 +199,18 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         .unwrap();
     let sum_inv = GroupedExpression::from_unknown_variable(new_var());
     let new_constraints = vec![
-        output_expr.clone() * sum_of_inputs.clone(),
-        output_expr - (GroupedExpression::one() - sum_inv.clone() * sum_of_inputs),
+        AlgebraicConstraint::assert_zero(output_expr.clone() * sum_of_inputs.clone()),
+        AlgebraicConstraint::assert_eq(
+            output_expr,
+            GroupedExpression::one() - sum_inv.clone() * sum_of_inputs,
+        ),
     ];
-    constraint_system.extend(ConstraintSystem {
-        algebraic_constraints: new_constraints,
-        bus_interactions: vec![],
-    });
+    constraint_system.add_algebraic_constraints(new_constraints);
 
     // Verify that the modified system still has the same property (optional)
 
     let Ok(solution) = solve_with_assignments(
-        constraint_system.indexed_system(),
+        constraint_system,
         bus_interaction_handler.clone(),
         [(output.clone(), value)],
     ) else {
@@ -223,7 +220,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     assert!(inputs.iter().all(|v| inputs_after_modification.contains(v)));
 
     assert!(solve_with_assignments(
-        constraint_system.indexed_system(),
+        constraint_system,
         bus_interaction_handler.clone(),
         inputs
             .iter()

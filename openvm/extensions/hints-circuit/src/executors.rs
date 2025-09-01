@@ -140,7 +140,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
             );
         }
         let elem = field10x26_k256::FieldElement10x26(elem);
-        let inv = elem.invert();
+        let inv = elem.invert().normalize();
         // okay to transmute in the opposite direction
         let inv_bytes: [u8; FIELD10X26_BYTES] = unsafe { std::mem::transmute(inv.0) };
         streams.hint_stream = inv_bytes
@@ -151,6 +151,11 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
         Ok(())
     }
 }
+
+/// Pre-defined non-quadratic residue for k256.
+/// The same value should be used by the guest to check the non-square case.
+const K256_NON_QUADRATIC_RESIDUE: field10x26_k256::FieldElement10x26 =
+    field10x26_k256::FieldElement10x26([3, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
 /// Takes as input a pointer to the inner representation of a k256 coordinate field element (in 32-bit architectures).
 /// If the number is square, sets the hint an u32 of value one, followed by a square root in the same inner representation.
@@ -205,11 +210,18 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
                 .map(|b| F::from_canonical_u8(b))
                 .collect();
         } else {
-            // no square root, return a 0
+            // Number is not square.
+            // Find the square root of the number times the predefined non-quadratic residue
+            let res = (elem.mul(&K256_NON_QUADRATIC_RESIDUE)).sqrt().unwrap();
+            let bytes: [u8; FIELD10X26_BYTES] = unsafe {
+                // safe to transmute into u8 array
+                std::mem::transmute(res.0)
+            };
             streams.hint_stream = 0u32
-                .to_le_bytes()
-                .map(|b| F::from_canonical_u8(b))
+                .to_le_bytes() // indicate number is not square
                 .into_iter()
+                .chain(bytes)
+                .map(|b| F::from_canonical_u8(b))
                 .collect();
         }
 

@@ -128,6 +128,8 @@ where
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
         let width = self.trace_width();
+        let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
+        metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
         let trace = self.executor.generate_witness::<SC>(
             &self.air.column_index_by_poly_id,
             &self.air.machine.bus_interactions,

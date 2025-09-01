@@ -9,7 +9,7 @@ use bitvec::vec::BitVec;
 use itertools::Itertools;
 
 use crate::{
-    constraint_system::{BusInteraction, ConstraintRef, ConstraintSystem},
+    constraint_system::{AlgebraicConstraint, BusInteraction, ConstraintRef, ConstraintSystem},
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
 };
@@ -20,10 +20,32 @@ pub fn apply_substitutions<T: RuntimeConstant + Substitutable<V>, V: Hash + Eq +
     substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
 ) -> ConstraintSystem<T, V> {
     let mut indexed_constraint_system = IndexedConstraintSystem::from(constraint_system);
-    for (variable, substitution) in substitutions {
-        indexed_constraint_system.substitute_by_unknown(&variable, &substitution);
-    }
+    indexed_constraint_system.apply_substitutions(substitutions);
     indexed_constraint_system.into()
+}
+
+/// Applies multiple substitutions to all expressions in a sequence of expressions.
+pub fn apply_substitutions_to_expressions<
+    T: RuntimeConstant + Substitutable<V>,
+    V: Hash + Eq + Clone + Ord,
+>(
+    expressions: impl IntoIterator<Item = GroupedExpression<T, V>>,
+    substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
+) -> Vec<GroupedExpression<T, V>> {
+    apply_substitutions(
+        ConstraintSystem {
+            algebraic_constraints: expressions
+                .into_iter()
+                .map(AlgebraicConstraint::assert_zero)
+                .collect(),
+            bus_interactions: Vec::new(),
+        },
+        substitutions,
+    )
+    .algebraic_constraints
+    .into_iter()
+    .map(|constraint| constraint.expression)
+    .collect()
 }
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
@@ -90,9 +112,9 @@ impl ConstraintSystemItem {
         constraint_system: &'a ConstraintSystem<T, V>,
     ) -> ConstraintRef<'a, T, V> {
         match self {
-            ConstraintSystemItem::AlgebraicConstraint(i) => {
-                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[i])
-            }
+            ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
+                constraint_system.algebraic_constraints[i].as_ref(),
+            ),
             ConstraintSystemItem::BusInteraction(i) => {
                 ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
             }
@@ -131,7 +153,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         &self.constraint_system
     }
 
-    pub fn algebraic_constraints(&self) -> &[GroupedExpression<T, V>] {
+    pub fn algebraic_constraints(&self) -> &[AlgebraicConstraint<GroupedExpression<T, V>>] {
         &self.constraint_system.algebraic_constraints
     }
 
@@ -152,7 +174,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     /// Removes all constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
-        mut f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+        mut f: impl FnMut(&AlgebraicConstraint<GroupedExpression<T, V>>) -> bool,
     ) {
         retain(
             &mut self.constraint_system.algebraic_constraints,
@@ -223,11 +245,11 @@ fn retain<V, Item>(
     occurrences.retain(|_, occurrences| !occurrences.is_empty());
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Hash> IndexedConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
     /// Adds new algebraic constraints to the system.
     pub fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.extend(ConstraintSystem {
             algebraic_constraints: constraints.into_iter().collect(),
@@ -301,21 +323,13 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
         }
     }
 
-    pub fn apply_bus_field_assignment(
-        &mut self,
-        interaction_index: usize,
-        field_index: usize,
-        value: T::FieldType,
-    ) {
-        let bus_interaction = &mut self.constraint_system.bus_interactions[interaction_index];
-        let field = bus_interaction.fields_mut().nth(field_index).unwrap();
-        *field = GroupedExpression::from_number(value);
-    }
-
     /// Substitute an unknown variable by a GroupedExpression in the whole system.
     ///
     /// Note this does NOT work properly if the variable is used inside a
     /// known SymbolicExpression.
+    ///
+    /// It does not delete the occurrence of `variable` so that it can be used to check
+    /// which constraints it used to occur in.
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         let items = self
             .variable_occurrences
@@ -338,6 +352,17 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
                 .entry(var.clone())
                 .or_default()
                 .extend(items.iter().cloned());
+        }
+    }
+
+    /// Applies multiple substitutions to the constraint system in an efficient manner.
+    pub fn apply_substitutions(
+        &mut self,
+        substitutions: impl IntoIterator<Item = (V, GroupedExpression<T, V>)>,
+    ) {
+        // We do not track substitutions yet, but we could.
+        for (variable, substitution) in substitutions {
+            self.substitute_by_unknown(&variable, &substitution);
         }
     }
 }
@@ -382,7 +407,9 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
 ) {
     match item {
         ConstraintSystemItem::AlgebraicConstraint(i) => {
-            constraint_system.algebraic_constraints[i].substitute_by_known(variable, substitution);
+            constraint_system.algebraic_constraints[i]
+                .expression
+                .substitute_by_known(variable, substitution);
         }
         ConstraintSystemItem::BusInteraction(i) => {
             constraint_system.bus_interactions[i]
@@ -401,6 +428,7 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
     match item {
         ConstraintSystemItem::AlgebraicConstraint(i) => {
             constraint_system.algebraic_constraints[i]
+                .expression
                 .substitute_by_unknown(variable, substitution);
         }
         ConstraintSystemItem::BusInteraction(i) => {
@@ -463,6 +491,9 @@ where
 
     /// Substitutes a variable with a known value in the whole system.
     /// This function also updates the queue accordingly.
+    ///
+    /// It does not delete the occurrence of `variable` so that it can be used to check
+    /// which constraints it used to occur in.
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         self.constraint_system
             .substitute_by_unknown(variable, substitution);
@@ -471,7 +502,7 @@ where
 
     pub fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         let initial_len = self
             .constraint_system
@@ -505,7 +536,7 @@ where
 
     pub fn retain_algebraic_constraints(
         &mut self,
-        mut f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+        mut f: impl FnMut(&AlgebraicConstraint<GroupedExpression<T, V>>) -> bool,
     ) {
         self.constraint_system.retain_algebraic_constraints(&mut f);
         if !self.queue.queue.is_empty() {
@@ -615,23 +646,25 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
-            algebraic_constraints: vec![
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
                 y.clone() - z.clone(),
-            ],
-            bus_interactions: vec![BusInteraction {
+            ])
+            .with_bus_interactions(vec![BusInteraction {
                 bus_id: x,
                 payload: vec![y.clone(), z],
                 multiplicity: y,
-            }],
-        }
-        .into();
+            }])
+            .into();
 
         s.substitute_by_unknown(&"x", &Ge::from_unknown_variable("z"));
 
-        assert_eq!(format_system(&s), "y + z  |  0  |  y - z  |  z: y * [y, z]");
+        assert_eq!(
+            format_system(&s),
+            "y + z = 0  |  0 = 0  |  y - z = 0  |  z: y * [y, z]"
+        );
 
         s.substitute_by_unknown(
             &"z",
@@ -640,7 +673,7 @@ mod tests {
 
         assert_eq!(
             format_system(&s),
-            "x + y + 7  |  0  |  -(x - y + 7)  |  x + 7: y * [y, x + 7]"
+            "x + y + 7 = 0  |  0 = 0  |  -(x - y + 7) = 0  |  x + 7: y * [y, x + 7]"
         );
     }
 
@@ -650,13 +683,13 @@ mod tests {
         let x = Ge::from_unknown_variable("x");
         let y = Ge::from_unknown_variable("y");
         let z = Ge::from_unknown_variable("z");
-        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem {
-            algebraic_constraints: vec![
+        let mut s: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
                 x.clone() + y.clone(),
                 x.clone() - z.clone(),
                 y.clone() - z.clone(),
-            ],
-            bus_interactions: vec![
+            ])
+            .with_bus_interactions(vec![
                 BusInteraction {
                     bus_id: x.clone(),
                     payload: vec![y.clone(), z],
@@ -667,9 +700,8 @@ mod tests {
                     payload: vec![x.clone(), x.clone()],
                     multiplicity: x,
                 },
-            ],
-        }
-        .into();
+            ])
+            .into();
 
         s.retain_algebraic_constraints(|c| !c.referenced_unknown_variables().any(|v| *v == "y"));
         s.retain_bus_interactions(|b| {
@@ -697,7 +729,7 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_x, "x - z, x: x * [x, x]");
+        assert_eq!(items_with_x, "x - z = 0, x: x * [x, x]");
 
         let items_with_z = s
             .constraints_referencing_variables(["z"].into_iter())
@@ -714,6 +746,6 @@ mod tests {
             })
             .format(", ")
             .to_string();
-        assert_eq!(items_with_z, "x - z");
+        assert_eq!(items_with_z, "x - z = 0");
     }
 }

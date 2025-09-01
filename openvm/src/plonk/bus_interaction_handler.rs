@@ -3,9 +3,7 @@ use crate::{
     plonk::{Gate, NUMBER_OF_WITNESS_COLS},
 };
 use openvm_stark_backend::p3_field::PrimeField32;
-use powdr_autoprecompiles::bus_map::BusType::{
-    ExecutionBridge, Memory, OpenVmBitwiseLookup, Other, PcLookup,
-};
+use powdr_autoprecompiles::bus_map::BusType::{ExecutionBridge, Memory, Other, PcLookup};
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 
@@ -32,7 +30,7 @@ pub fn add_bus_to_plonk_circuit<F: PrimeField32>(
         Memory => {
             gates[0].q_memory = F::ONE;
         }
-        OpenVmBitwiseLookup => {
+        Other(OpenVmBusType::BitwiseLookup) => {
             gates[0].q_bitwise = F::ONE;
         }
         ExecutionBridge => {

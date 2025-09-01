@@ -52,7 +52,6 @@ serde = "1.0.217"
 derive_more = { version = "2.0.1", default-features = false, features = [
   "from",
 ] }
-strum = "0.26.3"
 itertools = "0.14.0"
 
 tracing = "0.1.40"
@@ -63,11 +62,13 @@ clap = { version = "^4.3", features = ["derive"] }
 log = "0.4.17"
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
 
+metrics = "0.23.0"
 toml = "0.8.14"
 
 rustc-demangle = "0.1.25"
 
 [dev-dependencies]
+flate2 = "1.1.2"
 test-log = "0.2.12"
 tempfile = "3.20.0"
 pretty_assertions = "1.4.0"

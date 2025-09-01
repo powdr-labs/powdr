@@ -6,7 +6,9 @@ APC advantage:
   - Bus interactions: 10 -> 2 (5.00x reduction)
   - Constraints: 9 -> 1 (9.00x reduction)
 
-// Symbolic machine using 2 unique main columns
+Symbolic machine using 2 unique main columns:
+  inner__from_state__timestamp_0
+  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, inner__from_state__timestamp_0]
