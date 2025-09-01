@@ -114,9 +114,9 @@ impl ConstraintSystemItem {
         constraint_system: &'a ConstraintSystem<T, V>,
     ) -> ConstraintRef<'a, T, V> {
         match self {
-            ConstraintSystemItem::AlgebraicConstraint(i) => {
-                ConstraintRef::AlgebraicConstraint(&constraint_system.algebraic_constraints[i])
-            }
+            ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
+                constraint_system.algebraic_constraints[i].as_ref(),
+            ),
             ConstraintSystemItem::BusInteraction(i) => {
                 ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
             }

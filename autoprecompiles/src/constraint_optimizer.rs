@@ -183,7 +183,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         .filter(|(variable, constraint)| match constraint {
             // Remove the algebraic constraint if we can solve for the variable.
             ConstraintRef::AlgebraicConstraint(constr) => {
-                can_always_be_zero_via_free_variable(constr, variable)
+                can_always_be_satisfied_via_free_variable(constr.clone(), variable)
             }
             ConstraintRef::BusInteraction(bus_interaction) => {
                 let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
@@ -239,18 +239,24 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     constraint_system
 }
 
-/// Returns true if the given expression can always be made to evaluate to 0 by setting the
+/// Returns true if the given constraint can always be made to be satisfied by setting the
 /// free variable, regardless of the values of other variables.
-fn can_always_be_zero_via_free_variable<T: FieldElement, V: Clone + Hash + Eq + Ord + Display>(
-    expression: &GroupedExpression<T, V>,
+fn can_always_be_satisfied_via_free_variable<
+    T: FieldElement,
+    V: Clone + Hash + Eq + Ord + Display,
+>(
+    constraint: AlgebraicConstraint<&GroupedExpression<T, V>>,
     free_variable: &V,
 ) -> bool {
-    if expression.try_solve_for(free_variable).is_some() {
+    if constraint.try_solve_for(free_variable).is_some() {
         true
-    } else if let Some((left, right)) = expression.try_as_single_product() {
+    } else if let Some((left, right)) = constraint.expression.try_as_single_product() {
         // If either `left` or `right` can be set to 0, the constraint is satisfied.
-        can_always_be_zero_via_free_variable(left, free_variable)
-            || can_always_be_zero_via_free_variable(right, free_variable)
+        can_always_be_satisfied_via_free_variable(AlgebraicConstraint::from(left), free_variable)
+            || can_always_be_satisfied_via_free_variable(
+                AlgebraicConstraint::from(right),
+                free_variable,
+            )
     } else {
         false
     }
@@ -359,7 +365,7 @@ fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display
         .algebraic_constraints()
         .enumerate()
         .map(|(i, c)| {
-            let factors = c.to_factors();
+            let factors = c.expression.to_factors();
             assert!(!factors.is_empty());
             for f in &factors {
                 constraints_by_factor
@@ -408,7 +414,7 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> JournalingConstraintSystem<P, V> {
     let mut constraint_to_add = vec![];
     constraint_system.retain_algebraic_constraints(|constraint| {
-        let factors = constraint.to_factors();
+        let factors = constraint.expression.to_factors();
         assert!(!factors.is_empty());
         let factor_count = factors.len();
         let unique_factors = factors.into_iter().unique().collect_vec();

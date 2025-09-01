@@ -261,7 +261,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
         constraints: constraint_system
             .algebraic_constraints
             .iter()
-            .map(|constraint| grouped_expression_to_algebraic(constraint).into())
+            .map(|constraint| grouped_expression_to_algebraic(&constraint.expression).into())
             .collect(),
         bus_interactions: constraint_system
             .bus_interactions
