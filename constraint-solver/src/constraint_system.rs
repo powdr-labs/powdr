@@ -194,7 +194,6 @@ impl<
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    // println!("Got rc {rc} for var {var} in expr {expr} with k = {k}");
                     (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
             })

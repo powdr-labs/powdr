@@ -10,7 +10,6 @@ use powdr_number::{FieldElement, LargeInt};
 use crate::{
     constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
-    range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
 };
 
@@ -130,11 +129,6 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         .map(|comp| GroupedExpression::from(comp / smallest_coeff))
         .sum();
 
-    // println!("Finding solution for:");
-    // println!("  expr = {}", expr);
-    // println!("  rest = ({rest}) * {smallest_coeff}",);
-    // println!("  constant = {}", constant);
-
     // rc(a): [min1,max1]
     // rc(b): [min2,max2]
     // replace a by a' = a - min1,
@@ -150,7 +144,6 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
 
     // TODO this ignores large fields.
     let modulus = T::FieldType::modulus().try_into_u64()?;
-    let full_range_width = RangeConstraint::<T::FieldType>::unconstrained().range_width();
 
     let candidate_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
@@ -163,7 +156,6 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // Now we know that the equation can be translated to the natural numbers
     // by shifting by the minima.
     let expr = expr - &GroupedExpression::from_number(candidate_rc.range().0);
-    let rest = rest - GroupedExpression::from_number(rest_rc.range().0);
     let constant = constant + candidate_rc.range().0 + smallest_coeff * rest_rc.range().0;
 
     expr.range_constraint(range_constraints)
@@ -439,7 +431,7 @@ l3 - 1 = 0"
     }
 
     #[test]
-    fn invalid_split() {
+    fn negated_and_unnegated() {
         // 7864320 * a__0_12 - bool_113 + 314572801
         // a__0_12 + 256 * bool_113 - 216
         let byte_rc = RangeConstraint::from_mask(0xffu32);
@@ -452,11 +444,16 @@ l3 - 1 = 0"
                 * GroupedExpression::from_number(BabyBearField::from(7864320))
                 - GroupedExpression::from_unknown_variable("bool_113")
                 + GroupedExpression::from_number(BabyBearField::from(314572801)));
-        assert!(try_split(expr1.clone(), &rcs).is_some());
-        let expr2 = -expr1;
-        assert!(try_split(expr2, &rcs).is_some());
 
-        // TODO assert that the result is the same
+        // Split `expr1` and `-expr1`, the result should be equivalent.
+        let first = try_split(expr1.clone(), &rcs)
+            .unwrap()
+            .into_iter()
+            .join(", ");
+        expect!["bool_113 = 0, -(a__0_12 - 216) = 0"].assert_eq(&first);
+        let expr2 = -expr1;
+        let second = try_split(expr2, &rcs).unwrap().into_iter().join(", ");
+        expect!["-(bool_113) = 0, a__0_12 - 216 = 0"].assert_eq(&second);
     }
 
     #[test]
@@ -477,7 +474,14 @@ l3 - 1 = 0"
                         * GroupedExpression::from_unknown_variable("c__0_3")
                         - GroupedExpression::from_unknown_variable("c__2_3"))
                 - GroupedExpression::from_number(BabyBearField::from(1226833928));
-        try_split(expr, &rcs).unwrap();
+        let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
+        expect!["-(c__1_3 - 248) = 0, c__0_3 - 157 = 0, -(c__2_3 - 30719) = 0"].assert_eq(&result);
+
+        let mut expr = expr;
+        expr.substitute_by_known(&"c__0_3", &BabyBearField::from(157));
+        expr.substitute_by_known(&"c__1_3", &BabyBearField::from(248));
+        expr.substitute_by_known(&"c__2_3", &BabyBearField::from(30719));
+        assert!(expr.is_zero());
     }
 
     #[test]
@@ -492,12 +496,12 @@ l3 - 1 = 0"
                 + GroupedExpression::from_number(BabyBearField::from(943718400))
                     * GroupedExpression::from_unknown_variable("a__0_0")
                 - GroupedExpression::from_number(BabyBearField::from(1069547521));
-        try_split(expr, &rcs).unwrap();
+        let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
+        expect!["bool_17 = 0, a__0_0 + 1 = 0"].assert_eq(&result);
     }
 
     #[test]
     fn split_at_boundary() {
-        // 2013265922 Cannot split because the ranges are too large: expr bool_103 in [0,1], rest to_pc_least_sig_bit_4 + 2 * to_pc_limbs__0_4 in [0,65535], smallest_coeff = 30720
         let bit_rc = RangeConstraint::from_mask(0x1u32);
         let limb_rc = RangeConstraint::from_mask(0x7fffu32);
         let rcs = [
@@ -514,7 +518,6 @@ l3 - 1 = 0"
                         + GroupedExpression::from_number(BabyBearField::from(2))
                             * GroupedExpression::from_unknown_variable("to_pc_limbs__0_4"))
                 - GroupedExpression::from_number(BabyBearField::from(30720 * 123 + 1));
-        println!("Expression: {expr}");
         let items = try_split(expr, &rcs).unwrap().iter().join(", ");
         assert_eq!(
             items,

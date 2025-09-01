@@ -374,10 +374,6 @@ where
                         .map_err(Error::AlgebraicSolverError)?
                         .effects;
                     if let Some(components) = try_split_constraint(&c, &self.range_constraints) {
-                        println!("Splitting constraint {c} into components:");
-                        for comp in &components {
-                            println!(" - {comp}");
-                        }
                         // TODO avoid adding constraints that already exist
                         self.constraint_system.add_algebraic_constraints(components);
                         progress |= true;
