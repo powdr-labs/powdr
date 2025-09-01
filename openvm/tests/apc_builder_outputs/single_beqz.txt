@@ -2,11 +2,11 @@ Instructions:
   BEQ 8 0 2 1 1
 
 APC advantage:
-  - Main columns: 26 -> 12 (2.17x reduction)
+  - Main columns: 26 -> 11 (2.36x reduction)
   - Bus interactions: 11 -> 10 (1.10x reduction)
-  - Constraints: 11 -> 8 (1.38x reduction)
+  - Constraints: 11 -> 6 (1.83x reduction)
 
-Symbolic machine using 12 unique main columns:
+Symbolic machine using 11 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -16,13 +16,12 @@ Symbolic machine using 12 unique main columns:
   a__1_0
   a__2_0
   a__3_0
-  cmp_result_0
   new_var_29
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
-mult=is_valid * 1, args=[4 - 2 * cmp_result_0, from_state__timestamp_0 + 2]
+mult=is_valid * 1, args=[2 * new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 2, from_state__timestamp_0 + 2]
 
 // Bus 1 (MEMORY):
 mult=is_valid * -1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
@@ -37,11 +36,9 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 
 // Algebraic constraints:
-cmp_result_0 * (cmp_result_0 - 1) = 0
-cmp_result_0 * a__0_0 = 0
-cmp_result_0 * a__1_0 = 0
-cmp_result_0 * a__2_0 = 0
-cmp_result_0 * a__3_0 = 0
-cmp_result_0 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
-new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + cmp_result_0 - 1 * is_valid = 0
+(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__0_0 = 0
+(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__1_0 = 0
+(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__2_0 = 0
+(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__3_0 = 0
+(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
 is_valid * (is_valid - 1) = 0

@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use num_traits::One;
 use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, BusInteractionHandler};
-use powdr_constraint_solver::grouped_expression::{GroupedExpression, RangeConstraintProvider};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::{self, Solver, VariableAssignment};
@@ -174,9 +174,14 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     }
 
     constraint_system.retain_algebraic_constraints(|constr| {
-        !constr
+        // Remove the constraint if it references a variable to remove
+        // or if it only references the output (which is fully determined
+        // by the algebraic constraints we will add).
+        let remove = constr
             .referenced_variables()
             .any(|var| variables_to_remove.contains(var))
+            || constr.referenced_variables().all(|v| v == &output);
+        !remove
     });
     constraint_system.retain_bus_interactions(|bus_interaction| {
         !bus_interaction
