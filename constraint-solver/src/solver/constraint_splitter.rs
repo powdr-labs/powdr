@@ -126,7 +126,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // We try to find some `k` such that the equation has the form
     // `expr + k * rest + constant = 0` and it is equivalent to
     // the same expression in the integers. Then we apply `x -> x % k` to the whole equation
-    // to obtain `expr % k + constant % k = 0` and then we hope that this has a unique solution.
+    // to obtain `expr % k + constant % k = 0`. Finally, we check if it has a unique solution.
 
     // GCD would be best, but we just try the smallest coefficient in `rest`.
     let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
