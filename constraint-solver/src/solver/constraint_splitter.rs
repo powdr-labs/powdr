@@ -31,8 +31,10 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     }
     let mut constant = constant.try_to_number()?;
 
-    // Group the linear part by absolute coefficients.
-    let mut components = group_components_by_absolute_coefficients(
+    // Turn the linear part into components ("coefficient * expression"),
+    // and combine components with the same coefficient, ending up with
+    // components of the form "coefficient * (var1 + var2 - var3)".
+    let mut components = group_components_by_coefficients(
         linear
             .map(|(var, coeff)| Component::try_from((var, coeff)).ok())
             .collect::<Option<Vec<_>>>()?,
@@ -88,13 +90,12 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     }
 }
 
-/// Groups a sequence of components (thought of as a sum) by absolute coefficients
+/// Groups a sequence of components (thought of as a sum) by coefficients
 /// so that its sum does not change.
+/// Before grouping, the components are normalized such that the coefficient is always
+/// in the lower half of the field (and the expression might be negated to compensate).
 /// The list is sorted by the coefficient.
-fn group_components_by_absolute_coefficients<
-    T: RuntimeConstant + Display,
-    V: Clone + Ord + Display,
->(
+fn group_components_by_coefficients<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     components: impl IntoIterator<Item = Component<T, V>>,
 ) -> impl Iterator<Item = Component<T, V>> {
     components
