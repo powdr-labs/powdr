@@ -264,7 +264,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> Component<T, V> {
         } else {
             Self {
                 coeff: -self.coeff,
-                expr: -self.expr.clone(),
+                expr: -self.expr,
             }
         }
     }
