@@ -154,7 +154,6 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // If max_expr + k * max_rest < P, then we can translate the equation to the natural numbers:
     // expr + k * rest = (-constant) % modulus
 
-    // TODO this does not work for large fields.
     let expr_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
     if !expr_rc.range().0.is_zero() || !rest_rc.range().0.is_zero() {
@@ -189,6 +188,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         return None;
     }
 
+    // TODO this does not work for fields that fit 64 bits.
     let rhs = T::FieldType::from(
         (-constant).to_integer().try_into_u64().unwrap()
             % smallest_coeff.to_integer().try_into_u64().unwrap(),
