@@ -549,8 +549,8 @@ mod pseudo_instruction_tests {
     }
 
     #[test]
-    fn failing_split() {
+    fn add_constant() {
         let program = [add(48, 0, 216, 0)];
-        assert_machine_output(program.to_vec(), "failing_split");
+        assert_machine_output(program.to_vec(), "add_constant");
     }
 }

@@ -499,7 +499,7 @@ l3 - 1 = 0"
     }
 
     #[test]
-    fn challenge() {
+    fn wrapping_1() {
         // -(c__1_3) + 256 * (30720 * c__0_3 - c__2_3) = 1226833928
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let rcs = [
@@ -527,7 +527,7 @@ l3 - 1 = 0"
     }
 
     #[test]
-    fn challenge2() {
+    fn wrapping_2() {
         // bool_17 + 943718400 * (a__0_0) = 1069547521
         let bit_rc = RangeConstraint::from_mask(0x1u32);
         let rcs = [("bool_17", bit_rc.clone()), ("a__0_0", bit_rc.clone())]
