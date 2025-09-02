@@ -49,7 +49,7 @@ pub struct OriginalAirs<F> {
 }
 
 impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
-    fn get_instruction_air(&self, instruction: &Instr<F>) -> Option<&SymbolicMachine<F>> {
+    fn get_instruction_air(&self, instruction: &Instr<F>) -> &SymbolicMachine<F> {
         self.opcode_to_air
             .get(&instruction.0.opcode)
             .and_then(|air_name| {
@@ -57,6 +57,7 @@ impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
                     .get(air_name)
                     .map(|(machine, _)| machine)
             })
+            .unwrap()
     }
 
     fn is_allowed(&self, instruction: &Instr<F>) -> bool {
@@ -67,9 +68,10 @@ impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
         branch_opcodes_set().contains(&instruction.0.opcode)
     }
 
-    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> Option<AirStats> {
+    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> AirStats {
         self.get_instruction_metrics(instruction.0.opcode)
             .map(|metrics| metrics.clone().into())
+            .unwrap()
     }
 }
 
