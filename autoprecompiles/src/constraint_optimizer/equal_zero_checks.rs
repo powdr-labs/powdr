@@ -2,16 +2,24 @@ use std::collections::{BTreeSet, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
+use itertools::Itertools;
 use num_traits::One;
-use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, BusInteractionHandler};
+use powdr_constraint_solver::constraint_system::{
+    AlgebraicConstraint, BusInteractionHandler, ConstraintSystem,
+};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
+use powdr_constraint_solver::indexed_constraint_system::{
+    apply_substitutions, IndexedConstraintSystem,
+};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::solver::{self, Solver, VariableAssignment};
+use powdr_constraint_solver::utils::get_all_possible_assignments;
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::reachability::reachable_variables_except_blocked;
-use crate::constraint_optimizer::{variables_in_stateful_bus_interactions, IsBusStateful};
+use crate::constraint_optimizer::{
+    remove_trivial_constraints, variables_in_stateful_bus_interactions, IsBusStateful,
+};
 
 /// Tries to find variables that represent a zero check on a conjunction of other variables
 /// and replaces the involved constraints by a more efficient version.
@@ -173,6 +181,10 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         }
     }
 
+    let mut isolated_system = ConstraintSystem {
+        algebraic_constraints: vec![],
+        bus_interactions: vec![],
+    };
     constraint_system.retain_algebraic_constraints(|constr| {
         // Remove the constraint if it references a variable to remove
         // or if it only references the output (which is fully determined
@@ -181,13 +193,30 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             .referenced_variables()
             .any(|var| variables_to_remove.contains(var))
             || constr.referenced_variables().all(|v| v == &output);
+        if remove {
+            isolated_system.algebraic_constraints.push(constr.clone());
+        }
         !remove
     });
     constraint_system.retain_bus_interactions(|bus_interaction| {
-        !bus_interaction
+        let remove = bus_interaction
             .referenced_variables()
-            .any(|var| variables_to_remove.contains(var))
+            .any(|var| variables_to_remove.contains(var));
+        if remove {
+            isolated_system
+                .bus_interactions
+                .push(bus_interaction.clone());
+        }
+        !remove
     });
+    check_redundancy(
+        &isolated_system,
+        &inputs,
+        &output,
+        value,
+        solver,
+        bus_interaction_handler.clone(),
+    );
 
     // New we build the more efficient version of the function.
     let output_expr = GroupedExpression::from_unknown_variable(output.clone());
@@ -236,6 +265,84 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             .chain([(output.clone(), T::from(1) - value)]),
     )
     .is_err());
+}
+
+fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    isolated_system: &ConstraintSystem<T, V>,
+    inputs: &BTreeSet<V>,
+    output: &V,
+    value: T,
+    original_solver: &mut impl Solver<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+) {
+    let mut booleans = isolated_system
+        .unknown_variables()
+        .filter(|v| {
+            let range = original_solver.get(v);
+            range == RangeConstraint::from_mask(1)
+        })
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    booleans.remove(output);
+    // TODO if we try the following:
+    //
+    println!("Checking\n-------------------------\n{isolated_system}--------------------");
+    println!("Booleans: {}", booleans.iter().format(", "));
+    // {
+    //     println!("All zero:");
+    //     let mut system = IndexedConstraintSystem::from(isolated_system.clone());
+    //     for var in inputs {
+    //         system.substitute_by_known(var, &T::from(0));
+    //     }
+    //     system.substitute_by_known(output, &value);
+
+    //     let solution =
+    //         solve_with_assignments(&system.clone().into(), bus_interaction_handler.clone(), [])
+    //             .unwrap();
+    //     let system = apply_substitutions(system.into(), solution);
+    //     let system = remove_trivial_constraints(system.into());
+    //     println!("{system}");
+    // }
+    for nonzero_index in 0..inputs.len() {
+        println!("===================================================\nv_{nonzero_index} > 0\n==============================");
+        let mut system = IndexedConstraintSystem::from(isolated_system.clone());
+        let nonzero_variable = inputs.iter().skip(nonzero_index).next().unwrap().clone();
+        // for var in inputs.iter().skip(1) {
+        //     system.substitute_by_known(var, &T::from(0));
+        // }
+        system.substitute_by_known(output, &(T::from(1) - value));
+        for assignment in get_all_possible_assignments(booleans.clone(), original_solver) {
+            // TODO It is OK if we find at least one assignment that is non-conflicting
+            // and leads to a trivial system and does not constrain the inputs
+            // beyond the provided range constraints.
+            let mut system = system.clone();
+            for (var, val) in assignment {
+                system.substitute_by_known(&var, &val);
+            }
+            let mut solver =
+                solver::new_solver(system.system().clone(), bus_interaction_handler.clone());
+            // TODO this range constraint does not work for all cases.
+            solver.add_range_constraint(
+                &nonzero_variable,
+                RangeConstraint::from_range(T::from(2), T::from(0xff)),
+            );
+            let Ok(solution) = solver.solve() else {
+                //                println!("  - lead to conflict");
+                continue;
+            };
+            for (v, val) in &solution {
+                if inputs.contains(v) {
+                    println!("  - input {v} constrained to {val}");
+                }
+            }
+            let system = apply_substitutions(system.into(), solution);
+            let system = remove_trivial_constraints(system.into());
+            println!("--------------------");
+            println!("{system}");
+            println!("--------------------");
+        }
+    }
+    panic!();
 }
 
 /// Runs the solver given a list of variable assignments.
