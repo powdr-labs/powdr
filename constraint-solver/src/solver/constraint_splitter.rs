@@ -85,7 +85,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     } else {
         // We found some independent parts, add the remaining components to the parts
         // and return them.
-        extracted_parts.push(recombine_rest(components, constant));
+        extracted_parts.push(recombine_components(components, constant));
         Some(extracted_parts)
     }
 }
@@ -208,7 +208,10 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     Some(solution + expr_shift)
 }
 
-fn recombine_rest<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+/// Turns the remaining components and constant into a single constraint,
+/// i.e. returns an algebraic constraint that is equivalent to
+/// `sum of components + constant = 0`.
+fn recombine_components<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     components: Vec<Component<T, V>>,
     constant: T::FieldType,
 ) -> AlgebraicConstraint<GroupedExpression<T, V>> {
