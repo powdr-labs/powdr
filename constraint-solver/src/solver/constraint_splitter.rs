@@ -566,4 +566,35 @@ l3 - 1 = 0"
             "bool_103 - 1 = 0, to_pc_least_sig_bit_4 - 1 = 0, to_pc_limbs__0_4 - 61 = 0"
         );
     }
+
+    #[test]
+    fn split_fail_overlapping() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [("x", four_bit_rc.clone()), ("y", four_bit_rc.clone())]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        // The RC of x is not tight enough
+        let expr = var("x") + var("y") * constant(2);
+        assert!(try_split(expr, &rcs).is_none());
+    }
+
+    #[test]
+    fn split_fail_not_unique() {
+        let four_bit_rc = RangeConstraint::from_mask(0xfu32);
+        let rcs = [
+            ("x", four_bit_rc.clone()),
+            ("y", four_bit_rc.clone()),
+            ("z", four_bit_rc.clone()),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        // There are multiple ways to solve the modulo equation.
+        let expr = (var("x") - var("y")) + constant(16) * var("z") - constant(1);
+        assert!(try_split(expr, &rcs).is_none());
+
+        // If we adjust the constant, it works.
+        let expr = (var("x") - var("y")) + constant(16) * var("z") - constant(0);
+        let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
+        expect!["x - y = 0, z = 0"].assert_eq(&result);
+    }
 }
