@@ -181,7 +181,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // expr % smallest_coeff = ((-constant) % modulus) % smallest_coeff
     // Note that at this point, we only get an implication, not an equivalence,
     // but if the range constraints of `expr` only allow a unique solution,
-    // we it still holds unconditionally.
+    // it holds unconditionally.
 
     if max_expr.to_integer() >= smallest_coeff.to_integer() + smallest_coeff.to_integer() {
         // In this case, there are always at least two solutions (ignoring masks and other
