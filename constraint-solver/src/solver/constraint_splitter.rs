@@ -128,7 +128,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // the same expression in the integers. Then we apply `x -> x % k` to the whole equation
     // to obtain `expr % k + constant % k = 0` and then we hope that this has a unique solution.
 
-    // GCD would be best, but we just try the samllest coefficient in `rest`.
+    // GCD would be best, but we just try the smallest coefficient in `rest`.
     let smallest_coeff = rest.iter().map(|comp| comp.coeff).min().unwrap();
     assert_ne!(smallest_coeff, 0.into());
     assert!(smallest_coeff.is_in_lower_half());
