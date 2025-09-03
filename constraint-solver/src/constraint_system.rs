@@ -281,7 +281,7 @@ impl<T: ReferencedSymbols<V>, V> BusInteraction<GroupedExpression<T, V>> {
 pub struct ViolatesBusRules {}
 
 /// A trait for handling bus interactions.
-pub trait BusInteractionHandler<T: FieldElement> {
+pub trait BusInteractionHandler<T: FieldElement> { 
     /// Handles a bus interaction, by transforming taking a bus interaction
     /// (with the fields represented by range constraints) and returning
     /// updated range constraints.
