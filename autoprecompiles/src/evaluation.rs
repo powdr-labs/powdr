@@ -68,11 +68,7 @@ pub fn evaluate_apc<
 ) -> EvaluationResult {
     let before = basic_block
         .iter()
-        .map(|instruction| {
-            instruction_handler
-                .get_instruction_air_stats(instruction)
-                .unwrap()
-        })
+        .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
         .sum();
     let after = AirStats::new(machine);
     EvaluationResult { before, after }
