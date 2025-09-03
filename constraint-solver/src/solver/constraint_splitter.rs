@@ -17,9 +17,19 @@ use crate::{
 /// algebraic constraints.
 /// This is the case for example if the variables in this expression can
 /// be split into different bit areas.
-/// The general strategy is to find an offset and a multiplier such that
-/// the equation is equivalent to an equation in the integers,
-/// and then apply a modulo operation to find independent parts.
+///
+/// The core idea (which is applied multiple times) is as follows:
+///
+/// Suppose we have the constraint `x + k * y + c = 0` with `x` and `y` being
+/// variables (or expressions containing variables) and `k` and `c` are constants.
+/// Furthermore, the range constraints of `x` and `y` are such that no wrapping
+/// occurs in the operations, i.e. the constraint is equivalent to the same
+/// constraint in the natural numbers.
+///
+/// Then the same constraint is also true modulo `k`, where we get
+/// `x % k + c % k = 0`. If this equation has a unique solution `s` in the range
+/// constraints for `x`, we get a new constraint `x - s = 0`. We can subtract
+/// that constraint from the original to get `k * y + c - s = 0` and iterate.
 pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     constraint: &AlgebraicConstraint<&GroupedExpression<T, V>>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
@@ -29,6 +39,14 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         // We cannot split quadratic constraints.
         return None;
     }
+    if linear
+        .clone()
+        .any(|(var, _)| range_constraints.get(var).is_unconstrained())
+    {
+        // If any variable is unconstrained, we cannot split.
+        return None;
+    }
+
     let mut constant = constant.try_to_number()?;
 
     // Turn the linear part into components ("coefficient * expression"),

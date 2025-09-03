@@ -291,10 +291,10 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
 
 pub trait InstructionHandler<T, I> {
     /// Returns the AIR for the given instruction.
-    fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+    fn get_instruction_air(&self, instruction: &I) -> &SymbolicMachine<T>;
 
     /// Returns the AIR stats for the given instruction.
-    fn get_instruction_air_stats(&self, instruction: &I) -> Option<AirStats>;
+    fn get_instruction_air_stats(&self, instruction: &I) -> AirStats;
 
     /// Returns whether the given instruction is allowed in an autoprecompile.
     fn is_allowed(&self, instruction: &I) -> bool;

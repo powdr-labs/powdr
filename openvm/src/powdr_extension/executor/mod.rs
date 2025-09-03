@@ -275,7 +275,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 self.air_by_opcode_id
                     // TODO: avoid cloning the instruction
                     .get_instruction_air(&Instr(instruction.instruction.clone()))
-                    .unwrap()
                     .bus_interactions
                     .iter()
                     .filter_map(|interaction| interaction.try_into().ok())
