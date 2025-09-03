@@ -68,7 +68,7 @@ where
         if expression.is_quadratic() {
             self.solve_quadratic(range_constraints)
         } else if let Some(k) = expression.try_to_known() {
-            // If we know self to be nonzero, we should have returned
+            // If we know `expression` to be nonzero, we should have returned
             // Err already in the range constraint check above.
             assert!(!k.is_known_nonzero());
             // TODO we could still process more information
