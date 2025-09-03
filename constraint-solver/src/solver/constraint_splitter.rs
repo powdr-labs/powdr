@@ -39,6 +39,14 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         // We cannot split quadratic constraints.
         return None;
     }
+    if linear
+        .clone()
+        .any(|(var, _)| range_constraints.get(var).is_unconstrained())
+    {
+        // If any variable is unconstrained, we cannot split.
+        return None;
+    }
+
     let mut constant = constant.try_to_number()?;
 
     // Turn the linear part into components ("coefficient * expression"),
