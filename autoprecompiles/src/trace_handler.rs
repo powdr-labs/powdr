@@ -52,13 +52,13 @@ pub trait TraceHandler {
             .original_instruction_subs()
             .iter()
             .map(|subs| {
-                let mut map = HashMap::new();
+                let mut dummy_trace_index_to_apc_index = HashMap::new();
                 for (dummy_index, poly_id) in subs.iter().enumerate() {
                     if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
-                        map.insert(dummy_index, *apc_index);
+                        dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
                     }
                 }
-                map
+                dummy_trace_index_to_apc_index
             })
             .collect::<Vec<_>>();
 
