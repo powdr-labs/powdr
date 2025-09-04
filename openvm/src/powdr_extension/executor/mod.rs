@@ -8,9 +8,12 @@ use crate::{
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
+        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
+
+use powdr_autoprecompiles::trace_handler::{TraceHandler, TraceHandlerData};
 
 use super::{
     chip::{RangeCheckerSend, RowEvaluator},
@@ -36,10 +39,7 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::ParallelSliceMut,
     Chip,
 };
-use openvm_stark_backend::{
-    p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix,
-    p3_maybe_rayon::prelude::IntoParallelIterator,
-};
+use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
     expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
@@ -49,6 +49,8 @@ use powdr_autoprecompiles::{
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
+
+mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
@@ -166,70 +168,32 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 .executors
                 .into_iter()
                 .map(|executor| {
-                    (
-                        executor.air_name().clone(),
+                    let air_name = executor.air_name().clone();
+                    let dummy_trace =
                         tracing::debug_span!("dummy trace", air_name = executor.air_name())
                             .in_scope(|| {
                                 Chip::<SC>::generate_air_proof_input(executor)
                                     .raw
                                     .common_main
                                     .unwrap()
-                            }),
-                    )
+                            });
+                    let dummy_trace_width = dummy_trace.width();
+                    (air_name, (dummy_trace.values, dummy_trace_width))
                 })
                 .collect();
 
-        let occurrences_by_table_name = original_instruction_air_names.iter().counts();
-
-        let instruction_index_to_table_offset = original_instruction_air_names
-            .iter()
-            .scan(
-                HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, air_name| {
-                    let count = counts.entry(air_name).or_default();
-                    let current_count = *count;
-                    *count += 1;
-                    Some(current_count)
-                },
-            )
-            .collect::<Vec<_>>();
-
-        let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .instructions
-            .iter()
-            .map(|instruction| {
-                let mut map = HashMap::new();
-                for (dummy_index, poly_id) in instruction.subs.iter().enumerate() {
-                    if let Some(apc_index) = column_index_by_poly_id.get(poly_id) {
-                        map.insert(dummy_index, *apc_index);
-                    }
-                }
-                map
-            })
-            .collect();
-
-        assert_eq!(
-            self.instructions.len(),
-            dummy_trace_index_to_apc_index_by_instruction.len()
+        let trace_handler = OpenVmTraceHandler::new(
+            &self.instructions,
+            column_index_by_poly_id,
+            &dummy_trace_by_air_name,
+            original_instruction_air_names,
+            self.number_of_calls,
         );
 
-        let dummy_values = (0..self.number_of_calls)
-            .into_par_iter()
-            .map(|record_index| {
-                original_instruction_air_names
-                    .iter()
-                    .zip_eq(instruction_index_to_table_offset.iter())
-                    .map(|(air_name, offset)| {
-                        let table = dummy_trace_by_air_name.get(air_name).unwrap();
-                        let occurrences_per_record =
-                            occurrences_by_table_name.get(air_name).unwrap();
-                        let width = table.width();
-                        let start = (record_index * occurrences_per_record + offset) * width;
-                        let end = start + width;
-                        &table.values[start..end]
-                    })
-                    .collect_vec()
-            });
+        let TraceHandlerData {
+            dummy_values,
+            dummy_trace_index_to_apc_index_by_instruction,
+        } = trace_handler.data();
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
