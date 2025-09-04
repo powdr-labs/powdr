@@ -298,9 +298,10 @@ impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, 
     /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables<'a>(
         &'a self,
-        variables: impl Iterator<Item = V> + 'a,
+        variables: impl IntoIterator<Item = V> + 'a,
     ) -> impl Iterator<Item = ConstraintRef<'a, T, V>> + 'a {
         variables
+            .into_iter()
             .filter_map(|v| self.variable_occurrences.get(&v))
             .flatten()
             .unique()
@@ -715,7 +716,7 @@ mod tests {
             0
         );
         let items_with_x = s
-            .constraints_referencing_variables(["x"].into_iter())
+            .constraints_referencing_variables(["x"])
             .map(|c| match c {
                 ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
                 ConstraintRef::BusInteraction(bus_interaction) => {
@@ -732,7 +733,7 @@ mod tests {
         assert_eq!(items_with_x, "x - z = 0, x: x * [x, x]");
 
         let items_with_z = s
-            .constraints_referencing_variables(["z"].into_iter())
+            .constraints_referencing_variables(["z"])
             .map(|c| match c {
                 ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
                 ConstraintRef::BusInteraction(bus_interaction) => {

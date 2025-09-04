@@ -41,8 +41,10 @@ pub enum Error {
     ConstraintUnsatisfiable(String),
 }
 
-impl<T: RuntimeConstant + Display, V: Ord + Clone + Eq + Hash + Display>
-    AlgebraicConstraint<&GroupedExpression<T, V>>
+impl<T, V> AlgebraicConstraint<&GroupedExpression<T, V>>
+where
+    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    V: Ord + Clone + Eq + Hash + Display,
 {
     /// Solves the constraint for `variable`. This is only possible if
     /// `variable` does not appear in the quadratic component and
@@ -145,19 +147,18 @@ impl<
             return Err(Error::ConstraintUnsatisfiable(self.to_string()));
         }
 
-        Ok(if expression.is_quadratic() {
-            self.solve_quadratic(range_constraints)?
+        if expression.is_quadratic() {
+            self.solve_quadratic(range_constraints)
         } else if let Some(k) = expression.try_to_known() {
-            if k.is_known_nonzero() {
-                return Err(Error::ConstraintUnsatisfiable(self.to_string()));
-            } else {
-                // TODO we could still process more information
-                // and reach "unsatisfiable" here.
-                ProcessResult::complete(vec![])
-            }
+            // If we know `expression` to be nonzero, we should have returned
+            // Err already in the range constraint check above.
+            assert!(!k.is_known_nonzero());
+            // TODO we could still process more information
+            // and reach "unsatisfiable" here.
+            Ok(ProcessResult::complete(vec![]))
         } else {
-            self.solve_affine(range_constraints)?
-        })
+            self.solve_affine(range_constraints)
+        }
     }
 
     fn solve_affine(

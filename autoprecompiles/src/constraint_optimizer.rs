@@ -14,6 +14,7 @@ use powdr_constraint_solver::{
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
+    reachability::reachable_variables,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -26,10 +27,8 @@ use crate::{
 };
 
 mod equal_zero_checks;
-mod reachability;
 
 use equal_zero_checks::replace_equal_zero_checks;
-use reachability::reachable_variables;
 
 #[derive(Debug)]
 pub enum Error {
@@ -329,7 +328,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
         bus_interaction_handler.clone(),
     )
     .cloned();
-    let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
+    let variables_to_keep = reachable_variables(initial_variables, &constraint_system);
 
     solver.retain_variables(&variables_to_keep);
 

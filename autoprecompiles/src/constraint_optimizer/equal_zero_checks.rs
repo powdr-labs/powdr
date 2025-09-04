@@ -14,11 +14,11 @@ use powdr_constraint_solver::indexed_constraint_system::{
     apply_substitutions, IndexedConstraintSystem,
 };
 use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::reachability::reachable_variables_except_blocked;
 use powdr_constraint_solver::solver::{self, Solver, VariableAssignment};
 use powdr_constraint_solver::utils::get_all_possible_assignments;
 use powdr_number::FieldElement;
 
-use crate::constraint_optimizer::reachability::reachable_variables_except_blocked;
 use crate::constraint_optimizer::{
     remove_trivial_constraints, variables_in_stateful_bus_interactions, IsBusStateful,
 };
@@ -107,7 +107,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         )
         .cloned(),
         blocking_variables,
-        constraint_system.system(),
+        constraint_system,
     );
 
     // If some of the inputs are not reachable via stateful bus interactions, they
@@ -160,7 +160,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     let output_reachable_variables = reachable_variables_except_blocked(
         std::iter::once(output.clone()),
         inputs.iter().cloned(),
-        constraint_system.system(),
+        constraint_system,
     );
 
     let mut variables_to_remove = output_reachable_variables
@@ -338,7 +338,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         let range_constraints = inputs
             .iter()
             .map(|v| {
-                let rc = input_range_constraints[&v].clone();
+                let rc = input_range_constraints[v].clone();
                 let rc = if v == nonzero_var {
                     rc.conjunction(&RangeConstraint::from_range(T::from(1), -T::from(1)))
                 } else {
@@ -412,7 +412,7 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
         .collect();
     let system = apply_substitutions(system.into(), solution);
     let system = inline_non_input_variables(system.into(), range_constraints);
-    let system = remove_trivial_constraints(system.into());
+    let system = remove_trivial_constraints(system);
     let (system, rcs) =
         remove_range_constraint_bus_interactions(system.system().clone(), &bus_interaction_handler);
     // TODO this does return RCs on non-input variables. We can only ignore them if the system
@@ -421,7 +421,7 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
         .into_iter()
         .filter_map(|(v, new_rc)| {
             // TODO we should not filter out non-input RCs
-            improves_existing_range_constraint(&v, &new_rc, &range_constraints)
+            improves_existing_range_constraint(&v, &new_rc, range_constraints)
         })
         .collect_vec();
     for (v, rc) in rcs {

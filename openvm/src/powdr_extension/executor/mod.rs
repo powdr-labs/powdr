@@ -154,19 +154,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        // for each original opcode, the name of the dummy air it corresponds to
-        let air_name_by_opcode = self
+        let original_instruction_air_names = self
             .instructions
             .iter()
             .map(|instruction| instruction.opcode())
-            .unique()
-            .map(|opcode| {
-                (
-                    opcode,
-                    self.inventory.get_executor(opcode).unwrap().air_name(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
+            .collect::<Vec<_>>();
 
         let dummy_trace_by_air_name: HashMap<_, _> =
             self.inventory
@@ -186,55 +179,32 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 })
                 .collect();
 
-        let instruction_index_to_table_offset = self
-            .instructions
+        let occurrences_by_table_name = original_instruction_air_names.iter().counts();
+
+        let instruction_index_to_table_offset = original_instruction_air_names
             .iter()
-            .enumerate()
             .scan(
                 HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, (index, instruction)| {
-                    let air_name = air_name_by_opcode.get(&instruction.opcode()).unwrap();
+                |counts: &mut HashMap<&str, usize>, air_name| {
                     let count = counts.entry(air_name).or_default();
                     let current_count = *count;
                     *count += 1;
-                    Some((index, (air_name, current_count)))
+                    Some(current_count)
                 },
             )
-            .collect::<HashMap<_, _>>();
+            .collect::<Vec<_>>();
 
-        let occurrences_by_table_name: HashMap<&String, usize> = self
-            .instructions
-            .iter()
-            .map(|instruction| air_name_by_opcode.get(&instruction.opcode()).unwrap())
-            .counts();
-
-        // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
             .instructions
             .iter()
             .map(|instruction| {
-                // look up how many dummy‐cells this AIR produces:
-                let air_width = dummy_trace_by_air_name
-                    .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
-                    .unwrap()
-                    .width();
-
-                // build a map only of the (dummy_index -> apc_index) pairs
-                let mut map = HashMap::with_capacity(air_width);
-                for dummy_trace_index in 0..air_width {
-                    if let Ok(apc_index) =
-                        global_index(dummy_trace_index, instruction, column_index_by_poly_id)
-                    {
-                        if map.insert(dummy_trace_index, apc_index).is_some() {
-                            panic!(
-                                "duplicate dummy_trace_index {} for instruction opcode {:?}",
-                                dummy_trace_index,
-                                instruction.opcode()
-                            );
-                        }
+                let mut dummy_trace_index_to_apc_index = HashMap::new();
+                for (dummy_index, poly_id) in instruction.subs.iter().enumerate() {
+                    if let Some(apc_index) = column_index_by_poly_id.get(poly_id) {
+                        dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
                     }
                 }
-                map
+                dummy_trace_index_to_apc_index
             })
             .collect();
 
@@ -246,21 +216,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let dummy_values = (0..self.number_of_calls)
             .into_par_iter()
             .map(|record_index| {
-                (0..self.instructions.len())
-                    .map(|index| {
-                        // get the air name and offset for this instruction (by index)
-                        let (air_name, offset) =
-                            instruction_index_to_table_offset.get(&index).unwrap();
-                        // get the table
-                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                        // get how many times this table is used per record
+                original_instruction_air_names
+                    .iter()
+                    .zip_eq(instruction_index_to_table_offset.iter())
+                    .map(|(air_name, offset)| {
+                        let table = dummy_trace_by_air_name.get(air_name).unwrap();
                         let occurrences_per_record =
                             occurrences_by_table_name.get(air_name).unwrap();
-                        // get the width of each occurrence
                         let width = table.width();
-                        // start after the previous record ended, and offset by the correct offset
                         let start = (record_index * occurrences_per_record + offset) * width;
-                        // end at the start + width
                         let end = start + width;
                         &table.values[start..end]
                     })
@@ -275,7 +239,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 self.air_by_opcode_id
                     // TODO: avoid cloning the instruction
                     .get_instruction_air(&Instr(instruction.instruction.clone()))
-                    .unwrap()
                     .bus_interactions
                     .iter()
                     .filter_map(|interaction| interaction.try_into().ok())
@@ -350,30 +313,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         RowMajorMatrix::new(values, width)
     }
-}
-
-enum IndexError {
-    NotInDummy,
-    NotInAutoprecompile,
-}
-
-/// Maps the index of a column in the original AIR of a given instruction to the corresponding
-/// index in the autoprecompile AIR.
-fn global_index<F>(
-    local_index: usize,
-    instruction: &OriginalInstruction<F>,
-    autoprecompile_index_by_poly_id: &BTreeMap<u64, usize>,
-) -> Result<usize, IndexError> {
-    // Map to the poly_id in the original instruction to the poly_id in the autoprecompile.
-    let autoprecompile_poly_id = instruction
-        .subs
-        .get(local_index)
-        .ok_or(IndexError::NotInDummy)?;
-    // Map to the index in the autoprecompile.
-    let variable_index = autoprecompile_index_by_poly_id
-        .get(autoprecompile_poly_id)
-        .ok_or(IndexError::NotInAutoprecompile)?;
-    Ok(*variable_index)
 }
 
 // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
