@@ -293,12 +293,8 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         + RangeConstraintHandler<T>
         + IsBusStateful<T>
         + Clone,
-) {
-    let mut solver = solver::new_solver(isolated_system.clone(), bus_interaction_handler.clone());
-    // TODO apply assignments.
-    for (v, val) in solver.solve().unwrap() {
-        println!("  - we already gott {v} = {val}");
-    }
+) -> bool {
+    let solver = solver::new_solver(isolated_system.clone(), bus_interaction_handler.clone());
     let mut booleans = isolated_system
         .unknown_variables()
         .filter(|v| {
@@ -308,27 +304,37 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         .cloned()
         .collect::<BTreeSet<_>>();
     booleans.remove(output);
-    // TODO if we try the following:
-    //
-    println!("Checking\n-------------------------\n{isolated_system}--------------------");
-    println!("Booleans: {}", booleans.iter().format(", "));
-    // {
-    //     println!("All zero:");
-    //     let mut system = IndexedConstraintSystem::from(isolated_system.clone());
-    //     for var in inputs {
-    //         system.substitute_by_known(var, &T::from(0));
-    //     }
-    //     system.substitute_by_known(output, &value);
-
-    //     let solution =
-    //         solve_with_assignments(&system.clone().into(), bus_interaction_handler.clone(), [])
-    //             .unwrap();
-    //     let system = apply_substitutions(system.into(), solution);
-    //     let system = remove_trivial_constraints(system.into());
-    //     println!("{system}");
-    // }
+    // println!("Checking\n-------------------------\n{isolated_system}--------------------");
+    // println!("Booleans: {}", booleans.iter().format(", "));
+    {
+        if let Some(restrictions) = is_satisfiable(
+            isolated_system,
+            inputs
+                .iter()
+                .map(|v| (v.clone(), T::from(0)))
+                .chain([(output.clone(), value)])
+                .collect(),
+            input_range_constraints,
+            bus_interaction_handler.clone(),
+        ) {
+            if !restrictions.is_empty() {
+                println!(
+                    "WARNING: Isolated system has restrictions even when inputs are zero: {}",
+                    restrictions
+                        .iter()
+                        .map(|(v, rc)| format!("{v}: {rc}"))
+                        .format(", ")
+                );
+                return false;
+            }
+        } else {
+            println!(
+                "Isolated system is not satisfiable when inputs are zero and output is {value}"
+            );
+            return false;
+        }
+    }
     for nonzero_var in inputs {
-        println!("===================================================\n{nonzero_var} > 0\n==============================");
         let range_constraints = inputs
             .iter()
             .map(|v| {
@@ -341,6 +347,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                 (v.clone(), rc)
             })
             .collect();
+        // TODO is there a way where we can avoid manually determining the booleans?
         let restrictions = get_all_possible_assignments(booleans.clone(), &solver)
             .filter_map(|mut assignment| {
                 assignment.insert(output.clone(), T::from(1) - value);
@@ -354,9 +361,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
             .collect_vec();
         let restrictions = reduce_rage_constraints(restrictions, &range_constraints);
         for result in restrictions {
-            if result.is_empty() {
-                println!("SATISFIABLE!");
-            } else {
+            if !result.is_empty() {
                 println!(
                     "  - satisfiable with restrictions: {}",
                     result
@@ -364,10 +369,11 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                         .map(|(v, rc)| format!("{v}: {rc}"))
                         .format(", ")
                 );
+                return false;
             }
         }
     }
-    panic!();
+    true
 }
 
 /// Determines if the system is satisfiable.
@@ -405,6 +411,7 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
         })
         .collect();
     let system = apply_substitutions(system.into(), solution);
+    let system = inline_non_input_variables(system.into(), range_constraints);
     let system = remove_trivial_constraints(system.into());
     let (system, rcs) =
         remove_range_constraint_bus_interactions(system.system().clone(), &bus_interaction_handler);
@@ -413,6 +420,7 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     let rcs = rcs
         .into_iter()
         .filter_map(|(v, new_rc)| {
+            // TODO we should not filter out non-input RCs
             improves_existing_range_constraint(&v, &new_rc, &range_constraints)
         })
         .collect_vec();
@@ -427,9 +435,37 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     if system.algebraic_constraints.is_empty() && system.bus_interactions.is_empty() {
         return Some(output_rc);
     } else {
-        println!("Non-empty system:\n-----\n{system}\n-----");
+        println!(
+            "Non-empty system:\n-----\n{system}\nDetermined RCS: {}\n-----",
+            output_rc
+                .iter()
+                .map(|(v, rc)| format!("{v}: {rc}"))
+                .format(", ")
+        );
     }
     None
+}
+
+fn inline_non_input_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut system: IndexedConstraintSystem<T, V>,
+    input_variables: &BTreeMap<V, RangeConstraint<T>>,
+) -> IndexedConstraintSystem<T, V> {
+    loop {
+        let Some((v, substitution)) = system.algebraic_constraints().iter().find_map(|constr| {
+            // If the constraint has exactly one non-input variable,
+            // inline that one.
+            let var = constr
+                .referenced_variables()
+                .filter(|v| !input_variables.contains_key(v))
+                .exactly_one()
+                .ok()?;
+            let expr = constr.as_ref().try_solve_for(var)?;
+            Some((var.clone(), expr))
+        }) else {
+            return system;
+        };
+        system.substitute_by_unknown(&v, &substitution);
+    }
 }
 
 fn remove_range_constraint_bus_interactions<
@@ -447,7 +483,7 @@ fn remove_range_constraint_bus_interactions<
         }
         match bus_interaction_handler.pure_range_constraints(bus_int) {
             Some(new_range_constraints) => {
-                let mut to_constraint = vec![];
+                let mut to_constrain = vec![];
                 for (expr, rc) in new_range_constraints {
                     if !expr.is_affine() {
                         // Keep the bus interaction
@@ -466,7 +502,7 @@ fn remove_range_constraint_bus_interactions<
                             // TODO we could check if undoing it results in the same.
                             let rc =
                                 rc.combine_sum(&RangeConstraint::from_value(-*expr.components().2));
-                            to_constraint.push((var.clone(), rc));
+                            to_constrain.push((var.clone(), rc));
                         }
                         _ => {
                             //  Keep the bus interaction
@@ -474,7 +510,7 @@ fn remove_range_constraint_bus_interactions<
                         }
                     }
                 }
-                for (v, rc) in to_constraint {
+                for (v, rc) in to_constrain {
                     let rc = resulting_range_constraints
                         .get(&v)
                         .cloned()
