@@ -29,7 +29,7 @@ impl<'a, F: PrimeField32> OpenVmTraceHandler<'a, F> {
     }
 }
 
-impl<'a, F: PrimeField32> TraceHandler<'a> for OpenVmTraceHandler<'a, F> {
+impl<'a, F: PrimeField32> TraceHandler for OpenVmTraceHandler<'a, F> {
     type AirId = String;
     type Field = F;
 

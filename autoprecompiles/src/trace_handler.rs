@@ -9,7 +9,7 @@ pub struct TraceHandlerData<'a, F> {
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
 }
 
-pub trait TraceHandler<'a> {
+pub trait TraceHandler {
     type AirId: Hash + Eq + Sync;
     type Field: Sync;
 
@@ -18,20 +18,22 @@ pub trait TraceHandler<'a> {
 
     fn original_instruction_subs(&self) -> Vec<Vec<u64>>;
 
-    fn apc_poly_id_to_index(&self) -> &'a BTreeMap<u64, usize>;
+    fn apc_poly_id_to_index<'a>(&'a self) -> &'a BTreeMap<u64, usize>;
 
     fn num_trace_rows(&self) -> usize;
 
-    fn air_id_to_dummy_trace_and_width(
-        &self,
+    fn air_id_to_dummy_trace_and_width<'a>(
+        &'a self,
     ) -> &'a HashMap<Self::AirId, (Vec<Self::Field>, usize)>;
 
-    fn data(&'a self) -> TraceHandlerData<'a, Self::Field> {
+    fn data<'a>(&'a self) -> TraceHandlerData<'a, Self::Field> {
         let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
 
         let original_instruction_air_ids = self.original_instruction_air_ids();
 
         let air_id_occurrences = original_instruction_air_ids.iter().counts();
+
+        let apc_poly_id_to_index = self.apc_poly_id_to_index();
 
         let original_instruction_table_offsets = original_instruction_air_ids
             .iter()
@@ -52,7 +54,7 @@ pub trait TraceHandler<'a> {
             .map(|subs| {
                 let mut map = HashMap::new();
                 for (dummy_index, poly_id) in subs.iter().enumerate() {
-                    if let Some(apc_index) = self.apc_poly_id_to_index().get(poly_id) {
+                    if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
                         map.insert(dummy_index, *apc_index);
                     }
                 }
