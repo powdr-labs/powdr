@@ -2,7 +2,9 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use crate::constraint_system::ConstraintSystem;
+use itertools::Itertools;
+
+use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant};
 
 /// Returns the set of all variables reachable from an initial set via shared constraints
@@ -10,7 +12,7 @@ use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant};
 /// The returned set also contains the initial variables.
 pub fn reachable_variables<T, V: Clone + Ord + Hash + Display>(
     initial_variables: impl IntoIterator<Item = V>,
-    constraint_system: &ConstraintSystem<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
 ) -> HashSet<V>
 where
     T: RuntimeConstant + ReferencedSymbols<V>,
@@ -26,7 +28,7 @@ where
 pub fn reachable_variables_except_blocked<T, V: Clone + Ord + Hash + Display>(
     initial_variables: impl IntoIterator<Item = V>,
     blocking_variables: impl IntoIterator<Item = V>,
-    constraint_system: &ConstraintSystem<T, V>,
+    constraint_system: &IndexedConstraintSystem<T, V>,
 ) -> HashSet<V>
 where
     T: RuntimeConstant + ReferencedSymbols<V>,
@@ -41,7 +43,8 @@ where
 
     loop {
         let size_before = reachable_variables.len();
-        for expr in constraint_system.iter() {
+        let reachable_variables_vec = reachable_variables.iter().cloned().collect_vec();
+        for expr in constraint_system.constraints_referencing_variables(reachable_variables_vec) {
             if expr
                 .referenced_variables()
                 .any(|var| reachable_variables.contains(var))

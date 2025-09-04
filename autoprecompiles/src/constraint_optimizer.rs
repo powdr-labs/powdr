@@ -316,7 +316,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
         bus_interaction_handler.clone(),
     )
     .cloned();
-    let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
+    let variables_to_keep = reachable_variables(initial_variables, &constraint_system);
 
     solver.retain_variables(&variables_to_keep);
 
