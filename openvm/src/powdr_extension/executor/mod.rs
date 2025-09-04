@@ -198,13 +198,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .instructions
             .iter()
             .map(|instruction| {
-                let mut map = HashMap::new();
+                let mut dummy_trace_index_to_apc_index = HashMap::new();
                 for (dummy_index, poly_id) in instruction.subs.iter().enumerate() {
                     if let Some(apc_index) = column_index_by_poly_id.get(poly_id) {
-                        map.insert(dummy_index, *apc_index);
+                        dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
                     }
                 }
-                map
+                dummy_trace_index_to_apc_index
             })
             .collect();
 
