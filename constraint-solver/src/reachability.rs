@@ -2,8 +2,9 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_number::FieldElement;
+
+use crate::constraint_system::ConstraintSystem;
 
 /// Returns the set of all variables reachable from an initial set via shared constraints
 /// (algebraic constraints and bus interactions).

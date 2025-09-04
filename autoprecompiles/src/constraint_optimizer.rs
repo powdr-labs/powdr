@@ -14,6 +14,7 @@ use powdr_constraint_solver::{
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
+    reachability::reachable_variables,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -24,10 +25,6 @@ use crate::{
     range_constraint_optimizer::RangeConstraintHandler,
     stats_logger::StatsLogger,
 };
-
-mod reachability;
-
-use reachability::reachable_variables;
 
 #[derive(Debug)]
 pub enum Error {

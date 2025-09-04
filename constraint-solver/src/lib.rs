@@ -7,6 +7,7 @@ pub mod grouped_expression;
 pub mod indexed_constraint_system;
 pub mod inliner;
 pub mod range_constraint;
+pub mod reachability;
 pub mod runtime_constant;
 pub mod solver;
 pub mod symbolic_expression;
