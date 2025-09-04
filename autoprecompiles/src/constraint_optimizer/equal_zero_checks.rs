@@ -341,8 +341,8 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                 (v.clone(), rc)
             })
             .collect();
-        for result in
-            get_all_possible_assignments(booleans.clone(), &solver).filter_map(|mut assignment| {
+        let restrictions = get_all_possible_assignments(booleans.clone(), &solver)
+            .filter_map(|mut assignment| {
                 assignment.insert(output.clone(), T::from(1) - value);
                 is_satisfiable(
                     isolated_system,
@@ -351,7 +351,9 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                     bus_interaction_handler.clone(),
                 )
             })
-        {
+            .collect_vec();
+        let restrictions = reduce_rage_constraints(restrictions, &range_constraints);
+        for result in restrictions {
             if result.is_empty() {
                 println!("SATISFIABLE!");
             } else {
@@ -395,9 +397,11 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     let mut output_rc: BTreeMap<_, _> = solution
         .iter()
         .filter_map(|(v, val)| {
-            let rc = range_constraints.get(v)?;
-            let conjunction = rc.conjunction(&val.range_constraint(&NoRangeConstraints));
-            (conjunction != *rc).then_some((v.clone(), conjunction))
+            improves_existing_range_constraint(
+                v,
+                &val.range_constraint(&NoRangeConstraints),
+                range_constraints,
+            )
         })
         .collect();
     let system = apply_substitutions(system.into(), solution);
@@ -409,9 +413,7 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     let rcs = rcs
         .into_iter()
         .filter_map(|(v, new_rc)| {
-            let input_rc = range_constraints.get(&v)?;
-            let conjunction = input_rc.conjunction(&new_rc);
-            (conjunction != *input_rc).then_some((v.clone(), conjunction))
+            improves_existing_range_constraint(&v, &new_rc, &range_constraints)
         })
         .collect_vec();
     for (v, rc) in rcs {
@@ -423,7 +425,6 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
         output_rc.insert(v, rc);
     }
     if system.algebraic_constraints.is_empty() && system.bus_interactions.is_empty() {
-        println!("satisfiable");
         return Some(output_rc);
     } else {
         println!("Non-empty system:\n-----\n{system}\n-----");
@@ -488,6 +489,95 @@ fn remove_range_constraint_bus_interactions<
         }
     });
     (system, resulting_range_constraints)
+}
+
+/// On input of a disjunction of range constraints, tries to reduce the number of items.
+/// The `outer_rcs` are range constraints we know to hold "from the outside", so if
+/// this function determines a range constraint on a variable to be a superset of
+/// the one in `outer_rcs` it is considered unconstrained.
+fn reduce_rage_constraints<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut restrictions: Vec<BTreeMap<V, RangeConstraint<T>>>,
+    outer_rcs: &BTreeMap<V, RangeConstraint<T>>,
+) -> Vec<BTreeMap<V, RangeConstraint<T>>> {
+    loop {
+        let Some((i1, i2, replacement)) = restrictions
+            .iter()
+            .enumerate()
+            .tuple_combinations()
+            .find_map(|((i1, item1), (i2, item2))| {
+                let combination = try_combine_rage_constraint_pair(item1, item2, outer_rcs)?;
+                Some((i1, i2, combination))
+            })
+        else {
+            return restrictions;
+        };
+        restrictions = restrictions
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| *i != i1 && *i != i2)
+            .map(|(_, r)| r)
+            .collect();
+        restrictions.push(replacement);
+    }
+}
+
+fn try_combine_rage_constraint_pair<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    item1: &BTreeMap<V, RangeConstraint<T>>,
+    item2: &BTreeMap<V, RangeConstraint<T>>,
+    outer_rcs: &BTreeMap<V, RangeConstraint<T>>,
+) -> Option<BTreeMap<V, RangeConstraint<T>>> {
+    // If the restrictions are on the same set of variables
+    // but differ in exactly one variable and the difference
+    // can be "concatenated" without loss, we can combine the two.
+    if !item1.keys().eq(item2.keys()) {
+        return None;
+    }
+    let (var, updated_rc) = item1
+        .keys()
+        .filter_map(|v| {
+            let rc1 = &item1[v];
+            let rc2 = &item2[v];
+            if rc1 == rc2 {
+                return None;
+            }
+            // TODO check that it is loss-less
+            let rc = rc1.disjunction(rc2);
+            if rc.conjunction(rc1) == *rc1 && rc2.conjunction(&rc) == *rc2 {
+                Some((v, rc))
+            } else {
+                None
+            }
+        })
+        .exactly_one()
+        .ok()?;
+    Some(
+        item1
+            .iter()
+            .map(|(v, rc)| {
+                if v == var {
+                    (v.clone(), updated_rc.clone())
+                } else {
+                    (v.clone(), rc.clone())
+                }
+            })
+            .filter_map(|(v, rc)| improves_existing_range_constraint(&v, &rc, outer_rcs))
+            .collect(),
+    )
+}
+
+/// Returns `Some(_)` if the given `rc` is tighter than the already known range
+/// constraint on the variable `var`. In that case, returns the conjunction
+/// with the already known range constraint.
+/// If the variable is not present in `known_range_constraints`, or if
+/// `rc` is not tighter, returns `None`.
+fn improves_existing_range_constraint<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    var: &V,
+    rc: &RangeConstraint<T>,
+    known_range_constraints: &BTreeMap<V, RangeConstraint<T>>,
+) -> Option<(V, RangeConstraint<T>)> {
+    let known_rc = known_range_constraints.get(var)?;
+    let conjunction = known_rc.conjunction(rc);
+    (conjunction != *known_rc).then(|| (var.clone(), conjunction))
 }
 
 /// Runs the solver given a list of variable assignments.
