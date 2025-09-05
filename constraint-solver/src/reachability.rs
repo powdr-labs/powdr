@@ -43,7 +43,7 @@ where
         let size_before = reachable_variables.len();
         let reachable_variables_vec = reachable_variables.iter().cloned().collect_vec();
         for constraint in
-            constraint_system.constraints_referencing_variables(reachable_variables_vec)
+            constraint_system.constraints_referencing_variables(&reachable_variables_vec)
         {
             if constraint
                 .referenced_variables()
