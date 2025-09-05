@@ -46,15 +46,18 @@ where
     loop {
         let size_before = reachable_variables.len();
         let reachable_variables_vec = reachable_variables.iter().cloned().collect_vec();
-        for expr in constraint_system.constraints_referencing_variables(reachable_variables_vec) {
-            if expr
+        for constraint in
+            constraint_system.constraints_referencing_variables(reachable_variables_vec)
+        {
+            if constraint
                 .referenced_variables()
                 .any(|var| reachable_variables.contains(var))
             {
                 // This constraint is connected to a reachable variable.
                 // Add all variables of this constraint except the blocking ones.
                 reachable_variables.extend(
-                    expr.referenced_variables()
+                    constraint
+                        .referenced_variables()
                         .filter(|&var| !blocking_variables.contains(var))
                         .cloned(),
                 );
