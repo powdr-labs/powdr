@@ -48,7 +48,7 @@ pub struct OriginalAirs<F> {
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
+impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
     fn get_instruction_air(&self, instruction: &Instr<F>) -> &SymbolicMachine<F> {
         self.opcode_to_air
             .get(&instruction.0.opcode)
@@ -72,6 +72,13 @@ impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
         self.get_instruction_metrics(instruction.0.opcode)
             .map(|metrics| metrics.clone().into())
             .unwrap()
+    }
+
+    fn get_instruction_air_id(&self, instruction: &Instr<F>) -> String {
+        self.opcode_to_air
+            .get(&instruction.0.opcode)
+            .unwrap()
+            .clone()
     }
 }
 

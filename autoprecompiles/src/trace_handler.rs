@@ -3,6 +3,8 @@ use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
+use crate::adapter::Adapter;
+use crate::InstructionHandler;
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceHandlerData<'a, F> {
@@ -12,12 +14,11 @@ pub struct TraceHandlerData<'a, F> {
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
 }
 
-pub trait TraceHandler {
-    type AirId: Hash + Eq + Sync;
-    type Field: Sync;
+pub trait TraceHandler<A: Adapter> {
 
-    /// Returns a vector with the same length as original instructions
-    fn original_instruction_air_ids(&self) -> Vec<Self::AirId>;
+    fn original_instructions(&self) -> Vec<A::Instruction>;
+
+    fn instruction_handler(&self) -> &A::InstructionHandler;
 
     fn original_instruction_subs(&self) -> Vec<Vec<u64>>;
 
@@ -25,12 +26,18 @@ pub trait TraceHandler {
 
     fn apc_call_count(&self) -> usize;
 
-    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, (Vec<Self::Field>, usize)>;
+    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<A::AirId, (Vec<A::Field>, usize)>;
 
-    fn data<'a>(&'a self) -> TraceHandlerData<'a, Self::Field> {
+    fn data<'a>(&'a self) -> TraceHandlerData<'a, A::Field> {
         let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
-
-        let original_instruction_air_ids = self.original_instruction_air_ids();
+        
+        // Returns a vector with the same length as original instructions
+        let original_instruction_air_ids = self.original_instructions()
+            .iter()
+            .map(|instruction| 
+                self.instruction_handler().get_instruction_air_id(instruction)
+            )
+            .collect::<Vec<_>>();
 
         let air_id_occurrences = original_instruction_air_ids.iter().counts();
 
@@ -40,7 +47,7 @@ pub trait TraceHandler {
             .iter()
             .scan(
                 HashMap::default(),
-                |counts: &mut HashMap<&Self::AirId, usize>, air_id| {
+                |counts: &mut HashMap<&A::AirId, usize>, air_id| {
                     let count = counts.entry(air_id).or_default();
                     let current_count = *count;
                     *count += 1;

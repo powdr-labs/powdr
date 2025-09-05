@@ -64,9 +64,9 @@ pub trait PgoAdapter {
 }
 
 pub trait Adapter: Sized {
-    type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone;
+    type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone + Sync;
     type PowdrField: FieldElement;
-    type InstructionHandler: InstructionHandler<Self::Field, Self::Instruction> + Sync;
+    type InstructionHandler: InstructionHandler<Self::Field, Self::Instruction, Self::AirId> + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>
@@ -80,6 +80,7 @@ pub trait Adapter: Sized {
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
+    type AirId: Hash + Eq + Sync + 'static;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 

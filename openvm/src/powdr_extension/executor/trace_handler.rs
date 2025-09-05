@@ -1,47 +1,49 @@
-use crate::powdr_extension::vm::OriginalInstruction;
-use openvm_stark_backend::p3_field::PrimeField32;
+use crate::{extraction_utils::OriginalAirs, powdr_extension::vm::OriginalInstruction, customize_exe::Instr};
+use powdr_autoprecompiles::adapter::Adapter;
 use powdr_autoprecompiles::trace_handler::TraceHandler;
 use std::collections::{BTreeMap, HashMap};
 
-pub struct OpenVmTraceHandler<'a, F: PrimeField32> {
-    pub original_instructions: &'a Vec<OriginalInstruction<F>>,
+pub struct OpenVmTraceHandler<'a, A: Adapter> {
+    pub original_instructions: &'a Vec<A::Instruction>,
     pub column_index_by_poly_id: &'a BTreeMap<u64, usize>,
-    pub air_id_to_dummy_trace_and_width: &'a HashMap<String, (Vec<F>, usize)>,
-    pub original_instruction_air_ids: Vec<String>,
+    pub air_id_to_dummy_trace_and_width: &'a HashMap<A::AirId, (Vec<A::Field>, usize)>,
+    pub instruction_handler: &'a A::InstructionHandler,
     pub apc_call_count: usize,
+    pub subs: Vec<Vec<u64>>,
 }
 
-impl<'a, F: PrimeField32> OpenVmTraceHandler<'a, F> {
+impl<'a, A: Adapter> OpenVmTraceHandler<'a, A> {
     pub fn new(
-        original_instructions: &'a Vec<OriginalInstruction<F>>,
+        original_instructions: &'a Vec<A::Instruction>,
         column_index_by_poly_id: &'a BTreeMap<u64, usize>,
-        air_id_to_dummy_trace_and_width: &'a HashMap<String, (Vec<F>, usize)>,
-        original_instruction_air_ids: Vec<String>,
+        air_id_to_dummy_trace_and_width: &'a HashMap<A::AirId, (Vec<A::Field>, usize)>,
+        instruction_handler: &'a A::InstructionHandler,
         apc_call_count: usize,
+        subs: Vec<Vec<u64>>,
     ) -> Self {
         Self {
             original_instructions,
             column_index_by_poly_id,
             air_id_to_dummy_trace_and_width,
-            original_instruction_air_ids,
+            instruction_handler,
             apc_call_count,
+            subs,
         }
     }
 }
 
-impl<'a, F: PrimeField32> TraceHandler for OpenVmTraceHandler<'a, F> {
-    type AirId = String;
-    type Field = F;
+impl<'a, A: Adapter> TraceHandler<A> for OpenVmTraceHandler<'a, A> {
 
-    fn original_instruction_air_ids(&self) -> Vec<Self::AirId> {
-        self.original_instruction_air_ids.clone()
+    fn original_instructions(&self) -> Vec<A::Instruction> {
+        self.original_instructions.clone()
+    }
+
+    fn instruction_handler(&self) -> &A::InstructionHandler {
+        self.instruction_handler
     }
 
     fn original_instruction_subs(&self) -> Vec<Vec<u64>> {
-        self.original_instructions
-            .iter()
-            .map(|instruction| instruction.subs.clone())
-            .collect()
+        self.subs.clone()
     }
 
     fn apc_poly_id_to_index(&self) -> &'a BTreeMap<u64, usize> {
@@ -54,7 +56,7 @@ impl<'a, F: PrimeField32> TraceHandler for OpenVmTraceHandler<'a, F> {
 
     fn air_id_to_dummy_trace_and_width(
         &self,
-    ) -> &'a HashMap<Self::AirId, (Vec<Self::Field>, usize)> {
+    ) -> &'a HashMap<A::AirId, (Vec<A::Field>, usize)> {
         self.air_id_to_dummy_trace_and_width
     }
 }

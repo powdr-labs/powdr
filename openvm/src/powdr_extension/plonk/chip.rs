@@ -11,7 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::ExtendedVmConfig;
+use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -153,7 +153,7 @@ where
             .collect();
         let witness = self
             .executor
-            .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
+            .generate_witness::<SC, BabyBearOpenVmApcAdapter>(&column_index_by_poly_id, &self.machine.bus_interactions);
 
         // TODO: This should be parallelized.
         let mut values = <Val<SC>>::zero_vec(height * width);

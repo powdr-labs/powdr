@@ -6,8 +6,7 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
-    utils::algebraic_to_symbolic, ExtendedVmConfig,
+    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances, utils::algebraic_to_symbolic, BabyBearOpenVmApcAdapter, ExtendedVmConfig
 };
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
@@ -37,7 +36,7 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
+use powdr_autoprecompiles::{adapter::Adapter, expression::{AlgebraicExpression, AlgebraicReference}};
 use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<F: PrimeField32> {
@@ -130,7 +129,7 @@ where
         let width = self.trace_width();
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self.executor.generate_witness::<SC>(
+        let trace = self.executor.generate_witness::<SC, BabyBearOpenVmApcAdapter>(
             &self.air.column_index_by_poly_id,
             &self.air.machine.bus_interactions,
         );
