@@ -16,6 +16,7 @@ use powdr_constraint_solver::indexed_constraint_system::{
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::reachability::reachable_variables_except_blocked;
 use powdr_constraint_solver::solver::{self, Solver, VariableAssignment};
+use powdr_constraint_solver::system_splitter::split_system;
 use powdr_constraint_solver::utils::get_all_possible_assignments;
 use powdr_number::FieldElement;
 
@@ -36,28 +37,83 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     new_var: &mut impl FnMut() -> V,
 ) -> IndexedConstraintSystem<T, V> {
     let binary_range_constraint = RangeConstraint::from_mask(1);
-    let binary_variables = constraint_system
-        .unknown_variables()
-        .filter(|v| solver.get(v) == binary_range_constraint)
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    for var in binary_variables {
-        for value in [T::from(0), T::from(1)] {
-            try_replace_equal_zero_check(
-                &mut constraint_system,
-                bus_interaction_handler.clone(),
-                solver,
-                new_var,
-                var.clone(),
-                value,
+    for subsystem in split_at_stateful_bus_interactions(
+        constraint_system.clone(),
+        bus_interaction_handler.clone(),
+    ) {
+        if subsystem.unknown_variables().count() > 200 {
+            println!(
+                "Skipping equal zero check optimization for subsystem with {} variables",
+                subsystem.unknown_variables().count()
             );
+            // Searching for equal zero checks in such a large
+            // system would take too long.
+            continue;
+        }
+        println!(
+            "Searching for equal zero checks in subsystem with {} variables",
+            subsystem.unknown_variables().count()
+        );
+        let binary_variables = subsystem
+            .unknown_variables()
+            .filter(|v| solver.get(v) == binary_range_constraint)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for var in binary_variables {
+            for value in [T::from(0), T::from(1)] {
+                try_replace_equal_zero_check(
+                    &mut constraint_system,
+                    subsystem.clone().into(),
+                    bus_interaction_handler.clone(),
+                    solver,
+                    new_var,
+                    var.clone(),
+                    value,
+                );
+            }
         }
     }
     constraint_system
 }
 
+/// Removes stateful bus interactions from the constraint system and then splits it into
+/// independent sub-systems.
+fn split_at_stateful_bus_interactions<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: IndexedConstraintSystem<T, V>,
+    bus_interaction_handler: impl IsBusStateful<T> + Clone,
+) -> Vec<ConstraintSystem<T, V>> {
+    let mut stateful_bus_interactions = vec![];
+    constraint_system.retain_bus_interactions(|bus_int| {
+        if let Some(id) = bus_int.bus_id.try_to_number() {
+            if bus_interaction_handler.is_stateful(id) {
+                stateful_bus_interactions.push(bus_int.clone());
+                return false;
+            }
+        }
+        true
+    });
+    split_system(constraint_system)
+        .into_iter()
+        .map(|mut subsystem| {
+            let vars = subsystem
+                .unknown_variables()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            // Re-add the stateful bus interactions that are connected to this subsystem.
+            // subsystem.bus_interactions.extend(
+            //     stateful_bus_interactions
+            //         .iter()
+            //         .filter(|bus_int| bus_int.referenced_variables().any(|v| vars.contains(v)))
+            //         .cloned(),
+            // );
+            subsystem
+        })
+        .collect_vec()
+}
+
 fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: &mut IndexedConstraintSystem<T, V>,
+    subsystem: IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>
         + RangeConstraintHandler<T>
         + IsBusStateful<T> // TODO do we need this?
@@ -67,21 +123,26 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     output: V,
     value: T,
 ) {
+    println!("============ Handling subsystem\n{subsystem}");
+    // First, we try to find input and output variables that satisfy the equal zero check property,
+    // but we only search in the smaller subsystem. Later, we verify in the full system.
     let Ok(solution) = solve_with_assignments(
-        constraint_system,
+        &subsystem,
         bus_interaction_handler.clone(),
         [(output.clone(), value)],
     ) else {
+        println!("================= NOPE");
         return;
     };
     let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
     if inputs.is_empty() {
+        println!("================= NOPE");
         return;
     }
     // We know: if `var = value`, then `inputs` are all zero.
     // Now check that `var == 1 - value` is inconsistent with `inputs` all being zero.
     if solve_with_assignments(
-        constraint_system,
+        &subsystem,
         bus_interaction_handler.clone(),
         inputs
             .iter()
@@ -90,8 +151,15 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     )
     .is_ok()
     {
+        println!("================= NOPE");
         return;
     }
+    println!(
+        "Candidate found: {output} == {value} <=> all of {{{}}} are zero",
+        inputs.iter().format(", ")
+    );
+
+    // We have our variables, let's move to the full system.
 
     // Ok, we can replace the constraints by a potentially more efficient version.
     // Let's find out which are the constraints that we need to replace.
