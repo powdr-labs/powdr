@@ -14,6 +14,7 @@ use powdr_constraint_solver::{
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
+    reachability::reachable_variables,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -25,9 +26,9 @@ use crate::{
     stats_logger::StatsLogger,
 };
 
-mod reachability;
+mod equal_zero_checks;
 
-use reachability::reachable_variables;
+use equal_zero_checks::replace_equal_zero_checks;
 
 #[derive(Debug)]
 pub enum Error {
@@ -58,6 +59,7 @@ pub fn optimize_constraints<
         + RangeConstraintHandler<P>
         + Clone,
     stats_logger: &mut StatsLogger,
+    new_var: &mut impl FnMut() -> V,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, Error> {
@@ -78,11 +80,20 @@ pub fn optimize_constraints<
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
+    let constraint_system = replace_equal_zero_checks(
+        constraint_system,
+        solver,
+        bus_interaction_handler.clone(),
+        new_var,
+    );
+    stats_logger.log("replacing 'equals zero' checks", &constraint_system);
+
     let constraint_system = trivial_simplifications(
         constraint_system,
         bus_interaction_handler.clone(),
         stats_logger,
     );
+    stats_logger.log("removing trivial constraints", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
@@ -214,7 +225,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         // Find variables that are referenced in exactly one constraint
         .filter_map(|variable| {
             constraint_system
-                .constraints_referencing_variables(once(variable.clone()))
+                .constraints_referencing_variables(once(variable))
                 .exactly_one()
                 .ok()
                 .map(|constraint| (variable.clone(), constraint))
@@ -319,7 +330,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
         bus_interaction_handler.clone(),
     )
     .cloned();
-    let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
+    let variables_to_keep = reachable_variables(initial_variables, &constraint_system);
 
     solver.retain_variables(&variables_to_keep);
 

@@ -1,5 +1,5 @@
 Instructions:
-  BEQ 5 0 8 1 1
+  BEQ 8 0 2 1 1
 
 APC advantage:
   - Main columns: 26 -> 11 (2.36x reduction)
@@ -21,11 +21,11 @@ Symbolic machine using 11 unique main columns:
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
-mult=is_valid * 1, args=[8 - 4 * new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0), from_state__timestamp_0 + 2]
+mult=is_valid * 1, args=[2 * new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + 2, from_state__timestamp_0 + 2]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 5, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 5, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0]
+mult=is_valid * -1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0]
 mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__1__base__prev_timestamp_0]
 mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, from_state__timestamp_0 + 1]
 

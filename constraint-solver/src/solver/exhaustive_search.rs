@@ -152,7 +152,7 @@ where
         + Display,
 {
     let effects = constraint_system
-        .constraints_referencing_variables(assignments.keys().cloned())
+        .constraints_referencing_variables(assignments.keys())
         .map(|constraint| match constraint {
             ConstraintRef::AlgebraicConstraint(identity) => {
                 let mut identity = identity.cloned();

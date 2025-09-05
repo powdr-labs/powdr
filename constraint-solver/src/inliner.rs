@@ -93,7 +93,7 @@ pub fn substitution_would_not_violate_degree_bound<
     let replacement_deg = expr.degree();
 
     constraint_system
-        .constraints_referencing_variables(std::iter::once(var.clone()))
+        .constraints_referencing_variables(std::iter::once(var))
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
                 let degree = expression_degree_with_virtual_substitution(
