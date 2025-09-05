@@ -214,7 +214,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         // Find variables that are referenced in exactly one constraint
         .filter_map(|variable| {
             constraint_system
-                .constraints_referencing_variables(once(variable.clone()))
+                .constraints_referencing_variables(once(variable))
                 .exactly_one()
                 .ok()
                 .map(|constraint| (variable.clone(), constraint))
