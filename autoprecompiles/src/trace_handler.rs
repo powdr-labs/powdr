@@ -19,14 +19,19 @@ pub trait TraceHandler {
     /// Returns a vector with the same length as original instructions
     fn original_instruction_air_ids(&self) -> Vec<Self::AirId>;
 
+    /// Returns a vector of vectors of subs for each original instruction, passed in from outside the trait implementation after APC generation
     fn original_instruction_subs(&self) -> Vec<Vec<u64>>;
 
+    /// Returns a mapping from APC poly_id to the index in the APC trace
     fn apc_poly_id_to_index(&self) -> &BTreeMap<u64, usize>;
 
+    /// Returns the number of APC calls, which is also the number of rows in the APC trace
     fn apc_call_count(&self) -> usize;
 
+    /// Returns a mapping from air_id to tuple of the dummy trace and the width of the dummy trace
     fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, (Vec<Self::Field>, usize)>;
 
+    /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
     fn data<'a>(&'a self) -> TraceHandlerData<'a, Self::Field> {
         let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
 
