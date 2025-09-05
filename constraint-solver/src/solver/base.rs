@@ -1,14 +1,15 @@
 use itertools::Itertools;
-use num_traits::Zero;
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintRef};
+use crate::constraint_system::{
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintRef,
+};
 use crate::effect::Effect;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
-use crate::solver::boolean_extractor::try_extract_boolean;
+use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
@@ -17,6 +18,7 @@ use crate::utils::possible_concrete_values;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
+use std::iter::once;
 
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 ///
@@ -45,6 +47,8 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
     /// A dispenser for fresh variables.
     var_dispenser: VarDisp,
+    /// The boolean extraction component.
+    boolean_extractor: BooleanExtractor<T, V>,
     /// The linearizing component.
     linearizer: Linearizer<T, V>,
 }
@@ -93,6 +97,7 @@ impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
             assignments_to_return: Default::default(),
             equivalent_expressions_cache: Default::default(),
             var_dispenser: Default::default(),
+            boolean_extractor: Default::default(),
             linearizer: Default::default(),
             bus_interaction_handler,
         }
@@ -133,33 +138,38 @@ where
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
         // Apply the deduced assignments to the substitutions we performed
-        // while linearizing.
+        // while linearizing and boolean extracting.
         // We assume that the user of the solver applies the assignments to
         // their expressions and thus "incoming" expressions used in the functions
         // `range_constraint_for_expression` and `are_expressions_known_to_be_different`
         // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
+        self.boolean_extractor.apply_assignments(&assignments);
         Ok(assignments)
     }
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.equivalent_expressions_cache.clear();
 
         let constraints = constraints
             .into_iter()
-            .filter(|c| !c.is_zero())
-            .flat_map(|constr| self.extract_boolean(constr))
+            .filter(|c| !c.is_redundant())
+            .flat_map(|constr| {
+                self.try_extract_boolean(constr.as_ref())
+                    .into_iter()
+                    .chain(std::iter::once(constr))
+            })
             // needed because of unique access to the var dispenser / self.
             .collect_vec()
             .into_iter()
-            .flat_map(|constr| self.linearize_expression(constr))
+            .flat_map(|constr| self.linearize_constraint(constr))
             .collect_vec();
 
         self.constraint_system
-            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_zero()));
+            .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_redundant()));
     }
 
     fn add_bus_interactions(
@@ -257,37 +267,38 @@ where
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
 {
-    /// Performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
+    /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
-    /// This function will always return the original constraint as well as any extracted constraints.
-    fn extract_boolean(
+    fn try_extract_boolean(
         &mut self,
-        constr: GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
-        let extracted = try_extract_boolean(&constr, &mut || {
-            let v = self.var_dispenser.next_boolean();
-            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
-            v
-        });
-        std::iter::once(constr).chain(extracted)
+        constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
+    ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
+        let result = self
+            .boolean_extractor
+            .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
+        if let Some(var) = result.new_unconstrained_boolean_variable {
+            // If we created a boolean variable, we constrain it to be boolean.
+            self.add_range_constraint(&var, RangeConstraint::from_mask(1));
+        }
+        Some(result.constraint)
     }
 
     /// Performs linearization of `constr`, i.e. replaces all non-affine sub-components of the constraint
     /// by new variables.
     /// This function will always return the original constraint as well as the linearized constraints
     /// and equivalences needed after linearization.
-    fn linearize_expression(
+    fn linearize_constraint(
         &mut self,
-        constr: GroupedExpression<T, V>,
-    ) -> impl Iterator<Item = GroupedExpression<T, V>> {
+        constr: AlgebraicConstraint<GroupedExpression<T, V>>,
+    ) -> impl Iterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>> {
         let mut constrs = vec![constr.clone()];
-        if !constr.is_affine() {
-            let linearized = self.linearizer.linearize(
-                constr,
+        if !constr.expression.is_affine() {
+            let linearized = self.linearizer.linearize_expression(
+                constr.expression,
                 &mut || self.var_dispenser.next_linear(),
                 &mut constrs,
             );
-            constrs.push(linearized);
+            constrs.push(AlgebraicConstraint::assert_zero(linearized));
         }
         constrs.into_iter()
     }
@@ -300,7 +311,7 @@ where
     fn linearize_bus_interaction(
         &mut self,
         bus_interaction: BusInteraction<GroupedExpression<T, V>>,
-        constraint_collection: &mut Vec<GroupedExpression<T, V>>,
+        constraint_collection: &mut Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) -> BusInteraction<GroupedExpression<T, V>> {
         bus_interaction
             .fields()
@@ -324,6 +335,7 @@ where
         + Hash
         + ExpressionConvertible<T::FieldType, V>
         + Substitutable<V>,
+    VD: VarDispenser<V>,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
@@ -352,8 +364,12 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
+                    if let Some((v1, expr)) = try_to_simple_equivalence(c) {
+                        self.apply_assignment(&v1, &expr);
+                        continue;
+                    }
                     c.solve(&self.range_constraints)
-                        .map_err(Error::QseSolvingError)?
+                        .map_err(Error::AlgebraicSolverError)?
                         .effects
                 }
                 ConstraintRef::BusInteraction(b) => b
@@ -460,7 +476,7 @@ where
         let mut exprs = self
             .constraint_system
             .system()
-            .constraints_referencing_variables(expression.referenced_unknown_variables().cloned())
+            .constraints_referencing_variables(expression.referenced_unknown_variables())
             .filter_map(|constr| match constr {
                 ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
                 ConstraintRef::BusInteraction(_) => None,
@@ -515,11 +531,60 @@ where
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
+
+        let mut vars_to_boolean_constrain = vec![];
+        let new_constraints = self
+            .constraint_system
+            .system()
+            .constraints_referencing_variables(once(variable))
+            .filter_map(|constr| match constr {
+                ConstraintRef::AlgebraicConstraint(c) => Some(c),
+                ConstraintRef::BusInteraction(_) => None,
+            })
+            .flat_map(|constr| {
+                let result = self
+                    .boolean_extractor
+                    .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
+                vars_to_boolean_constrain.extend(result.new_unconstrained_boolean_variable);
+                Some(result.constraint)
+            })
+            .collect_vec();
+        for v in vars_to_boolean_constrain {
+            self.add_range_constraint(&v, RangeConstraint::from_mask(1));
+        }
+
+        self.add_algebraic_constraints(new_constraints);
+
         self.assignments_to_return
             .push((variable.clone(), expr.clone()));
-        // TODO we could check if the variable already has an assignment,
-        // but usually it should not be in the system once it has been assigned.
         true
+    }
+}
+
+/// If the constraint is equivalent to `X = Y` for some variables `X` and `Y`,
+/// returns the "larger" variable and the result of solving the constraint
+/// for the variable.
+///
+/// Note: Does not find all cases of equivalence.
+fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+    constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
+) -> Option<(V, GroupedExpression<T, V>)> {
+    if !constr.expression.is_affine() {
+        return None;
+    }
+    let (_, linear, offset) = constr.expression.components();
+    if !offset.is_zero() {
+        return None;
+    }
+    let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
+    // c1 = 1, c2 = -1 or vice-versa
+    if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+        Some((
+            v2.clone(),
+            GroupedExpression::from_unknown_variable(v1.clone()),
+        ))
+    } else {
+        None
     }
 }
 

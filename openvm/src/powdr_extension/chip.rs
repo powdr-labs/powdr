@@ -37,7 +37,10 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::{expression::{AlgebraicExpression, AlgebraicReference}, powdr::UniqueReferences};
+use powdr_autoprecompiles::{
+    expression::{AlgebraicExpression, AlgebraicReference},
+    powdr::UniqueReferences,
+};
 use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<F: PrimeField32> {
@@ -56,11 +59,7 @@ impl<F: PrimeField32> PowdrChip<F> {
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
-        let PowdrPrecompile {
-            apc,
-            opcode,
-            ..
-        } = precompile;
+        let PowdrPrecompile { apc, opcode, .. } = precompile;
         let air = PowdrAir::new(apc.machine);
         let executor = PowdrExecutor::new(
             unimplemented!(),
@@ -157,11 +156,14 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
 
 pub struct RowEvaluator<'a, F: PrimeField32> {
     pub row: &'a [F],
-    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
+    pub witness_id_to_index: Option<&'a BTreeMap<AlgebraicReference, usize>>,
 }
 
 impl<'a, F: PrimeField32> RowEvaluator<'a, F> {
-    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
+    pub fn new(
+        row: &'a [F],
+        witness_id_to_index: Option<&'a BTreeMap<AlgebraicReference, usize>>,
+    ) -> Self {
         Self {
             row,
             witness_id_to_index,
@@ -181,7 +183,7 @@ impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
                 offset: 0,
             } => {
                 let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
-                    witness_id_to_index[&(symbolic_var.index as u64)]
+                    symbolic_var.index
                 } else {
                     symbolic_var.index
                 };
@@ -212,7 +214,10 @@ pub struct SymbolicMachine<F> {
 }
 
 impl<F: PrimeField32> SymbolicMachine<F> {
-    fn from_powdr(machine: powdr_autoprecompiles::SymbolicMachine<F>, composite_to_linear: &BTreeMap<AlgebraicReference, usize>) -> Self {
+    fn from_powdr(
+        machine: powdr_autoprecompiles::SymbolicMachine<F>,
+        composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
+    ) -> Self {
         let columns = machine.main_columns().collect();
 
         let powdr_autoprecompiles::SymbolicMachine {
@@ -240,9 +245,12 @@ struct SymbolicConstraint<F> {
 }
 
 impl<F: PrimeField32> SymbolicConstraint<F> {
-    fn from_powdr(constr: powdr_autoprecompiles::SymbolicConstraint<F>, composite_to_linear: &BTreeMap<AlgebraicReference, usize>) -> Self {
+    fn from_powdr(
+        constr: powdr_autoprecompiles::SymbolicConstraint<F>,
+        composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
+    ) -> Self {
         Self {
-            expr: algebraic_to_symbolic(&constr.expr, composite_to_linear)
+            expr: algebraic_to_symbolic(&constr.expr, composite_to_linear),
         }
     }
 }
@@ -256,12 +264,17 @@ pub struct SymbolicBusInteraction<F> {
     pub count_weight: u32,
 }
 
-impl<F: PrimeField32> SymbolicBusInteraction<F>
-{
-    fn from_powdr(bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<F>, composite_to_linear: &BTreeMap<AlgebraicReference, usize>) -> Self {
+impl<F: PrimeField32> SymbolicBusInteraction<F> {
+    pub fn from_powdr(
+        bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<F>,
+        composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
+    ) -> Self {
         let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = bus_interaction;
         let mult = algebraic_to_symbolic(&mult, composite_to_linear);
-        let args = args.iter().map(|arg| algebraic_to_symbolic(arg, composite_to_linear)).collect();
+        let args = args
+            .iter()
+            .map(|arg| algebraic_to_symbolic(arg, composite_to_linear))
+            .collect();
         Self {
             id: id as BusIndex,
             mult,
@@ -278,9 +291,11 @@ pub struct RangeCheckerSend<F> {
     pub max_bits: SymbolicExpression<F>,
 }
 
-impl<F: PrimeField32> RangeCheckerSend<F>
-{
-    fn try_from_powdr(i: &powdr_autoprecompiles::SymbolicBusInteraction<F>, composite_to_linear: &BTreeMap<AlgebraicReference, usize>) -> Option<Self> {
+impl<F: PrimeField32> RangeCheckerSend<F> {
+    pub fn try_from_powdr(
+        i: &powdr_autoprecompiles::SymbolicBusInteraction<F>,
+        composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
+    ) -> Option<Self> {
         if i.id == 3 {
             assert_eq!(i.args.len(), 2);
             let value = &i.args[0];
@@ -301,7 +316,7 @@ impl<F: PrimeField32> PowdrAir<F> {
         let (composite_to_linear, columns): (BTreeMap<_, _>, Vec<_>) = machine
             .main_columns()
             .enumerate()
-            .map(|(index, c)| ((c, index), c.clone()))
+            .map(|(index, c)| ((c.clone(), index), c))
             .unzip();
 
         Self {
@@ -369,7 +384,10 @@ pub struct WitnessEvaluator<'a, AB: InteractionBuilder> {
 }
 
 impl<'a, AB: InteractionBuilder> WitnessEvaluator<'a, AB> {
-    pub fn new(witness: &'a BTreeMap<AlgebraicReference, AB::Var>, columns: &'a [AlgebraicReference]) -> Self {
+    pub fn new(
+        witness: &'a BTreeMap<AlgebraicReference, AB::Var>,
+        columns: &'a [AlgebraicReference],
+    ) -> Self {
         Self { witness, columns }
     }
 }

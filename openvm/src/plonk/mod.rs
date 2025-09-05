@@ -91,7 +91,10 @@ impl<F: PrimeField32, V> Default for Gate<F, V> {
 impl<F: PrimeField32, V> Gate<F, V> {
     pub fn get_bus_gate_type(&self) -> Option<BusType<OpenVmBusType>> {
         let selectors = [
-            (BusType::OpenVmBitwiseLookup, &self.q_bitwise),
+            (
+                BusType::Other(OpenVmBusType::BitwiseLookup),
+                &self.q_bitwise,
+            ),
             (BusType::Memory, &self.q_memory),
             (
                 BusType::Other(OpenVmBusType::VariableRangeChecker),
@@ -131,7 +134,7 @@ where
     V: Display,
 {
     match gate.get_bus_gate_type() {
-        Some(BusType::OpenVmBitwiseLookup) => "bitwise",
+        Some(BusType::Other(OpenVmBusType::BitwiseLookup)) => "bitwise",
         Some(BusType::Memory) => "memory",
         Some(BusType::Other(OpenVmBusType::VariableRangeChecker)) => "range_check",
         Some(BusType::ExecutionBridge) => "execution",

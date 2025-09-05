@@ -1,5 +1,0 @@
-// The simplest PIL that doesn't get optimized away completely.
-namespace main(4);
-    let index: col = |i| i;
-    let w;
-    w = index * index;

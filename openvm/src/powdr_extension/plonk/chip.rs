@@ -37,12 +37,11 @@ use powdr_autoprecompiles::SymbolicMachine;
 use super::air::PlonkAir;
 
 pub struct PlonkChip<F: PrimeField32> {
-    name: String,
-    opcode: PowdrOpcode,
-    air: Arc<PlonkAir<F>>,
-    executor: PowdrExecutor<F>,
-    machine: SymbolicMachine<F>,
-    bus_map: BusMap,
+    pub name: String,
+    pub opcode: PowdrOpcode,
+    /// An "executor" for this chip, based on the original instructions in the basic block
+    pub executor: PowdrExecutor<F>,
+    pub air: Arc<PlonkAir<F>>,
 }
 
 impl<F: PrimeField32> PlonkChip<F> {
@@ -53,38 +52,25 @@ impl<F: PrimeField32> PlonkChip<F> {
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
-        bus_map: BusMap,
-        copy_constraint_bus_id: u16,
     ) -> Self {
-        let PowdrPrecompile {
-            original_instructions,
-            is_valid_column,
-            name,
-            opcode,
-            machine,
-            ..
-        } = precompile;
-        let air = PlonkAir {
-            copy_constraint_bus_id,
-            bus_map: bus_map.clone(),
-            _marker: std::marker::PhantomData,
-        };
+        let PowdrPrecompile { apc, opcode, .. } = precompile;
+        let air = PlonkAir::new(apc.machine);
         let executor = PowdrExecutor::new(
-            original_instructions,
+            unimplemented!(),
+            apc.block,
             original_airs,
-            is_valid_column,
             memory,
             base_config,
             periphery,
         );
+
+        let name = unimplemented!();
 
         Self {
             name,
             opcode,
             air: Arc::new(air),
             executor,
-            machine,
-            bus_map,
         }
     }
 }

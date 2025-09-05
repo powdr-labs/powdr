@@ -12,19 +12,14 @@ use crate::{
     ExtendedVmConfig, Instr,
 };
 
-use super::{
-    chip::{RangeCheckerSend, RowEvaluator},
-};
+use super::chip::{RangeCheckerSend, RowEvaluator};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
 };
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
-    system::memory::{
-        online::{ApcRange, MemoryLogEntry},
-        OfflineMemory,
-    },
+    system::memory::{online::MemoryLogEntry, OfflineMemory},
 };
 use openvm_instructions::instruction::Instruction;
 use openvm_native_circuit::CastFExtension;
@@ -45,7 +40,9 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, Apc, BasicBlock, InstructionHandler, SymbolicBusInteraction
+    blocks::BasicBlock,
+    expression::{AlgebraicReference, AlgebraicReferenceOriginal, NamespacedReferenceIdentifier},
+    Apc, InstructionHandler, SymbolicBusInteraction,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -56,8 +53,13 @@ mod periphery;
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
 
+// Layout:
+// We have n instructions with each variables like (i, j) where i is the instruction index and j is the variable index.
+// Some of the variables
+
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
+    // Mapping from composite id in the apc to the index of that variable in the apc row
     composite_to_linear: BTreeMap<AlgebraicReference, usize>,
     block: BasicBlock<Instr<F>>,
     air_by_opcode_id: OriginalAirs<F>,
@@ -104,17 +106,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
-        let res = self
-            .block
-            .statements
-            .iter()
-            .try_fold(from_state, |execution_state, instruction| {
-                let executor = self
-                    .inventory
-                    .get_mut_executor(&instruction.0.opcode)
-                    .unwrap();
-                executor.execute(memory, &instruction.0, execution_state)
-            });
+        let res =
+            self.block
+                .statements
+                .iter()
+                .try_fold(from_state, |execution_state, instruction| {
+                    let executor = self
+                        .inventory
+                        .get_mut_executor(&instruction.0.opcode)
+                        .unwrap();
+                    executor.execute(memory, &instruction.0, execution_state)
+                });
 
         self.number_of_calls += 1;
         let memory_logs = memory.get_memory_logs(); // exclusive range
@@ -138,11 +140,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             last_read_write.unwrap_or(to_record_id)
         );
 
-        memory
-            .memory
-            .apc_ranges
-            .push(ApcRange::new(from_record_id, to_record_id, last_read_write));
-
         res
     }
 
@@ -151,32 +148,25 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// nodes in the APC circuit.
     pub fn generate_witness<SC>(
         self,
-        column_index_by_poly_id: &BTreeMap<AlgebraicReference, usize>,
+        composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
         bus_interactions: &[SymbolicBusInteraction<F>],
     ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&AlgebraicReference::IsValid];
-        let width = column_index_by_poly_id.len();
+        let is_valid_index = composite_to_linear[&AlgebraicReference::IsValid];
+        let width = composite_to_linear.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        // for each original opcode, the name of the dummy air it corresponds to
-        let air_name_by_opcode = self
+        let original_instruction_air_names = self
             .block
             .statements
             .iter()
             .map(|instruction| instruction.0.opcode)
-            .unique()
-            .map(|opcode| {
-                (
-                    opcode,
-                    self.inventory.get_executor(opcode).unwrap().air_name(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
+            .collect::<Vec<_>>();
 
         let dummy_trace_by_air_name: HashMap<_, _> =
             self.inventory
@@ -196,57 +186,46 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 })
                 .collect();
 
-        let instruction_index_to_table_offset = self
-            .block.statements
+        let occurrences_by_table_name = original_instruction_air_names.iter().counts();
+
+        let instruction_index_to_table_offset = original_instruction_air_names
             .iter()
-            .enumerate()
             .scan(
                 HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, (index, instruction)| {
-                    let air_name = air_name_by_opcode.get(&instruction.0.opcode).unwrap();
+                |counts: &mut HashMap<&str, usize>, air_name| {
                     let count = counts.entry(air_name).or_default();
                     let current_count = *count;
                     *count += 1;
-                    Some((index, (air_name, current_count)))
+                    Some(current_count)
                 },
             )
-            .collect::<HashMap<_, _>>();
+            .collect::<Vec<_>>();
 
-        let occurrences_by_table_name: HashMap<&String, usize> = self
-            .block
-            .statements
-            .iter()
-            .map(|instruction| air_name_by_opcode.get(&instruction.0.opcode).unwrap())
-            .counts();
-
-        // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
             .block
             .statements
             .iter()
-            .map(|instruction| {
-                // look up how many dummy‐cells this AIR produces:
-                let air_width = dummy_trace_by_air_name
-                    .get(air_name_by_opcode.get(&instruction.0.opcode).unwrap())
-                    .unwrap()
-                    .width();
+            .enumerate()
+            .map(|(instruction_index, instruction)| {
+                let instruction_air_width: u64 = todo!();
 
-                // build a map only of the (dummy_index -> apc_index) pairs
-                let mut map = HashMap::with_capacity(air_width);
-                for dummy_trace_index in 0..air_width {
-                    if let Ok(apc_index) =
-                        (dummy_trace_index, instruction, column_index_by_poly_id)
-                    {
-                        if map.insert(dummy_trace_index, apc_index).is_some() {
-                            panic!(
-                                "duplicate dummy_trace_index {} for instruction opcode {:?}",
-                                dummy_trace_index,
-                                instruction.opcode()
-                            );
-                        }
-                    }
-                }
-                map
+                // Go through all columns in the dummy air
+                (0..instruction_air_width)
+                    .filter_map(|local_id| {
+                        let r = AlgebraicReference::Original(AlgebraicReferenceOriginal {
+                            name: todo!(),
+                            id: NamespacedReferenceIdentifier {
+                                namespace: instruction_index,
+                                id: local_id as u64,
+                            },
+                        });
+
+                        // Only keep this column if it is used in the APC
+                        self.composite_to_linear
+                            .get(&r)
+                            .map(|lin| (local_id as usize, *lin))
+                    })
+                    .collect()
             })
             .collect();
 
@@ -258,21 +237,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let dummy_values = (0..self.number_of_calls)
             .into_par_iter()
             .map(|record_index| {
-                (0..self.block.statements.len())
-                    .map(|index| {
-                        // get the air name and offset for this instruction (by index)
-                        let (air_name, offset) =
-                            instruction_index_to_table_offset.get(&index).unwrap();
-                        // get the table
-                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                        // get how many times this table is used per record
+                original_instruction_air_names
+                    .iter()
+                    .zip_eq(instruction_index_to_table_offset.iter())
+                    .map(|(air_name, offset)| {
+                        let table = dummy_trace_by_air_name.get(air_name).unwrap();
                         let occurrences_per_record =
                             occurrences_by_table_name.get(air_name).unwrap();
-                        // get the width of each occurrence
                         let width = table.width();
-                        // start after the previous record ended, and offset by the correct offset
                         let start = (record_index * occurrences_per_record + offset) * width;
-                        // end at the start + width
                         let end = start + width;
                         &table.values[start..end]
                     })
@@ -286,12 +259,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    // TODO: avoid cloning the instruction
-                    .get_instruction_air(&Instr(instruction.instruction.clone()))
-                    .unwrap()
+                    .get_instruction_air(instruction)
                     .bus_interactions
                     .iter()
-                    .filter_map(|interaction| interaction.try_into().ok())
+                    .filter_map(|interaction| {
+                        RangeCheckerSend::try_from_powdr(interaction, &self.composite_to_linear)
+                    })
                     .collect_vec()
             })
             .collect_vec();
@@ -300,7 +273,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
             bus_interactions
                 .iter()
-                .map(|interaction| interaction.clone().into())
+                .map(|interaction| {
+                    crate::powdr_extension::chip::SymbolicBusInteraction::from_powdr(
+                        interaction.clone(),
+                        &self.composite_to_linear,
+                    )
+                })
                 .collect_vec();
 
         // go through the final table and fill in the values
@@ -344,7 +322,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = RowEvaluator::new(row_slice, Some(composite_to_linear));
 
                 // replay the side effects of this row on the main periphery
                 // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
@@ -363,11 +341,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         RowMajorMatrix::new(values, width)
     }
-}
-
-enum IndexError {
-    NotInDummy,
-    NotInAutoprecompile,
 }
 
 // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.

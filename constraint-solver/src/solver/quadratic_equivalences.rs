@@ -5,20 +5,20 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 use itertools::Itertools;
 
 use crate::{
+    constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
 };
 
-/// Given a list of constraints in the form of grouped expressions, tries to determine
-/// pairs of equivalent variables.
+/// Given a list of constraints, tries to determine pairs of equivalent variables.
 pub fn find_quadratic_equalities<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
-    constraints: &[GroupedExpression<T, V>],
+    constraints: &[AlgebraicConstraint<GroupedExpression<T, V>>],
     range_constraints: impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Vec<(V, V)> {
     let candidates = constraints
         .iter()
-        .filter_map(QuadraticEqualityCandidate::try_from_grouped_expression)
+        .filter_map(QuadraticEqualityCandidate::try_from_constraint)
         .filter(|c| c.variables.len() >= 2)
         .collect::<Vec<_>>();
     candidates
@@ -105,8 +105,8 @@ struct QuadraticEqualityCandidate<T: RuntimeConstant, V: Ord + Clone + Hash + Eq
 }
 
 impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
-    fn try_from_grouped_expression(constr: &GroupedExpression<T, V>) -> Option<Self> {
-        let (left, right) = constr.try_as_single_product()?;
+    fn try_from_constraint(constr: &AlgebraicConstraint<GroupedExpression<T, V>>) -> Option<Self> {
+        let (left, right) = constr.expression.try_as_single_product()?;
         if !left.is_affine() || !right.is_affine() {
             return None;
         }

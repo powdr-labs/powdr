@@ -29,6 +29,7 @@ use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
@@ -45,6 +46,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use tracing::Level;
 
@@ -375,14 +377,48 @@ pub fn compile_exe_with_elf(
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let elf = powdr_riscv_elf::load_elf_from_buffer(elf);
-    let compiled = customize(
-        original_program,
-        elf.text_labels(),
-        elf.debug_info(),
-        config,
-        implementation,
-        pgo_config,
-    );
+    let compiled = match pgo_config {
+        PgoConfig::Cell(pgo_data, max_total_columns) => {
+            let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
+                let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
+
+                let total_non_apc_columns = original_config
+                    .chip_inventory_air_metrics(config.degree_bound.identities)
+                    .values()
+                    .map(|m| m.total_width())
+                    .sum::<usize>();
+                max_total_columns - total_non_apc_columns
+            });
+
+            customize(
+                original_program,
+                elf.text_labels(),
+                elf.debug_info(),
+                config,
+                implementation,
+                CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
+                    pgo_data,
+                    max_total_apc_columns,
+                ),
+            )
+        }
+        PgoConfig::Instruction(pgo_data) => customize(
+            original_program,
+            elf.text_labels(),
+            elf.debug_info(),
+            config,
+            implementation,
+            InstructionPgo::with_pgo_data(pgo_data),
+        ),
+        PgoConfig::None => customize(
+            original_program,
+            elf.text_labels(),
+            elf.debug_info(),
+            config,
+            implementation,
+            NonePgo::default(),
+        ),
+    };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
         &mut BufWriter::new(File::create("debug.pil").unwrap()),
@@ -817,10 +853,18 @@ mod tests {
     const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
     const GUEST_ECC_APC_PGO: u64 = 50;
     const GUEST_ECC_SKIP: u64 = 0;
+    // Even with an iteration of 0, the test does one linear combination
+    // (and asserts that the result is correct)
+    const GUEST_ECC_ITER: u32 = 0;
 
     const GUEST_ECC_PROJECTIVE: &str = "guest-ecc-projective";
     const GUEST_ECC_PROJECTIVE_APC_PGO: u64 = 50;
     const GUEST_ECC_PROJECTIVE_SKIP: u64 = 0;
+
+    const GUEST_ECRECOVER_HINTS: &str = "guest-ecrecover";
+    const GUEST_ECRECOVER_APC_PGO: u64 = 50;
+    const GUEST_ECRECOVER_SKIP: u64 = 0;
+    const GUEST_ECRECOVER_ITER: u32 = 1;
 
     #[test]
     fn guest_prove_simple() {
@@ -1293,7 +1337,8 @@ mod tests {
 
     #[test]
     fn ecc_hint_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
@@ -1308,9 +1353,30 @@ mod tests {
     }
 
     #[test]
+    fn ecrecover_prove() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECRECOVER_HINTS,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+        prove_simple(
+            GUEST_ECRECOVER_HINTS,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+    }
+
+    #[test]
     #[ignore = "Too much RAM"]
     fn ecc_hint_prove_recursion() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
@@ -1325,8 +1391,30 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too much RAM"]
+    fn ecrecover_prove_recursion() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
+        let pgo_data = execution_profile_from_guest(
+            GUEST_ECRECOVER_HINTS,
+            GuestOptions::default(),
+            stdin.clone(),
+        );
+        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+        prove_recursion(
+            GUEST_ECRECOVER_HINTS,
+            config,
+            PrecompileImplementation::SingleRowChip,
+            stdin,
+            PgoConfig::Cell(pgo_data, None),
+            None,
+        );
+    }
+
+    #[test]
     fn ecc_projective_prove() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let config =
             default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
@@ -1559,11 +1647,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14702,
-                            log_up: 23300,
+                            main: 14698,
+                            log_up: 23296,
                         },
-                        constraints: 4393,
-                        bus_interactions: 11419,
+                        constraints: 4389,
+                        bus_interactions: 11416,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1587,11 +1675,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14674,
-                            log_up: 23268,
+                            main: 14670,
+                            log_up: 23264,
                         },
-                        constraints: 4369,
-                        bus_interactions: 11409,
+                        constraints: 4365,
+                        bus_interactions: 11406,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1609,8 +1697,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 14674,
-                        log_up: 23268,
+                        main: 14670,
+                        log_up: 23264,
                     },
                 }
             "#]]),
@@ -1651,7 +1739,8 @@ mod tests {
 
     #[test]
     fn ecc_hint_machine_pgo_cell() {
-        let stdin = StdIn::default();
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
             execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
 
@@ -1667,11 +1756,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 16416,
-                            log_up: 26292,
+                            main: 15999,
+                            log_up: 25852,
                         },
-                        constraints: 9132,
-                        bus_interactions: 11135,
+                        constraints: 8721,
+                        bus_interactions: 10914,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1689,8 +1778,57 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 16416,
-                        log_up: 26292,
+                        main: 15999,
+                        log_up: 25852,
+                    },
+                }
+            "#]]),
+        );
+    }
+
+    #[test]
+    fn ecrecover_machine_pgo_cell() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ECRECOVER_ITER);
+        let pgo_data =
+            execution_profile_from_guest(GUEST_ECRECOVER_HINTS, GuestOptions::default(), stdin);
+
+        test_machine_compilation(
+            GuestTestConfig {
+                pgo_config: PgoConfig::Cell(pgo_data, None),
+                name: GUEST_ECRECOVER_HINTS,
+                apc: GUEST_ECRECOVER_APC_PGO,
+                skip: GUEST_ECRECOVER_SKIP,
+            },
+            MachineTestMetrics {
+                powdr_expected_sum: expect![[r#"
+                    AirMetrics {
+                        widths: AirWidths {
+                            preprocessed: 0,
+                            main: 19161,
+                            log_up: 29572,
+                        },
+                        constraints: 11242,
+                        bus_interactions: 12759,
+                    }
+                "#]],
+                powdr_expected_machine_count: expect![[r#"
+                    50
+                "#]],
+                non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
+                non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
+            },
+            Some(expect![[r#"
+                AirWidthsDiff {
+                    before: AirWidths {
+                        preprocessed: 0,
+                        main: 133429,
+                        log_up: 176548,
+                    },
+                    after: AirWidths {
+                        preprocessed: 0,
+                        main: 19161,
+                        log_up: 29572,
                     },
                 }
             "#]]),
@@ -1822,11 +1960,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3313,
-                            log_up: 5192,
+                            main: 3314,
+                            log_up: 5204,
                         },
-                        constraints: 849,
-                        bus_interactions: 2513,
+                        constraints: 837,
+                        bus_interactions: 2512,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1839,13 +1977,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 32714,
-                        log_up: 42092,
+                        main: 32788,
+                        log_up: 42196,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3313,
-                        log_up: 5192,
+                        main: 3314,
+                        log_up: 5204,
                     },
                 }
             "#]]),

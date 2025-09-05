@@ -1,6 +1,8 @@
 use powdr_number::ExpressionConvertible;
 
-use crate::constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem};
+use crate::constraint_system::{
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
+};
 use crate::grouped_expression::GroupedExpression;
 use crate::range_constraint::RangeConstraint;
 use crate::runtime_constant::{
@@ -9,8 +11,9 @@ use crate::runtime_constant::{
 use crate::solver::base::{BaseSolver, VarDispenserImpl};
 use crate::solver::var_transformation::{VarTransformation, Variable};
 
-use super::grouped_expression::{Error as QseError, RangeConstraintProvider};
+use super::grouped_expression::RangeConstraintProvider;
 
+use crate::algebraic_constraint::solve::Error as AlgebraicSolverError;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -75,7 +78,7 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
     /// Adds a new algebraic constraint to the system.
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = GroupedExpression<T, V>>,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     );
 
     /// Adds a new bus interaction to the system.
@@ -113,7 +116,7 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// An error occurred while calling `GroupedExpression::solve`
-    QseSolvingError(QseError),
+    AlgebraicSolverError(AlgebraicSolverError),
     /// The bus interaction handler reported that some sent data was invalid.
     BusInteractionError,
     /// During exhaustive search, we came across a combination of variables for which

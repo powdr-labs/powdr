@@ -3,7 +3,9 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::{BusInteraction, ConstraintSystem};
+use powdr_constraint_solver::constraint_system::{
+    AlgebraicConstraint, BusInteraction, ConstraintSystem,
+};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::solver::Solver;
 use powdr_number::FieldElement;
@@ -18,8 +20,16 @@ pub fn optimize_memory<
 >(
     mut system: ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
-    memory_bus_id: u64,
+    memory_bus_id: Option<u64>,
 ) -> ConstraintSystem<T, V> {
+    // In the absence of memory bus, we return the system unchanged
+    let memory_bus_id = match memory_bus_id {
+        Some(id) => id,
+        None => {
+            return system;
+        }
+    };
+
     // TODO use the solver here.
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices::<T, V, M>(&system, solver, memory_bus_id);
@@ -33,6 +43,12 @@ pub fn optimize_memory<
     solver.add_algebraic_constraints(new_constraints.iter().cloned());
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
+
+    assert!(check_register_operation_consistency::<_, _, M>(
+        &system,
+        memory_bus_id
+    ));
+
     system
 }
 
@@ -135,8 +151,11 @@ fn redundant_memory_interactions_indices<
     system: &ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     memory_bus_id: u64,
-) -> (Vec<usize>, Vec<GroupedExpression<T, V>>) {
-    let mut new_constraints: Vec<GroupedExpression<T, V>> = Vec::new();
+) -> (
+    Vec<usize>,
+    Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
+) {
+    let mut new_constraints = Vec::new();
 
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address and the
@@ -169,7 +188,9 @@ fn redundant_memory_interactions_indices<
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
-                        new_constraints.push(existing.clone() - new.clone());
+                        new_constraints.push(AlgebraicConstraint::assert_zero(
+                            existing.clone() - new.clone(),
+                        ));
                     }
                     to_remove.extend([index, previous_send]);
                 }

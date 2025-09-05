@@ -1,7 +1,6 @@
-use crate::constraint_system::ConstraintRef;
+use crate::constraint_system::{AlgebraicConstraint, ConstraintRef};
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::journaling_constraint_system::JournalingConstraintSystem;
 use crate::runtime_constant::{RuntimeConstant, Substitutable};
 
 use itertools::Itertools;
@@ -23,29 +22,33 @@ pub fn replace_constrained_witness_columns<
     T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    mut constraint_system: JournalingConstraintSystem<T, V>,
+    mut constraint_system: IndexedConstraintSystem<T, V>,
     should_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
-) -> JournalingConstraintSystem<T, V> {
+) -> IndexedConstraintSystem<T, V> {
     let mut to_remove_idx = HashSet::new();
     let mut inlined_vars = HashSet::new();
-    let constraint_count = constraint_system
-        .indexed_system()
-        .algebraic_constraints()
-        .len();
-    for curr_idx in (0..constraint_count).rev() {
-        let constraint = &constraint_system.indexed_system().algebraic_constraints()[curr_idx];
+    let constraint_count = constraint_system.algebraic_constraints().len();
+    loop {
+        let inlined_vars_count = inlined_vars.len();
+        for curr_idx in (0..constraint_count).rev() {
+            let constraint = &constraint_system.algebraic_constraints()[curr_idx];
 
-        for (var, expr) in find_inlinable_variables(constraint) {
-            if should_inline(&var, &expr, constraint_system.indexed_system()) {
-                log::trace!("Substituting {var} = {expr}");
-                log::trace!("  (from identity {constraint})");
+            for (var, expr) in find_inlinable_variables(constraint) {
+                if should_inline(&var, &expr, &constraint_system) {
+                    log::trace!("Substituting {var} = {expr}");
+                    log::trace!("  (from identity {constraint})");
 
-                constraint_system.substitute_by_unknown(&var, &expr);
-                to_remove_idx.insert(curr_idx);
-                inlined_vars.insert(var);
+                    constraint_system.substitute_by_unknown(&var, &expr);
+                    to_remove_idx.insert(curr_idx);
+                    inlined_vars.insert(var);
 
-                break;
+                    break;
+                }
             }
+        }
+        if inlined_vars.len() == inlined_vars_count {
+            // No more variables to inline
+            break;
         }
     }
 
@@ -90,11 +93,14 @@ pub fn substitution_would_not_violate_degree_bound<
     let replacement_deg = expr.degree();
 
     constraint_system
-        .constraints_referencing_variables(std::iter::once(var.clone()))
+        .constraints_referencing_variables(std::iter::once(var))
         .all(|cref| match cref {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let degree =
-                    expression_degree_with_virtual_substitution(identity, var, replacement_deg);
+                let degree = expression_degree_with_virtual_substitution(
+                    identity.expression,
+                    var,
+                    replacement_deg,
+                );
                 degree <= degree_bound.identities
             }
             ConstraintRef::BusInteraction(interaction) => interaction.fields().all(|expr| {
@@ -110,13 +116,13 @@ fn find_inlinable_variables<
     T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
     V: Ord + Clone + Hash + Eq + Display,
 >(
-    constraint: &GroupedExpression<T, V>,
+    constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
-    let (_, linear, _) = constraint.components();
+    let (_, linear, _) = constraint.expression.components();
     linear
         .rev()
         .filter_map(|(target_var, _)| {
-            let rhs_expr = constraint.try_solve_for(target_var)?;
+            let rhs_expr = constraint.as_ref().try_solve_for(target_var)?;
             assert!(!rhs_expr.referenced_unknown_variables().contains(target_var));
             Some((target_var.clone(), rhs_expr))
         })
@@ -166,18 +172,16 @@ mod test {
 
     #[test]
     fn test_no_substitution() {
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("a") * var("b") + var("c") * var("d"),
                 var("e") * var("e") - constant(2),
-            ],
-            bus_interactions: vec![],
-        }
-        .into();
+            ])
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
-        assert_eq!(constraint_system.algebraic_constraints().count(), 2);
+        assert_eq!(constraint_system.algebraic_constraints().len(), 2);
     }
 
     #[test]
@@ -189,15 +193,14 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("a") + var("b") + var("c"),
                 var("b") + var("d") - constant(1),
                 var("c") + var("b") + var("a") + var("d") - var("0result"),
-            ],
-            bus_interactions,
-        }
-        .into();
+            ])
+            .with_bus_interactions(bus_interactions)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
@@ -209,10 +212,10 @@ mod test {
         //         = 0 + 0 + d
         //    => result = d = -b + 1
         //    => b = -result + 1
-        assert_eq!(constraint_system.algebraic_constraints().count(), 0);
+        assert_eq!(constraint_system.algebraic_constraints().len(), 0);
 
-        let bus_interactions = constraint_system.bus_interactions().collect_vec();
-        let [BusInteraction { payload, .. }] = &bus_interactions[..] else {
+        let bus_interactions = constraint_system.bus_interactions();
+        let [BusInteraction { payload, .. }] = bus_interactions else {
             panic!();
         };
         let [result, b] = payload.as_slice() else {
@@ -246,16 +249,15 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions,
-        }
-        .into();
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(identities)
+            .with_bus_interactions(bus_interactions)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
-        let constraints = constraint_system.algebraic_constraints().collect_vec();
+        let constraints = constraint_system.algebraic_constraints();
         assert_eq!(constraints.len(), 0);
     }
 
@@ -281,16 +283,14 @@ mod test {
         identities.push(expr_constraint);
 
         // no columns to keep
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: identities,
-            bus_interactions: vec![],
-        }
-        .into();
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(identities)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
-        let constraints = constraint_system.algebraic_constraints().collect_vec();
+        let constraints = constraint_system.algebraic_constraints();
         assert_eq!(constraints.len(), 0);
     }
 
@@ -303,23 +303,22 @@ mod test {
             multiplicity: constant(1),
         }];
 
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("y") - (var("x") + constant(3)),
                 var("z") - (var("y") + constant(2)),
                 var("result") - (var("z") + constant(1)),
-            ],
-            bus_interactions,
-        }
-        .into();
+            ])
+            .with_bus_interactions(bus_interactions)
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) y = x + 3
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
         // 3) result = z + 1 ⇒ result = (x + 5) + 1 = x + 6
-        let bus_interactions = constraint_system.bus_interactions().collect_vec();
-        let [BusInteraction { payload, .. }] = &bus_interactions[..] else {
+        let bus_interactions = constraint_system.bus_interactions();
+        let [BusInteraction { payload, .. }] = bus_interactions else {
             panic!();
         };
         let [result, x] = payload.as_slice() else {
@@ -331,41 +330,42 @@ mod test {
 
     #[test]
     fn test_replace_constrained_witness_columns_max_degree_limit() {
-        let constraint_system = ConstraintSystem {
-            algebraic_constraints: vec![
+        let constraint_system = ConstraintSystem::default()
+            .with_constraints(vec![
                 var("a") - (var("b") + constant(1)),
                 var("c") - (var("a") * var("a")),
                 var("d") - (var("c") * var("a")),
                 var("e") - (var("d") * var("a")),
                 var("f") - (var("e") + constant(5)),
                 var("result") - (var("f") * constant(2)),
-            ],
-            // Get all variables
-            bus_interactions: vec![BusInteraction {
-                bus_id: constant(1),
-                payload: vec![
-                    var("a"),
-                    var("b"),
-                    var("c"),
-                    var("d"),
-                    var("e"),
-                    var("f"),
-                    var("result"),
-                ],
-                multiplicity: constant(1),
-            }],
-        }
-        .into();
+            ])
+            .with_bus_interactions(
+                // Get all variables
+                vec![BusInteraction {
+                    bus_id: constant(1),
+                    payload: vec![
+                        var("a"),
+                        var("b"),
+                        var("c"),
+                        var("d"),
+                        var("e"),
+                        var("f"),
+                        var("result"),
+                    ],
+                    multiplicity: constant(1),
+                }],
+            )
+            .into();
 
         let constraint_system =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
-        let constraints = constraint_system.algebraic_constraints().collect_vec();
-        let [identity] = &constraints[..] else {
+        let constraints = constraint_system.algebraic_constraints();
+        let [identity] = constraints else {
             panic!();
         };
-        let bus_interactions = constraint_system.bus_interactions().collect_vec();
-        let [BusInteraction { payload, .. }] = &bus_interactions[..] else {
+        let bus_interactions = constraint_system.bus_interactions();
+        let [BusInteraction { payload, .. }] = bus_interactions else {
             panic!();
         };
         let [a, b, c, d, e, f, result] = payload.as_slice() else {
@@ -377,7 +377,7 @@ mod test {
         // In-lining c would violate the degree bound, so it is kept as a symbol
         // with a constraint to enforce the equality.
         assert_eq!(c.to_string(), "c");
-        assert_eq!(identity.to_string(), "-((a) * (a) - c)");
+        assert_eq!(identity.to_string(), "-((a) * (a) - c) = 0");
         // From third identity: d = c * a
         assert_eq!(d.to_string(), "(c) * (a)");
         // From fourth identity: e = d * a
@@ -421,17 +421,13 @@ mod test {
         suboptimal_order_identities.push(constraint2.clone()); // b = c + d
         suboptimal_order_identities.push(constraint4.clone()); // c = d * d
 
-        let optimal_system = ConstraintSystem {
-            algebraic_constraints: optimal_order_identities,
-            bus_interactions: vec![],
-        }
-        .into();
+        let optimal_system = ConstraintSystem::default()
+            .with_constraints(optimal_order_identities)
+            .into();
 
-        let suboptimal_system = ConstraintSystem {
-            algebraic_constraints: suboptimal_order_identities,
-            bus_interactions: vec![],
-        }
-        .into();
+        let suboptimal_system = ConstraintSystem::default()
+            .with_constraints(suboptimal_order_identities)
+            .into();
 
         // Apply the same optimization to both systems
         let optimal_system = replace_constrained_witness_columns(optimal_system, bounds(5, 5));
@@ -440,7 +436,7 @@ mod test {
             replace_constrained_witness_columns(suboptimal_system, bounds(5, 5));
 
         // Assert the difference in optimization results
-        assert_eq!(optimal_system.algebraic_constraints().count(), 3);
-        assert_eq!(suboptimal_system.algebraic_constraints().count(), 4);
+        assert_eq!(optimal_system.algebraic_constraints().len(), 3);
+        assert_eq!(suboptimal_system.algebraic_constraints().len(), 4);
     }
 }

@@ -1,9 +1,9 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine;
-pub use blocks::{pgo_config, BasicBlock, PgoConfig, PgoType};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -22,7 +22,6 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 pub mod adapter;
-mod bitwise_lookup_optimizer;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -33,10 +32,12 @@ pub mod expression_conversion;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
+pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
+pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 
 #[derive(Clone)]
@@ -290,10 +291,10 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
 
 pub trait InstructionHandler<T, I> {
     /// Returns the AIR for the given instruction.
-    fn get_instruction_air(&self, instruction: &I) -> Option<&SymbolicMachine<T>>;
+    fn get_instruction_air(&self, instruction: &I) -> &SymbolicMachine<T>;
 
     /// Returns the AIR stats for the given instruction.
-    fn get_instruction_air_stats(&self, instruction: &I) -> Option<AirStats>;
+    fn get_instruction_air_stats(&self, instruction: &I) -> AirStats;
 
     /// Returns whether the given instruction is allowed in an autoprecompile.
     fn is_allowed(&self, instruction: &I) -> bool;

@@ -53,11 +53,7 @@ pub struct PowdrPrecompile<F> {
 }
 
 impl<F> PowdrPrecompile<F> {
-    pub fn new(
-        opcode: PowdrOpcode,
-        apc: Apc<F, Instr<F>>,
-        apc_stats: Option<OvmApcStats>,
-    ) -> Self {
+    pub fn new(opcode: PowdrOpcode, apc: Apc<F, Instr<F>>, apc_stats: Option<OvmApcStats>) -> Self {
         Self {
             opcode,
             apc,

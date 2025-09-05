@@ -2,11 +2,11 @@ Instructions:
   SLTU rd_ptr = 8, rs1_ptr = 0, rs2 = 5, rs2_as = 1
 
 APC advantage:
-  - Main columns: 37 -> 23 (1.61x reduction)
-  - Bus interactions: 18 -> 16 (1.12x reduction)
-  - Constraints: 28 -> 18 (1.56x reduction)
+  - Main columns: 37 -> 22 (1.68x reduction)
+  - Bus interactions: 18 -> 15 (1.20x reduction)
+  - Constraints: 28 -> 17 (1.65x reduction)
 
-Symbolic machine using 23 unique main columns:
+Symbolic machine using 22 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -23,7 +23,6 @@ Symbolic machine using 23 unique main columns:
   c__2_0
   c__3_0
   cmp_result_0
-  c_msb_f_0
   diff_marker__0_0
   diff_marker__1_0
   diff_marker__2_0
@@ -51,16 +50,14 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * 
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
 
-// Bus 6 (OPENVM_BITWISE_LOOKUP):
+// Bus 6 (BITWISE_LOOKUP):
 mult=diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0, args=[diff_val_0 - 1, 0, 0, 0]
-mult=is_valid * 1, args=[c_msb_f_0, 0, 0, 0]
 
 // Algebraic constraints:
 cmp_result_0 * (cmp_result_0 - 1) = 0
-(c__3_0 - c_msb_f_0) * (c_msb_f_0 + 256 - c__3_0) = 0
 diff_marker__3_0 * (diff_marker__3_0 - 1) = 0
-(1 - diff_marker__3_0) * (c_msb_f_0 * (2 * cmp_result_0 - 1)) = 0
-diff_marker__3_0 * (diff_val_0 - c_msb_f_0 * (2 * cmp_result_0 - 1)) = 0
+(1 - diff_marker__3_0) * (c__3_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__3_0 * (diff_val_0 - c__3_0 * (2 * cmp_result_0 - 1)) = 0
 diff_marker__2_0 * (diff_marker__2_0 - 1) = 0
 (1 - (diff_marker__2_0 + diff_marker__3_0)) * (c__2_0 * (2 * cmp_result_0 - 1)) = 0
 diff_marker__2_0 * (diff_val_0 - c__2_0 * (2 * cmp_result_0 - 1)) = 0

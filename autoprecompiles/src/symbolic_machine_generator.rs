@@ -3,8 +3,10 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    adapter::Adapter, blocks::Instruction, expression::AlgebraicExpression, powdr, BasicBlock,
-    BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
+    adapter::Adapter,
+    blocks::{BasicBlock, Instruction},
+    expression::AlgebraicExpression,
+    powdr, BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
     SymbolicMachine,
 };
 
@@ -88,10 +90,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
 
     for (i, instr) in block.statements.iter().enumerate() {
-        let machine = instruction_handler
-            .get_instruction_air(instr)
-            .unwrap()
-            .clone();
+        let machine = instruction_handler.get_instruction_air(instr).clone();
 
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine(machine, &|x| A::from_field(x));

@@ -152,14 +152,15 @@ where
         + Display,
 {
     let effects = constraint_system
-        .constraints_referencing_variables(assignments.keys().cloned())
+        .constraints_referencing_variables(assignments.keys())
         .map(|constraint| match constraint {
             ConstraintRef::AlgebraicConstraint(identity) => {
-                let mut identity = identity.clone();
+                let mut identity = identity.cloned();
                 for (variable, value) in assignments.iter() {
                     identity.substitute_by_known(variable, &T::from(*value));
                 }
                 identity
+                    .as_ref()
                     .solve(range_constraints)
                     .map(|result| result.effects)
                     .map_err(|_| ContradictingConstraintError)

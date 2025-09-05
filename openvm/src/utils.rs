@@ -32,7 +32,12 @@ impl fmt::Display for OpenVmReference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OpenVmReference::WitnessColumn(reference, next) => {
-                write!(f, "{}{}", reference.to_string(), if *next { "'" } else { "" })
+                write!(
+                    f,
+                    "{}{}",
+                    reference.to_string(),
+                    if *next { "'" } else { "" }
+                )
             }
             OpenVmReference::IsFirstRow => write!(f, "is_first_row"),
             OpenVmReference::IsLastRow => write!(f, "is_last_row"),
@@ -92,7 +97,7 @@ pub fn algebraic_to_symbolic<F: PrimeField32>(
                     part_index: 0,
                     offset: 0,
                 },
-                composite_to_linear[algebraic_reference]
+                composite_to_linear[algebraic_reference],
             ))
         }
     }
