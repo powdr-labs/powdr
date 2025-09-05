@@ -547,4 +547,10 @@ mod pseudo_instruction_tests {
         ];
         assert_machine_output(program.to_vec(), "ret");
     }
+
+    #[test]
+    fn add_constant() {
+        let program = [add(48, 0, 216, 0)];
+        assert_machine_output(program.to_vec(), "add_constant");
+    }
 }
