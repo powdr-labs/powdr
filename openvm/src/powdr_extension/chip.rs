@@ -6,9 +6,13 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances, utils::algebraic_to_symbolic, BabyBearOpenVmApcAdapter, ExtendedVmConfig
+    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances, utils::algebraic_to_symbolic, ExtendedVmConfig,
+    customize_exe::Instr,
 };
 
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use openvm_stark_backend::p3_commit::{Pcs, PolynomialSpace};
+use powdr_autoprecompiles::{adapter::Adapter, InstructionHandler};
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
 use openvm_circuit::system::memory::MemoryController;
@@ -36,18 +40,19 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::{adapter::Adapter, expression::{AlgebraicExpression, AlgebraicReference}};
+use powdr_autoprecompiles::{expression::{AlgebraicExpression, AlgebraicReference}};
 use serde::{Deserialize, Serialize};
 
-pub struct PowdrChip<F: PrimeField32> {
+pub struct PowdrChip<F: PrimeField32, A: Adapter> {
     pub name: String,
     pub opcode: PowdrOpcode,
     /// An "executor" for this chip, based on the original instructions in the basic block
     pub executor: PowdrExecutor<F>,
     pub air: Arc<PowdrAir<F>>,
+    _marker: std::marker::PhantomData<A>,
 }
 
-impl<F: PrimeField32> PowdrChip<F> {
+impl<F: PrimeField32, A: Adapter> PowdrChip<F, A> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<F>,
         original_airs: OriginalAirs<F>,
@@ -78,11 +83,12 @@ impl<F: PrimeField32> PowdrChip<F> {
             opcode,
             air: Arc::new(air),
             executor,
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
+impl<F: PrimeField32, A: Adapter> InstructionExecutor<F> for PowdrChip<F, A> {
     fn execute(
         &mut self,
         memory: &mut MemoryController<F>,
@@ -102,7 +108,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
+impl<F: PrimeField32, A: Adapter> ChipUsageGetter for PowdrChip<F, A> {
     fn air_name(&self) -> String {
         format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -115,9 +121,17 @@ impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
     }
 }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PowdrChip<Val<SC>>
+impl<SC: StarkGenericConfig, A> Chip<SC> for PowdrChip<Val<SC>, A>
 where
     Val<SC>: PrimeField32,
+    A: Adapter<
+            Field = Val<SC>,
+            Instruction = Instr<Val<SC>>,
+            InstructionHandler = OriginalAirs<Val<SC>>,
+            AirId = String,
+        >,
+    // <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = BabyBear>,
+    // <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = Val<SC>>,
 {
     fn air(&self) -> Arc<dyn AnyRap<SC>> {
         self.air.clone()
@@ -129,7 +143,7 @@ where
         let width = self.trace_width();
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self.executor.generate_witness::<SC, BabyBearOpenVmApcAdapter>(
+        let trace = self.executor.generate_witness::<SC, A>(
             &self.air.column_index_by_poly_id,
             &self.air.machine.bus_interactions,
         );

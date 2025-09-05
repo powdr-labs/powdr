@@ -4,6 +4,7 @@ use std::iter::once;
 
 use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
+use powdr_autoprecompiles::adapter::Adapter;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::bus_map::BusMap;
@@ -29,19 +30,20 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::SymbolicMachine;
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, PrecompileImplementation};
+use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
-pub struct PowdrExtension<F> {
+pub struct PowdrExtension<F, A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String>> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
     pub base_config: ExtendedVmConfig,
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
+    _marker: std::marker::PhantomData<A>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -98,7 +100,7 @@ impl<F> PowdrPrecompile<F> {
     }
 }
 
-impl<F> PowdrExtension<F> {
+impl<F, A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String>> PowdrExtension<F, A> {
     pub fn new(
         precompiles: Vec<PowdrPrecompile<F>>,
         base_config: ExtendedVmConfig,
@@ -112,18 +114,22 @@ impl<F> PowdrExtension<F> {
             implementation,
             bus_map,
             airs,
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
 #[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExecutor<F: PrimeField32> {
-    Powdr(PowdrChip<F>),
-    Plonk(PlonkChip<F>),
+pub enum PowdrExecutor<F: PrimeField32, A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String> + 'static> {
+    Powdr(PowdrChip<F, A>),
+    Plonk(PlonkChip<F, A>),
 }
 
-impl<F: PrimeField32> PowdrExecutor<F> {
+impl<F: PrimeField32, A> PowdrExecutor<F, A>
+where
+    A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String>,
+{
     pub fn air_name(&self) -> String {
         match self {
             PowdrExecutor::Powdr(powdr_chip) => powdr_chip.air_name(),
@@ -138,8 +144,8 @@ pub enum PowdrPeriphery<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
-    type Executor = PowdrExecutor<F>;
+impl<F: PrimeField32, A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String> + 'static> VmExtension<F> for PowdrExtension<F, A> {
+    type Executor = PowdrExecutor<F, A>;
 
     type Periphery = PowdrPeriphery<F>;
 
@@ -170,7 +176,7 @@ impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
             PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
 
         for precompile in &self.precompiles {
-            let powdr_chip: PowdrExecutor<F> = match self.implementation {
+            let powdr_chip: PowdrExecutor<F, A> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     self.airs.clone(),

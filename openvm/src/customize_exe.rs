@@ -58,6 +58,7 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
+#[derive(Clone)]
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
 /// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.

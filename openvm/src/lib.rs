@@ -28,6 +28,7 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::adapter::Adapter;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
@@ -52,7 +53,7 @@ use tracing::Level;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
-use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, AirWidths, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::PowdrPrecompile;
 
@@ -108,7 +109,7 @@ mod plonk;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
     pub sdk_config: OriginalVmConfig,
-    pub powdr: PowdrExtension<BabyBear>,
+    pub powdr: PowdrExtension<BabyBear, BabyBearOpenVmApcAdapter<'static>>,
 }
 
 // For generation of the init file, we delegate to the underlying SdkVmConfig.
@@ -130,11 +131,11 @@ impl InitFileGenerator for SpecializedConfig {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
-pub enum SpecializedExecutor<F: PrimeField32> {
+pub enum SpecializedExecutor<F: PrimeField32, A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String> + 'static> {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<F>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor<F>),
+    PowdrExecutor(PowdrExecutor<F, A>),
 }
 
 #[derive(From, ChipUsageGetter, Chip, AnyEnum)]
@@ -146,7 +147,7 @@ pub enum MyPeriphery<F: PrimeField32> {
 }
 
 impl VmConfig<BabyBear> for SpecializedConfig {
-    type Executor = SpecializedExecutor<BabyBear>;
+    type Executor = SpecializedExecutor<BabyBear, BabyBearOpenVmApcAdapter<'static>>;
     type Periphery = MyPeriphery<BabyBear>;
 
     fn system(&self) -> &SystemConfig {

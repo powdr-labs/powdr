@@ -11,7 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig};
+use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -31,21 +31,23 @@ use openvm_stark_backend::{
     rap::AnyRap,
     Chip, ChipUsageGetter,
 };
+use powdr_autoprecompiles::adapter::Adapter;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicMachine;
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<F: PrimeField32> {
+pub struct PlonkChip<F: PrimeField32, A: Adapter> {
     name: String,
     opcode: PowdrOpcode,
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
     machine: SymbolicMachine<F>,
     bus_map: BusMap,
+    _marker: std::marker::PhantomData<A>,
 }
 
-impl<F: PrimeField32> PlonkChip<F> {
+impl<F: PrimeField32, A: Adapter> PlonkChip<F, A> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<F>,
@@ -85,11 +87,12 @@ impl<F: PrimeField32> PlonkChip<F> {
             executor,
             machine,
             bus_map,
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
+impl<F: PrimeField32, A: Adapter> InstructionExecutor<F> for PlonkChip<F, A> {
     fn execute(
         &mut self,
         memory: &mut MemoryController<F>,
@@ -109,7 +112,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
+impl<F: PrimeField32, A: Adapter> ChipUsageGetter for PlonkChip<F, A> {
     fn air_name(&self) -> String {
         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -122,9 +125,10 @@ impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
     }
 }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PlonkChip<Val<SC>>
+impl<SC: StarkGenericConfig, A> Chip<SC> for PlonkChip<Val<SC>, A>
 where
     Val<SC>: PrimeField32,
+    A: Adapter<Field = Val<SC>, Instruction = Instr<Val<SC>>, InstructionHandler = OriginalAirs<Val<SC>>, AirId = String>,
 {
     fn air(&self) -> Arc<dyn AnyRap<SC>> {
         self.air.clone()
@@ -153,7 +157,7 @@ where
             .collect();
         let witness = self
             .executor
-            .generate_witness::<SC, BabyBearOpenVmApcAdapter>(&column_index_by_poly_id, &self.machine.bus_interactions);
+            .generate_witness::<SC, A>(&column_index_by_poly_id, &self.machine.bus_interactions);
 
         // TODO: This should be parallelized.
         let mut values = <Val<SC>>::zero_vec(height * width);

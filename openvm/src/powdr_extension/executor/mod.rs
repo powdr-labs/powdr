@@ -190,8 +190,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         let subs = self.instructions.iter().map(|instruction| instruction.subs.clone()).collect();
 
+        let original_instructions = self.instructions.iter().map(|instruction| Instr(instruction.instruction.clone())).collect_vec();
+
         let trace_handler = OpenVmTraceHandler::<A>::new(
-            &self.instructions.iter().map(|instruction| Instr(instruction.instruction.clone())).collect_vec(),
+            &original_instructions,
             column_index_by_poly_id,
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
