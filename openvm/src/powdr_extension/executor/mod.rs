@@ -42,7 +42,7 @@ use openvm_stark_backend::{
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
+    adapter::Adapter, expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -142,7 +142,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness<SC>(
+    pub fn generate_witness<SC, A>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
         bus_interactions: &[SymbolicBusInteraction<F>],
@@ -150,6 +150,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
+        A: Adapter<
+            Field = F,
+            Instruction = Instr<F>,
+            InstructionHandler = OriginalAirs<F>,
+            AirId = String,
+        >,
     {
         let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
         let width = column_index_by_poly_id.len();
@@ -182,12 +188,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 })
                 .collect();
 
-        let trace_handler = OpenVmTraceHandler::new(
-            &self.instructions,
+        let subs = self.instructions.iter().map(|instruction| instruction.subs.clone()).collect();
+
+        let trace_handler = OpenVmTraceHandler::<A>::new(
+            &self.instructions.iter().map(|instruction| Instr(instruction.instruction.clone())).collect_vec(),
             column_index_by_poly_id,
             &dummy_trace_by_air_name,
-            self.number_of_calls,
             &self.air_by_opcode_id,
+            self.number_of_calls,
+            subs,
         );
 
         let TraceHandlerData {
