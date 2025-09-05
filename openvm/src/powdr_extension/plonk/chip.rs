@@ -57,12 +57,9 @@ impl<F: PrimeField32> PlonkChip<F> {
         copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {
-            original_instructions,
-            is_valid_column,
-            name,
             opcode,
-            machine,
-            ..
+            apc,
+            apc_stats,
         } = precompile;
         let air = PlonkAir {
             copy_constraint_bus_id,
@@ -70,20 +67,22 @@ impl<F: PrimeField32> PlonkChip<F> {
             _marker: std::marker::PhantomData,
         };
         let executor = PowdrExecutor::new(
-            original_instructions,
+            unimplemented!(),
+            apc.block,
             original_airs,
-            is_valid_column,
             memory,
             base_config,
             periphery,
         );
+
+        let name = unimplemented!();
 
         Self {
             name,
             opcode,
             air: Arc::new(air),
             executor,
-            machine,
+            machine: apc.machine,
             bus_map,
         }
     }
@@ -149,7 +148,7 @@ where
             .machine
             .main_columns()
             .enumerate()
-            .map(|(index, c)| (c.id, index))
+            .map(|(index, c)| (c, index))
             .collect();
         let witness = self
             .executor
@@ -236,14 +235,14 @@ struct PlonkVariables<'a, F> {
     /// The vector of witness values, indexed by the column index.
     witness: &'a [F],
     /// Maps a poly ID to its index in the witness vector.
-    column_index_by_poly_id: &'a BTreeMap<u64, usize>,
+    column_index_by_poly_id: &'a BTreeMap<AlgebraicReference, usize>,
 }
 
 impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     fn new(
         num_tmp_vars: usize,
         witness: &'a [F],
-        column_index_by_poly_id: &'a BTreeMap<u64, usize>,
+        column_index_by_poly_id: &'a BTreeMap<AlgebraicReference, usize>,
     ) -> Self {
         Self {
             tmp_vars: vec![None; num_tmp_vars],
@@ -255,7 +254,7 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     /// Get the value of a variable. None if the variable is temporary but still unknown.
     fn get(&self, variable: &Variable<AlgebraicReference>) -> Option<F> {
         match variable {
-            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[&id.id]]),
+            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[id]]),
             Variable::Tmp(id) => self.tmp_vars[*id],
             // The value of unused cells should not matter.
             Variable::Unused => Some(F::ZERO),

@@ -12,10 +12,7 @@ use crate::{
     ExtendedVmConfig, Instr,
 };
 
-use super::{
-    chip::{RangeCheckerSend, RowEvaluator},
-    vm::OriginalInstruction,
-};
+use super::chip::{RangeCheckerSend, RowEvaluator};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -24,6 +21,7 @@ use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
     system::memory::{online::MemoryLogEntry, OfflineMemory},
 };
+use openvm_instructions::instruction::Instruction;
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
@@ -42,7 +40,9 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
+    blocks::BasicBlock,
+    expression::{AlgebraicReference, AlgebraicReferenceOriginal, NamespacedReferenceIdentifier},
+    Apc, InstructionHandler, SymbolicBusInteraction,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -53,11 +53,16 @@ mod periphery;
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
 
+// Layout:
+// We have n instructions with each variables like (i, j) where i is the instruction index and j is the variable index.
+// Some of the variables
+
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
-    instructions: Vec<OriginalInstruction<F>>,
+    // Mapping from composite id in the apc to the index of that variable in the apc row
+    composite_to_linear: BTreeMap<AlgebraicReference, usize>,
+    block: BasicBlock<Instr<F>>,
     air_by_opcode_id: OriginalAirs<F>,
-    is_valid_poly_id: u64,
     inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
@@ -65,17 +70,17 @@ pub struct PowdrExecutor<F: PrimeField32> {
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
+        composite_to_linear: BTreeMap<AlgebraicReference, usize>,
+        block: BasicBlock<Instr<F>>,
         air_by_opcode_id: OriginalAirs<F>,
-        is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
-            instructions,
+            composite_to_linear,
+            block,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,
@@ -101,16 +106,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
-        let res = self
-            .instructions
-            .iter()
-            .try_fold(from_state, |execution_state, instruction| {
-                let executor = self
-                    .inventory
-                    .get_mut_executor(&instruction.opcode())
-                    .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
-            });
+        let res =
+            self.block
+                .statements
+                .iter()
+                .try_fold(from_state, |execution_state, instruction| {
+                    let executor = self
+                        .inventory
+                        .get_mut_executor(&instruction.0.opcode)
+                        .unwrap();
+                    executor.execute(memory, &instruction.0, execution_state)
+                });
 
         self.number_of_calls += 1;
         let memory_logs = memory.get_memory_logs(); // exclusive range
@@ -142,22 +148,23 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// nodes in the APC circuit.
     pub fn generate_witness<SC>(
         self,
-        column_index_by_poly_id: &BTreeMap<u64, usize>,
+        composite_to_linear: &BTreeMap<AlgebraicReference, usize>,
         bus_interactions: &[SymbolicBusInteraction<F>],
     ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
-        let width = column_index_by_poly_id.len();
+        let is_valid_index = composite_to_linear[&AlgebraicReference::IsValid];
+        let width = composite_to_linear.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         let original_instruction_air_names = self
-            .instructions
+            .block
+            .statements
             .iter()
-            .map(|instruction| instruction.opcode())
+            .map(|instruction| instruction.0.opcode)
             .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
             .collect::<Vec<_>>();
 
@@ -195,21 +202,35 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .collect::<Vec<_>>();
 
         let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .instructions
+            .block
+            .statements
             .iter()
-            .map(|instruction| {
-                let mut dummy_trace_index_to_apc_index = HashMap::new();
-                for (dummy_index, poly_id) in instruction.subs.iter().enumerate() {
-                    if let Some(apc_index) = column_index_by_poly_id.get(poly_id) {
-                        dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
-                    }
-                }
-                dummy_trace_index_to_apc_index
+            .enumerate()
+            .map(|(instruction_index, instruction)| {
+                let instruction_air_width: u64 = todo!();
+
+                // Go through all columns in the dummy air
+                (0..instruction_air_width)
+                    .filter_map(|local_id| {
+                        let r = AlgebraicReference::Original(AlgebraicReferenceOriginal {
+                            name: todo!(),
+                            id: NamespacedReferenceIdentifier {
+                                namespace: instruction_index,
+                                id: local_id as u64,
+                            },
+                        });
+
+                        // Only keep this column if it is used in the APC
+                        self.composite_to_linear
+                            .get(&r)
+                            .map(|lin| (local_id as usize, *lin))
+                    })
+                    .collect()
             })
             .collect();
 
         assert_eq!(
-            self.instructions.len(),
+            self.block.statements.len(),
             dummy_trace_index_to_apc_index_by_instruction.len()
         );
 
@@ -233,15 +254,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
-            .instructions
+            .block
+            .statements
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    // TODO: avoid cloning the instruction
-                    .get_instruction_air(&Instr(instruction.instruction.clone()))
+                    .get_instruction_air(instruction)
                     .bus_interactions
                     .iter()
-                    .filter_map(|interaction| interaction.try_into().ok())
+                    .filter_map(|interaction| {
+                        RangeCheckerSend::try_from_powdr(interaction, &self.composite_to_linear)
+                    })
                     .collect_vec()
             })
             .collect_vec();
@@ -250,7 +273,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
             bus_interactions
                 .iter()
-                .map(|interaction| interaction.clone().into())
+                .map(|interaction| {
+                    crate::powdr_extension::chip::SymbolicBusInteraction::from_powdr(
+                        interaction.clone(),
+                        &self.composite_to_linear,
+                    )
+                })
                 .collect_vec();
 
         // go through the final table and fill in the values
@@ -294,7 +322,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = RowEvaluator::new(row_slice, Some(composite_to_linear));
 
                 // replay the side effects of this row on the main periphery
                 // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
