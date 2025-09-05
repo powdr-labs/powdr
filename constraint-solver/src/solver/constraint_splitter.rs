@@ -3,15 +3,15 @@ use std::{
     ops::{Add, Div},
 };
 
-use itertools::Itertools;
-use num_traits::Zero;
-use powdr_number::{FieldElement, LargeInt};
-
 use crate::{
     constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     runtime_constant::RuntimeConstant,
 };
+use itertools::Itertools;
+use num_traits::One;
+use num_traits::Zero;
+use powdr_number::{FieldElement, LargeInt};
 
 /// Tries to split the given algebraic constraint into a list of equivalent
 /// algebraic constraints.
@@ -141,6 +141,20 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
         return None;
     }
 
+    // Check whether the expression to solve falls into a sub-range in the field.
+    // If that is the case, the constraint is equivalent to the same constraint in the integers.
+    let full_expression = expr.clone()
+        + rest
+            .iter()
+            .map(|comp| comp.clone().into())
+            .sum::<GroupedExpression<_, _>>()
+        + GroupedExpression::from_number(constant);
+    let full_rc = full_expression.range_constraint(range_constraints);
+    let (min, max) = full_rc.range();
+    if min == max + T::FieldType::one() {
+        return None;
+    }
+
     // We try to find some `k` such that the equation has the form
     // `expr + k * rest + constant = 0` and it is equivalent to
     // the same expression in the integers. Then we apply `x -> x % k` to the whole equation
@@ -151,79 +165,50 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     assert_ne!(smallest_coeff, 0.into());
     assert!(smallest_coeff.is_in_lower_half());
 
-    let rest: GroupedExpression<_, _> = rest
-        .into_iter()
-        .map(|comp| GroupedExpression::from(comp / smallest_coeff))
-        .sum();
+    for comp in &rest {
+        if comp.coeff.to_integer().try_into_u64().unwrap()
+            % smallest_coeff.to_integer().try_into_u64().unwrap()
+            != 0
+        {
+            // The smallest coefficient does not divide all other coefficients,
+            // so taking the rest modulo the smallest coefficient does not
+            // make it vanish.
+            return None;
+        }
+    }
 
-    // Normalize the constraint by shifting by the minima of the range constraints
-    // (note that once we find the solution, we need to un-do the shift).
-    // expr := expr - expr_rc.min
-    // rest := rest - rest_rc.min
-    // constant := constant + expr_rc.min + smallest_coeff * rest_rc.min
-    let expr_shift = expr.range_constraint(range_constraints).range().0;
-    let rest_shift = rest.range_constraint(range_constraints).range().0;
-    let expr = expr - &GroupedExpression::from_number(expr_shift);
-    let rest = rest - GroupedExpression::from_number(rest_shift);
-    let constant = constant + expr_shift + smallest_coeff * rest_shift;
-
-    // rc(expr): [0,max_expr]
-    // rc(rest): [0,max_rest]
-    // If max_expr + k * max_rest < P, then we can translate the equation to the natural numbers:
-    // expr + k * rest = (-constant) % modulus
-
+    // Now, we need to check if there is a unique solution to expr % smallest_coeff = (-constant) % smallest_coeff:
     let expr_rc = expr.range_constraint(range_constraints);
-    let rest_rc = rest.range_constraint(range_constraints);
-    if !expr_rc.range().0.is_zero() || !rest_rc.range().0.is_zero() {
-        // The range constraints were unconstrained to begin with.
-        return None;
-    }
-
-    let max_expr = expr_rc.range().1;
-    let max_rest = rest_rc.range().1;
-
-    // Evaluate `expr + smallest_coeff * rest` for the largest possible value
-    // and see if it wraps around in the field.
-    if max_expr.to_arbitrary_integer()
-        + smallest_coeff.to_arbitrary_integer() * max_rest.to_arbitrary_integer()
-        >= T::FieldType::modulus().to_arbitrary_integer()
-    {
-        return None;
-    }
-    // It does not wrap around, so we know that the equation can be translated to the
-    // natural numbers:
-    // expr + smallest_coeff * rest = (-constant) % modulus
-
-    // Next, we apply `x -> x % smallest_coeff` to both sides of the equation to get
-    // expr % smallest_coeff = ((-constant) % modulus) % smallest_coeff
-    // Note that at this point, we only get an implication, not an equivalence,
-    // but if the range constraints of `expr` only allow a unique solution,
-    // it holds unconditionally.
-
-    if max_expr.to_integer() >= smallest_coeff.to_integer() + smallest_coeff.to_integer() {
+    if expr_rc.range_width() >= smallest_coeff.to_integer() + smallest_coeff.to_integer() {
         // In this case, there are always at least two solutions (ignoring masks and other
         // constraints).
         return None;
     }
+    let expr_min = expr_rc.range().0;
 
-    // TODO this does not work for fields that fit 64 bits.
+    // -> expr - expr_min is a number in [0, range_width)
+    let expr_shifted = expr - &GroupedExpression::from_number(expr_min);
+    let expr_shifted_rc = expr_shifted.range_constraint(range_constraints);
+
+    // Find a solution to `(expr - expr_min) % smallest_coeff = (-constant - expr_min) % smallest_coeff`
     let rhs = T::FieldType::from(
-        (-constant).to_integer().try_into_u64().unwrap()
+        (-constant - expr_min).to_integer().try_into_u64().unwrap()
             % smallest_coeff.to_integer().try_into_u64().unwrap(),
     );
-
-    // Now we try `rhs`, `rhs + smallest_coeff`, `rhs + 2 * smallest_coeff`, ...
-    // But because of the check above, we can stop at `2 * smallest_coeff`.
-    let solution = (0..=2)
+    // Check whether exactly one of `rhs`, `rhs + smallest_coeff` is in the range of `expr_shifted`.
+    // If so, that is the unique solution.
+    // Note that we know that `rhs + i * smallest_coeff` for `i >= 2` is not in the range
+    // because of the range width check above.
+    let solution_shifted = (0..=1)
         .map(|i| rhs + T::FieldType::from(i) * smallest_coeff)
-        .filter(|candidate| expr_rc.allows_value(*candidate))
+        .filter(|candidate| expr_shifted_rc.allows_value(*candidate))
         .exactly_one()
         .ok()?;
-
-    // There is exactly one solution to the equation
-    // `expr % smallest_coeff = rhs`.
-    // Now we translate this back to the un-shifted expression.
-    Some(solution + expr_shift)
+    // If `expr - expr_min = solution_shifted` is a unique solution to
+    // `(expr - expr_min) % smallest_coeff = (-constant - expr_min) % smallest_coeff`,
+    // then `expr = solution_shifted + expr_min` is a unique solution to
+    // `expr % smallest_coeff = (-constant) % smallest_coeff`.
+    Some(solution_shifted + expr_min)
 }
 
 /// Turns the remaining components and constant into a single constraint,
@@ -338,6 +323,7 @@ mod test {
     use expect_test::expect;
     use itertools::Itertools;
     use powdr_number::BabyBearField;
+    use pretty_assertions::assert_eq;
 
     use super::*;
     use crate::{
