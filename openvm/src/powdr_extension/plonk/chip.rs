@@ -37,11 +37,12 @@ use powdr_autoprecompiles::SymbolicMachine;
 use super::air::PlonkAir;
 
 pub struct PlonkChip<F: PrimeField32> {
-    pub name: String,
-    pub opcode: PowdrOpcode,
-    /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<F>,
-    pub air: Arc<PlonkAir<F>>,
+    name: String,
+    opcode: PowdrOpcode,
+    air: Arc<PlonkAir<F>>,
+    executor: PowdrExecutor<F>,
+    machine: SymbolicMachine<F>,
+    bus_map: BusMap,
 }
 
 impl<F: PrimeField32> PlonkChip<F> {
@@ -52,9 +53,19 @@ impl<F: PrimeField32> PlonkChip<F> {
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
+        bus_map: BusMap,
+        copy_constraint_bus_id: u16,
     ) -> Self {
-        let PowdrPrecompile { apc, opcode, .. } = precompile;
-        let air = PlonkAir::new(apc.machine);
+        let PowdrPrecompile {
+            opcode,
+            apc,
+            apc_stats,
+        } = precompile;
+        let air = PlonkAir {
+            copy_constraint_bus_id,
+            bus_map: bus_map.clone(),
+            _marker: std::marker::PhantomData,
+        };
         let executor = PowdrExecutor::new(
             unimplemented!(),
             apc.block,
@@ -71,6 +82,8 @@ impl<F: PrimeField32> PlonkChip<F> {
             opcode,
             air: Arc::new(air),
             executor,
+            machine: apc.machine,
+            bus_map,
         }
     }
 }
@@ -135,7 +148,7 @@ where
             .machine
             .main_columns()
             .enumerate()
-            .map(|(index, c)| (c.id, index))
+            .map(|(index, c)| (c, index))
             .collect();
         let witness = self
             .executor
@@ -222,14 +235,14 @@ struct PlonkVariables<'a, F> {
     /// The vector of witness values, indexed by the column index.
     witness: &'a [F],
     /// Maps a poly ID to its index in the witness vector.
-    column_index_by_poly_id: &'a BTreeMap<u64, usize>,
+    column_index_by_poly_id: &'a BTreeMap<AlgebraicReference, usize>,
 }
 
 impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     fn new(
         num_tmp_vars: usize,
         witness: &'a [F],
-        column_index_by_poly_id: &'a BTreeMap<u64, usize>,
+        column_index_by_poly_id: &'a BTreeMap<AlgebraicReference, usize>,
     ) -> Self {
         Self {
             tmp_vars: vec![None; num_tmp_vars],
@@ -241,7 +254,7 @@ impl<'a, F: PrimeField32> PlonkVariables<'a, F> {
     /// Get the value of a variable. None if the variable is temporary but still unknown.
     fn get(&self, variable: &Variable<AlgebraicReference>) -> Option<F> {
         match variable {
-            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[&id.id]]),
+            Variable::Witness(id) => Some(self.witness[self.column_index_by_poly_id[id]]),
             Variable::Tmp(id) => self.tmp_vars[*id],
             // The value of unused cells should not matter.
             Variable::Unused => Some(F::ZERO),
