@@ -74,7 +74,8 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             .iter()
             .enumerate()
             // Filter out the candidate itself and all zero components
-            // because we set split components to zero when we extract them.
+            // because we set components to zero when we extract them instead
+            // of removing them.
             .filter(|(i, component)| *i != index && !component.is_zero())
             .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
