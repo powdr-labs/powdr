@@ -704,9 +704,9 @@ mod tests {
                 .any(|e| e.referenced_unknown_variables().any(|v| *v == "y"))
         });
 
-        assert_eq!(s.constraints_referencing_variables(["y"].iter()).count(), 0);
+        assert_eq!(s.constraints_referencing_variables(&["y"]).count(), 0);
         let items_with_x = s
-            .constraints_referencing_variables(["x"].iter())
+            .constraints_referencing_variables(&["x"])
             .map(|c| match c {
                 ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
                 ConstraintRef::BusInteraction(bus_interaction) => {
@@ -723,7 +723,7 @@ mod tests {
         assert_eq!(items_with_x, "x - z = 0, x: x * [x, x]");
 
         let items_with_z = s
-            .constraints_referencing_variables(["z"].iter())
+            .constraints_referencing_variables(&["z"])
             .map(|c| match c {
                 ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
                 ConstraintRef::BusInteraction(bus_interaction) => {
