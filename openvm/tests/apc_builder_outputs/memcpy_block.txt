@@ -8,7 +8,7 @@ Instructions:
 APC advantage:
   - Main columns: 172 -> 29 (5.93x reduction)
   - Bus interactions: 87 -> 19 (4.58x reduction)
-  - Constraints: 111 -> 10 (11.10x reduction)
+  - Constraints: 111 -> 9 (12.33x reduction)
 
 Symbolic machine using 29 unique main columns:
   from_state__timestamp_0
@@ -36,9 +36,9 @@ Symbolic machine using 29 unique main columns:
   reads_aux__1__base__prev_timestamp_4
   reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4
   cmp_result_4
-  diff_inv_marker__0_4
   new_var_175
   new_var_176
+  new_var_177
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -69,13 +69,12 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_4 + 15360 * 
 mult=is_valid * 1, args=[b__0_0, 3, b__0_0 + 3 - 2 * a__0_0, 1]
 
 // Algebraic constraints:
-cmp_result_4 * (cmp_result_4 - 1) = 0
 (1 - cmp_result_4) * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) = 0
-(cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) * diff_inv_marker__0_4 - cmp_result_4 = 0
 cmp_result_1 * a__0_0 = 0
 new_var_175 * a__0_0 + cmp_result_1 - 1 * is_valid = 0
 cmp_result_2 * (writes_aux__prev_data__0_2 + writes_aux__prev_data__1_2 + writes_aux__prev_data__2_2 + writes_aux__prev_data__3_2) = 0
 new_var_176 * (writes_aux__prev_data__0_2 + writes_aux__prev_data__1_2 + writes_aux__prev_data__2_2 + writes_aux__prev_data__3_2) + cmp_result_2 - 1 * is_valid = 0
+new_var_177 * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) - cmp_result_4 = 0
 cmp_result_1 * (cmp_result_1 - 1) = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 is_valid * (is_valid - 1) = 0
