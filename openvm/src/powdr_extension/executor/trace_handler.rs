@@ -8,7 +8,7 @@ pub struct OpenVmTraceHandler<'a, F: PrimeField32> {
     pub column_index_by_poly_id: &'a BTreeMap<u64, usize>,
     pub air_id_to_dummy_trace_and_width: &'a HashMap<String, (Vec<F>, usize)>,
     pub original_instruction_air_ids: Vec<String>,
-    pub num_trace_rows: usize,
+    pub apc_call_count: usize,
 }
 
 impl<'a, F: PrimeField32> OpenVmTraceHandler<'a, F> {
@@ -17,14 +17,14 @@ impl<'a, F: PrimeField32> OpenVmTraceHandler<'a, F> {
         column_index_by_poly_id: &'a BTreeMap<u64, usize>,
         air_id_to_dummy_trace_and_width: &'a HashMap<String, (Vec<F>, usize)>,
         original_instruction_air_ids: Vec<String>,
-        num_trace_rows: usize,
+        apc_call_count: usize,
     ) -> Self {
         Self {
             original_instructions,
             column_index_by_poly_id,
             air_id_to_dummy_trace_and_width,
             original_instruction_air_ids,
-            num_trace_rows,
+            apc_call_count,
         }
     }
 }
@@ -48,8 +48,8 @@ impl<'a, F: PrimeField32> TraceHandler for OpenVmTraceHandler<'a, F> {
         self.column_index_by_poly_id
     }
 
-    fn num_trace_rows(&self) -> usize {
-        self.num_trace_rows
+    fn apc_call_count(&self) -> usize {
+        self.apc_call_count
     }
 
     fn air_id_to_dummy_trace_and_width(

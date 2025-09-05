@@ -4,8 +4,11 @@ use std::cmp::Eq;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 
+/// Returns data needed for constructing the APC trace.
 pub struct TraceHandlerData<'a, F> {
+    /// The dummy trace values for each instruction.
     pub dummy_values: Vec<Vec<&'a [F]>>,
+    /// The mapping from dummy trace index to APC index for each instruction.
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
 }
 
@@ -18,13 +21,11 @@ pub trait TraceHandler {
 
     fn original_instruction_subs(&self) -> Vec<Vec<u64>>;
 
-    fn apc_poly_id_to_index<'a>(&'a self) -> &'a BTreeMap<u64, usize>;
+    fn apc_poly_id_to_index(&self) -> &BTreeMap<u64, usize>;
 
-    fn num_trace_rows(&self) -> usize;
+    fn apc_call_count(&self) -> usize;
 
-    fn air_id_to_dummy_trace_and_width<'a>(
-        &'a self,
-    ) -> &'a HashMap<Self::AirId, (Vec<Self::Field>, usize)>;
+    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, (Vec<Self::Field>, usize)>;
 
     fn data<'a>(&'a self) -> TraceHandlerData<'a, Self::Field> {
         let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
@@ -62,7 +63,7 @@ pub trait TraceHandler {
             })
             .collect::<Vec<_>>();
 
-        let dummy_values = (0..self.num_trace_rows())
+        let dummy_values = (0..self.apc_call_count())
             .into_par_iter()
             .map(|trace_row| {
                 original_instruction_air_ids
