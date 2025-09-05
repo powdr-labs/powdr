@@ -11,6 +11,7 @@ use crate::{
     solver::VariableAssignment,
 };
 
+#[derive(Clone)]
 pub struct BooleanExtractor<T, V> {
     /// If (expr, Some(z)) is in the map, it means that
     /// we have transformed a constraint `left * right = 0` into

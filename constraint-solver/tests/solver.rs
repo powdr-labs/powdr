@@ -22,7 +22,7 @@ pub type Var = &'static str;
 
 pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
 
-pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
+pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField> + Clone>(
     system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
     bus_interaction_handler: B,
     expected_assignments: Vec<(Var, GoldilocksField)>,
@@ -32,7 +32,7 @@ pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
     assert_expected_state(final_state, expected_final_state);
 }
 
-pub fn assert_conflicting<B: BusInteractionHandler<GoldilocksField>>(
+pub fn assert_conflicting<B: BusInteractionHandler<GoldilocksField> + Clone>(
     system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
     bus_interaction_handler: B,
 ) {
@@ -128,6 +128,7 @@ fn bit_decomposition() {
 const BYTE_BUS_ID: u64 = 42;
 const XOR_BUS_ID: u64 = 43;
 
+#[derive(Clone)]
 struct TestBusInteractionHandler;
 impl BusInteractionHandler<GoldilocksField> for TestBusInteractionHandler {
     fn handle_bus_interaction(

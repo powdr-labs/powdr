@@ -54,6 +54,7 @@ impl<V: Display> Display for Variable<V> {
 }
 
 /// A solver that transforms variables from one type to another,
+#[derive(Clone)]
 pub struct VarTransformation<T, V, S> {
     solver: S,
     _phantom: std::marker::PhantomData<(T, V)>,

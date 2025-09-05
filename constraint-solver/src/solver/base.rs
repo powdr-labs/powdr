@@ -32,6 +32,7 @@ use std::iter::once;
 /// It also replaces bus interaction fields by new variables.
 ///
 /// For both of these transforming components, the original constraints are also kept unmodified.
+#[derive(Clone)]
 pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
@@ -54,7 +55,7 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     linearizer: Linearizer<T, V>,
 }
 
-pub trait VarDispenser<V> {
+pub trait VarDispenser<V>: Clone {
     /// Returns a fresh new variable of kind "boolean".
     fn next_boolean(&mut self) -> V;
 
@@ -65,7 +66,7 @@ pub trait VarDispenser<V> {
     fn all_linearized_vars(&self) -> impl Iterator<Item = V>;
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct VarDispenserImpl {
     next_boolean_id: usize,
     next_linearized_id: usize,
@@ -123,7 +124,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Hash + Display, BusInter, VD
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>> Solver<T, V>
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType> + Clone, VD: VarDispenser<V>> Solver<T, V>
     for BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
@@ -257,7 +258,7 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>>
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType> + Clone, VD: VarDispenser<V>>
     BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
@@ -327,7 +328,7 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD> BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter: BusInteractionHandler<T::FieldType> + Clone, VD> BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
     T: RuntimeConstant
@@ -626,6 +627,7 @@ fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
 }
 
 /// The currently known range constraints for the variables.
+#[derive(Clone)]
 pub struct RangeConstraints<T: FieldElement, V> {
     pub range_constraints: HashMap<V, RangeConstraint<T>>,
 }
@@ -681,7 +683,7 @@ mod tests {
         Qse::from_number(GoldilocksField::from(value))
     }
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct NoVarDispenser;
     impl<V> VarDispenser<V> for NoVarDispenser {
         fn next_boolean(&mut self) -> V {

@@ -11,6 +11,7 @@ use crate::{grouped_expression::GroupedExpression, runtime_constant::RuntimeCons
 
 /// Solver component that substitutes non-affine sub-expressions
 /// by new variables.
+#[derive(Clone)]
 pub struct Linearizer<T, V> {
     substitutions: HashMap<GroupedExpression<T, V>, V>,
 }

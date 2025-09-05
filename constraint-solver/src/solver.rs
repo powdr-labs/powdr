@@ -29,7 +29,7 @@ mod var_transformation;
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType> + Clone,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
@@ -49,7 +49,7 @@ where
 /// Creates a new solver for the given system and bus interaction handler.
 pub fn new_solver<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+    bus_interaction_handler: impl BusInteractionHandler<T::FieldType> + Clone,
 ) -> impl Solver<T, V>
 where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
@@ -71,7 +71,9 @@ where
     solver
 }
 
-pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> + Sized {
+pub trait Solver<T: RuntimeConstant, V>:
+    RangeConstraintProvider<T::FieldType, V> + Sized + Clone
+{
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments. Does not return the same assignments again if called more than once.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;

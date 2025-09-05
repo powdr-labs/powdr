@@ -41,6 +41,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         .filter(|v| solver.get(v) == binary_range_constraint)
         .cloned()
         .collect::<BTreeSet<_>>();
+    println!("Found {} binary variables", binary_variables.len(),);
     for var in binary_variables {
         for value in [T::from(0), T::from(1)] {
             try_replace_equal_zero_check(
@@ -67,11 +68,9 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     output: V,
     value: T,
 ) {
-    let Ok(solution) = solve_with_assignments(
-        constraint_system,
-        bus_interaction_handler.clone(),
-        [(output.clone(), value)],
-    ) else {
+    let start_time = std::time::Instant::now();
+    println!("A");
+    let Ok(solution) = solve_with_assignments(solver, [(output.clone(), value)]) else {
         return;
     };
     let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
@@ -81,8 +80,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // We know: if `var = value`, then `inputs` are all zero.
     // Now check that `var == 1 - value` is inconsistent with `inputs` all being zero.
     if solve_with_assignments(
-        constraint_system,
-        bus_interaction_handler.clone(),
+        solver,
         inputs
             .iter()
             .map(|v| (v.clone(), T::from(0)))
@@ -92,6 +90,14 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     {
         return;
     }
+
+    let candidate_search_time = std::time::Instant::now();
+    println!(
+        "Found candidate equal-zero check on {} inputs (value = {}) after {} ms",
+        inputs.len(),
+        value,
+        candidate_search_time.duration_since(start_time).as_millis()
+    );
 
     // Ok, we can replace the constraints by a potentially more efficient version.
     // Let's find out which are the constraints that we need to replace.
@@ -119,8 +125,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
 
     // Let's verify the condition again.
     if solve_with_assignments(
-        constraint_system,
-        bus_interaction_handler.clone(),
+        solver,
         inputs
             .iter()
             .map(|v| (v.clone(), T::from(0)))
@@ -255,19 +260,14 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
 
     // Verify that the modified system still has the same property (optional)
 
-    let Ok(solution) = solve_with_assignments(
-        constraint_system,
-        bus_interaction_handler.clone(),
-        [(output.clone(), value)],
-    ) else {
+    let Ok(solution) = solve_with_assignments(solver, [(output.clone(), value)]) else {
         return;
     };
     let inputs_after_modification: BTreeSet<_> = zero_assigments(&solution).collect();
     assert!(inputs.iter().all(|v| inputs_after_modification.contains(v)));
 
     assert!(solve_with_assignments(
-        constraint_system,
-        bus_interaction_handler.clone(),
+        solver,
         inputs
             .iter()
             .map(|v| (v.clone(), T::from(0)))
@@ -618,15 +618,14 @@ fn improves_existing_range_constraint<T: FieldElement, V: Clone + Ord + Hash + D
 
 /// Runs the solver given a list of variable assignments.
 fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
+    solver: &impl Solver<T, V>,
     assignments: impl IntoIterator<Item = (V, T)>,
 ) -> Result<Vec<VariableAssignment<T, V>>, solver::Error> {
-    let mut system = constraint_system.clone();
+    let mut solver = solver.clone();
     for (var, value) in assignments {
-        system.substitute_by_known(&var, &value);
+        solver.add_range_constraint(&var, RangeConstraint::from_value(value));
     }
-    solver::solve_system(system.system().clone(), bus_interaction_handler)
+    solver.solve()
 }
 
 /// Returns all variables that are assigned zero in the solution.
