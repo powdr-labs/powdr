@@ -50,10 +50,10 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
             // system would take too long.
             continue;
         }
-        println!(
-            "Searching for equal zero checks in subsystem with {} variables",
-            subsystem.unknown_variables().count()
-        );
+        // println!(
+        //     "Searching for equal zero checks in subsystem with {} variables",
+        //     subsystem.unknown_variables().count()
+        // );
         let binary_variables = subsystem
             .unknown_variables()
             .filter(|v| solver.get(v) == binary_range_constraint)
@@ -100,12 +100,12 @@ fn split_at_stateful_bus_interactions<T: FieldElement, V: Clone + Ord + Hash + D
                 .cloned()
                 .collect::<BTreeSet<_>>();
             // Re-add the stateful bus interactions that are connected to this subsystem.
-            // subsystem.bus_interactions.extend(
-            //     stateful_bus_interactions
-            //         .iter()
-            //         .filter(|bus_int| bus_int.referenced_variables().any(|v| vars.contains(v)))
-            //         .cloned(),
-            // );
+            subsystem.bus_interactions.extend(
+                stateful_bus_interactions
+                    .iter()
+                    .filter(|bus_int| bus_int.referenced_variables().any(|v| vars.contains(v)))
+                    .cloned(),
+            );
             subsystem
         })
         .collect_vec()
@@ -123,7 +123,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     output: V,
     value: T,
 ) {
-    println!("============ Handling subsystem\n{subsystem}");
+    // println!("============ Handling subsystem\n{subsystem}");
+    // println!("=============== FULL SYSTEM:\n{constraint_system}");
     // First, we try to find input and output variables that satisfy the equal zero check property,
     // but we only search in the smaller subsystem. Later, we verify in the full system.
     let Ok(solution) = solve_with_assignments(
@@ -131,12 +132,12 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         bus_interaction_handler.clone(),
         [(output.clone(), value)],
     ) else {
-        println!("================= NOPE");
+        // println!("================= NOPE");
         return;
     };
     let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
     if inputs.is_empty() {
-        println!("================= NOPE");
+        // println!("================= NOPE");
         return;
     }
     // We know: if `var = value`, then `inputs` are all zero.
@@ -151,7 +152,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     )
     .is_ok()
     {
-        println!("================= NOPE");
+        // println!("================= NOPE");
         return;
     }
     println!(
