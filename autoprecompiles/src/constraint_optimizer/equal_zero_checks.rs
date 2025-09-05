@@ -73,8 +73,10 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     let Ok(solution) = solve_with_assignments(solver, [(output.clone(), value)]) else {
         return;
     };
+    println!(" B");
     let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
-    if inputs.is_empty() {
+    println!("   C: {output} <-> {}", inputs.iter().format(", "));
+    if inputs.len() < 2 {
         return;
     }
     // We know: if `var = value`, then `inputs` are all zero.
@@ -88,6 +90,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     )
     .is_ok()
     {
+        println!("    D");
         return;
     }
 
@@ -621,11 +624,20 @@ fn solve_with_assignments<T: FieldElement, V: Clone + Ord + Hash + Display>(
     solver: &impl Solver<T, V>,
     assignments: impl IntoIterator<Item = (V, T)>,
 ) -> Result<Vec<VariableAssignment<T, V>>, solver::Error> {
+    let start = std::time::Instant::now();
     let mut solver = solver.clone();
+    let clone_time = start.elapsed();
     for (var, value) in assignments {
         solver.add_range_constraint(&var, RangeConstraint::from_value(value));
     }
-    solver.solve()
+    let r = solver.solve();
+    let solve_time = start.elapsed() - clone_time;
+    println!(
+        "  - solved in {} ms (cloning took {} ms)",
+        solve_time.as_millis(),
+        clone_time.as_millis()
+    );
+    r
 }
 
 /// Returns all variables that are assigned zero in the solution.

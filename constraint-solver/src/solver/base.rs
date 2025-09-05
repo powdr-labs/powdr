@@ -343,15 +343,24 @@ where
         loop {
             let mut progress = false;
             // Try solving constraints in isolation.
+            let start = std::time::Instant::now();
             progress |= self.solve_in_isolation()?;
+            let isolation = start.elapsed().as_millis();
+            let start = std::time::Instant::now();
             // Try to find equivalent variables using quadratic constraints.
             progress |= self.try_solve_quadratic_equivalences();
+            let quadratic = start.elapsed().as_millis();
+            let start = std::time::Instant::now();
 
             if !progress {
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
                 progress |= self.exhaustive_search()?;
             }
+            let exhaustive = start.elapsed().as_millis();
+            println!(
+                "Isolation: {isolation} ms, Quadratic: {quadratic} ms, Exhaustive: {exhaustive} ms"
+            );
 
             if !progress {
                 break;
