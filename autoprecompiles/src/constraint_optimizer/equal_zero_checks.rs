@@ -428,7 +428,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                 )
             })
             .collect_vec();
-        let restrictions = reduce_rage_constraints(restrictions, &range_constraints);
+        let restrictions = reduce_range_constraints(restrictions, &range_constraints);
         for result in restrictions {
             if !result.is_empty() {
                 println!(
@@ -600,7 +600,7 @@ fn remove_range_constraint_bus_interactions<
 /// The `outer_rcs` are range constraints we know to hold "from the outside", so if
 /// this function determines a range constraint on a variable to be a superset of
 /// the one in `outer_rcs` it is considered unconstrained.
-fn reduce_rage_constraints<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn reduce_range_constraints<T: FieldElement, V: Clone + Ord + Hash + Display>(
     mut restrictions: Vec<BTreeMap<V, RangeConstraint<T>>>,
     outer_rcs: &BTreeMap<V, RangeConstraint<T>>,
 ) -> Vec<BTreeMap<V, RangeConstraint<T>>> {
@@ -610,7 +610,7 @@ fn reduce_rage_constraints<T: FieldElement, V: Clone + Ord + Hash + Display>(
             .enumerate()
             .tuple_combinations()
             .find_map(|((i1, item1), (i2, item2))| {
-                let combination = try_combine_rage_constraint_pair(item1, item2, outer_rcs)?;
+                let combination = try_combine_range_constraint_pair(item1, item2, outer_rcs)?;
                 Some((i1, i2, combination))
             })
         else {
@@ -626,7 +626,7 @@ fn reduce_rage_constraints<T: FieldElement, V: Clone + Ord + Hash + Display>(
     }
 }
 
-fn try_combine_rage_constraint_pair<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn try_combine_range_constraint_pair<T: FieldElement, V: Clone + Ord + Hash + Display>(
     item1: &BTreeMap<V, RangeConstraint<T>>,
     item2: &BTreeMap<V, RangeConstraint<T>>,
     outer_rcs: &BTreeMap<V, RangeConstraint<T>>,
