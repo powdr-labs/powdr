@@ -590,7 +590,7 @@ where
         constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
     ) -> bool {
         let constraint_ref = ConstraintRef::AlgebraicConstraint(constraint.as_ref());
-        let vars = constraint.referenced_unknown_variables().cloned();
+        let vars = constraint.referenced_unknown_variables();
         self.constraint_system
             .system()
             .constraints_referencing_variables(vars)
