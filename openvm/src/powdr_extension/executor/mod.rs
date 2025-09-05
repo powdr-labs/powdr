@@ -157,9 +157,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         let original_instruction_air_names = self
+        let original_instruction_air_names = self
             .instructions
             .iter()
             .map(|instruction| instruction.opcode())
+            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
+            .collect::<Vec<_>>();
             .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
             .collect::<Vec<_>>();
 
