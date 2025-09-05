@@ -60,7 +60,8 @@ pub struct EvaluationResult {
 pub fn evaluate_apc<
     F: Clone + Ord + std::fmt::Display,
     I: Instruction<F>,
-    IH: InstructionHandler<F, I>,
+    D,
+    IH: InstructionHandler<F, I, D>,
 >(
     basic_block: &[I],
     instruction_handler: &IH,

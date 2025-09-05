@@ -186,8 +186,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             &self.instructions,
             column_index_by_poly_id,
             &dummy_trace_by_air_name,
-            original_instruction_air_names,
             self.number_of_calls,
+            &self.air_by_opcode_id,
         );
 
         let TraceHandlerData {
