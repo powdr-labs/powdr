@@ -324,6 +324,11 @@ impl<T, I> Apc<T, I> {
     pub fn start_pc(&self) -> u64 {
         self.block.start_pc
     }
+
+    /// The instructions in the basic block.
+    pub fn instructions(&self) -> &[I] {
+        &self.block.statements
+    }
 }
 
 impl<T: Clone + Ord + std::fmt::Display, I> Apc<T, I> {

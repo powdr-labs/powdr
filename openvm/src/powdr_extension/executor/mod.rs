@@ -98,16 +98,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
-        let res = self.apc.block.statements.iter().try_fold(
-            from_state,
-            |execution_state, instruction| {
-                let executor = self
-                    .inventory
-                    .get_mut_executor(&instruction.0.opcode)
-                    .unwrap();
-                executor.execute(memory, &instruction.0, execution_state)
-            },
-        );
+        let res =
+            self.apc
+                .instructions()
+                .iter()
+                .try_fold(from_state, |execution_state, instruction| {
+                    let executor = self
+                        .inventory
+                        .get_mut_executor(&instruction.0.opcode)
+                        .unwrap();
+                    executor.execute(memory, &instruction.0, execution_state)
+                });
 
         self.number_of_calls += 1;
         let memory_logs = memory.get_memory_logs(); // exclusive range
@@ -153,8 +154,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
         let original_instruction_air_names = self
             .apc
-            .block
-            .statements
+            .instructions()
             .iter()
             .map(|instruction| instruction.0.opcode)
             .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
@@ -196,8 +196,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
             .apc
-            .block
-            .statements
+            .instructions()
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
