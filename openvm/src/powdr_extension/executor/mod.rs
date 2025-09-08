@@ -15,7 +15,7 @@ use crate::{
 
 use openvm_instructions::instruction::Instruction;
 use powdr_autoprecompiles::{
-    trace_handler::{TraceHandler, TraceHandlerData},
+    trace_handler::{DummyTrace, TraceHandler, TraceHandlerData},
     Apc,
 };
 
@@ -182,7 +182,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                                     .unwrap()
                             });
                     let dummy_trace_width = dummy_trace.width();
-                    (air_name, (dummy_trace.values, dummy_trace_width))
+                    (
+                        air_name,
+                        DummyTrace::new(dummy_trace.values, dummy_trace_width),
+                    )
                 })
                 .collect();
 

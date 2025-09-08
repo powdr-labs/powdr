@@ -28,8 +28,8 @@ pub trait TraceHandler {
     /// Returns the number of APC calls, which is also the number of rows in the APC trace
     fn apc_call_count(&self) -> usize;
 
-    /// Returns a mapping from air_id to tuple of the dummy trace and the width of the dummy trace
-    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, (Vec<Self::Field>, usize)>;
+    /// Returns a mapping from air_id to the dummy trace
+    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, DummyTrace<Self::Field>>;
 
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
     fn data<'a>(&'a self) -> TraceHandlerData<'a, Self::Field> {
@@ -75,13 +75,13 @@ pub trait TraceHandler {
                     .iter()
                     .zip_eq(original_instruction_table_offsets.iter())
                     .map(|(air_id, dummy_table_offset)| {
-                        let (dummy_table, width) =
+                        let DummyTrace { values, width } =
                             air_id_to_dummy_trace_and_width.get(air_id).unwrap();
                         let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
                         let start =
                             (trace_row * occurrences_per_record + dummy_table_offset) * width;
                         let end = start + width;
-                        &dummy_table[start..end]
+                        &values[start..end]
                     })
                     .collect_vec()
             })
@@ -91,5 +91,16 @@ pub trait TraceHandler {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
         }
+    }
+}
+
+pub struct DummyTrace<F> {
+    pub values: Vec<F>,
+    pub width: usize,
+}
+
+impl<F> DummyTrace<F> {
+    pub fn new(values: Vec<F>, width: usize) -> Self {
+        Self { values, width }
     }
 }
