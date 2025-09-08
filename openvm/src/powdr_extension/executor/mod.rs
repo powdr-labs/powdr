@@ -47,7 +47,7 @@ use powdr_autoprecompiles::{InstructionHandler, SymbolicBusInteraction};
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
-
+/// The trace handler for the PowdrExecutor used during witness generation
 mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
