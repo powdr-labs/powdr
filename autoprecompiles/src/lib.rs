@@ -39,6 +39,7 @@ mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
+pub mod trace_handler;
 
 #[derive(Clone)]
 pub struct PowdrConfig {
@@ -318,6 +319,20 @@ impl<T, I> Apc<T, I> {
     /// The PC of the first line of the basic block. Can be used to identify the APC.
     pub fn start_pc(&self) -> u64 {
         self.block.start_pc
+    }
+
+    /// The instructions in the basic block.
+    pub fn instructions(&self) -> &[I] {
+        &self.block.statements
+    }
+
+    /// The `is_valid` polynomial id
+    pub fn is_valid_poly_id(&self) -> u64 {
+        self.machine
+            .main_columns()
+            .find(|c| &*c.name == "is_valid")
+            .unwrap()
+            .id
     }
 }
 
