@@ -288,14 +288,15 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
+impl<T: RuntimeConstant, V: Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     /// Returns a list of all constraints that contain at least one of the given variables.
     pub fn constraints_referencing_variables<'a>(
         &'a self,
-        variables: impl Iterator<Item = V> + 'a,
+        variables: impl IntoIterator<Item = &'a V> + 'a,
     ) -> impl Iterator<Item = ConstraintRef<'a, T, V>> + 'a {
         variables
-            .filter_map(|v| self.variable_occurrences.get(&v))
+            .into_iter()
+            .filter_map(|v| self.variable_occurrences.get(v))
             .flatten()
             .unique()
             .map(|&item| item.to_constraint_ref(&self.constraint_system))
@@ -703,13 +704,9 @@ mod tests {
                 .any(|e| e.referenced_unknown_variables().any(|v| *v == "y"))
         });
 
-        assert_eq!(
-            s.constraints_referencing_variables(["y"].into_iter())
-                .count(),
-            0
-        );
+        assert_eq!(s.constraints_referencing_variables(&["y"]).count(), 0);
         let items_with_x = s
-            .constraints_referencing_variables(["x"].into_iter())
+            .constraints_referencing_variables(&["x"])
             .map(|c| match c {
                 ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
                 ConstraintRef::BusInteraction(bus_interaction) => {
@@ -726,7 +723,7 @@ mod tests {
         assert_eq!(items_with_x, "x - z = 0, x: x * [x, x]");
 
         let items_with_z = s
-            .constraints_referencing_variables(["z"].into_iter())
+            .constraints_referencing_variables(&["z"])
             .map(|c| match c {
                 ConstraintRef::AlgebraicConstraint(expr) => expr.to_string(),
                 ConstraintRef::BusInteraction(bus_interaction) => {
