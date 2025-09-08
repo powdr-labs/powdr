@@ -41,7 +41,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::{
-    powdr_extension::{OriginalInstruction, PowdrOpcode, PowdrPrecompile},
+    powdr_extension::{PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
 
@@ -230,13 +230,8 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .map(ApcWithStats::into_parts)
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
-            let Apc {
-                block,
-                machine,
-                subs,
-            } = apc;
             let opcode = POWDR_OPCODE + i;
-            let start_index = ((block.start_pc - pc_base as u64) / pc_step as u64)
+            let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 
@@ -244,24 +239,25 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             // This is only for witgen: the program in the program chip is left unchanged.
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
-            let is_valid_column = machine
+            let is_valid_column = apc
+                .machine()
                 .main_columns()
                 .find(|c| &*c.name == "is_valid")
                 .unwrap();
 
             PowdrPrecompile::new(
-                format!("PowdrAutoprecompile_{}", block.start_pc),
+                format!("PowdrAutoprecompile_{}", apc.start_pc()),
                 PowdrOpcode {
                     class_offset: opcode,
                 },
-                machine,
-                block
+                apc.block
                     .statements
+                    .clone()
                     .into_iter()
-                    .zip_eq(subs)
-                    .map(|(instruction, subs)| OriginalInstruction::new(instruction.0, subs))
+                    .map(|i| i.0)
                     .collect(),
                 is_valid_column,
+                Arc::new(apc),
                 apc_stats,
             )
         })

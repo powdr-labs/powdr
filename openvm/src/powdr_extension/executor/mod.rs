@@ -13,12 +13,13 @@ use crate::{
     ExtendedVmConfig, Instr,
 };
 
-use powdr_autoprecompiles::trace_handler::{TraceHandler, TraceHandlerData};
-
-use super::{
-    chip::{RangeCheckerSend, RowEvaluator},
-    vm::OriginalInstruction,
+use openvm_instructions::instruction::Instruction;
+use powdr_autoprecompiles::{
+    trace_handler::{TraceHandler, TraceHandlerData},
+    Apc,
 };
+
+use super::chip::{RangeCheckerSend, RowEvaluator};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -57,22 +58,24 @@ use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
-    instructions: Vec<OriginalInstruction<F>>,
+    instructions: Vec<Instruction<F>>,
     air_by_opcode_id: OriginalAirs<F>,
     is_valid_poly_id: u64,
     inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
+    apc: Arc<Apc<F, Instr<F>>>,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
+        instructions: Vec<Instruction<F>>,
         air_by_opcode_id: OriginalAirs<F>,
         is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
+        apc: Arc<Apc<F, Instr<F>>>,
     ) -> Self {
         Self {
             instructions,
@@ -87,6 +90,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .inventory,
             number_of_calls: 0,
             periphery: periphery.real,
+            apc,
         }
     }
 
@@ -109,9 +113,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .try_fold(from_state, |execution_state, instruction| {
                 let executor = self
                     .inventory
-                    .get_mut_executor(&instruction.opcode())
+                    .get_mut_executor(&instruction.opcode)
                     .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
+                executor.execute(memory, instruction, execution_state)
             });
 
         self.number_of_calls += 1;
@@ -159,7 +163,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let original_instruction_air_names = self
             .instructions
             .iter()
-            .map(|instruction| instruction.opcode())
+            .map(|instruction| instruction.opcode)
             .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
             .collect::<Vec<_>>();
 
@@ -183,11 +187,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 .collect();
 
         let trace_handler = OpenVmTraceHandler::new(
-            &self.instructions,
             column_index_by_poly_id,
             &dummy_trace_by_air_name,
             original_instruction_air_names,
             self.number_of_calls,
+            self.apc,
         );
 
         let TraceHandlerData {
@@ -202,7 +206,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .map(|instruction| {
                 self.air_by_opcode_id
                     // TODO: avoid cloning the instruction
-                    .get_instruction_air(&Instr(instruction.instruction.clone()))
+                    .get_instruction_air(&Instr(instruction.clone()))
                     .bus_interactions
                     .iter()
                     .filter_map(|interaction| interaction.try_into().ok())
