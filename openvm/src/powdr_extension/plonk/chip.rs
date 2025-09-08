@@ -59,17 +59,18 @@ impl<F: PrimeField32> PlonkChip<F> {
         let PowdrPrecompile {
             name, opcode, apc, ..
         } = precompile;
-        let air = PlonkAir {
+        let air = Arc::new(PlonkAir {
             copy_constraint_bus_id,
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
-        };
-        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery);
+        });
+        let executor =
+            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
 
         Self {
             name,
             opcode,
-            air: Arc::new(air),
+            air,
             executor,
             bus_map,
             apc,
@@ -87,7 +88,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state, &self.apc)?;
+        let execution_state = self.executor.execute(memory, from_state)?;
 
         Ok(execution_state)
     }
@@ -142,7 +143,7 @@ where
             .collect();
         let witness = self
             .executor
-            .generate_witness::<SC>(&column_index_by_poly_id, &self.apc);
+            .generate_witness::<SC>(&column_index_by_poly_id);
 
         // TODO: This should be parallelized.
         let mut values = <Val<SC>>::zero_vec(height * width);

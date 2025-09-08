@@ -48,7 +48,6 @@ pub struct PowdrChip<F: PrimeField32> {
     pub opcode: PowdrOpcode,
     /// An "executor" for this chip, based on the original instructions in the basic block
     pub executor: PowdrExecutor<F>,
-    pub apc: Arc<Apc<F, Instr<F>>>,
     pub air: Arc<PowdrAir<F>>,
 }
 
@@ -63,14 +62,15 @@ impl<F: PrimeField32> PowdrChip<F> {
         let PowdrPrecompile {
             name, opcode, apc, ..
         } = precompile;
-        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery);
+        let executor =
+            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
+        let air = Arc::new(PowdrAir::new(apc));
 
         Self {
             name,
             opcode,
             executor,
-            air: Arc::new(PowdrAir::new(apc.clone())),
-            apc,
+            air,
         }
     }
 }
@@ -85,7 +85,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state, &self.apc)?;
+        let execution_state = self.executor.execute(memory, from_state)?;
 
         Ok(execution_state)
     }
@@ -124,7 +124,7 @@ where
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
         let trace = self
             .executor
-            .generate_witness::<SC>(&self.air.column_index_by_poly_id, &self.apc);
+            .generate_witness::<SC>(&self.air.column_index_by_poly_id);
 
         assert_eq!(trace.width(), width);
 
