@@ -190,17 +190,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 .collect();
 
         let trace_handler = OpenVmTraceHandler::new(
-            column_index_by_poly_id,
             &dummy_trace_by_air_name,
             original_instruction_air_names,
             self.number_of_calls,
-            self.apc,
         );
 
         let TraceHandlerData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = trace_handler.data();
+        } = trace_handler.data(self.apc.clone());
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self

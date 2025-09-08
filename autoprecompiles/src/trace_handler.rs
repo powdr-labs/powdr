@@ -1,8 +1,11 @@
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::cmp::Eq;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
+
+use crate::Apc;
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceHandlerData<'a, F> {
@@ -14,16 +17,11 @@ pub struct TraceHandlerData<'a, F> {
 
 pub trait TraceHandler {
     type AirId: Hash + Eq + Sync;
-    type Field: Sync;
+    type Field: Sync + Clone + Ord + std::fmt::Display;
+    type Instruction;
 
     /// Returns a vector with the same length as original instructions
     fn original_instruction_air_ids(&self) -> Vec<Self::AirId>;
-
-    /// Returns a vector of vectors of subs for each original instruction, passed in from outside the trait implementation after APC generation
-    fn original_instruction_subs(&self) -> Vec<Vec<u64>>;
-
-    /// Returns a mapping from APC poly_id to the index in the APC trace
-    fn apc_poly_id_to_index(&self) -> &BTreeMap<u64, usize>;
 
     /// Returns the number of APC calls, which is also the number of rows in the APC trace
     fn apc_call_count(&self) -> usize;
@@ -32,14 +30,22 @@ pub trait TraceHandler {
     fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, DummyTrace<Self::Field>>;
 
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
-    fn data<'a>(&'a self) -> TraceHandlerData<'a, Self::Field> {
+    fn data<'a>(
+        &'a self,
+        apc: Arc<Apc<Self::Field, Self::Instruction>>,
+    ) -> TraceHandlerData<'a, Self::Field> {
         let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
 
         let original_instruction_air_ids = self.original_instruction_air_ids();
 
         let air_id_occurrences = original_instruction_air_ids.iter().counts();
 
-        let apc_poly_id_to_index = self.apc_poly_id_to_index();
+        let apc_poly_id_to_index: HashMap<u64, usize> = apc
+            .machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
 
         let original_instruction_table_offsets = original_instruction_air_ids
             .iter()
@@ -54,8 +60,8 @@ pub trait TraceHandler {
             )
             .collect::<Vec<_>>();
 
-        let dummy_trace_index_to_apc_index_by_instruction = self
-            .original_instruction_subs()
+        let dummy_trace_index_to_apc_index_by_instruction = apc
+            .subs
             .iter()
             .map(|subs| {
                 let mut dummy_trace_index_to_apc_index = HashMap::new();
