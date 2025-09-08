@@ -6,13 +6,11 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances, utils::algebraic_to_symbolic, ExtendedVmConfig,
-    customize_exe::Instr,
+    customize_exe::Instr, extraction_utils::OriginalAirs,
+    powdr_extension::executor::PowdrPeripheryInstances, utils::algebraic_to_symbolic,
+    ExtendedVmConfig,
 };
 
-use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use openvm_stark_backend::p3_commit::{Pcs, PolynomialSpace};
-use powdr_autoprecompiles::{adapter::Adapter, InstructionHandler};
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
 use openvm_circuit::system::memory::MemoryController;
@@ -30,6 +28,7 @@ use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
     rap::ColumnsAir,
 };
+use powdr_autoprecompiles::adapter::Adapter;
 
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
@@ -40,7 +39,7 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::{expression::{AlgebraicExpression, AlgebraicReference}};
+use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
 use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<F: PrimeField32, A: Adapter> {
@@ -61,21 +60,22 @@ impl<F: PrimeField32, A: Adapter> PowdrChip<F, A> {
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
-            machine,
-            original_instructions,
+            instructions,
             is_valid_column,
             name,
             opcode,
+            apc,
             ..
         } = precompile;
-        let air = PowdrAir::new(machine);
+        let air = PowdrAir::new(apc.machine().clone());
         let executor = PowdrExecutor::new(
-            original_instructions,
+            instructions,
             original_airs,
             is_valid_column,
             memory,
             base_config,
             periphery,
+            apc,
         );
 
         Self {
@@ -125,11 +125,11 @@ impl<SC: StarkGenericConfig, A> Chip<SC> for PowdrChip<Val<SC>, A>
 where
     Val<SC>: PrimeField32,
     A: Adapter<
-            Field = Val<SC>,
-            Instruction = Instr<Val<SC>>,
-            InstructionHandler = OriginalAirs<Val<SC>>,
-            AirId = String,
-        >,
+        Field = Val<SC>,
+        Instruction = Instr<Val<SC>>,
+        InstructionHandler = OriginalAirs<Val<SC>>,
+        AirId = String,
+    >,
     // <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = BabyBear>,
     // <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = Val<SC>>,
 {

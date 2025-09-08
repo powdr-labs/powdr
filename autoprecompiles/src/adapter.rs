@@ -64,7 +64,7 @@ pub trait PgoAdapter {
 }
 
 pub trait Adapter: Sized {
-    type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone + Sync;
+    type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone + Sync + Ord + Display;
     type PowdrField: FieldElement;
     type InstructionHandler: InstructionHandler<Self::Field, Self::Instruction, Self::AirId> + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>

@@ -11,7 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr};
+use crate::{ExtendedVmConfig, Instr};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -59,11 +59,11 @@ impl<F: PrimeField32, A: Adapter> PlonkChip<F, A> {
         copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {
-            original_instructions,
+            instructions,
             is_valid_column,
             name,
             opcode,
-            machine,
+            apc,
             ..
         } = precompile;
         let air = PlonkAir {
@@ -71,13 +71,15 @@ impl<F: PrimeField32, A: Adapter> PlonkChip<F, A> {
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         };
+        let machine = apc.machine().clone();
         let executor = PowdrExecutor::new(
-            original_instructions,
+            instructions,
             original_airs,
             is_valid_column,
             memory,
             base_config,
             periphery,
+            apc,
         );
 
         Self {
@@ -128,7 +130,12 @@ impl<F: PrimeField32, A: Adapter> ChipUsageGetter for PlonkChip<F, A> {
 impl<SC: StarkGenericConfig, A> Chip<SC> for PlonkChip<Val<SC>, A>
 where
     Val<SC>: PrimeField32,
-    A: Adapter<Field = Val<SC>, Instruction = Instr<Val<SC>>, InstructionHandler = OriginalAirs<Val<SC>>, AirId = String>,
+    A: Adapter<
+        Field = Val<SC>,
+        Instruction = Instr<Val<SC>>,
+        InstructionHandler = OriginalAirs<Val<SC>>,
+        AirId = String,
+    >,
 {
     fn air(&self) -> Arc<dyn AnyRap<SC>> {
         self.air.clone()

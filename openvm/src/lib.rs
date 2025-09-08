@@ -131,7 +131,15 @@ impl InitFileGenerator for SpecializedConfig {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
-pub enum SpecializedExecutor<F: PrimeField32, A: Adapter<Field = F, Instruction = Instr<F>, InstructionHandler = OriginalAirs<F>, AirId = String> + 'static> {
+pub enum SpecializedExecutor<
+    F: PrimeField32,
+    A: Adapter<
+            Field = F,
+            Instruction = Instr<F>,
+            InstructionHandler = OriginalAirs<F>,
+            AirId = String,
+        > + 'static,
+> {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<F>),
     #[any_enum]

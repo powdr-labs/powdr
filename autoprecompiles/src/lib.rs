@@ -13,11 +13,11 @@ use powdr_expression::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::hash::Hash;
 use std::io::BufWriter;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::hash::Hash;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
