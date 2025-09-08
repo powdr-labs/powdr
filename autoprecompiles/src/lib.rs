@@ -108,9 +108,7 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
-    for SymbolicConstraint<T>
-{
+impl<T> Children<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(once(&self.expr))
     }
@@ -148,9 +146,7 @@ impl<T: Copy> SymbolicBusInteraction<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
-    for SymbolicBusInteraction<T>
-{
+impl<T> Children<AlgebraicExpression<T>> for SymbolicBusInteraction<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(once(&self.mult).chain(&self.args))
     }
@@ -172,7 +168,7 @@ pub struct SymbolicMachine<T> {
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+impl<T> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
         self.unique_references()
     }
@@ -231,13 +227,13 @@ impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+impl<T> SymbolicMachine<T> {
     pub fn degree(&self) -> usize {
         self.children().map(|e| e.degree()).max().unwrap_or(0)
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
+impl<T> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
             self.constraints
