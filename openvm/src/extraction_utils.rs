@@ -23,6 +23,7 @@ use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{config_from_perm, default_perm},
     fri_params::SecurityParameters,
 };
+use openvm_stark_backend::ChipUsageGetter;
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
@@ -45,7 +46,7 @@ const EXT_DEGREE: usize = 4;
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
     opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    pub air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
 impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
@@ -216,7 +217,7 @@ impl OriginalVmConfig {
             })
             .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
-                airs.insert_opcode(op, get_name(executor.air()), || {
+                airs.insert_opcode(op, executor.air_name(), || {
                     let air = executor.air();
                     let columns = get_columns(air.clone());
                     let constraints = get_constraints(air.clone());
