@@ -41,7 +41,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
 use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{InstructionHandler, SymbolicBusInteraction};
+use powdr_autoprecompiles::InstructionHandler;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -141,7 +141,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<F>],
     ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
@@ -191,7 +190,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let TraceHandlerData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = trace_handler.data(self.apc.clone());
+        } = trace_handler.data(&self.apc);
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
@@ -209,11 +208,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .collect_vec();
 
         // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
-            bus_interactions
-                .iter()
-                .map(|interaction| interaction.clone().into())
-                .collect_vec();
+        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> = self
+            .apc
+            .machine()
+            .bus_interactions
+            .iter()
+            .map(|interaction| interaction.clone().into())
+            .collect_vec();
 
         // go through the final table and fill in the values
         values
