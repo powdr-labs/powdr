@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs,
+    extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
@@ -159,27 +159,23 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
             .collect::<Vec<_>>();
 
-        let dummy_trace_by_air_name: HashMap<_, _> =
-            self.inventory
-                .executors
-                .into_iter()
-                .map(|executor| {
-                    let air_name = executor.air_name().clone();
-                    let dummy_trace =
-                        tracing::debug_span!("dummy trace", air_name = executor.air_name())
-                            .in_scope(|| {
-                                Chip::<SC>::generate_air_proof_input(executor)
-                                    .raw
-                                    .common_main
-                                    .unwrap()
-                            });
-                    let dummy_trace_width = dummy_trace.width();
-                    (
-                        air_name,
-                        DummyTrace::new(dummy_trace.values, dummy_trace_width),
-                    )
-                })
-                .collect();
+        let dummy_trace_by_air_name: HashMap<_, _> = self
+            .inventory
+            .executors
+            .into_iter()
+            .map(|executor| {
+                (
+                    executor.air_name().clone(),
+                    tracing::debug_span!("dummy trace", air_name = get_name::<SC>(executor.air()))
+                        .in_scope(|| {
+                            Chip::<SC>::generate_air_proof_input(executor)
+                                .raw
+                                .common_main
+                                .unwrap()
+                        }),
+                )
+            })
+            .collect();
 
         let trace_handler = OpenVmTraceHandler::new(
             &dummy_trace_by_air_name,
