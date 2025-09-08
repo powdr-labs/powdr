@@ -51,8 +51,6 @@ mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
 
-mod trace_handler;
-
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
 
@@ -65,6 +63,24 @@ pub struct PowdrExecutor<F: PrimeField32> {
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<F, Instr<F>>>,
+}
+
+impl<F: PrimeField32> TraceHandler for PowdrExecutor<F> {
+    type AirId = String;
+    type Field = F;
+    type Instruction = Instr<F>;
+
+    fn original_instruction_air_ids(&self) -> Vec<Self::AirId> {
+        self.instructions
+            .iter()
+            .map(|instruction| instruction.opcode)
+            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
+            .collect::<Vec<_>>()
+    }
+
+    fn apc_call_count(&self) -> usize {
+        self.number_of_calls
+    }
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
@@ -160,13 +176,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        let original_instruction_air_names = self
-            .instructions
-            .iter()
-            .map(|instruction| instruction.opcode)
-            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
-            .collect::<Vec<_>>();
-
         let dummy_trace_by_air_name: HashMap<_, _> =
             self.inventory
                 .executors
@@ -189,16 +198,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 })
                 .collect();
 
-        let trace_handler = OpenVmTraceHandler::new(
-            &dummy_trace_by_air_name,
-            original_instruction_air_names,
-            self.number_of_calls,
-        );
-
         let TraceHandlerData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = trace_handler.data(self.apc.clone());
+        } = self.data(self.apc.clone(), &dummy_trace_by_air_name);
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self

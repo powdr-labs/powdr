@@ -26,16 +26,12 @@ pub trait TraceHandler {
     /// Returns the number of APC calls, which is also the number of rows in the APC trace
     fn apc_call_count(&self) -> usize;
 
-    /// Returns a mapping from air_id to the dummy trace
-    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, DummyTrace<Self::Field>>;
-
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
     fn data<'a>(
         &'a self,
         apc: Arc<Apc<Self::Field, Self::Instruction>>,
+        air_id_to_dummy_trace_and_width: &'a HashMap<Self::AirId, DummyTrace<Self::Field>>,
     ) -> TraceHandlerData<'a, Self::Field> {
-        let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
-
         let original_instruction_air_ids = self.original_instruction_air_ids();
 
         let air_id_occurrences = original_instruction_air_ids.iter().counts();
