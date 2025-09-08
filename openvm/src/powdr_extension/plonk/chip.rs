@@ -57,12 +57,7 @@ impl<F: PrimeField32> PlonkChip<F> {
         copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {
-            instructions,
-            is_valid_column,
-            name,
-            opcode,
-            apc,
-            ..
+            name, opcode, apc, ..
         } = precompile;
         let air = PlonkAir {
             copy_constraint_bus_id,
@@ -70,15 +65,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             _marker: std::marker::PhantomData,
         };
         let machine = apc.machine().clone();
-        let executor = PowdrExecutor::new(
-            instructions,
-            original_airs,
-            is_valid_column,
-            memory,
-            base_config,
-            periphery,
-            apc,
-        );
+        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
 
         Self {
             name,
