@@ -244,7 +244,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
                 PowdrOpcode {
                     class_offset: opcode,
                 },
-                Arc::new(apc),
+                apc,
                 apc_stats,
             )
         })
@@ -309,7 +309,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Apc<F, I>,
+    apc: Arc<Apc<F, I>>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
     stats: EvaluationResult,
@@ -328,13 +328,12 @@ impl OvmApcStats {
 
 impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
     fn create(
-        apc: AdapterApc<BabyBearOpenVmApcAdapter<'a>>,
+        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
         max_degree: usize,
     ) -> Self {
-        let apc_metrics =
-            get_air_metrics(Arc::new(PowdrAir::new(apc.machine().clone())), max_degree);
+        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.clone())), max_degree);
         let width_after = apc_metrics.widths;
 
         let width_before = apc

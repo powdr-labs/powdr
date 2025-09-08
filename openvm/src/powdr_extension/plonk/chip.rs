@@ -11,7 +11,7 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::ExtendedVmConfig;
+use crate::{ExtendedVmConfig, Instr};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
@@ -32,7 +32,7 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::Apc;
 
 use super::air::PlonkAir;
 
@@ -41,7 +41,7 @@ pub struct PlonkChip<F: PrimeField32> {
     opcode: PowdrOpcode,
     air: Arc<PlonkAir<F>>,
     executor: PowdrExecutor<F>,
-    machine: SymbolicMachine<F>,
+    apc: Arc<Apc<F, Instr<F>>>,
     bus_map: BusMap,
 }
 
@@ -64,16 +64,15 @@ impl<F: PrimeField32> PlonkChip<F> {
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         };
-        let machine = apc.machine().clone();
-        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
+        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery);
 
         Self {
             name,
             opcode,
             air: Arc::new(air),
             executor,
-            machine,
             bus_map,
+            apc,
         }
     }
 }
@@ -88,7 +87,7 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state)?;
+        let execution_state = self.executor.execute(memory, from_state, &self.apc)?;
 
         Ok(execution_state)
     }
@@ -122,7 +121,7 @@ where
     fn generate_air_proof_input(self) -> AirProofInput<SC> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let plonk_circuit = build_circuit(&self.machine, &self.bus_map);
+        let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
         let number_of_calls = self.executor.number_of_calls();
         let width = self.trace_width();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
@@ -135,14 +134,15 @@ where
         // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
         // which is unnecessary.
         let column_index_by_poly_id = self
-            .machine
+            .apc
+            .machine()
             .main_columns()
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
         let witness = self
             .executor
-            .generate_witness::<SC>(&column_index_by_poly_id, &self.machine.bus_interactions);
+            .generate_witness::<SC>(&column_index_by_poly_id, &self.apc);
 
         // TODO: This should be parallelized.
         let mut values = <Val<SC>>::zero_vec(height * width);

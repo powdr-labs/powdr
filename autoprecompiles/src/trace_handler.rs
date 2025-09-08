@@ -3,7 +3,6 @@ use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::Arc;
 
 use crate::Apc;
 
@@ -32,7 +31,7 @@ pub trait TraceHandler {
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
     fn data<'a>(
         &'a self,
-        apc: Arc<Apc<Self::Field, Self::Instruction>>,
+        apc: &Apc<Self::Field, Self::Instruction>,
     ) -> TraceHandlerData<'a, Self::Field> {
         let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
 
