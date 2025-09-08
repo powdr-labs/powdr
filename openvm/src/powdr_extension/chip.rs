@@ -62,9 +62,8 @@ impl<F: PrimeField32> PowdrChip<F> {
         let PowdrPrecompile {
             name, opcode, apc, ..
         } = precompile;
-        let executor =
-            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
-        let air = Arc::new(PowdrAir::new(apc));
+        let air = Arc::new(PowdrAir::new(apc.clone()));
+        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
 
         Self {
             name,
