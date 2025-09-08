@@ -14,7 +14,7 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    trace_handler::{DummyTrace, TraceHandler, TraceHandlerData},
+    trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
 
@@ -29,9 +29,11 @@ use openvm_circuit::{
 };
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
+    p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix,
+    p3_maybe_rayon::prelude::ParallelIterator,
 };
 
+use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
@@ -40,7 +42,6 @@ use openvm_stark_backend::{
     Chip,
 };
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
-use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
 use powdr_autoprecompiles::InstructionHandler;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -156,7 +157,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .instructions()
             .iter()
             .map(|instruction| instruction.0.opcode)
-            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
+            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
             .collect::<Vec<_>>();
 
         let dummy_trace_by_air_name: HashMap<_, _> = self
@@ -164,16 +165,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .executors
             .into_iter()
             .map(|executor| {
-                (
-                    executor.air_name().clone(),
-                    tracing::debug_span!("dummy trace", air_name = get_name::<SC>(executor.air()))
-                        .in_scope(|| {
+                let air_name = get_name::<SC>(executor.air());
+                let DenseMatrix { values, width, .. } =
+                    tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
+                        || {
                             Chip::<SC>::generate_air_proof_input(executor)
                                 .raw
                                 .common_main
                                 .unwrap()
-                        }),
-                )
+                        },
+                    );
+                (air_name.clone(), Trace::new(values, width))
             })
             .collect();
 

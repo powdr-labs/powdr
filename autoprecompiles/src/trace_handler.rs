@@ -26,14 +26,14 @@ pub trait TraceHandler {
     fn apc_call_count(&self) -> usize;
 
     /// Returns a mapping from air_id to the dummy trace
-    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<Self::AirId, DummyTrace<Self::Field>>;
+    fn air_id_to_dummy_trace(&self) -> &HashMap<Self::AirId, Trace<Self::Field>>;
 
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
     fn data<'a>(
         &'a self,
         apc: &Apc<Self::Field, Self::Instruction>,
     ) -> TraceHandlerData<'a, Self::Field> {
-        let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
+        let air_id_to_dummy_trace = self.air_id_to_dummy_trace();
 
         let original_instruction_air_ids = self.original_instruction_air_ids();
 
@@ -80,8 +80,7 @@ pub trait TraceHandler {
                     .iter()
                     .zip_eq(original_instruction_table_offsets.iter())
                     .map(|(air_id, dummy_table_offset)| {
-                        let DummyTrace { values, width } =
-                            air_id_to_dummy_trace_and_width.get(air_id).unwrap();
+                        let Trace { values, width } = air_id_to_dummy_trace.get(air_id).unwrap();
                         let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
                         let start =
                             (trace_row * occurrences_per_record + dummy_table_offset) * width;
@@ -99,12 +98,12 @@ pub trait TraceHandler {
     }
 }
 
-pub struct DummyTrace<F> {
+pub struct Trace<F> {
     pub values: Vec<F>,
     pub width: usize,
 }
 
-impl<F> DummyTrace<F> {
+impl<F> Trace<F> {
     pub fn new(values: Vec<F>, width: usize) -> Self {
         Self { values, width }
     }
