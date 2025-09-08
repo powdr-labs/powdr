@@ -326,6 +326,17 @@ impl<T, I> Apc<T, I> {
     }
 }
 
+impl<T: Clone + Ord + std::fmt::Display, I> Apc<T, I> {
+    /// The `is_valid` polynomial id
+    pub fn is_valid_poly_id(&self) -> u64 {
+        self.machine
+            .main_columns()
+            .find(|c| &*c.name == "is_valid")
+            .unwrap()
+            .id
+    }
+}
+
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,

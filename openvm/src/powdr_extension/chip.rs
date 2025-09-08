@@ -57,23 +57,10 @@ impl<F: PrimeField32> PowdrChip<F> {
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
-            instructions,
-            is_valid_column,
-            name,
-            opcode,
-            apc,
-            ..
+            name, opcode, apc, ..
         } = precompile;
         let air = PowdrAir::new(apc.machine().clone());
-        let executor = PowdrExecutor::new(
-            instructions,
-            original_airs,
-            is_valid_column,
-            memory,
-            base_config,
-            periphery,
-            apc,
-        );
+        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
 
         Self {
             name,

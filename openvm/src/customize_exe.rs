@@ -239,24 +239,11 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             // This is only for witgen: the program in the program chip is left unchanged.
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
-            let is_valid_column = apc
-                .machine()
-                .main_columns()
-                .find(|c| &*c.name == "is_valid")
-                .unwrap();
-
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", apc.start_pc()),
                 PowdrOpcode {
                     class_offset: opcode,
                 },
-                apc.block
-                    .statements
-                    .clone()
-                    .into_iter()
-                    .map(|i| i.0)
-                    .collect(),
-                is_valid_column,
                 Arc::new(apc),
                 apc_stats,
             )
