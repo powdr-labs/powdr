@@ -367,10 +367,6 @@ pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
         .collect()
 }
 
-pub fn get_name(air: Arc<dyn AnyRap<BabyBearSC>>) -> String {
-    air.name()
-}
-
 pub fn get_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
