@@ -14,6 +14,7 @@ use powdr_constraint_solver::{
     grouped_expression::GroupedExpression,
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
+    reachability::reachable_variables,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -24,10 +25,6 @@ use crate::{
     range_constraint_optimizer::RangeConstraintHandler,
     stats_logger::StatsLogger,
 };
-
-mod reachability;
-
-use reachability::reachable_variables;
 
 #[derive(Debug)]
 pub enum Error {
@@ -214,7 +211,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         // Find variables that are referenced in exactly one constraint
         .filter_map(|variable| {
             constraint_system
-                .constraints_referencing_variables(once(variable.clone()))
+                .constraints_referencing_variables(once(variable))
                 .exactly_one()
                 .ok()
                 .map(|constraint| (variable.clone(), constraint))
@@ -319,7 +316,7 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
         bus_interaction_handler.clone(),
     )
     .cloned();
-    let variables_to_keep = reachable_variables(initial_variables, constraint_system.system());
+    let variables_to_keep = reachable_variables(initial_variables, &constraint_system);
 
     solver.retain_variables(&variables_to_keep);
 
