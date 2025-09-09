@@ -2,9 +2,13 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use std::cmp::Eq;
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::ops::{Add, Mul, Neg, Sub};
 
+use crate::adapter::Adapter;
+use crate::expression::RowEvaluator;
 use crate::Apc;
+use crate::InstructionHandler;
+use crate::SymbolicBusInteraction;
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceHandlerData<'a, F> {
@@ -107,4 +111,49 @@ impl<F> Trace<F> {
     pub fn new(values: Vec<F>, width: usize) -> Self {
         Self { values, width }
     }
+}
+
+pub struct InteractionEvaluator<
+    'a,
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+> {
+    pub row_evaluator: RowEvaluator<'a, F>,
+}
+
+impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy>
+    InteractionEvaluator<'a, F>
+{
+    pub fn new(row_evaluator: RowEvaluator<'a, F>) -> Self {
+        Self { row_evaluator }
+    }
+
+    pub fn evaluate_bus_interactions(
+        &self,
+        bus_interactions: &Vec<&SymbolicBusInteraction<F>>,
+        filter_by: impl Fn(&SymbolicBusInteraction<F>) -> bool,
+    ) -> Vec<ConcreteBusInteraction<F>> {
+        bus_interactions
+            .iter()
+            .filter(|&bus_interaction| filter_by(bus_interaction))
+            .map(|bus_interaction| {
+                let mult = self.row_evaluator.eval_expr(&bus_interaction.mult);
+                let args = bus_interaction
+                    .args
+                    .iter()
+                    .map(|arg| self.row_evaluator.eval_expr(arg))
+                    .collect_vec();
+                ConcreteBusInteraction {
+                    id: bus_interaction.id,
+                    mult,
+                    args,
+                }
+            })
+            .collect()
+    }
+}
+
+pub struct ConcreteBusInteraction<F> {
+    pub id: u64,
+    pub mult: F,
+    pub args: Vec<F>,
 }
