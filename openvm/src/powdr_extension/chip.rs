@@ -119,8 +119,6 @@ where
         InstructionHandler = OriginalAirs<Val<SC>>,
         AirId = String,
     >,
-    // <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = BabyBear>,
-    // <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = Val<SC>>,
 {
     fn air(&self) -> Arc<dyn AnyRap<SC>> {
         self.air.clone()

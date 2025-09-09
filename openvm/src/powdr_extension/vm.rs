@@ -36,15 +36,7 @@ use super::{chip::PowdrChip, PowdrOpcode};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
-pub struct PowdrExtension<
-    F,
-    A: Adapter<
-        Field = F,
-        Instruction = Instr<F>,
-        InstructionHandler = OriginalAirs<F>,
-        AirId = String,
-    >,
-> {
+pub struct PowdrExtension<F, A: Adapter> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
     pub base_config: ExtendedVmConfig,
     pub implementation: PrecompileImplementation,
@@ -78,16 +70,7 @@ impl<F> PowdrPrecompile<F> {
     }
 }
 
-impl<
-        F,
-        A: Adapter<
-            Field = F,
-            Instruction = Instr<F>,
-            InstructionHandler = OriginalAirs<F>,
-            AirId = String,
-        >,
-    > PowdrExtension<F, A>
-{
+impl<F, A: Adapter> PowdrExtension<F, A> {
     pub fn new(
         precompiles: Vec<PowdrPrecompile<F>>,
         base_config: ExtendedVmConfig,
