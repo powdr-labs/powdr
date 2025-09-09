@@ -146,54 +146,6 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
     }
 }
 
-pub struct RowEvaluator<'a, F: PrimeField32> {
-    pub row: &'a [F],
-    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
-}
-
-impl<'a, F: PrimeField32> RowEvaluator<'a, F> {
-    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
-        Self {
-            row,
-            witness_id_to_index,
-        }
-    }
-}
-
-impl<F: PrimeField32> SymbolicEvaluator<F, F> for RowEvaluator<'_, F> {
-    fn eval_const(&self, c: F) -> F {
-        c
-    }
-
-    fn eval_var(&self, symbolic_var: SymbolicVariable<F>) -> F {
-        match symbolic_var.entry {
-            Entry::Main {
-                part_index: 0,
-                offset: 0,
-            } => {
-                let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
-                    witness_id_to_index[&(symbolic_var.index as u64)]
-                } else {
-                    symbolic_var.index
-                };
-                self.row[index]
-            }
-            // currently only the current rotation of the main is supported
-            // next rotation is not supported because this is a single row evaluator
-            _ => unreachable!(),
-        }
-    }
-    fn eval_is_first_row(&self) -> F {
-        unreachable!()
-    }
-    fn eval_is_last_row(&self) -> F {
-        unreachable!()
-    }
-    fn eval_is_transition(&self) -> F {
-        unreachable!()
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct SymbolicMachine<F> {
@@ -266,9 +218,9 @@ impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicBusInteraction<F>>
 }
 
 pub struct RangeCheckerSend<F> {
-    pub mult: SymbolicExpression<F>,
-    pub value: SymbolicExpression<F>,
-    pub max_bits: SymbolicExpression<F>,
+    pub mult: AlgebraicExpression<F>,
+    pub value: AlgebraicExpression<F>,
+    pub max_bits: AlgebraicExpression<F>,
 }
 
 impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
@@ -282,9 +234,9 @@ impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
             let value = &i.args[0];
             let max_bits = &i.args[1];
             Ok(Self {
-                mult: algebraic_to_symbolic(&i.mult),
-                value: algebraic_to_symbolic(value),
-                max_bits: algebraic_to_symbolic(max_bits),
+                mult: i.mult.clone(),
+                value: value.clone(),
+                max_bits: max_bits.clone(),
             })
         } else {
             Err(())

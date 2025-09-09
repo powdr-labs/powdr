@@ -14,11 +14,12 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
+    expression::RowEvaluator,
     trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
 
-use super::chip::{RangeCheckerSend, RowEvaluator};
+use super::chip::RangeCheckerSend;
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -35,7 +36,6 @@ use openvm_stark_backend::{
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{
-    air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
     p3_commit::{Pcs, PolynomialSpace},
     p3_maybe_rayon::prelude::ParallelSliceMut,
@@ -205,15 +205,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect_vec();
 
-        // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> = self
-            .apc
-            .machine()
-            .bus_interactions
-            .iter()
-            .map(|interaction| interaction.clone().into())
-            .collect_vec();
-
         // go through the final table and fill in the values
         values
             // a record is `width` values
@@ -259,7 +250,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
                 // replay the side effects of this row on the main periphery
                 // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
-                for bus_interaction in &bus_interactions {
+                for bus_interaction in &self.apc.machine().bus_interactions {
                     let mult = evaluator
                         .eval_expr(&bus_interaction.mult)
                         .as_canonical_u32();
@@ -268,7 +259,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .iter()
                         .map(|arg| evaluator.eval_expr(arg).as_canonical_u32());
 
-                    self.periphery.apply(bus_interaction.id, mult, args);
+                    self.periphery.apply(bus_interaction.id as u16, mult, args);
                 }
             });
 

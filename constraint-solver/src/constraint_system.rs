@@ -84,6 +84,13 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         )
     }
 
+    pub fn unknown_variables(&self) -> impl Iterator<Item = &V> {
+        Box::new(
+            self.expressions()
+                .flat_map(|expr| expr.referenced_unknown_variables()),
+        )
+    }
+
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
@@ -280,6 +287,17 @@ impl<'a, T: ReferencedSymbols<V>, V> ConstraintRef<'a, T, V> {
             ConstraintRef::BusInteraction(bus_interaction) => {
                 Box::new(bus_interaction.referenced_variables())
             }
+        }
+    }
+}
+
+impl<'a, T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
+    for ConstraintRef<'a, T, V>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstraintRef::AlgebraicConstraint(expr) => write!(f, "{expr} = 0"),
+            ConstraintRef::BusInteraction(bus_interaction) => write!(f, "{bus_interaction}"),
         }
     }
 }
