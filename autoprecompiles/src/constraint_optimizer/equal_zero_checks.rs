@@ -42,12 +42,12 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         bus_interaction_handler.clone(),
     ) {
         if subsystem.unknown_variables().count() > 200 {
-            println!(
+            // Searching for equal zero checks in such a large
+            // system would take too long.
+            log::debug!(
                 "Skipping equal zero check optimization for subsystem with {} variables",
                 subsystem.unknown_variables().count()
             );
-            // Searching for equal zero checks in such a large
-            // system would take too long.
             continue;
         }
         // println!(
@@ -155,7 +155,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         // println!("================= NOPE");
         return;
     }
-    println!(
+    log::debug!(
         "Candidate found: {output} == {value} <=> all of {{{}}} are zero",
         inputs.iter().format(", ")
     );
@@ -348,8 +348,9 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
 /// Checks if the isolated system is indeed redundant given the inputs and output.
 /// More formally, the system is satisfiable in the following two cases:
 /// 1) if the inputs are all zero and the output is `value`
-/// 2) if at least one input is not zero (but all satisfy the given range cosntraints)
-///    and the output is `1 - value`
+/// 2) if at least one input is not zero (but all satisfy the given range constraints)
+///    and the output is `1 - value`j
+///
 /// In particular, this holds for all input assignments, i.e. the system should
 /// not impose any further restrictions on the inputs in the second case.
 fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
@@ -387,19 +388,19 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
             bus_interaction_handler.clone(),
         ) {
             if !restrictions.is_empty() {
-                println!(
-                    "WARNING: Isolated system has restrictions even when inputs are zero: {}",
-                    restrictions
-                        .iter()
-                        .map(|(v, rc)| format!("{v}: {rc}"))
-                        .format(", ")
-                );
+                // println!(
+                //     "WARNING: Isolated system has restrictions even when inputs are zero: {}",
+                //     restrictions
+                //         .iter()
+                //         .map(|(v, rc)| format!("{v}: {rc}"))
+                //         .format(", ")
+                // );
                 return false;
             }
         } else {
-            println!(
-                "Isolated system is not satisfiable when inputs are zero and output is {value}"
-            );
+            // println!(
+            //     "Isolated system is not satisfiable when inputs are zero and output is {value}"
+            // );
             return false;
         }
     }
@@ -431,13 +432,13 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         let restrictions = reduce_range_constraints(restrictions, &range_constraints);
         for result in restrictions {
             if !result.is_empty() {
-                println!(
-                    "  - satisfiable with restrictions: {}",
-                    result
-                        .iter()
-                        .map(|(v, rc)| format!("{v}: {rc}"))
-                        .format(", ")
-                );
+                // println!(
+                //     "  - satisfiable with restrictions: {}",
+                //     result
+                //         .iter()
+                //         .map(|(v, rc)| format!("{v}: {rc}"))
+                //         .format(", ")
+                // );
                 return false;
             }
         }
@@ -504,13 +505,13 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     if system.algebraic_constraints.is_empty() && system.bus_interactions.is_empty() {
         return Some(output_rc);
     } else {
-        println!(
-            "Non-empty system:\n-----\n{system}\nDetermined RCS: {}\n-----",
-            output_rc
-                .iter()
-                .map(|(v, rc)| format!("{v}: {rc}"))
-                .format(", ")
-        );
+        // println!(
+        //     "Non-empty system:\n-----\n{system}\nDetermined RCS: {}\n-----",
+        //     output_rc
+        //         .iter()
+        //         .map(|(v, rc)| format!("{v}: {rc}"))
+        //         .format(", ")
+        // );
     }
     None
 }
