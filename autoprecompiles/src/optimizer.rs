@@ -1,40 +1,36 @@
-use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::{collections::BTreeMap, fmt::Display};
 
+use itertools::Itertools;
+use powdr_constraint_solver::constraint_system::AlgebraicConstraint;
+use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
+use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
-    grouped_expression::{NoRangeConstraints, QuadraticSymbolicExpression},
-    journaling_constraint_system::JournalingConstraintSystem,
+    constraint_system::{BusInteraction, ConstraintSystem},
+    grouped_expression::GroupedExpression,
 };
 use powdr_number::FieldElement;
 
+use crate::constraint_optimizer::trivial_simplifications;
+use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
-    bitwise_lookup_optimizer::optimize_bitwise_lookup,
-    constraint_optimizer::{optimize_constraints, IsBusStateful},
+    adapter::Adapter,
+    constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
-    expression_conversion::{
-        algebraic_to_quadratic_symbolic_expression, quadratic_symbolic_expression_to_algebraic,
-    },
-    memory_optimizer::{check_register_operation_consistency, optimize_memory},
+    expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
     powdr::{self},
     stats_logger::{self, StatsLogger},
-    BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
+    BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
-pub fn optimize<T: FieldElement>(
-    machine: SymbolicMachine<T>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    opcode: u32,
+pub fn optimize<A: Adapter>(
+    mut machine: SymbolicMachine<A::PowdrField>,
+    bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
-    bus_map: &BusMap,
-) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error> {
+    bus_map: &BusMap<A::CustomBusTypes>,
+) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
-    let mut machine = if let Some(pc_lookup_bus_id) = bus_map.get_bus_id(&BusType::PcLookup) {
-        let machine = optimize_pc_lookup(machine, opcode, pc_lookup_bus_id);
-        stats_logger.log("PC lookup optimization", &machine);
-        machine
-    } else {
-        machine
-    };
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
         machine = optimize_exec_bus(machine, exec_bus_id);
@@ -42,90 +38,79 @@ pub fn optimize<T: FieldElement>(
     }
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
-
+    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimization_loop_iteration(
+        constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
             constraint_system,
+            &mut solver,
             bus_interaction_handler.clone(),
-            degree_bound,
             &mut stats_logger,
-            bus_map,
-        )?;
+            bus_map.get_bus_id(&BusType::Memory),
+            degree_bound,
+        )?
+        .clone();
         if stats == stats_logger::Stats::from(&constraint_system) {
-            return Ok(constraint_system_to_symbolic_machine(constraint_system));
+            break;
         }
     }
-}
 
-fn optimization_loop_iteration<T: FieldElement>(
-    constraint_system: ConstraintSystem<T, AlgebraicReference>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + IsBusStateful<T> + Clone,
-    degree_bound: DegreeBound,
-    stats_logger: &mut StatsLogger,
-    bus_map: &BusMap,
-) -> Result<ConstraintSystem<T, AlgebraicReference>, crate::constraint_optimizer::Error> {
-    let constraint_system = JournalingConstraintSystem::from(constraint_system);
-    let constraint_system = optimize_constraints(
+    let constraint_system = inliner::replace_constrained_witness_columns(
+        constraint_system.into(),
+        inline_everything_below_degree_bound(degree_bound),
+    )
+    .system()
+    .clone();
+    stats_logger.log("inlining", &constraint_system);
+
+    // Note that the rest of the optimization does not benefit from optimizing range constraints,
+    // so we only do it once at the end.
+    let constraint_system = optimize_range_constraints(
         constraint_system,
         bus_interaction_handler.clone(),
         degree_bound,
-        stats_logger,
-    )?;
-    let constraint_system = constraint_system.system().clone();
-    let constraint_system = if let Some(memory_bus_id) = bus_map.get_bus_id(&BusType::Memory) {
-        let constraint_system =
-            optimize_memory(constraint_system, memory_bus_id, NoRangeConstraints);
-        assert!(check_register_operation_consistency(
-            &constraint_system,
-            memory_bus_id
-        ));
-        stats_logger.log("memory optimization", &constraint_system);
-        constraint_system
-    } else {
-        constraint_system
-    };
+    );
+    stats_logger.log("optimizing range constraints", &constraint_system);
 
-    let system = if let Some(bitwise_bus_id) = bus_map.get_bus_id(&BusType::BitwiseLookup) {
-        let system = optimize_bitwise_lookup(constraint_system, bitwise_bus_id);
-        stats_logger.log("optimizing bitwise lookup", &system);
-        system
-    } else {
-        constraint_system
-    };
+    let constraint_system = trivial_simplifications(
+        constraint_system.into(),
+        bus_interaction_handler,
+        &mut stats_logger,
+    )
+    .system()
+    .clone();
 
-    Ok(system)
-}
-
-pub fn optimize_pc_lookup<T: FieldElement>(
-    mut machine: SymbolicMachine<T>,
-    opcode: u32,
-    pc_lookup_bus_id: u64,
-) -> SymbolicMachine<T> {
-    let mut first_pc = None;
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id == pc_lookup_bus_id {
-            if first_pc.is_none() {
-                first_pc = Some(bus_int.clone());
-            }
-            return false;
+    // Sanity check: Degree bound should be respected:
+    for algebraic_constraint in &constraint_system.algebraic_constraints {
+        assert!(
+            algebraic_constraint.degree() <= degree_bound.identities,
+            "Degree bound violated ({} > {}): {algebraic_constraint}",
+            algebraic_constraint.degree(),
+            degree_bound.identities
+        );
+    }
+    for bus_interaction in &constraint_system.bus_interactions {
+        for (i, expr) in bus_interaction.fields().enumerate() {
+            assert!(
+                expr.degree() <= degree_bound.identities,
+                "Degree bound violated in field {i} ({} > {}): {bus_interaction}",
+                expr.degree(),
+                degree_bound.identities
+            );
         }
-        true
-    });
-    let mut first_pc = first_pc.unwrap();
-    assert_eq!(first_pc.args.len(), 9);
-    first_pc.args[1] = AlgebraicExpression::Number(T::from(opcode));
-    first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[4] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[5] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[6] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[7] = AlgebraicExpression::Number(T::from(0u32));
-    first_pc.args[8] = AlgebraicExpression::Number(T::from(0u32));
+    }
 
-    machine.bus_interactions.push(first_pc);
-
-    machine
+    // Sanity check: All PC lookups should be removed, because we'd only have constants on the LHS.
+    let pc_lookup_bus_id = bus_map.get_bus_id(&BusType::PcLookup).unwrap();
+    assert!(
+        !constraint_system
+            .bus_interactions
+            .iter()
+            .any(|b| b.bus_id
+                == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
+        "Expected all PC lookups to be removed."
+    );
+    Ok(constraint_system_to_symbolic_machine(constraint_system))
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
@@ -135,8 +120,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
-    let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
-    let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -152,30 +136,28 @@ pub fn optimize_exec_bus<T: FieldElement>(
             true
         } else if !receive {
             // Save the latest send and remove the bus interaction
-            let mut pc_expr = bus_int.args[0].clone();
-            powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
-            pc_expr = simplify_expression(pc_expr);
-
-            let mut ts_expr = bus_int.args[1].clone();
-            powdr::substitute_algebraic_algebraic(&mut ts_expr, &subs_ts);
-            ts_expr = simplify_expression(ts_expr);
-
             let mut send = bus_int.clone();
-            send.args[0] = pc_expr;
-            send.args[1] = ts_expr;
+            send.args = bus_int
+                .args
+                .iter()
+                .map(|arg| {
+                    let mut arg = arg.clone();
+                    powdr::substitute_algebraic_algebraic(&mut arg, &subs);
+                    simplify_expression(arg)
+                })
+                .collect();
 
             latest_send = Some(send);
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
-            subs_pc.insert(
-                bus_int.args[0].clone(),
-                latest_send.clone().unwrap().args[0].clone(),
-            );
-            subs_ts.insert(
-                bus_int.args[1].clone(),
-                latest_send.clone().unwrap().args[1].clone(),
-            );
+            for (bus_arg, send_arg) in bus_int
+                .args
+                .iter()
+                .zip_eq(latest_send.as_ref().unwrap().args.iter())
+            {
+                subs.insert(bus_arg.clone(), send_arg.clone());
+            }
             false
         };
 
@@ -188,17 +170,14 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.bus_interactions.push(latest_send.unwrap());
 
     for c in &mut machine.constraints {
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_ts);
+        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs);
         c.expr = simplify_expression(c.expr.clone());
     }
     for b in &mut machine.bus_interactions {
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_pc);
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_ts);
+        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs);
         b.mult = simplify_expression(b.mult.clone());
         for a in &mut b.args {
-            powdr::substitute_algebraic_algebraic(a, &subs_pc);
-            powdr::substitute_algebraic_algebraic(a, &subs_ts);
+            powdr::substitute_algebraic_algebraic(a, &subs);
             *a = simplify_expression(a.clone());
         }
     }
@@ -213,7 +192,9 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
         algebraic_constraints: symbolic_machine
             .constraints
             .iter()
-            .map(|constraint| algebraic_to_quadratic_symbolic_expression(&constraint.expr))
+            .map(|constraint| {
+                AlgebraicConstraint::assert_zero(algebraic_to_grouped_expression(&constraint.expr))
+            })
             .collect(),
         bus_interactions: symbolic_machine
             .bus_interactions
@@ -230,9 +211,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
         constraints: constraint_system
             .algebraic_constraints
             .iter()
-            .map(|constraint| SymbolicConstraint {
-                expr: simplify_expression(quadratic_symbolic_expression_to_algebraic(constraint)),
-            })
+            .map(|constraint| grouped_expression_to_algebraic(&constraint.expression).into())
             .collect(),
         bus_interactions: constraint_system
             .bus_interactions
@@ -244,20 +223,20 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
 
 fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
-) -> BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>> {
+) -> BusInteraction<GroupedExpression<P, AlgebraicReference>> {
     BusInteraction {
-        bus_id: QuadraticSymbolicExpression::from_number(P::from(bus_interaction.id)),
+        bus_id: GroupedExpression::from_number(P::from(bus_interaction.id)),
         payload: bus_interaction
             .args
             .iter()
-            .map(|arg| algebraic_to_quadratic_symbolic_expression(arg))
+            .map(|arg| algebraic_to_grouped_expression(arg))
             .collect(),
-        multiplicity: algebraic_to_quadratic_symbolic_expression(&bus_interaction.mult),
+        multiplicity: algebraic_to_grouped_expression(&bus_interaction.mult),
     }
 }
 
 fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
-    bus_interaction: BusInteraction<QuadraticSymbolicExpression<P, AlgebraicReference>>,
+    bus_interaction: BusInteraction<GroupedExpression<P, AlgebraicReference>>,
 ) -> SymbolicBusInteraction<P> {
     // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
     // so this should always succeed.
@@ -273,14 +252,30 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         args: bus_interaction
             .payload
             .into_iter()
-            .map(|arg| simplify_expression(quadratic_symbolic_expression_to_algebraic(&arg)))
+            .map(|arg| grouped_expression_to_algebraic(&arg))
             .collect(),
-        mult: simplify_expression(quadratic_symbolic_expression_to_algebraic(
-            &bus_interaction.multiplicity,
-        )),
+        mult: grouped_expression_to_algebraic(&bus_interaction.multiplicity),
     }
 }
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    quadratic_symbolic_expression_to_algebraic(&algebraic_to_quadratic_symbolic_expression(&e))
+    grouped_expression_to_algebraic(&algebraic_to_grouped_expression(&e))
+}
+
+/// A wrapped variable: Either a regular variable or a bus interaction field.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum Variable<V> {
+    Variable(V),
+    BusInteractionField(usize, usize),
+}
+
+impl<V: Display> Display for Variable<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Variable(v) => write!(f, "{v}"),
+            Variable::BusInteractionField(bus_index, field_index) => {
+                write!(f, "BusInteractionField({bus_index}, {field_index})")
+            }
+        }
+    }
 }

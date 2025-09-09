@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 use openvm_bigint_transpiler::{Rv32BranchEqual256Opcode, Rv32BranchLessThan256Opcode};
-use openvm_instructions::LocalOpcode;
+use openvm_instructions::{LocalOpcode, VmOpcode};
 use openvm_rv32im_transpiler::*;
 
 /// Defines each opcode as a `pub const usize` and also generates
@@ -113,24 +113,30 @@ pub const BRANCH_OPCODES: &[usize] = &[
 ];
 
 // Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER
-pub fn instruction_allowlist() -> BTreeSet<usize> {
+pub fn instruction_allowlist() -> HashSet<VmOpcode> {
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
     ALL_OPCODES
         .iter()
         .copied()
         .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
+        .map(VmOpcode::from_usize)
         .collect()
 }
 
-pub fn branch_opcodes_bigint_set() -> BTreeSet<usize> {
-    let mut set = BTreeSet::new();
-    set.extend(BRANCH_OPCODES_BIGINT);
+pub fn branch_opcodes_bigint_set() -> HashSet<VmOpcode> {
+    let mut set = HashSet::new();
+    set.extend(
+        BRANCH_OPCODES_BIGINT
+            .iter()
+            .cloned()
+            .map(VmOpcode::from_usize),
+    );
     set
 }
 
-pub fn branch_opcodes_set() -> BTreeSet<usize> {
+pub fn branch_opcodes_set() -> HashSet<VmOpcode> {
     let mut set = branch_opcodes_bigint_set();
-    set.extend(BRANCH_OPCODES);
+    set.extend(BRANCH_OPCODES.iter().cloned().map(VmOpcode::from_usize));
     set
 }
 
@@ -158,6 +164,7 @@ mod tests {
             598, 599, 1056, 1057, 1061, 1062, 1063, 1064,
         ]
         .into_iter()
+        .map(VmOpcode::from_usize)
         .collect();
         assert_eq!(allowlist.len(), ALL_OPCODES.len() - 2); // Excluding HINT_STOREW and HINT_BUFFER
         assert_eq!(allowlist, expected);

@@ -1,0 +1,18 @@
+[package]
+name = "powdr-openvm-hints-circuit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+openvm-circuit = { workspace = true }
+openvm-instructions = { workspace = true }
+openvm-rv32im-circuit = { workspace = true }
+openvm-stark-backend = { workspace = true }
+openvm-stark-sdk = { workspace = true }
+powdr-openvm-hints-transpiler = { workspace = true }
+eyre = "0.6.12"
+crypto-bigint = "0.6.1"
+elliptic-curve = "0.13.8"

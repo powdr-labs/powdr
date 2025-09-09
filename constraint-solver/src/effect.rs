@@ -3,14 +3,11 @@ use std::fmt::{self, Display, Formatter};
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
-use crate::{
-    range_constraint::RangeConstraint, runtime_constant::RuntimeConstant,
-    symbolic_expression::SymbolicExpression,
-};
+use crate::{range_constraint::RangeConstraint, runtime_constant::RuntimeConstant};
 
 /// The effect of solving a symbolic equation.
 #[derive(Clone, PartialEq, Eq)]
-pub enum EffectImpl<T: RuntimeConstant, V> {
+pub enum Effect<T: RuntimeConstant, V> {
     /// Variable can be assigned a value.
     Assignment(V, T),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
@@ -27,10 +24,6 @@ pub enum EffectImpl<T: RuntimeConstant, V> {
         out_of_range_value: T,
     },
 }
-
-// TODO: This type is equivalent to a pre-refactoring version of `EffectImpl`.
-// It should be removed in a follow-up PR & we should rename `EffectImpl` to `Effect`.
-pub type Effect<T, V> = EffectImpl<SymbolicExpression<T, V>, V>;
 
 /// A bit decomposition of a value.
 /// Executing this effect solves the following equation:
@@ -97,21 +90,21 @@ pub struct Assertion<T: RuntimeConstant> {
 }
 
 impl<T: RuntimeConstant> Assertion<T> {
-    pub fn assert_is_zero<V>(condition: T) -> EffectImpl<T, V> {
+    pub fn assert_is_zero<V>(condition: T) -> Effect<T, V> {
         Self::assert_eq(condition, T::from_u64(0))
     }
-    pub fn assert_is_nonzero<V>(condition: T) -> EffectImpl<T, V> {
+    pub fn assert_is_nonzero<V>(condition: T) -> Effect<T, V> {
         Self::assert_neq(condition, T::from_u64(0))
     }
-    pub fn assert_eq<V>(lhs: T, rhs: T) -> EffectImpl<T, V> {
-        EffectImpl::Assertion(Assertion {
+    pub fn assert_eq<V>(lhs: T, rhs: T) -> Effect<T, V> {
+        Effect::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: true,
         })
     }
-    pub fn assert_neq<V>(lhs: T, rhs: T) -> EffectImpl<T, V> {
-        EffectImpl::Assertion(Assertion {
+    pub fn assert_neq<V>(lhs: T, rhs: T) -> Effect<T, V> {
+        Effect::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: false,

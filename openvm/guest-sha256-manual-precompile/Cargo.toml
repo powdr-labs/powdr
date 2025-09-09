@@ -1,0 +1,16 @@
+[package]
+name = "sha256-example"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git" }
+openvm-sha2 = { git = "https://github.com/powdr-labs/openvm.git" }
+
+[features]
+default = []
+std = ["openvm/std"]

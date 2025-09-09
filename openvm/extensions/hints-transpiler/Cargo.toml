@@ -1,0 +1,17 @@
+[package]
+name = "powdr-openvm-hints-transpiler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+openvm-stark-backend = { workspace = true }
+openvm-instructions = { workspace = true }
+openvm-transpiler = { workspace = true }
+openvm-instructions-derive = { workspace = true }
+rrs-lib = "0.1.0"
+strum = { version = "0.27", features = ["derive"] }
+
+powdr-openvm-hints-guest = { workspace = true }

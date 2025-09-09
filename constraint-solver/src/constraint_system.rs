@@ -1,45 +1,42 @@
 use crate::{
-    effect::EffectImpl,
+    effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::{ReferencedSymbols, RuntimeConstant},
-    symbolic_expression::SymbolicExpression,
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
 use std::{fmt::Display, hash::Hash};
 
-pub type ConstraintSystem<T, V> = ConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
+pub use crate::algebraic_constraint::AlgebraicConstraint;
 
 /// Description of a constraint system.
 #[derive(Clone)]
-pub struct ConstraintSystemGeneric<T, V> {
+pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
-    pub algebraic_constraints: Vec<GroupedExpression<T, V>>,
+    pub algebraic_constraints: Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
 }
 
-impl<T, V> Default for ConstraintSystemGeneric<T, V> {
+impl<T, V> Default for ConstraintSystem<T, V> {
     fn default() -> Self {
-        ConstraintSystemGeneric {
+        ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
         }
     }
 }
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
-    for ConstraintSystemGeneric<T, V>
-{
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}",
             self.algebraic_constraints
                 .iter()
-                .map(|expr| format!("{expr} = 0"))
+                .map(|constraint| format!("{constraint}"))
                 .chain(
                     self.bus_interactions
                         .iter()
@@ -50,11 +47,12 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display
     }
 }
 
-impl<T: RuntimeConstant, V> ConstraintSystemGeneric<T, V> {
-    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<T, V>> {
+impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
+    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<'_, T, V>> {
         Box::new(
             self.algebraic_constraints
                 .iter()
+                .map(|c| c.as_ref())
                 .map(ConstraintRef::AlgebraicConstraint)
                 .chain(
                     self.bus_interactions
@@ -68,23 +66,27 @@ impl<T: RuntimeConstant, V> ConstraintSystemGeneric<T, V> {
         Box::new(
             self.algebraic_constraints
                 .iter()
+                .map(|c| &c.expression)
                 .chain(self.bus_interactions.iter().flat_map(|b| b.fields())),
         )
     }
 
     pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut GroupedExpression<T, V>> {
         Box::new(
-            self.algebraic_constraints.iter_mut().chain(
-                self.bus_interactions
-                    .iter_mut()
-                    .flat_map(|b| b.fields_mut()),
-            ),
+            self.algebraic_constraints
+                .iter_mut()
+                .map(|c| &mut c.expression)
+                .chain(
+                    self.bus_interactions
+                        .iter_mut()
+                        .flat_map(|b| b.fields_mut()),
+                ),
         )
     }
 
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
-    pub fn extend(&mut self, system: ConstraintSystemGeneric<T, V>) {
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
@@ -150,7 +152,7 @@ impl<V> FromIterator<V> for BusInteraction<V> {
 impl<T: RuntimeConstant, V: Clone + Ord + Eq> BusInteraction<GroupedExpression<T, V>> {
     /// Converts a bus interactions with fields represented by expressions
     /// to a bus interaction with fields represented by range constraints.
-    fn to_range_constraints(
+    pub fn to_range_constraints(
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> BusInteraction<RangeConstraint<T::FieldType>> {
@@ -174,7 +176,7 @@ impl<
         &self,
         bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
         range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Result<Vec<EffectImpl<T, V>>, ViolatesBusRules> {
+    ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
@@ -183,16 +185,16 @@ impl<
             .zip_eq(range_constraints.fields())
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
-                expr.referenced_unknown_variables().filter_map(|var| {
+                expr.referenced_unknown_variables().filter_map(move |var| {
                     // `k * var + e` is in range rc <=>
                     // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
                     // If we solve `expr` for `var`, we get `-e / k`.
                     let k = expr.coefficient_of_variable(var).unwrap().try_to_number()?;
-                    let expr = expr.try_solve_for(var)?;
+                    let expr = AlgebraicConstraint::assert_zero(expr).try_solve_for(var)?;
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    (!rc.is_unconstrained()).then(|| EffectImpl::RangeConstraint(var.clone(), rc))
+                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
             })
             .collect())
@@ -265,8 +267,9 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum ConstraintRef<'a, T, V> {
-    AlgebraicConstraint(&'a GroupedExpression<T, V>),
+    AlgebraicConstraint(AlgebraicConstraint<&'a GroupedExpression<T, V>>),
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 

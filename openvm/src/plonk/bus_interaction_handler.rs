@@ -1,13 +1,11 @@
-use crate::plonk::{Gate, NUMBER_OF_WITNESS_COLS};
-use powdr_autoprecompiles::bus_map::{
-    BusMap,
-    BusType::{
-        BitwiseLookup, ExecutionBridge, Memory, PcLookup, TupleRangeChecker, VariableRangeChecker,
-    },
+use crate::{
+    bus_map::{BusMap, OpenVmBusType},
+    plonk::{Gate, NUMBER_OF_WITNESS_COLS},
 };
+use openvm_stark_backend::p3_field::PrimeField32;
+use powdr_autoprecompiles::bus_map::BusType::{ExecutionBridge, Memory, Other, PcLookup};
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::SymbolicBusInteraction;
-use powdr_number::FieldElement;
 
 use super::air_to_plonkish::CircuitBuilder;
 
@@ -19,35 +17,33 @@ use super::air_to_plonkish::CircuitBuilder;
 /// row 0: args0     args1     args2     
 /// row 1: args3     ...       ...         
 /// ...
-pub fn add_bus_to_plonk_circuit<T>(
-    bus_interaction: SymbolicBusInteraction<T>,
-    circuit_builder: &mut CircuitBuilder<T>,
+pub fn add_bus_to_plonk_circuit<F: PrimeField32>(
+    bus_interaction: SymbolicBusInteraction<F>,
+    circuit_builder: &mut CircuitBuilder<F>,
     bus_map: &BusMap,
-) where
-    T: FieldElement,
-{
+) {
     let number_of_gates =
         (bus_interaction.args.len() as u32).div_ceil(NUMBER_OF_WITNESS_COLS as u32) as usize;
-    let mut gates: Vec<Gate<T, AlgebraicReference>> =
+    let mut gates: Vec<Gate<F, AlgebraicReference>> =
         (0..number_of_gates).map(|_| Gate::default()).collect();
     match bus_map.bus_type(bus_interaction.id) {
         Memory => {
-            gates[0].q_memory = T::ONE;
+            gates[0].q_memory = F::ONE;
         }
-        BitwiseLookup => {
-            gates[0].q_bitwise = T::ONE;
+        Other(OpenVmBusType::BitwiseLookup) => {
+            gates[0].q_bitwise = F::ONE;
         }
         ExecutionBridge => {
-            gates[0].q_execution = T::ONE;
+            gates[0].q_execution = F::ONE;
         }
         PcLookup => {
-            gates[0].q_pc = T::ONE;
+            gates[0].q_pc = F::ONE;
         }
-        VariableRangeChecker => {
-            gates[0].q_range_check = T::ONE;
+        Other(OpenVmBusType::VariableRangeChecker) => {
+            gates[0].q_range_check = F::ONE;
         }
-        TupleRangeChecker => {
-            gates[0].q_range_tuple = T::ONE;
+        Other(OpenVmBusType::TupleRangeChecker) => {
+            gates[0].q_range_tuple = F::ONE;
         }
     }
 
@@ -79,9 +75,10 @@ mod tests {
     use super::*;
     use crate::bus_map::{default_openvm_bus_map, DEFAULT_MEMORY};
     use crate::plonk::test_utils::{c, var};
+    use openvm_stark_backend::p3_field::FieldAlgebra;
+    use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::expression::AlgebraicExpression;
     use powdr_autoprecompiles::SymbolicBusInteraction;
-    use powdr_number::BabyBearField;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -94,7 +91,7 @@ mod tests {
         let bus_interaction = SymbolicBusInteraction {
             id: DEFAULT_MEMORY,
             args: vec![
-                AlgebraicExpression::Number(BabyBearField::from(42)),
+                AlgebraicExpression::Number(BabyBear::from_canonical_u32(42)),
                 x.clone() + y.clone(),
                 y.clone(),
                 -(x.clone() * y.clone()),
@@ -102,7 +99,7 @@ mod tests {
                 x.clone(),
                 y.clone(),
             ],
-            mult: AlgebraicExpression::Number(BabyBearField::from(1)),
+            mult: AlgebraicExpression::Number(BabyBear::from_canonical_u32(1)),
         };
 
         let mut circuit_builder = CircuitBuilder::new();

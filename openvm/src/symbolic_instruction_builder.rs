@@ -1,7 +1,7 @@
-//! Builds SymbolicInstructionStatement to create input program for testing powdr_autoprecompile::build
+//! Builds Instruction to create input program for testing powdr_autoprecompile::build
 use crate::opcode::*;
-use powdr_autoprecompiles::SymbolicInstructionStatement;
-use powdr_number::FieldElement;
+use openvm_instructions::{instruction::Instruction, VmOpcode};
+use openvm_stark_backend::p3_field::PrimeField32;
 
 // Generic instructions (5 args, fixed f=0, g=0)
 macro_rules! build_instr5 {
@@ -13,24 +13,22 @@ macro_rules! build_instr5 {
     ) => {
         $(
             $(#[$doc])*
-            pub fn $name<T: FieldElement>(
+            pub fn $name<T: PrimeField32>(
                 a: u32,
                 b: u32,
                 c: u32,
                 d: u32,
                 e: u32,
-            ) -> SymbolicInstructionStatement<T> {
-                SymbolicInstructionStatement {
-                    opcode: $code as usize,
-                    args: vec![
-                        T::from(a),
-                        T::from(b),
-                        T::from(c),
-                        T::from(d),
-                        T::from(e),
-                        T::zero(),
-                        T::zero(),
-                    ],
+            ) -> Instruction<T> {
+                Instruction {
+                    opcode: VmOpcode::from_usize($code as usize),
+                    a: T::from_canonical_u32(a),
+                    b: T::from_canonical_u32(b),
+                    c: T::from_canonical_u32(c),
+                    d: T::from_canonical_u32(d),
+                    e: T::from_canonical_u32(e),
+                    f: T::ZERO,
+                    g: T::ZERO,
                 }
             }
         )+
@@ -47,23 +45,21 @@ macro_rules! alu_ops {
     ) => {
         $(
             $(#[$doc])*
-            pub fn $name<T: FieldElement>(
+            pub fn $name<T: PrimeField32>(
                 rd_ptr: u32,
                 rs1_ptr: u32,
                 rs2: u32,
                 rs2_as: u32,
-            ) -> SymbolicInstructionStatement<T> {
-                SymbolicInstructionStatement {
-                    opcode: $code as usize,
-                    args: vec![
-                        T::from(rd_ptr),
-                        T::from(rs1_ptr),
-                        T::from(rs2),
-                        T::one(),
-                        T::from(rs2_as),
-                        T::zero(),
-                        T::zero(),
-                    ],
+            ) -> Instruction<T> {
+                Instruction {
+                    opcode: VmOpcode::from_usize($code as usize),
+                    a: T::from_canonical_u32(rd_ptr),
+                    b: T::from_canonical_u32(rs1_ptr),
+                    c: T::from_canonical_u32(rs2),
+                    d: T::ONE,
+                    e: T::from_canonical_u32(rs2_as),
+                    f: T::ZERO,
+                    g: T::ZERO,
                 }
             }
         )+
@@ -80,25 +76,23 @@ macro_rules! ls_ops {
     ) => {
         $(
             $(#[$doc])*
-            pub fn $name<T: FieldElement>(
+            pub fn $name<T: PrimeField32>(
                 rd_rs2_ptr: u32,
                 rs1_ptr: u32,
                 imm: u32,
                 mem_as: u32,
                 needs_write: u32,
                 imm_sign: u32,
-            ) -> SymbolicInstructionStatement<T> {
-                SymbolicInstructionStatement {
-                    opcode: $code as usize,
-                    args: vec![
-                        T::from(rd_rs2_ptr),
-                        T::from(rs1_ptr),
-                        T::from(imm),
-                        T::one(),
-                        T::from(mem_as),
-                        T::from(needs_write),
-                        T::from(imm_sign),
-                    ],
+            ) -> Instruction<T> {
+                Instruction {
+                    opcode: VmOpcode::from_usize($code as usize),
+                    a: T::from_canonical_u32(rd_rs2_ptr),
+                    b: T::from_canonical_u32(rs1_ptr),
+                    c: T::from_canonical_u32(imm),
+                    d: T::ONE,
+                    e: T::from_canonical_u32(mem_as),
+                    f: T::from_canonical_u32(needs_write),
+                    g: T::from_canonical_u32(imm_sign),
                 }
             }
         )+
@@ -115,22 +109,20 @@ macro_rules! branch_ops {
     ) => {
         $(
             $(#[$doc])*
-            pub fn $name<T: FieldElement>(
+            pub fn $name<T: PrimeField32>(
                 rs1_ptr: u32,
                 rs2_ptr: u32,
                 imm: i32,
-            ) -> SymbolicInstructionStatement<T> {
-                SymbolicInstructionStatement {
-                    opcode: $code as usize,
-                    args: vec![
-                        T::from(rs1_ptr),
-                        T::from(rs2_ptr),
-                        T::from(imm),
-                        T::one(),
-                        T::one(),
-                        T::zero(),
-                        T::zero(),
-                    ],
+            ) -> Instruction<T> {
+                Instruction {
+                    opcode: VmOpcode::from_usize($code as usize),
+                    a: T::from_canonical_u32(rs1_ptr),
+                    b: T::from_canonical_u32(rs2_ptr),
+                    c: T::from_canonical_u32(imm as u32),
+                    d: T::ONE,
+                    e: T::ONE,
+                    f: T::ZERO,
+                    g: T::ZERO,
                 }
             }
         )+

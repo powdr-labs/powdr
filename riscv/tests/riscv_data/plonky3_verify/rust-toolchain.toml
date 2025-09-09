@@ -1,4 +1,0 @@
-[toolchain]
-channel = "nightly-2025-05-14"
-targets = ["riscv32im-risc0-zkvm-elf"]
-profile = "minimal"

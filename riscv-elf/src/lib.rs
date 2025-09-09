@@ -26,6 +26,7 @@ use powdr_riscv_types::{
 };
 
 pub mod debug_info;
+pub mod rv64;
 
 use self::debug_info::{DebugInfo, SymbolTable};
 
@@ -35,7 +36,7 @@ pub const PT_POWDR_PROVER_DATA: u32 = 0x600000da;
 pub struct ElfProgram {
     dbg: DebugInfo,
     data_map: BTreeMap<u32, Data>,
-    pub text_labels: BTreeSet<u32>,
+    text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
     prover_data_bounds: (u32, u32),
     entry_point: u32,
@@ -271,6 +272,16 @@ fn static_relocate_data_sections(
             // addresses, so we can generate the label.
             referenced_text_addrs.insert(original_addr);
         }
+    }
+}
+
+impl ElfProgram {
+    pub fn debug_info(&self) -> &DebugInfo {
+        &self.dbg
+    }
+
+    pub fn text_labels(&self) -> &BTreeSet<u32> {
+        &self.text_labels
     }
 }
 

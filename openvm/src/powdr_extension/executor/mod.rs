@@ -4,36 +4,36 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs,
+    extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
+        trace_handler::OpenVmTraceHandler,
     },
-    OpenVmField,
+    ExtendedVmConfig, Instr,
 };
 
-use super::{
-    chip::{RangeCheckerSend, RowEvaluator},
-    vm::OriginalInstruction,
+use powdr_autoprecompiles::{
+    trace_handler::{Trace, TraceHandler, TraceHandlerData},
+    Apc,
 };
+
+use super::chip::{RangeCheckerSend, RowEvaluator};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
 };
 use openvm_circuit::{
     arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
-    system::memory::{
-        online::{ApcRange, MemoryLogEntry},
-        OfflineMemory,
-    },
+    system::memory::{online::MemoryLogEntry, OfflineMemory},
 };
 use openvm_native_circuit::CastFExtension;
-use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
+    p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix,
+    p3_maybe_rayon::prelude::ParallelIterator,
 };
 
-use crate::IntoOpenVm;
+use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
@@ -41,45 +41,38 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::ParallelSliceMut,
     Chip,
 };
-use openvm_stark_backend::{
-    p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix,
-    p3_maybe_rayon::prelude::IntoParallelIterator,
-};
-use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionMachineHandler, SymbolicBusInteraction,
-};
+use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
+use powdr_autoprecompiles::InstructionHandler;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
+/// The trace handler for the PowdrExecutor used during witness generation
+mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
+use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<P: IntoOpenVm> {
-    instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-    air_by_opcode_id: OriginalAirs<P>,
-    is_valid_poly_id: u64,
-    inventory: DummyInventory<OpenVmField<P>>,
+pub struct PowdrExecutor<F: PrimeField32> {
+    air_by_opcode_id: OriginalAirs<F>,
+    inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
+    apc: Arc<Apc<F, Instr<F>>>,
 }
 
-impl<P: IntoOpenVm> PowdrExecutor<P> {
+impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<OpenVmField<P>>>,
-        air_by_opcode_id: OriginalAirs<P>,
-        is_valid_column: AlgebraicReference,
-        memory: Arc<Mutex<OfflineMemory<OpenVmField<P>>>>,
-        base_config: SdkVmConfig,
+        air_by_opcode_id: OriginalAirs<F>,
+        memory: Arc<Mutex<OfflineMemory<F>>>,
+        base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
+        apc: Arc<Apc<F, Instr<F>>>,
     ) -> Self {
         Self {
-            instructions,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,
@@ -89,6 +82,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .inventory,
             number_of_calls: 0,
             periphery: periphery.real,
+            apc,
         }
     }
 
@@ -98,23 +92,24 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
 
     pub fn execute(
         &mut self,
-        memory: &mut MemoryController<OpenVmField<P>>,
+        memory: &mut MemoryController<F>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         // save the next available `RecordId`
         let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
-        let res = self
-            .instructions
-            .iter()
-            .try_fold(from_state, |execution_state, instruction| {
-                let executor = self
-                    .inventory
-                    .get_mut_executor(&instruction.opcode())
-                    .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
-            });
+        let res =
+            self.apc
+                .instructions()
+                .iter()
+                .try_fold(from_state, |execution_state, instruction| {
+                    let executor = self
+                        .inventory
+                        .get_mut_executor(&instruction.0.opcode)
+                        .unwrap();
+                    executor.execute(memory, &instruction.0, execution_state)
+                });
 
         self.number_of_calls += 1;
         let memory_logs = memory.get_memory_logs(); // exclusive range
@@ -138,11 +133,6 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             last_read_write.unwrap_or(to_record_id)
         );
 
-        memory
-            .memory
-            .apc_ranges
-            .push(ApcRange::new(from_record_id, to_record_id, last_read_write));
-
         res
     }
 
@@ -152,140 +142,62 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
     pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<P>],
-    ) -> RowMajorMatrix<OpenVmField<P>>
+    ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
-        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain:
-            PolynomialSpace<Val = OpenVmField<P>>,
+        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
+        let is_valid_index = column_index_by_poly_id[&self.apc.is_valid_poly_id()];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <OpenVmField<P> as FieldAlgebra>::zero_vec(height * width);
+        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        // for each original opcode, the name of the dummy air it corresponds to
-        let air_name_by_opcode = self
-            .instructions
+        let original_instruction_air_names = self
+            .apc
+            .instructions()
             .iter()
-            .map(|instruction| instruction.opcode())
-            .unique()
-            .map(|opcode| {
-                (
-                    opcode,
-                    self.inventory.get_executor(opcode).unwrap().air_name(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+            .map(|instruction| instruction.0.opcode)
+            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
+            .collect::<Vec<_>>();
 
-        let dummy_trace_by_air_name: HashMap<_, _> =
-            self.inventory
-                .executors
-                .into_iter()
-                .map(|executor| {
-                    (
-                        executor.air_name().clone(),
-                        tracing::debug_span!("dummy trace", air_name = executor.air_name())
-                            .in_scope(|| {
-                                Chip::<SC>::generate_air_proof_input(executor)
-                                    .raw
-                                    .common_main
-                                    .unwrap()
-                            }),
-                    )
-                })
-                .collect();
-
-        let instruction_index_to_table_offset = self
-            .instructions
-            .iter()
-            .enumerate()
-            .scan(
-                HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, (index, instruction)| {
-                    let air_name = air_name_by_opcode.get(&instruction.opcode()).unwrap();
-                    let count = counts.entry(air_name).or_default();
-                    let current_count = *count;
-                    *count += 1;
-                    Some((index, (air_name, current_count)))
-                },
-            )
-            .collect::<HashMap<_, _>>();
-
-        let occurrences_by_table_name: HashMap<&String, usize> = self
-            .instructions
-            .iter()
-            .map(|instruction| air_name_by_opcode.get(&instruction.opcode()).unwrap())
-            .counts();
-
-        // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
-        let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .instructions
-            .iter()
-            .map(|instruction| {
-                // look up how many dummy‐cells this AIR produces:
-                let air_width = dummy_trace_by_air_name
-                    .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
-                    .unwrap()
-                    .width();
-
-                // build a map only of the (dummy_index -> apc_index) pairs
-                let mut map = HashMap::with_capacity(air_width);
-                for dummy_trace_index in 0..air_width {
-                    if let Ok(apc_index) =
-                        global_index(dummy_trace_index, instruction, column_index_by_poly_id)
-                    {
-                        if map.insert(dummy_trace_index, apc_index).is_some() {
-                            panic!(
-                                "duplicate dummy_trace_index {} for instruction opcode {:?}",
-                                dummy_trace_index,
-                                instruction.opcode()
-                            );
-                        }
-                    }
-                }
-                map
+        let dummy_trace_by_air_name: HashMap<_, _> = self
+            .inventory
+            .executors
+            .into_iter()
+            .map(|executor| {
+                let air_name = get_name::<SC>(executor.air());
+                let DenseMatrix { values, width, .. } =
+                    tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
+                        || {
+                            Chip::<SC>::generate_air_proof_input(executor)
+                                .raw
+                                .common_main
+                                .unwrap()
+                        },
+                    );
+                (air_name.clone(), Trace::new(values, width))
             })
             .collect();
 
-        assert_eq!(
-            self.instructions.len(),
-            dummy_trace_index_to_apc_index_by_instruction.len()
+        let trace_handler = OpenVmTraceHandler::new(
+            &dummy_trace_by_air_name,
+            original_instruction_air_names,
+            self.number_of_calls,
         );
 
-        let dummy_values = (0..self.number_of_calls)
-            .into_par_iter()
-            .map(|record_index| {
-                (0..self.instructions.len())
-                    .map(|index| {
-                        // get the air name and offset for this instruction (by index)
-                        let (air_name, offset) =
-                            instruction_index_to_table_offset.get(&index).unwrap();
-                        // get the table
-                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                        // get how many times this table is used per record
-                        let occurrences_per_record =
-                            occurrences_by_table_name.get(air_name).unwrap();
-                        // get the width of each occurrence
-                        let width = table.width();
-                        // start after the previous record ended, and offset by the correct offset
-                        let start = (record_index * occurrences_per_record + offset) * width;
-                        // end at the start + width
-                        let end = start + width;
-                        &table.values[start..end]
-                    })
-                    .collect_vec()
-            });
+        let TraceHandlerData {
+            dummy_values,
+            dummy_trace_index_to_apc_index_by_instruction,
+        } = trace_handler.data(&self.apc);
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
-            .instructions
+            .apc
+            .instructions()
             .iter()
             .map(|instruction| {
-                let opcode_id = instruction.opcode().as_usize();
                 self.air_by_opcode_id
-                    .get_instruction_air(opcode_id)
-                    .unwrap()
+                    .get_instruction_air(instruction)
                     .bus_interactions
                     .iter()
                     .filter_map(|interaction| interaction.try_into().ok())
@@ -294,11 +206,13 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
             .collect_vec();
 
         // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
-            bus_interactions
-                .iter()
-                .map(|interaction| interaction.clone().into())
-                .collect_vec();
+        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> = self
+            .apc
+            .machine()
+            .bus_interactions
+            .iter()
+            .map(|interaction| interaction.clone().into())
+            .collect_vec();
 
         // go through the final table and fill in the values
         values
@@ -339,7 +253,7 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
                 }
 
                 // Set the is_valid column to 1
-                row_slice[is_valid_index] = OpenVmField::<P>::ONE;
+                row_slice[is_valid_index] = F::ONE;
 
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
@@ -362,35 +276,11 @@ impl<P: IntoOpenVm> PowdrExecutor<P> {
     }
 }
 
-enum IndexError {
-    NotInDummy,
-    NotInAutoprecompile,
-}
-
-/// Maps the index of a column in the original AIR of a given instruction to the corresponding
-/// index in the autoprecompile AIR.
-fn global_index<F>(
-    local_index: usize,
-    instruction: &OriginalInstruction<F>,
-    autoprecompile_index_by_poly_id: &BTreeMap<u64, usize>,
-) -> Result<usize, IndexError> {
-    // Map to the poly_id in the original instruction to the poly_id in the autoprecompile.
-    let autoprecompile_poly_id = instruction
-        .subs
-        .get(local_index)
-        .ok_or(IndexError::NotInDummy)?;
-    // Map to the index in the autoprecompile.
-    let variable_index = autoprecompile_index_by_poly_id
-        .get(autoprecompile_poly_id)
-        .ok_or(IndexError::NotInAutoprecompile)?;
-    Ok(*variable_index)
-}
-
 // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
 fn create_chip_complex_with_memory<F: PrimeField32>(
     memory: Arc<Mutex<OfflineMemory<F>>>,
     shared_chips: SharedPeripheryChips,
-    base_config: SdkVmConfig,
+    base_config: ExtendedVmConfig,
 ) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
     use openvm_keccak256_circuit::Keccak256;
     use openvm_native_circuit::Native;
@@ -398,7 +288,12 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     use openvm_sha256_circuit::Sha256;
 
     let this = base_config;
-    let mut complex: DummyChipComplex<F> = this.system.config.create_chip_complex()?.transmute();
+    let mut complex: DummyChipComplex<F> = this
+        .sdk_vm_config
+        .system
+        .config
+        .create_chip_complex()?
+        .transmute();
 
     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
     complex.base.memory_controller.offline_memory = memory.clone();
@@ -409,28 +304,28 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
     complex = complex.extend(&shared_chips)?;
     // END CHANGE
 
-    if this.rv32i.is_some() {
+    if this.sdk_vm_config.rv32i.is_some() {
         complex = complex.extend(&Rv32I)?;
     }
-    if this.io.is_some() {
+    if this.sdk_vm_config.io.is_some() {
         complex = complex.extend(&Rv32Io)?;
     }
-    if this.keccak.is_some() {
+    if this.sdk_vm_config.keccak.is_some() {
         complex = complex.extend(&Keccak256)?;
     }
-    if this.sha256.is_some() {
+    if this.sdk_vm_config.sha256.is_some() {
         complex = complex.extend(&Sha256)?;
     }
-    if this.native.is_some() {
+    if this.sdk_vm_config.native.is_some() {
         complex = complex.extend(&Native)?;
     }
-    if this.castf.is_some() {
+    if this.sdk_vm_config.castf.is_some() {
         complex = complex.extend(&CastFExtension)?;
     }
 
-    if let Some(rv32m) = this.rv32m {
+    if let Some(rv32m) = this.sdk_vm_config.rv32m {
         let mut rv32m = rv32m;
-        if let Some(ref bigint) = this.bigint {
+        if let Some(ref bigint) = this.sdk_vm_config.bigint {
             rv32m.range_tuple_checker_sizes[0] =
                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
             rv32m.range_tuple_checker_sizes[1] =
@@ -438,9 +333,9 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&rv32m)?;
     }
-    if let Some(bigint) = this.bigint {
+    if let Some(bigint) = this.sdk_vm_config.bigint {
         let mut bigint = bigint;
-        if let Some(ref rv32m) = this.rv32m {
+        if let Some(ref rv32m) = this.sdk_vm_config.rv32m {
             bigint.range_tuple_checker_sizes[0] =
                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
             bigint.range_tuple_checker_sizes[1] =
@@ -448,18 +343,21 @@ fn create_chip_complex_with_memory<F: PrimeField32>(
         }
         complex = complex.extend(&bigint)?;
     }
-    if let Some(ref modular) = this.modular {
+    if let Some(ref modular) = this.sdk_vm_config.modular {
         complex = complex.extend(modular)?;
     }
-    if let Some(ref fp2) = this.fp2 {
+    if let Some(ref fp2) = this.sdk_vm_config.fp2 {
         complex = complex.extend(fp2)?;
     }
-    if let Some(ref pairing) = this.pairing {
+    if let Some(ref pairing) = this.sdk_vm_config.pairing {
         complex = complex.extend(pairing)?;
     }
-    if let Some(ref ecc) = this.ecc {
+    if let Some(ref ecc) = this.sdk_vm_config.ecc {
         complex = complex.extend(ecc)?;
     }
+
+    // add custom extensions
+    complex = complex.extend(&HintsExtension)?;
 
     Ok(complex)
 }

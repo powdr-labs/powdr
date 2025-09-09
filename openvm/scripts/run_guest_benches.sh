@@ -12,44 +12,97 @@ set -e
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
-# function to run using psrecord
-with_psrecord() {
-    psrecord --include-children --interval 1 --log psrecord.csv --log-format csv --plot psrecord.png "$@"
-}
-
-basic_metrics() {
-    python3 $SCRIPTS_DIR/basic_metrics.py --csv *.json > basic_metrics.csv
-}
-
-plot_cells() {
-    python3 $SCRIPTS_DIR/plot_trace_cells.py -o trace_cells.png $1 > trace_cells.txt
-}
-
-# usage: run_bench guest guest_manual_pcp apc_num input
 run_bench() {
     guest="$1"
-    guest_manual="$2"
+    input="$2"
     apcs="$3"
-    input="$4"
-    dir="results/$guest"
-    mkdir -p "$dir"
-    pushd "$dir"
-    # prove with manual precompile if given
-    if [ -n "$guest_manual" ]; then
-        cargo run --bin powdr_openvm -r prove $guest_manual --input "$input" --metrics manual.json --recursion
+    run_name="$4"
+
+    echo ""
+    echo "==== ${run_name} ===="
+    echo ""
+
+    mkdir -p "${run_name}"
+
+    psrecord --include-children --interval 1 \
+        --log "${run_name}"/psrecord.csv \
+        --log-format csv \
+        --plot "${run_name}"/psrecord.png \
+        "cargo run --bin powdr_openvm -r prove \"$guest\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${run_name}\""
+
+    python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
+
+    # apc_candidates.json is only available when apcs > 0
+    if [ "${apcs:-0}" -ne 0 ]; then
+        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${run_name}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
-    # prove with no APCs
-    cargo run --bin powdr_openvm -r prove $guest --input $input --metrics noapc.json --recursion
-    # proving with APCs and record memory usage
-    with_psrecord "cargo run --bin powdr_openvm -r prove $guest --input "$input" --autoprecompiles $apcs --metrics ${apcs}apc.json --recursion"
-    # process results
-    basic_metrics
-    plot_cells ${apcs}apc.json
+
+    # Clean up some files that we don't want to to push.
     rm debug.pil
-    popd
+    rm -f "${run_name}"/*.cbor
 }
 
-# keccak for 10000 iterations, 100 apcs
-run_bench guest-keccak guest-keccak-manual-precompile 100 10000
+### Keccak
+dir="results/keccak"
+input="10000"
 
-# run_bench guest-matmul "" 100 0
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-keccak-manual-precompile "$input" 0 manual
+run_bench guest-keccak "$input" 0 noapc
+run_bench guest-keccak "$input" 100 100apc
+
+python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd
+
+### Matmul
+dir="results/matmul"
+
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-matmul 0 0 noapc
+run_bench guest-matmul 0 100 100apc
+
+python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd
+
+### ECC
+dir="results/ecc"
+input="50"
+
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-ecc-manual $input 0 manual
+run_bench guest-ecc-projective $input 0 projective-apc000
+run_bench guest-ecc-projective $input 3 projective-apc003
+run_bench guest-ecc-projective $input 10 projective-apc010
+run_bench guest-ecc-projective $input 30 projective-apc030
+run_bench guest-ecc-projective $input 100 projective-apc100
+run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
+run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003
+run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010
+run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
+run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100
+
+python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd
+
+### ECRECOVER
+dir="results/ecrecover"
+input="20"
+
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-ecrecover-manual $input 0 manual
+run_bench guest-ecrecover $input 0 apc000
+run_bench guest-ecrecover $input 3 apc003
+run_bench guest-ecrecover $input 10 apc010
+run_bench guest-ecrecover $input 30 apc030
+run_bench guest-ecrecover $input 100 apc100
+
+python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd

@@ -1,8 +1,10 @@
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use openvm_stark_backend::p3_field::PrimeField32;
 use std::fmt::{self, Display};
 
 use powdr_autoprecompiles::bus_map::BusType;
+
+use crate::{bus_map::OpenVmBusType, format_fe};
 
 pub mod air_to_plonkish;
 pub mod bus_interaction_handler;
@@ -40,20 +42,20 @@ impl<V: Display> Display for Variable<V> {
 /// If the same variable appears in multiple gates, a copy constraint
 /// must be enforced.
 #[derive(Clone, Debug)]
-pub struct Gate<T, V> {
-    pub q_l: T,
-    pub q_r: T,
-    pub q_o: T,
-    pub q_mul: T,
-    pub q_const: T,
+pub struct Gate<F, V> {
+    pub q_l: F,
+    pub q_r: F,
+    pub q_o: F,
+    pub q_mul: F,
+    pub q_const: F,
 
     // The selectors for bus interactions.
-    pub q_bitwise: T,
-    pub q_memory: T,
-    pub q_range_check: T,
-    pub q_execution: T,
-    pub q_pc: T,
-    pub q_range_tuple: T,
+    pub q_bitwise: F,
+    pub q_memory: F,
+    pub q_range_check: F,
+    pub q_execution: F,
+    pub q_pc: F,
+    pub q_range_tuple: F,
 
     pub a: Variable<V>,
     pub b: Variable<V>,
@@ -62,20 +64,20 @@ pub struct Gate<T, V> {
     pub e: Variable<V>,
 }
 
-impl<T: FieldElement, V> Default for Gate<T, V> {
+impl<F: PrimeField32, V> Default for Gate<F, V> {
     fn default() -> Self {
         Gate {
-            q_l: T::ZERO,
-            q_r: T::ZERO,
-            q_o: T::ZERO,
-            q_mul: T::ZERO,
-            q_const: T::ZERO,
-            q_bitwise: T::ZERO,
-            q_memory: T::ZERO,
-            q_range_check: T::ZERO,
-            q_execution: T::ZERO,
-            q_pc: T::ZERO,
-            q_range_tuple: T::ZERO,
+            q_l: F::ZERO,
+            q_r: F::ZERO,
+            q_o: F::ZERO,
+            q_mul: F::ZERO,
+            q_const: F::ZERO,
+            q_bitwise: F::ZERO,
+            q_memory: F::ZERO,
+            q_range_check: F::ZERO,
+            q_execution: F::ZERO,
+            q_pc: F::ZERO,
+            q_range_tuple: F::ZERO,
 
             a: Variable::Unused,
             b: Variable::Unused,
@@ -86,27 +88,36 @@ impl<T: FieldElement, V> Default for Gate<T, V> {
     }
 }
 
-impl<T: FieldElement, V> Gate<T, V> {
-    pub fn get_bus_gate_type(&self) -> Option<BusType> {
+impl<F: PrimeField32, V> Gate<F, V> {
+    pub fn get_bus_gate_type(&self) -> Option<BusType<OpenVmBusType>> {
         let selectors = [
-            (BusType::BitwiseLookup, &self.q_bitwise),
+            (
+                BusType::Other(OpenVmBusType::BitwiseLookup),
+                &self.q_bitwise,
+            ),
             (BusType::Memory, &self.q_memory),
-            (BusType::VariableRangeChecker, &self.q_range_check),
+            (
+                BusType::Other(OpenVmBusType::VariableRangeChecker),
+                &self.q_range_check,
+            ),
             (BusType::ExecutionBridge, &self.q_execution),
             (BusType::PcLookup, &self.q_pc),
-            (BusType::TupleRangeChecker, &self.q_range_tuple),
+            (
+                BusType::Other(OpenVmBusType::TupleRangeChecker),
+                &self.q_range_tuple,
+            ),
         ];
 
         let mut active_selector = None;
         for (name, val) in selectors.iter() {
-            if *val == &T::ONE {
+            if *val == &F::ONE {
                 if active_selector.is_some() {
                     panic!(
                         "Active more than one bus gate selector: {:?}",
                         selectors
                             .iter()
-                            .filter(|(_, val)| *val == &T::ONE)
-                            .map(|(name, _)| *name)
+                            .filter(|(_, val)| *val == &F::ONE)
+                            .map(|(name, _)| name.to_string())
                             .collect::<Vec<_>>()
                     );
                 }
@@ -117,23 +128,23 @@ impl<T: FieldElement, V> Gate<T, V> {
     }
 }
 
-fn format_bus_type<T, V>(gate: &Gate<T, V>) -> &'static str
+fn format_bus_type<F, V>(gate: &Gate<F, V>) -> &'static str
 where
-    T: FieldElement,
+    F: PrimeField32,
     V: Display,
 {
     match gate.get_bus_gate_type() {
-        Some(BusType::BitwiseLookup) => "bitwise",
+        Some(BusType::Other(OpenVmBusType::BitwiseLookup)) => "bitwise",
         Some(BusType::Memory) => "memory",
-        Some(BusType::VariableRangeChecker) => "range_check",
+        Some(BusType::Other(OpenVmBusType::VariableRangeChecker)) => "range_check",
         Some(BusType::ExecutionBridge) => "execution",
         Some(BusType::PcLookup) => "pc",
-        Some(BusType::TupleRangeChecker) => "tuple_range",
+        Some(BusType::Other(OpenVmBusType::TupleRangeChecker)) => "tuple_range",
         None => "none",
     }
 }
 
-impl<T: FieldElement, V: Display> Display for Gate<T, V> {
+impl<F: PrimeField32, V: Display> Display for Gate<F, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut lhs = [
             format_product(self.q_l, &self.a),
@@ -165,21 +176,13 @@ impl<T: FieldElement, V: Display> Display for Gate<T, V> {
     }
 }
 
-fn format_fe<T: FieldElement>(v: T) -> String {
-    if v.is_in_lower_half() {
-        format!("{v}")
-    } else {
-        format!("-{}", -v)
-    }
-}
-
 /// Pretty-prints a product <scalar> * <factor>, returning `None` if the scalar is zero.
-fn format_product<T: FieldElement>(scalar: T, factor: impl Display) -> Option<String> {
+fn format_product<F: PrimeField32>(scalar: F, factor: impl Display) -> Option<String> {
     if scalar.is_zero() {
         None
     } else if scalar.is_one() {
         Some(factor.to_string())
-    } else if scalar == -T::ONE {
+    } else if scalar == -F::ONE {
         Some(format!("-{factor}"))
     } else {
         Some(format!("{} * {factor}", format_fe(scalar)))
@@ -187,21 +190,21 @@ fn format_product<T: FieldElement>(scalar: T, factor: impl Display) -> Option<St
 }
 /// The PlonK circuit, which is just a collection of gates.
 #[derive(Clone, Debug, Default)]
-pub struct PlonkCircuit<T, V> {
-    pub gates: Vec<Gate<T, V>>,
+pub struct PlonkCircuit<F, V> {
+    pub gates: Vec<Gate<F, V>>,
 }
 
-impl<T, V> PlonkCircuit<T, V> {
+impl<F, V> PlonkCircuit<F, V> {
     fn new() -> Self {
         PlonkCircuit { gates: Vec::new() }
     }
 
-    fn add_gate(&mut self, gate: Gate<T, V>) {
+    fn add_gate(&mut self, gate: Gate<F, V>) {
         self.gates.push(gate);
     }
 }
 
-impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
+impl<F: PrimeField32, V: Display> Display for PlonkCircuit<F, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for gate in &self.gates {
             writeln!(f, "{gate}",)?;
@@ -210,12 +213,12 @@ impl<T: FieldElement, V: Display> Display for PlonkCircuit<T, V> {
     }
 }
 
-impl<T, V> PlonkCircuit<T, V> {
+impl<F, V> PlonkCircuit<F, V> {
     pub fn len(&self) -> usize {
         self.gates.len()
     }
 
-    pub fn gates(&self) -> &[Gate<T, V>] {
+    pub fn gates(&self) -> &[Gate<F, V>] {
         &self.gates
     }
 
@@ -241,16 +244,18 @@ impl<T, V> PlonkCircuit<T, V> {
 pub mod test_utils {
     use std::sync::Arc;
 
+    use openvm_stark_backend::p3_field::FieldAlgebra;
+    use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
-    use powdr_number::BabyBearField;
-    pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBearField> {
+
+    pub fn var(name: &str, id: u64) -> AlgebraicExpression<BabyBear> {
         AlgebraicExpression::Reference(AlgebraicReference {
             name: Arc::new(name.into()),
             id,
         })
     }
 
-    pub fn c(value: u64) -> AlgebraicExpression<BabyBearField> {
-        AlgebraicExpression::Number(BabyBearField::from(value))
+    pub fn c(value: u64) -> AlgebraicExpression<BabyBear> {
+        AlgebraicExpression::Number(BabyBear::from_canonical_u64(value))
     }
 }

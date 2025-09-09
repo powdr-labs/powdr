@@ -1,0 +1,10 @@
+[workspace]
+[package]
+name = "openvm-ecc-powdr-affine-hint"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "dcf8ee6" }
+k256 = { git= "https://github.com/powdr-labs/elliptic-curves-k256", tag="k256/powdr/v0.13.4-2025.08.22", default-features = false, features=["expose-field", "arithmetic"]}
+hex-literal = "1.0.0"

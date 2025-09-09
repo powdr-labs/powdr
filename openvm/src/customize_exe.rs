@@ -1,47 +1,51 @@
 use std::collections::{BTreeSet, HashMap};
 
+use std::fmt::Display;
+use std::hash::Hash;
+use std::iter::once;
+use std::path::Path;
 use std::sync::Arc;
 
-use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
-use crate::opcode::{branch_opcodes_bigint_set, branch_opcodes_set};
-use crate::utils::{fractional_knapsack, KnapsackItem, UnsupportedOpenVmReferenceError};
-use crate::OpenVmField;
+use crate::bus_map::OpenVmBusType;
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
+use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
+use crate::opcode::branch_opcodes_bigint_set;
+use crate::powdr_extension::chip::PowdrAir;
+use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
-use crate::{AirMetrics, IntoOpenVm};
+use crate::PrecompileImplementation;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
-use openvm_instructions::instruction::Instruction;
-use openvm_instructions::program::Program;
+use openvm_instructions::instruction::Instruction as OpenVmInstruction;
+use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
 };
-use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::powdr::UniqueReferences;
-use powdr_autoprecompiles::VmConfig;
-use powdr_autoprecompiles::{
-    bus_map::BusMap, SymbolicBusInteraction, SymbolicInstructionStatement,
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::adapter::{
+    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::{Apc, DegreeBound};
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Instruction, Program};
+use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
+use powdr_autoprecompiles::expression::try_convert;
+use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
+use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::VmConfig;
+use powdr_autoprecompiles::{Apc, PowdrConfig};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_riscv_elf::debug_info::DebugInfo;
+use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
-use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::{
-    powdr_extension::{OriginalInstruction, PowdrOpcode, PowdrPrecompile},
+    powdr_extension::{PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
 
-pub const OPENVM_DEGREE_BOUND: usize = 5;
-
-// TODO: read this from program
-const OPENVM_INIT_PC: u32 = 0x0020_0800;
-
 pub const POWDR_OPCODE: usize = 0x10ff;
-
-use crate::{PgoConfig, PowdrConfig};
 
 #[derive(Debug)]
 pub enum Error {
@@ -54,260 +58,207 @@ impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
     }
 }
 
-struct BlockWithApc<P: IntoOpenVm> {
-    block: BasicBlock<OpenVmField<P>>,
-    opcode: usize,
-    apc: Apc<P>,
+/// An adapter for the BabyBear OpenVM precompiles.
+/// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
+/// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
+pub struct BabyBearOpenVmApcAdapter<'a> {
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
-fn generate_apcs_with_pgo<P: IntoOpenVm>(
-    blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &OriginalAirs<P>,
-    bus_map: &BusMap,
-    config: &PowdrConfig,
-    original_config: &OriginalVmConfig,
-    pgo_config: PgoConfig,
-) -> Vec<BlockWithApc<P>> {
-    // sort basic blocks by:
-    // 1. if PgoConfig::Cell, cost = frequency * cells_saved_per_row
-    // 2. if PgoConfig::Instruction, cost = frequency * number_of_instructions
-    // 3. if PgoConfig::None, cost = number_of_instructions
-    let res = match pgo_config {
-        PgoConfig::Cell(pgo_program_idx_count, max_total_columns) => create_apcs_with_cell_pgo(
-            blocks,
-            pgo_program_idx_count,
-            max_total_columns,
-            airs,
-            config,
-            original_config,
-            bus_map,
-        ),
-        PgoConfig::Instruction(pgo_program_idx_count) => {
-            create_apcs_with_instruction_pgo(blocks, pgo_program_idx_count, airs, config, bus_map)
-        }
-        PgoConfig::None => create_apcs_with_no_pgo(blocks, airs, config, bus_map),
-    };
+impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
+    type PowdrField = BabyBearField;
+    type Field = BabyBear;
+    type InstructionHandler = OriginalAirs<Self::Field>;
+    type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
+    type Program = Prog<'a, Self::Field>;
+    type Instruction = Instr<Self::Field>;
+    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
+        OpenVmMemoryBusInteraction<Self::PowdrField, V>;
+    type CustomBusTypes = OpenVmBusType;
+    type ApcStats = OvmApcStats;
 
-    assert!(res.len() <= config.autoprecompiles as usize);
+    fn into_field(e: Self::PowdrField) -> Self::Field {
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
+            e.to_integer().try_into_u32().unwrap(),
+        )
+    }
 
-    res
+    fn from_field(e: Self::Field) -> Self::PowdrField {
+        BabyBearField::from(e.as_canonical_u32())
+    }
 }
 
-pub fn customize(
-    OriginalCompiledProgram {
-        mut exe,
-        sdk_vm_config,
-    }: OriginalCompiledProgram,
+/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
+
+impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
+    fn from(program: &'a OpenVmProgram<F>) -> Self {
+        Prog(program)
+    }
+}
+
+/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Instr<F>(pub OpenVmInstruction<F>);
+
+impl<F: PrimeField32> Display for Instr<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", openvm_instruction_formatter(&self.0))
+    }
+}
+
+impl<F: PrimeField32> Instruction<F> for Instr<F> {
+    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+        let args = [
+            self.0.opcode.to_field(),
+            self.0.a,
+            self.0.b,
+            self.0.c,
+            self.0.d,
+            self.0.e,
+            self.0.f,
+            self.0.g,
+        ];
+        // The PC lookup row has the format:
+        // [pc, opcode, a, b, c, d, e, f, g]
+        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
+        once(pc).chain(args.into_iter().map(Some)).collect()
+    }
+}
+
+impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
+    fn base_pc(&self) -> u64 {
+        self.0.pc_base as u64
+    }
+
+    fn pc_step(&self) -> u32 {
+        self.0.step
+    }
+
+    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
+        Box::new(
+            self.0
+                .instructions_and_debug_infos
+                .iter()
+                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
+        )
+    }
+
+    fn length(&self) -> u32 {
+        self.0.instructions_and_debug_infos.len() as u32
+    }
+}
+
+pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
+    OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
+    debug_info: &DebugInfo,
     config: PowdrConfig,
-    pgo_config: PgoConfig,
+    implementation: PrecompileImplementation,
+    pgo: P,
 ) -> CompiledProgram {
-    let original_config = OriginalVmConfig::new(sdk_vm_config.clone());
-    let airs = original_config.airs().expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let original_config = OriginalVmConfig::new(vm_config.clone());
+    let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let opcodes_allowlist = airs.allow_list();
-
-    let labels = add_extra_targets(&exe.program, labels.clone());
-
-    let blocks = collect_basic_blocks(
+    let jumpdest_set = add_extra_targets(
         &exe.program,
-        &labels,
-        &opcodes_allowlist,
-        &branch_opcodes_set(),
+        labels.clone(),
+        exe.program.pc_base,
+        exe.program.step,
     );
+
+    let program = Prog(&exe.program);
+
+    let range_tuple_checker_sizes = vm_config
+        .sdk_vm_config
+        .rv32m
+        .unwrap()
+        .range_tuple_checker_sizes;
+    let vm_config = VmConfig {
+        instruction_handler: &airs,
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(
+            bus_map.clone(),
+            range_tuple_checker_sizes,
+        ),
+        bus_map: bus_map.clone(),
+    };
+
+    // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
+    let jumpdest_set = jumpdest_set
+        .iter()
+        .map(|&x| x as u64)
+        .collect::<BTreeSet<_>>();
+
+    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        for (count, block) in blocks
+            .iter()
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+            .sorted_by_key(|(count, _)| *count)
+            .rev()
+            .take(10)
+        {
+            let name = debug_info
+                .symbols
+                .try_get_one_or_preceding(block.start_pc)
+                .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
+                .unwrap_or_default();
+            tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
+        }
+    }
 
-    let blocks = blocks
-        .into_iter()
-        .filter(|b| {
-            b.statements
-                .iter()
-                .all(|instr| opcodes_allowlist.contains(&instr.opcode.as_usize()))
-        })
-        .collect::<Vec<_>>();
+    let start = std::time::Instant::now();
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config);
+    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
-    let blocks_with_apcs = generate_apcs_with_pgo(
-        blocks,
-        &airs,
-        &bus_map,
-        &config,
-        &original_config,
-        pgo_config,
-    );
-
-    let program = &mut exe.program.instructions_and_debug_infos;
-
-    let noop = Instruction {
-        opcode: VmOpcode::from_usize(0xdeadaf),
-        a: OpenVmField::<BabyBearField>::ZERO,
-        b: OpenVmField::<BabyBearField>::ZERO,
-        c: OpenVmField::<BabyBearField>::ZERO,
-        d: OpenVmField::<BabyBearField>::ZERO,
-        e: OpenVmField::<BabyBearField>::ZERO,
-        f: OpenVmField::<BabyBearField>::ZERO,
-        g: OpenVmField::<BabyBearField>::ZERO,
-    };
+    let pc_base = exe.program.pc_base;
+    let pc_step = exe.program.step;
+    let program = &mut exe.program;
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
-    let extensions = blocks_with_apcs
+    let extensions = apcs
         .into_iter()
-        .map(
-            |BlockWithApc {
-                 block: acc_block,
-                 opcode: apc_opcode,
-                 apc: autoprecompile,
-             }| {
-                let new_instr = Instruction {
-                    opcode: VmOpcode::from_usize(apc_opcode),
-                    a: OpenVmField::<BabyBearField>::ZERO,
-                    b: OpenVmField::<BabyBearField>::ZERO,
-                    c: OpenVmField::<BabyBearField>::ZERO,
-                    d: OpenVmField::<BabyBearField>::ZERO,
-                    e: OpenVmField::<BabyBearField>::ZERO,
-                    f: OpenVmField::<BabyBearField>::ZERO,
-                    g: OpenVmField::<BabyBearField>::ZERO,
-                };
+        .map(ApcWithStats::into_parts)
+        .enumerate()
+        .map(|(i, (apc, apc_stats))| {
+            let opcode = POWDR_OPCODE + i;
+            let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
+                .try_into()
+                .unwrap();
 
-                let pc = acc_block.start_idx;
-                let n_acc = acc_block.statements.len();
-                let (acc, new_instrs): (Vec<_>, Vec<_>) = program[pc..pc + n_acc]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, x)| {
-                        let instr = x.as_ref().unwrap();
-                        let instr = instr.0.clone();
-                        if i == 0 {
-                            (instr, new_instr.clone())
-                        } else {
-                            (instr, noop.clone())
-                        }
-                    })
-                    .collect();
+            // We encode in the program that the prover should execute the apc instruction instead of the original software version.
+            // This is only for witgen: the program in the program chip is left unchanged.
+            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
-                let new_instrs = new_instrs.into_iter().map(|x| Some((x, None)));
-
-                let len_before = program.len();
-                program.splice(pc..pc + n_acc, new_instrs);
-                assert_eq!(program.len(), len_before);
-
-                let is_valid_column = autoprecompile
-                    .machine()
-                    .unique_references()
-                    .find(|c| &*c.name == "is_valid")
-                    .unwrap();
-
-                let (machine, subs) = autoprecompile.into_parts();
-
-                PowdrPrecompile::new(
-                    format!("PowdrAutoprecompile_{apc_opcode}"),
-                    PowdrOpcode {
-                        class_offset: apc_opcode,
-                    },
-                    machine,
-                    acc.into_iter()
-                        .zip_eq(subs)
-                        .map(|(instruction, subs)| OriginalInstruction::new(instruction, subs))
-                        .collect(),
-                    is_valid_column,
-                )
-            },
-        )
+            PowdrPrecompile::new(
+                format!("PowdrAutoprecompile_{}", apc.start_pc()),
+                PowdrOpcode {
+                    class_offset: opcode,
+                },
+                apc,
+                apc_stats,
+            )
+        })
         .collect();
 
     CompiledProgram {
         exe,
-        vm_config: SpecializedConfig::new(original_config, extensions, config.implementation),
+        vm_config: SpecializedConfig::new(
+            original_config,
+            extensions,
+            implementation,
+            config.degree_bound.identities,
+        ),
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct BasicBlock<F> {
-    pub start_idx: usize,
-    pub statements: Vec<Instruction<F>>,
-}
-
-impl<F: PrimeField32> BasicBlock<F> {
-    fn pretty_print(&self, instr_formatter: impl Fn(&Instruction<F>) -> String) -> String {
-        format!("BasicBlock(start_idx: {}, statements: [\n", self.start_idx)
-            + &self
-                .statements
-                .iter()
-                .enumerate()
-                .map(|(i, instr)| format!("   instr {i:>3}:   {}", instr_formatter(instr)))
-                .collect::<Vec<_>>()
-                .join("\n")
-            + "\n])"
-    }
-}
-
-pub fn collect_basic_blocks<F: PrimeField32>(
-    program: &Program<F>,
-    labels: &BTreeSet<u32>,
-    opcode_allowlist: &BTreeSet<usize>,
-    branch_opcodes: &BTreeSet<usize>,
-) -> Vec<BasicBlock<F>> {
-    let mut blocks = Vec::new();
-    let mut curr_block = BasicBlock {
-        start_idx: 0,
-        statements: Vec::new(),
-    };
-    for (i, instr) in program.instructions_and_debug_infos.iter().enumerate() {
-        let instr = instr.as_ref().unwrap().0.clone();
-        let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
-        let is_target = labels.contains(&adjusted_pc);
-        let is_branch = branch_opcodes.contains(&instr.opcode.as_usize());
-
-        // If this opcode cannot be in an apc, we make sure it's alone in a BB.
-        if !opcode_allowlist.contains(&instr.opcode.as_usize()) {
-            // If not empty, push the current block.
-            if !curr_block.statements.is_empty() {
-                blocks.push(curr_block);
-            }
-            // Push the instruction itself
-            blocks.push(BasicBlock {
-                start_idx: i,
-                statements: vec![instr.clone()],
-            });
-            // Skip the instrucion and start a new block from the next instruction.
-            curr_block = BasicBlock {
-                start_idx: i + 1,
-                statements: Vec::new(),
-            };
-        } else {
-            // If the instruction is a target, we need to close the previous block
-            // as is if not empty and start a new block from this instruction.
-            if is_target {
-                if !curr_block.statements.is_empty() {
-                    blocks.push(curr_block);
-                }
-                curr_block = BasicBlock {
-                    start_idx: i,
-                    statements: Vec::new(),
-                };
-            }
-            curr_block.statements.push(instr.clone());
-            // If the instruction is a branch, we need to close this block
-            // with this instruction and start a new block from the next one.
-            if is_branch {
-                blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
-                curr_block = BasicBlock {
-                    start_idx: i + 1,
-                    statements: Vec::new(),
-                };
-            }
-        }
-    }
-
-    if !curr_block.statements.is_empty() {
-        blocks.push(curr_block);
-    }
-
-    blocks
 }
 
 /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
@@ -317,8 +268,10 @@ pub fn collect_basic_blocks<F: PrimeField32>(
 /// This means that for a given program address A containing the instruction above,
 /// we add A + target_offset as a target as well.
 fn add_extra_targets<F: PrimeField32>(
-    program: &Program<F>,
+    program: &OpenVmProgram<F>,
     mut labels: BTreeSet<u32>,
+    base_pc: u32,
+    pc_step: u32,
 ) -> BTreeSet<u32> {
     let branch_opcodes_bigint = branch_opcodes_bigint_set();
     let new_labels = program
@@ -327,8 +280,8 @@ fn add_extra_targets<F: PrimeField32>(
         .enumerate()
         .filter_map(|(i, instr)| {
             let instr = instr.as_ref().unwrap().0.clone();
-            let adjusted_pc = OPENVM_INIT_PC + (i as u32) * 4;
-            let op = instr.opcode.as_usize();
+            let adjusted_pc = base_pc + (i as u32) * pc_step;
+            let op = instr.opcode;
             branch_opcodes_bigint
                 .contains(&op)
                 .then_some(adjusted_pc + instr.c.as_canonical_u32())
@@ -338,110 +291,10 @@ fn add_extra_targets<F: PrimeField32>(
     labels
 }
 
-// Only used for PgoConfig::Instruction and PgoConfig::None,
-// because PgoConfig::Cell caches all APCs in sorting stage.
-fn create_apcs_for_all_blocks<P: IntoOpenVm>(
-    blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    powdr_config: &PowdrConfig,
-    airs: &OriginalAirs<P>,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    let n_acc = powdr_config.autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
-
-    blocks
-        .into_par_iter()
-        .skip(powdr_config.skip_autoprecompiles as usize)
-        .take(n_acc)
-        .enumerate()
-        .map(|(index, acc_block)| {
-            tracing::debug!(
-                "Accelerating block of length {} and start idx {}",
-                acc_block.statements.len(),
-                acc_block.start_idx
-            );
-
-            tracing::debug!(
-                "Acc block: {}",
-                acc_block.pretty_print(openvm_instruction_formatter)
-            );
-
-            let apc_opcode = POWDR_OPCODE + index;
-
-            let apc = generate_autoprecompile(
-                &acc_block,
-                airs,
-                apc_opcode,
-                bus_map,
-                powdr_config.degree_bound,
-            )
-            .unwrap();
-
-            BlockWithApc {
-                opcode: apc_opcode,
-                block: acc_block,
-                apc,
-            }
-        })
-        .collect()
-}
-
-// OpenVM relevant bus ids:
-// 0: execution bridge -> [pc, timestamp]
-// 1: memory -> [address space, pointer, data, timestamp, 1]
-// 2: pc lookup -> [...]
-// 3: range tuple -> [col, bits]
-// 5: bitwise xor ->
-//    [a, b, 0, 0] byte range checks for a and b
-//    [a, b, c, 1] c = xor(a, b)
-fn generate_autoprecompile<P: IntoOpenVm>(
-    block: &BasicBlock<OpenVmField<P>>,
-    airs: &OriginalAirs<P>,
-    apc_opcode: usize,
-    bus_map: &BusMap,
-    degree_bound: DegreeBound,
-) -> Result<Apc<P>, Error> {
-    tracing::debug!(
-        "Generating autoprecompile for block at index {}",
-        block.start_idx
-    );
-    let program = block
-        .statements
-        .iter()
-        .map(|instr| SymbolicInstructionStatement {
-            opcode: instr.opcode.as_usize(),
-            args: [
-                instr.a, instr.b, instr.c, instr.d, instr.e, instr.f, instr.g,
-            ]
-            .iter()
-            .map(|f| P::from_openvm_field(*f))
-            .collect(),
-        })
-        .collect();
-
-    let vm_config = VmConfig {
-        instruction_machine_handler: airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
-        bus_map: bus_map.clone(),
-    };
-
-    let apc = powdr_autoprecompiles::build(program, vm_config, degree_bound, apc_opcode as u32)?;
-
-    // Check that substitution values are unique over all instructions
-    assert!(apc.subs().iter().flatten().all_unique());
-
-    tracing::debug!(
-        "Done generating autoprecompile for block at index {}",
-        block.start_idx
-    );
-
-    Ok(apc)
-}
-
-pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
+pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
     interaction: &SymbolicInteraction<F>,
     columns: &[Arc<String>],
-) -> Result<SymbolicBusInteraction<P>, UnsupportedOpenVmReferenceError> {
+) -> Result<SymbolicBusInteraction<F>, UnsupportedOpenVmReferenceError> {
     let id = interaction.bus_index as u64;
 
     let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
@@ -454,196 +307,120 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32, P: FieldElement>(
     Ok(SymbolicBusInteraction { id, mult, args })
 }
 
-// Note: This function can lead to OOM since it generates the apc for many blocks.
-fn create_apcs_with_cell_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    pgo_program_idx_count: HashMap<u32, u32>,
-    max_total_columns: Option<usize>,
-    airs: &OriginalAirs<P>,
-    config: &PowdrConfig,
-    original_config: &OriginalVmConfig,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    // drop any block whose start index cannot be found in pc_idx_count,
-    // because a basic block might not be executed at all.
-    // Also only keep basic blocks with more than one original instruction.
-    blocks.retain(|b| {
-        pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
-    });
+#[derive(Serialize, Deserialize)]
+pub struct OpenVmApcCandidate<F, I> {
+    apc: Arc<Apc<F, I>>,
+    execution_frequency: usize,
+    widths: AirWidthsDiff,
+    stats: EvaluationResult,
+}
 
-    tracing::debug!(
-        "Retained {} basic blocks after filtering by pc_idx_count",
-        blocks.len()
-    );
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OvmApcStats {
+    pub widths: AirWidthsDiff,
+}
 
-    // store air width by opcode, so that we don't repetitively calculate them later
-    // filter out opcodes that contain next references in their air, because they are not supported yet in apc
-    let air_width_by_opcode = airs.air_width_per_opcode();
-
-    // generate apc for all basic blocks and only cache the ones we eventually use
-    // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-    let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-    tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
-
-    // each generated apc becomes a candidate for caching
-    // it is only ordered by cost, but carries all needed data for modifying the blocks, extending the cache, and debug print
-    struct ApcCandidate<P: IntoOpenVm> {
-        block_with_apc: BlockWithApc<P>,
-        execution_frequency: usize,
-        cells_saved_per_row: usize,
-        width: usize, // only tag this field in Pgo::Cell, the only place it's needed
+impl OvmApcStats {
+    fn new(widths: AirWidthsDiff) -> Self {
+        Self { widths }
     }
+}
 
-    impl<P: IntoOpenVm> KnapsackItem for ApcCandidate<P> {
-        fn cost(&self) -> usize {
-            self.width
-        }
+impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
+    fn create(
+        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
+        pgo_program_pc_count: &HashMap<u64, u32>,
+        vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
+        max_degree: usize,
+    ) -> Self {
+        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.clone())), max_degree);
+        let width_after = apc_metrics.widths;
 
-        fn value(&self) -> usize {
-            // For an APC which is called once and saves 1 cell, this would be 1.
-            let value = self
-                .execution_frequency
-                .checked_mul(self.cells_saved_per_row)
-                .unwrap();
-            // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-            // Therefore, we scale it up by a constant factor.
-            value.checked_mul(1000).unwrap()
-        }
-
-        fn tie_breaker(&self) -> usize {
-            self.block_with_apc.opcode
-        }
-    }
-
-    let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
-        let chip_inventory_air_metrics = original_config.chip_inventory_air_metrics();
-        let total_non_apc_columns = chip_inventory_air_metrics
+        let width_before = apc
+            .block
+            .statements
             .iter()
-            .map(|AirMetrics { name, widths, .. }| {
-                tracing::debug!("Chip inventory air {} has {}", name, widths);
-                widths.preprocessed + widths.main + widths.log_up
+            .map(|instr| {
+                vm_config
+                    .instruction_handler
+                    .get_instruction_metrics(instr.0.opcode)
+                    .unwrap()
+                    .widths
             })
-            .sum::<usize>();
-        max_total_columns - total_non_apc_columns
-    });
+            .sum();
 
-    // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-    fractional_knapsack(
-        blocks.into_par_iter().enumerate().filter_map(|(i, block)| {
-            // try to create apc for a candidate block
-            let apc = generate_autoprecompile(
-                &block,
-                airs,
-                POWDR_OPCODE + i,
-                bus_map,
-                config.degree_bound,
-            )
-            .ok()?; // if apc creation fails, filter out this candidate block
-
-            // compute cost and cells_saved_per_row
-            let apc_cells_per_row = apc.width();
-            let orig_cells_per_row: usize = block
-                .statements
-                .iter()
-                .map(|instr| air_width_by_opcode[&instr.opcode])
-                .sum();
-            let cells_saved_per_row = orig_cells_per_row - apc_cells_per_row;
-            let execution_frequency = *pgo_program_idx_count
-                .get(&(block.start_idx as u32))
-                .unwrap_or(&0) as usize;
-
-            Some(ApcCandidate {
-                block_with_apc: BlockWithApc {
-                    opcode: POWDR_OPCODE + i,
-                    block,
-                    apc,
-                },
-                execution_frequency,
-                cells_saved_per_row,
-                width: apc_cells_per_row,
-            })
-        }),
-        max_cache,
-        max_total_apc_columns,
-    )
-    .skip(config.skip_autoprecompiles as usize)
-    .map(|c| {
-        tracing::debug!(
-            "Basic block start_idx: {}, cost adjusted value: {}, frequency: {}, cells_saved_per_row: {}",
-            c.block_with_apc.block.start_idx,
-            c.value() / c.cost(),
-            c.execution_frequency,
-            c.cells_saved_per_row,
+        let stats = evaluate_apc(
+            &apc.block.statements,
+            vm_config.instruction_handler,
+            apc.machine(),
         );
 
-        c.block_with_apc
-    })
-    .collect()
-}
+        let execution_frequency =
+            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
 
-fn create_apcs_with_instruction_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    pgo_program_idx_count: HashMap<u32, u32>,
-    airs: &OriginalAirs<P>,
-    config: &PowdrConfig,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    // drop any block whose start index cannot be found in pc_idx_count,
-    // because a basic block might not be executed at all.
-    // Also only keep basic blocks with more than one original instruction.
-    blocks.retain(|b| {
-        pgo_program_idx_count.contains_key(&(b.start_idx as u32)) && b.statements.len() > 1
-    });
-
-    tracing::debug!(
-        "Retained {} basic blocks after filtering by pc_idx_count",
-        blocks.len()
-    );
-
-    // cost = cells_saved_per_row
-    blocks.sort_by(|a, b| {
-        let a_cnt = pgo_program_idx_count[&(a.start_idx as u32)];
-        let b_cnt = pgo_program_idx_count[&(b.start_idx as u32)];
-        (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
-    });
-
-    // Debug print blocks by descending cost
-    for block in &blocks {
-        let start_idx = block.start_idx;
-        let frequency = pgo_program_idx_count[&(start_idx as u32)];
-        let number_of_instructions = block.statements.len();
-        let value = frequency * number_of_instructions as u32;
-
-        tracing::debug!(
-            "Basic block start_idx: {start_idx}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
-        );
+        Self {
+            apc,
+            execution_frequency,
+            widths: AirWidthsDiff::new(width_before, width_after),
+            stats,
+        }
     }
 
-    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
-}
-
-fn create_apcs_with_no_pgo<P: IntoOpenVm>(
-    mut blocks: Vec<BasicBlock<OpenVmField<P>>>,
-    airs: &OriginalAirs<P>,
-    config: &PowdrConfig,
-    bus_map: &BusMap,
-) -> Vec<BlockWithApc<P>> {
-    // cost = number_of_original_instructions
-    blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
-
-    // Debug print blocks by descending cost
-    for block in &blocks {
-        let start_idx = block.start_idx;
-        tracing::debug!(
-            "Basic block start_idx: {}, number_of_instructions: {}",
-            start_idx,
-            block.statements.len(),
-        );
+    /// Return a JSON export of the APC candidate.
+    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
+        ApcCandidateJsonExport {
+            execution_frequency: self.execution_frequency,
+            original_block: BasicBlock {
+                start_pc: self.apc.block.start_pc,
+                statements: self
+                    .apc
+                    .block
+                    .statements
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            },
+            stats: self.stats,
+            width_before: self.widths.before.total(),
+            value: self.value(),
+            cost_before: self.widths.before.total() as f64,
+            cost_after: self.widths.after.total() as f64,
+            apc_candidate_file: apc_candidates_dir_path
+                .join(format!("apc_{}.cbor", self.apc.start_pc()))
+                .display()
+                .to_string(),
+        }
     }
 
-    create_apcs_for_all_blocks(blocks, config, airs, bus_map)
+    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
+        ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
+    }
+}
+
+impl<P, I> OpenVmApcCandidate<P, I> {
+    fn cells_saved_per_row(&self) -> usize {
+        // The number of cells saved per row is the difference between the width before and after the APC.
+        self.widths.columns_saved().total()
+    }
+}
+
+impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
+    fn cost(&self) -> usize {
+        self.widths.after.total()
+    }
+
+    fn value(&self) -> usize {
+        // For an APC which is called once and saves 1 cell, this would be 1.
+        let value = self
+            .execution_frequency
+            .checked_mul(self.cells_saved_per_row())
+            .unwrap();
+        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+        // Therefore, we scale it up by a constant factor.
+        value.checked_mul(1000).unwrap()
+    }
+
+    fn tie_breaker(&self) -> usize {
+        self.apc.start_pc() as usize
+    }
 }

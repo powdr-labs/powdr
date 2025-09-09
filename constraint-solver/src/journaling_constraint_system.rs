@@ -1,22 +1,18 @@
 use crate::{
-    constraint_system::{BusInteraction, ConstraintSystemGeneric},
+    constraint_system::{AlgebraicConstraint, BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::IndexedConstraintSystemGeneric,
+    indexed_constraint_system::IndexedConstraintSystem,
     runtime_constant::{RuntimeConstant, Substitutable},
-    symbolic_expression::SymbolicExpression,
 };
 use std::{fmt::Display, hash::Hash};
 
-pub type JournalingConstraintSystem<T, V> =
-    JournalingConstraintSystemGeneric<SymbolicExpression<T, V>, V>;
-
 /// A wrapper around `ConstraintSystem` that keeps track of changes.
-pub struct JournalingConstraintSystemGeneric<T, V> {
-    system: IndexedConstraintSystemGeneric<T, V>,
+pub struct JournalingConstraintSystem<T, V> {
+    system: IndexedConstraintSystem<T, V>,
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystemGeneric<T, V>>> From<C>
-    for JournalingConstraintSystemGeneric<T, V>
+impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystem<T, V>>> From<C>
+    for JournalingConstraintSystem<T, V>
 {
     fn from(system: C) -> Self {
         Self {
@@ -25,18 +21,20 @@ impl<T: RuntimeConstant, V: Clone + Eq, C: Into<IndexedConstraintSystemGeneric<T
     }
 }
 
-impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Returns the underlying `ConstraintSystem`.
-    pub fn system(&self) -> &ConstraintSystemGeneric<T, V> {
+    pub fn system(&self) -> &ConstraintSystem<T, V> {
         self.system.system()
     }
 
-    pub fn indexed_system(&self) -> &IndexedConstraintSystemGeneric<T, V> {
+    pub fn indexed_system(&self) -> &IndexedConstraintSystem<T, V> {
         &self.system
     }
 
     /// Returns an iterator over the algebraic constraints.
-    pub fn algebraic_constraints(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
+    pub fn algebraic_constraints(
+        &self,
+    ) -> impl Iterator<Item = &AlgebraicConstraint<GroupedExpression<T, V>>> {
         self.system.algebraic_constraints().iter()
     }
 
@@ -53,19 +51,8 @@ impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystemGeneric
 }
 
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display>
-    JournalingConstraintSystemGeneric<T, V>
+    JournalingConstraintSystem<T, V>
 {
-    pub fn apply_bus_field_assignments(
-        &mut self,
-        assignments: impl IntoIterator<Item = ((usize, usize), T::FieldType)>,
-    ) {
-        // We do not track substitutions yet, but we could.
-        for ((interaction_index, field_index), value) in assignments {
-            self.system
-                .apply_bus_field_assignment(interaction_index, field_index, value);
-        }
-    }
-
     /// Applies multiple substitutions to the constraint system in an efficient manner.
     pub fn apply_substitutions(
         &mut self,
@@ -83,11 +70,29 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystemGeneric<T, V> {
+impl<T: RuntimeConstant, V: Clone + Eq + Hash> JournalingConstraintSystem<T, V> {
+    /// Adds new algebraic constraints to the system.
+    pub fn add_algebraic_constraints(
+        &mut self,
+        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+    ) {
+        self.system.add_algebraic_constraints(constraints);
+    }
+
+    /// Adds new bus interactions to the system.
+    pub fn add_bus_interactions(
+        &mut self,
+        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
+    ) {
+        self.system.add_bus_interactions(bus_interactions);
+    }
+}
+
+impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystem<T, V> {
     /// Removes all algebraic constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
-        f: impl FnMut(&GroupedExpression<T, V>) -> bool,
+        f: impl FnMut(&AlgebraicConstraint<GroupedExpression<T, V>>) -> bool,
     ) {
         // We do not track removal of constraints yet, but we could.
         self.system.retain_algebraic_constraints(f);
@@ -104,7 +109,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> JournalingConstraintSystemGeneric<T, V> 
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display
-    for JournalingConstraintSystemGeneric<T, V>
+    for JournalingConstraintSystem<T, V>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.system)

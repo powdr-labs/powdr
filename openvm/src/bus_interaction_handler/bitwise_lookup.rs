@@ -1,4 +1,7 @@
-use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
+use powdr_constraint_solver::{
+    grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
+};
 use powdr_number::{FieldElement, LargeInt};
 
 use super::byte_constraint;
@@ -62,11 +65,50 @@ pub fn handle_bitwise_lookup<T: FieldElement>(
     }
 }
 
+pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
+    payload: &[GroupedExpression<T, V>],
+) -> Option<RangeConstraints<T, V>> {
+    // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/bitwise_op_lookup/bus.rs
+    // Expects (x, y, z, op), where:
+    // - if op == 0, x & y are bytes, z = 0
+    // - if op == 1, x & y are bytes, z = x ^ y
+    let [x, y, z, op] = payload else {
+        panic!("Expected arguments (x, y, z, op)");
+    };
+    let byte_rc = RangeConstraint::from_mask(0xffu64);
+    let zero_rc = RangeConstraint::from_value(T::zero());
+    if op.try_to_number() == Some(T::from(0u64)) {
+        Some(
+            [
+                (x.clone(), byte_rc.clone()),
+                (y.clone(), byte_rc.clone()),
+                (z.clone(), zero_rc.clone()),
+            ]
+            .into(),
+        )
+    } else if x == y {
+        // This is a common pattern, because the `BaseAluCoreChip` range-constraints
+        // the output of an addition by sending each limb as both operands to the XOR table:
+        // https://github.com/openvm-org/openvm/blob/v1.0.0/extensions/rv32im/circuit/src/base_alu/core.rs#L131-L138
+        // Note that this block also gets executed if `op` is unknown (but we know that `op` can only be 0 or 1).
+        Some(
+            [
+                (x.clone(), byte_rc.clone()),
+                (z.clone(), zero_rc.clone()),
+                (op.clone(), RangeConstraint::from_mask(1)),
+            ]
+            .into(),
+        )
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
-        bus_map::{default_openvm_bus_map, DEFAULT_BITWISE_LOOKUP},
+        bus_map::DEFAULT_BITWISE_LOOKUP,
     };
 
     use super::*;
@@ -79,7 +121,7 @@ mod tests {
         z: RangeConstraint<BabyBearField>,
         op: RangeConstraint<BabyBearField>,
     ) -> Vec<RangeConstraint<BabyBearField>> {
-        let handler = OpenVmBusInteractionHandler::<BabyBearField>::new(default_openvm_bus_map());
+        let handler = OpenVmBusInteractionHandler::<BabyBearField>::default();
 
         let bus_interaction = BusInteraction {
             bus_id: RangeConstraint::from_value(DEFAULT_BITWISE_LOOKUP.into()),

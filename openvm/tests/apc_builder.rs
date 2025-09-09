@@ -1,15 +1,23 @@
+use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfig;
-use powdr_autoprecompiles::{build, DegreeBound, SymbolicInstructionStatement, VmConfig};
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::blocks::BasicBlock;
+use powdr_autoprecompiles::evaluation::evaluate_apc;
+use powdr_autoprecompiles::{build, VmConfig};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
-use powdr_openvm::{bus_map::default_openvm_bus_map, OPENVM_DEGREE_BOUND, POWDR_OPCODE};
+use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
+use powdr_openvm::BabyBearOpenVmApcAdapter;
+use powdr_openvm::ExtendedVmConfig;
+use powdr_openvm::Instr;
+use powdr_openvm::DEFAULT_DEGREE_BOUND;
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::Path;
 
-// A wrapper that only creates necessary inputs for and then runs powdr_autoprecompile::build
-fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String {
+// Compiles a basic block to a string, listing the basic block, an evaluation of the APC, and APC constraints.
+fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -17,55 +25,81 @@ fn compile(program: Vec<SymbolicInstructionStatement<BabyBearField>>) -> String 
         .io(Default::default())
         .build();
 
-    let original_config = OriginalVmConfig::new(sdk_vm_config);
+    let ext_vm_config = ExtendedVmConfig { sdk_vm_config };
 
-    let airs = original_config.airs().unwrap();
+    let original_config = OriginalVmConfig::new(ext_vm_config);
+
+    let degree_bound = DEFAULT_DEGREE_BOUND;
+
+    let airs = original_config.airs(degree_bound.identities).unwrap();
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
-        instruction_machine_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::new(
-            default_openvm_bus_map(),
-        ),
+        instruction_handler: &airs,
+        bus_interaction_handler: OpenVmBusInteractionHandler::<BabyBearField>::default(),
         bus_map: bus_map.clone(),
     };
 
-    let degree_bound = DegreeBound {
-        identities: OPENVM_DEGREE_BOUND,
-        bus_interactions: OPENVM_DEGREE_BOUND - 1,
+    let basic_block_str = basic_block
+        .iter()
+        .map(|inst| format!("  {}", openvm_instruction_formatter(inst)))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let basic_block = BasicBlock {
+        statements: basic_block.into_iter().map(Instr).collect(),
+        start_pc: 0,
     };
 
-    build(program, vm_config, degree_bound, POWDR_OPCODE as u32)
-        .unwrap()
-        .machine()
-        .render(&bus_map)
+    let apc = build::<BabyBearOpenVmApcAdapter>(basic_block.clone(), vm_config, degree_bound, None)
+        .unwrap();
+    let apc = apc.machine();
+
+    let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
+
+    format!(
+        "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
+        apc.render(&bus_map)
+    )
 }
 
 /// Compare `actual` against the contents of the file at `path`.
 /// If they differ, write `actual` to the file and fail the test.
-fn assert_machine_output(
-    program: Vec<SymbolicInstructionStatement<BabyBearField>>,
-    test_name: &str,
-) {
+fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let actual = compile(program.to_vec());
     let base = Path::new("tests/apc_builder_outputs");
     let file_path = base.join(format!("{test_name}.txt"));
 
-    match fs::read_to_string(&file_path) {
-        Ok(expected) => {
+    let should_update_expectation = std::env::var("UPDATE_EXPECT")
+        .map(|v| v.as_str() == "1")
+        .unwrap_or(false);
+
+    let expected = file_path
+        .exists()
+        .then(|| fs::read_to_string(&file_path).unwrap());
+
+    match (expected, should_update_expectation) {
+        (Some(expected), _) if expected == actual => {
+            // Test succeeded.
+        }
+        (Some(expected), false) => {
+            // The expectation file exists, is different from "actual" and we are
+            // not allowed to update it.
+            // Test failed.
             assert_eq!(
                 expected.trim(),
                 actual.trim(),
                 "The output of `{test_name}` does not match the expected output. \
-                 To re-generate the expected output, delete the file `{test_name}.txt` and re-run the test.",
+                 To overwrite the expected output with the currently generated one, \
+                 re-run the test with the environment variable `UPDATE_EXPECT=1` or \
+                 delete the file `{test_name}.txt`.",
             );
         }
         _ => {
-            // Write the new expected output to the file
+            // Expectation file does not exist or is different from "actual" and we are allowed to update it.
             fs::create_dir_all(base).unwrap();
-            fs::write(&file_path, actual).unwrap();
-
-            println!("Expected output for `{test_name}` was updated. Re-run the test to confirm.");
+            fs::write(&file_path, &actual).unwrap();
+            println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
         }
     }
 }
@@ -73,6 +107,7 @@ fn assert_machine_output(
 mod single_instruction_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     // ALU Chip instructions
     #[test]
@@ -109,6 +144,15 @@ mod single_instruction_tests {
             xor(8, 7, 5, 1),
         ];
         assert_machine_output(program.to_vec(), "single_xor");
+    }
+
+    #[test]
+    fn single_mul() {
+        let program = [
+            // [x8] = [x7] * [x5]
+            mul(8, 7, 5, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "single_mul");
     }
 
     // Load/Store Chip instructions
@@ -258,6 +302,13 @@ mod single_instruction_tests {
     }
 
     #[test]
+    fn single_sll_by_8() {
+        // r68 = r40 << 8
+        let program = [sll(68, 40, 8, 0)];
+        assert_machine_output(program.to_vec(), "single_sll_by_8");
+    }
+
+    #[test]
     fn single_sra() {
         // r68 = sign_extend(r40 >> val(R3))
         let program = [sra(68, 40, 3, 1)];
@@ -268,14 +319,15 @@ mod single_instruction_tests {
 mod complex_tests {
     use crate::assert_machine_output;
     use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
 
     #[test]
     fn guest_top_block() {
         // Top block from `guest` with `--pgo cell`, with 4 instructions:
-        // SymbolicInstructionStatement { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
-        // SymbolicInstructionStatement { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
-        // SymbolicInstructionStatement { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
+        // Instruction { opcode: 512, args: [8, 8, 16777200, 1, 0, 0, 0] }
+        // Instruction { opcode: 531, args: [4, 8, 12, 1, 2, 1, 0] }
+        // Instruction { opcode: 576, args: [4, 0, 0, 1, 0, 0, 0] }
+        // Instruction { opcode: 565, args: [4, 4, 1780, 1, 0, 1, 0] }
 
         let program = [
             add(8, 8, 16777200, 0),
@@ -285,5 +337,214 @@ mod complex_tests {
         ];
 
         assert_machine_output(program.to_vec(), "guest_top_block");
+    }
+
+    #[test]
+    fn memcpy_block() {
+        // AND rd_ptr = 52, rs1_ptr = 44, rs2 = 3, rs2_as = 0
+        // SLTU rd_ptr = 52, rs1_ptr = 52, rs2 = 1, rs2_as = 0
+        // SLTU rd_ptr = 56, rs1_ptr = 56, rs2 = 1, rs2_as = 0
+        // OR rd_ptr = 52, rs1_ptr = 52, rs2 = 56, rs2_as = 1
+        // BNE 52 0 248 1 1
+
+        let program = [
+            and(52, 44, 3, 0),
+            sltu(52, 52, 1, 0),
+            sltu(56, 56, 1, 0),
+            or(52, 52, 56, 1),
+            bne(52, 0, 248),
+        ];
+
+        assert_machine_output(program.to_vec(), "memcpy_block");
+    }
+
+    #[test]
+    fn stack_accesses() {
+        // The memory optimizer should realize that [x2 + 24] is accessed twice,
+        // with the same value of x2. Therefore, we can reduce it to just one access.
+        let program = [
+            // Load [x2 + 20] into x8
+            loadw(8, 2, 20, 2, 1, 0),
+            // Load [x2 + 24] into x9
+            loadw(9, 2, 24, 2, 1, 0),
+            // Store [x8] into [x2 + 24]
+            storew(8, 2, 24, 2, 1, 0),
+        ];
+
+        assert_machine_output(program.to_vec(), "stack_accesses");
+    }
+}
+
+mod pseudo_instruction_tests {
+    use crate::assert_machine_output;
+    use powdr_openvm::symbolic_instruction_builder::*;
+    use test_log::test;
+
+    // Arithmetic pseudo instructions
+    #[test]
+    fn mv() {
+        // mv rd, rs1 expands to: addi rd, rs1, 0
+        let program = [
+            // [x8] = [x5]
+            add(8, 5, 0, 0),
+        ];
+        assert_machine_output(program.to_vec(), "mv");
+    }
+
+    #[test]
+    fn not() {
+        // not rd, rs1 expands to: xori rd, rs1, -1
+        // -1 in 24-bit 2's complement is 0xFFFFFF
+        let minus_one: u32 = 0xFFFFFF;
+        let program = [
+            // [x8] = ~[x5]
+            xor(8, 5, minus_one, 0),
+        ];
+        assert_machine_output(program.to_vec(), "not");
+    }
+
+    #[test]
+    fn neg() {
+        // neg rd, rs1 expands to: sub rd, x0, rs1
+        let program = [
+            // [x8] = -[x5]
+            sub(8, 0, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "neg");
+    }
+
+    // Set pseudo instructions
+    #[test]
+    fn seqz() {
+        // seqz rd, rs1 expands to: sltiu rd, rs1, 1
+        // which in our case is: sltu rd, rs1, 1 (with rs2_as = 0 for immediate)
+        // This sets rd = 1 if rs1 == 0, else rd = 0
+        let program = [
+            // [x8] = 1 if [x5] == 0, else 0
+            sltu(8, 5, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "seqz");
+    }
+
+    #[test]
+    fn snez() {
+        // snez rd, rs1 expands to: sltu rd, x0, rs1
+        let program = [
+            // [x8] = 1 if [x5] != 0, else 0
+            sltu(8, 0, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "snez");
+    }
+
+    #[test]
+    fn sltz() {
+        // sltz rd, rs1 expands to: slt rd, rs1, x0
+        let program = [
+            // [x8] = 1 if [x5] < 0 (signed), else 0
+            slt(8, 5, 0, 1),
+        ];
+        assert_machine_output(program.to_vec(), "sltz");
+    }
+
+    #[test]
+    fn sgtz() {
+        // sgtz rd, rs1 expands to: slt rd, x0, rs1
+        let program = [
+            // [x8] = 1 if [x5] > 0 (signed), else 0
+            slt(8, 0, 5, 1),
+        ];
+        assert_machine_output(program.to_vec(), "sgtz");
+    }
+
+    // Branch pseudo instructions
+    #[test]
+    fn beqz() {
+        // beqz rs1, offset expands to: beq rs1, x0, offset
+        let program = [
+            // pc = pc + 8 if [x5] == 0
+            beq(5, 0, 8),
+        ];
+        assert_machine_output(program.to_vec(), "beqz");
+    }
+
+    #[test]
+    fn bnez() {
+        // bnez rs1, offset expands to: bne rs1, x0, offset
+        let program = [
+            // pc = pc + 8 if [x5] != 0
+            bne(5, 0, 8),
+        ];
+        assert_machine_output(program.to_vec(), "bnez");
+    }
+
+    #[test]
+    fn blez() {
+        // blez rs1, offset expands to: bge x0, rs1, offset
+        let program = [
+            // pc = pc + 8 if [x5] <= 0 (signed)
+            bge(0, 5, 8),
+        ];
+        assert_machine_output(program.to_vec(), "blez");
+    }
+
+    #[test]
+    fn bgez() {
+        // bgez rs1, offset expands to: bge rs1, x0, offset
+        let program = [
+            // pc = pc + 8 if [x5] >= 0 (signed)
+            bge(5, 0, 8),
+        ];
+        assert_machine_output(program.to_vec(), "bgez");
+    }
+
+    #[test]
+    fn bltz() {
+        // bltz rs1, offset expands to: blt rs1, x0, offset
+        let program = [
+            // pc = pc + 8 if [x5] < 0 (signed)
+            blt(5, 0, 8),
+        ];
+        assert_machine_output(program.to_vec(), "bltz");
+    }
+
+    #[test]
+    fn bgtz() {
+        // bgtz rs1, offset expands to: blt x0, rs1, offset
+        let program = [
+            // pc = pc + 8 if [x5] > 0 (signed)
+            blt(0, 5, 8),
+        ];
+        assert_machine_output(program.to_vec(), "bgtz");
+    }
+
+    // Jump pseudo instructions
+    #[test]
+    fn j() {
+        // j offset expands to: jal x0, offset
+        let program = [
+            // pc = pc + 8
+            jal(0, 0, 8, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "j");
+    }
+
+    #[test]
+    fn jr() {
+        // jr offset expands to: jal x1, offset
+        let program = [
+            // pc = pc + 8, [x1] = pc + 4
+            jal(1, 0, 8, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "jr");
+    }
+
+    #[test]
+    fn ret() {
+        // ret expands to: jalr x0, x1, 0
+        let program = [
+            // pc = [x1] + 0
+            jalr(0, 1, 0, 1, 0),
+        ];
+        assert_machine_output(program.to_vec(), "ret");
     }
 }
