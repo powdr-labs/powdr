@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
@@ -100,6 +100,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap()
         })
+        .map(Arc::new)
         .map(ApcWithStats::from)
         .collect()
 }

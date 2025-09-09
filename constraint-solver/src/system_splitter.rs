@@ -23,9 +23,7 @@ pub fn split_system<T: RuntimeConstant + ReferencedSymbols<V>, V: Clone + Ord + 
 
         let mut algebraic_constraints = Vec::new();
         let mut bus_interactions = Vec::new();
-        for constr in constraint_system
-            .constraints_referencing_variables(variables_to_extract.iter().cloned())
-        {
+        for constr in constraint_system.constraints_referencing_variables(&variables_to_extract) {
             match constr {
                 ConstraintRef::AlgebraicConstraint(algebraic_constraint) => algebraic_constraints
                     .push(AlgebraicConstraint::assert_zero(
