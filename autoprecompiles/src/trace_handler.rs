@@ -1,13 +1,11 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::cmp::Eq;
 use std::collections::HashMap;
 use std::ops::{Add, Mul, Neg, Sub};
+use std::{cmp::Eq, hash::Hash};
 
-use crate::adapter::Adapter;
 use crate::expression::RowEvaluator;
 use crate::Apc;
-use crate::InstructionHandler;
 use crate::SymbolicBusInteraction;
 
 /// Returns data needed for constructing the APC trace.

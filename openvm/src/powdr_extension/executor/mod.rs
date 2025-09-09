@@ -14,7 +14,6 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    adapter::Adapter,
     expression::RowEvaluator,
     trace_handler::{
         ConcreteBusInteraction, InteractionEvaluator, Trace, TraceHandler, TraceHandlerData,
@@ -205,15 +204,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .filter(|interaction| interaction.id == 3)
                     .collect_vec()
             })
-            .collect_vec();
-
-        // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> = self
-            .apc
-            .machine()
-            .bus_interactions
-            .iter()
-            .map(|interaction| interaction.clone().into())
             .collect_vec();
 
         // go through the final table and fill in the values
