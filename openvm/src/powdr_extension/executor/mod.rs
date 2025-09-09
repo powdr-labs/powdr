@@ -8,7 +8,6 @@ use crate::{
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
-        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
@@ -49,8 +48,6 @@ use powdr_autoprecompiles::InstructionHandler;
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
-/// The trace handler for the PowdrExecutor used during witness generation
-mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
@@ -178,7 +175,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect();
 
-        let trace_handler = OpenVmTraceHandler::<A>::new(
+        let trace_handler = TraceHandler::<A>::new(
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
             self.number_of_calls,
