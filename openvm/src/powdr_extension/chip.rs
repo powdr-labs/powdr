@@ -6,9 +6,8 @@ use std::{
 };
 
 use crate::{
-    customize_exe::Instr, extraction_utils::OriginalAirs,
-    powdr_extension::executor::PowdrPeripheryInstances, utils::algebraic_to_symbolic,
-    ExtendedVmConfig,
+    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
+    utils::algebraic_to_symbolic, ExtendedVmConfig, Instr,
 };
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
@@ -39,7 +38,10 @@ use openvm_stark_backend::{
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
     Chip, ChipUsageGetter,
 };
-use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference};
+use powdr_autoprecompiles::{
+    expression::{AlgebraicExpression, AlgebraicReference},
+    Apc,
+};
 use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<F: PrimeField32, A: Adapter> {
@@ -60,30 +62,16 @@ impl<F: PrimeField32, A: Adapter> PowdrChip<F, A> {
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
-            instructions,
-            is_valid_column,
-            name,
-            opcode,
-            apc,
-            ..
+            name, opcode, apc, ..
         } = precompile;
-        let air = PowdrAir::new(apc.machine().clone());
-        let executor = PowdrExecutor::new(
-            instructions,
-            original_airs,
-            is_valid_column,
-            memory,
-            base_config,
-            periphery,
-            apc,
-        );
+        let air = Arc::new(PowdrAir::new(apc.clone()));
+        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
 
         Self {
             name,
             opcode,
-            air: Arc::new(air),
             executor,
-            _marker: std::marker::PhantomData,
+            air,
         }
     }
 }
@@ -117,7 +105,7 @@ impl<F: PrimeField32, A: Adapter> ChipUsageGetter for PowdrChip<F, A> {
     }
 
     fn trace_width(&self) -> usize {
-        <PowdrAir<_> as BaseAir<_>>::width(self.air.as_ref())
+        <PowdrAir<_> as BaseAir<_>>::width(&self.air)
     }
 }
 
@@ -143,10 +131,9 @@ where
         let width = self.trace_width();
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self.executor.generate_witness::<SC, A>(
-            &self.air.column_index_by_poly_id,
-            &self.air.machine.bus_interactions,
-        );
+        let trace = self
+            .executor
+            .generate_witness::<SC>(&self.air.column_index_by_poly_id);
 
         assert_eq!(trace.width(), width);
 
@@ -160,7 +147,7 @@ pub struct PowdrAir<F> {
     /// The mapping from poly_id id to the index in the list of columns.
     /// The values are always unique and contiguous
     column_index_by_poly_id: BTreeMap<u64, usize>,
-    machine: powdr_autoprecompiles::SymbolicMachine<F>,
+    apc: Arc<Apc<F, Instr<F>>>,
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
@@ -316,8 +303,9 @@ impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
 }
 
 impl<F: PrimeField32> PowdrAir<F> {
-    pub fn new(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
-        let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = machine
+    pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {
+        let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = apc
+            .machine()
             .main_columns()
             .enumerate()
             .map(|(index, c)| ((c.id, index), c.clone()))
@@ -326,7 +314,7 @@ impl<F: PrimeField32> PowdrAir<F> {
         Self {
             columns,
             column_index_by_poly_id,
-            machine,
+            apc,
         }
     }
 }
@@ -364,12 +352,12 @@ where
             witness_evaluator.eval_expr(&symbolic_expr)
         };
 
-        for constraint in &self.machine.constraints {
+        for constraint in &self.apc.machine().constraints {
             let e = eval_expr(&constraint.expr);
             builder.assert_zero(e);
         }
 
-        for interaction in &self.machine.bus_interactions {
+        for interaction in &self.apc.machine().bus_interactions {
             let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = interaction;
 
             let mult = eval_expr(mult);

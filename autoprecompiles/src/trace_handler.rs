@@ -1,11 +1,14 @@
 use itertools::Itertools;
 use rayon::prelude::*;
+use std::cmp::Eq;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::adapter::Adapter;
 use crate::Apc;
 use crate::InstructionHandler;
+
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceHandlerData<'a, F> {
@@ -26,14 +29,15 @@ pub trait TraceHandler<A: Adapter> {
     fn apc_call_count(&self) -> usize;
 
     /// Returns a mapping from air_id to the dummy trace
-    fn air_id_to_dummy_trace_and_width(&self) -> &HashMap<A::AirId, DummyTrace<A::Field>>;
+    fn air_id_to_dummy_trace(&self) -> &HashMap<A::AirId, Trace<A::Field>>;
+
 
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
     fn data<'a>(
         &'a self,
-        apc: Arc<Apc<A::Field, A::Instruction>>,
+        apc: &Apc<A::Field, A::Instruction>,
     ) -> TraceHandlerData<'a, A::Field> {
-        let air_id_to_dummy_trace_and_width = self.air_id_to_dummy_trace_and_width();
+        let air_id_to_dummy_trace = self.air_id_to_dummy_trace();
 
         // Returns a vector with the same length as original instructions
         let original_instruction_air_ids = self
@@ -88,8 +92,7 @@ pub trait TraceHandler<A: Adapter> {
                     .iter()
                     .zip_eq(original_instruction_table_offsets.iter())
                     .map(|(air_id, dummy_table_offset)| {
-                        let DummyTrace { values, width } =
-                            air_id_to_dummy_trace_and_width.get(air_id).unwrap();
+                        let Trace { values, width } = air_id_to_dummy_trace.get(air_id).unwrap();
                         let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
                         let start =
                             (trace_row * occurrences_per_record + dummy_table_offset) * width;
@@ -107,12 +110,12 @@ pub trait TraceHandler<A: Adapter> {
     }
 }
 
-pub struct DummyTrace<F> {
+pub struct Trace<F> {
     pub values: Vec<F>,
     pub width: usize,
 }
 
-impl<F> DummyTrace<F> {
+impl<F> Trace<F> {
     pub fn new(values: Vec<F>, width: usize) -> Self {
         Self { values, width }
     }

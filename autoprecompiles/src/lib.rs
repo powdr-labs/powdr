@@ -110,9 +110,7 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
-    for SymbolicConstraint<T>
-{
+impl<T> Children<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(once(&self.expr))
     }
@@ -150,9 +148,7 @@ impl<T: Copy> SymbolicBusInteraction<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>>
-    for SymbolicBusInteraction<T>
-{
+impl<T> Children<AlgebraicExpression<T>> for SymbolicBusInteraction<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(once(&self.mult).chain(&self.args))
     }
@@ -174,7 +170,7 @@ pub struct SymbolicMachine<T> {
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+impl<T> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
         self.unique_references()
     }
@@ -233,13 +229,13 @@ impl<T: Display + Ord + Clone> SymbolicMachine<T> {
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
+impl<T> SymbolicMachine<T> {
     pub fn degree(&self) -> usize {
         self.children().map(|e| e.degree()).max().unwrap_or(0)
     }
 }
 
-impl<T: Clone + Ord + std::fmt::Display> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
+impl<T> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
             self.constraints
@@ -327,6 +323,20 @@ impl<T, I> Apc<T, I> {
     /// The PC of the first line of the basic block. Can be used to identify the APC.
     pub fn start_pc(&self) -> u64 {
         self.block.start_pc
+    }
+
+    /// The instructions in the basic block.
+    pub fn instructions(&self) -> &[I] {
+        &self.block.statements
+    }
+
+    /// The `is_valid` polynomial id
+    pub fn is_valid_poly_id(&self) -> u64 {
+        self.machine
+            .main_columns()
+            .find(|c| &*c.name == "is_valid")
+            .unwrap()
+            .id
     }
 }
 

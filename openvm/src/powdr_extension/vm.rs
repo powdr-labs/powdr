@@ -2,11 +2,11 @@
 
 use std::iter::once;
 use std::sync::Arc;
+use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
 use powdr_autoprecompiles::adapter::Adapter;
-use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
@@ -22,14 +22,17 @@ use openvm_circuit::{
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
+use openvm_instructions::LocalOpcode;
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     ChipUsageGetter,
 };
 use powdr_autoprecompiles::Apc;
+use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
+use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
@@ -51,7 +54,6 @@ pub struct PowdrExtension<
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
-    _marker: std::marker::PhantomData<A>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -59,8 +61,6 @@ pub struct PowdrExtension<
 pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub instructions: Vec<Instruction<F>>,
-    pub is_valid_column: AlgebraicReference,
     pub apc: Arc<Apc<F, Instr<F>>>,
     pub apc_stats: Option<OvmApcStats>,
 }
@@ -69,16 +69,12 @@ impl<F> PowdrPrecompile<F> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        instructions: Vec<Instruction<F>>,
-        is_valid_column: AlgebraicReference,
         apc: Arc<Apc<F, Instr<F>>>,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
             name,
             opcode,
-            instructions,
-            is_valid_column,
             apc,
             apc_stats,
         }

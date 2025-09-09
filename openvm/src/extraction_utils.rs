@@ -224,7 +224,7 @@ impl OriginalVmConfig {
             })
             .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
-                airs.insert_opcode(op, executor.air_name(), || {
+                airs.insert_opcode(op, get_name::<BabyBearSC>(executor.air()), || {
                     let air = executor.air();
                     let columns = get_columns(air.clone());
                     let constraints = get_constraints(air.clone());
@@ -374,7 +374,7 @@ pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
         .collect()
 }
 
-pub fn get_name(air: Arc<dyn AnyRap<BabyBearSC>>) -> String {
+pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
     air.name()
 }
 

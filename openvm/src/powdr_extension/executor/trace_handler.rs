@@ -1,10 +1,13 @@
-use powdr_autoprecompiles::trace_handler::TraceHandler;
-use powdr_autoprecompiles::{adapter::Adapter, trace_handler::DummyTrace};
+use crate::Instr;
+use openvm_stark_backend::p3_field::PrimeField32;
+use powdr_autoprecompiles::trace_handler::{Trace, TraceHandler};
 use std::collections::HashMap;
+use powdr_autoprecompiles::{adapter::Adapter, trace_handler::Trace};
+
 
 pub struct OpenVmTraceHandler<'a, A: Adapter> {
     pub original_instructions: &'a Vec<A::Instruction>,
-    pub air_id_to_dummy_trace_and_width: &'a HashMap<A::AirId, DummyTrace<A::Field>>,
+    pub air_id_to_dummy_trace: &'a HashMap<A::AirId, DummyTrace<A::Field>>,
     pub instruction_handler: &'a A::InstructionHandler,
     pub apc_call_count: usize,
 }
@@ -12,13 +15,13 @@ pub struct OpenVmTraceHandler<'a, A: Adapter> {
 impl<'a, A: Adapter> OpenVmTraceHandler<'a, A> {
     pub fn new(
         original_instructions: &'a Vec<A::Instruction>,
-        air_id_to_dummy_trace_and_width: &'a HashMap<A::AirId, DummyTrace<A::Field>>,
+        air_id_to_dummy_trace: &'a HashMap<A::AirId, DummyTrace<A::Field>>,
         instruction_handler: &'a A::InstructionHandler,
         apc_call_count: usize,
     ) -> Self {
         Self {
             original_instructions,
-            air_id_to_dummy_trace_and_width,
+            air_id_to_dummy_trace,
             instruction_handler,
             apc_call_count,
         }
@@ -38,7 +41,7 @@ impl<'a, A: Adapter> TraceHandler<A> for OpenVmTraceHandler<'a, A> {
         self.apc_call_count
     }
 
-    fn air_id_to_dummy_trace_and_width(&self) -> &'a HashMap<A::AirId, DummyTrace<A::Field>> {
-        self.air_id_to_dummy_trace_and_width
+    fn air_id_to_dummy_trace(&self) -> &'a HashMap<A::AirId, Trace<A::Field>> {
+        self.air_id_to_dummy_trace
     }
 }
