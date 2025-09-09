@@ -288,6 +288,9 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
 }
 
 pub trait InstructionHandler<T, I, D> {
+    /// Returns the AIR id for the given instruction.
+    fn get_instruction_air_id(&self, instruction: &I) -> D;
+
     /// Returns the AIR for the given instruction.
     fn get_instruction_air(&self, instruction: &I) -> &SymbolicMachine<T>;
 
@@ -299,9 +302,6 @@ pub trait InstructionHandler<T, I, D> {
 
     /// Returns whether the given instruction is a branching instruction.
     fn is_branching(&self, instruction: &I) -> bool;
-
-    /// Returns the AIR id for the given instruction.
-    fn get_instruction_air_id(&self, instruction: &I) -> D;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

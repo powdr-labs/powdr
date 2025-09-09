@@ -49,14 +49,17 @@ pub struct OriginalAirs<F> {
 }
 
 impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
-    fn get_instruction_air(&self, instruction: &Instr<F>) -> &SymbolicMachine<F> {
+    fn get_instruction_air_id(&self, instruction: &Instr<F>) -> String {
         self.opcode_to_air
             .get(&instruction.0.opcode)
-            .and_then(|air_name| {
-                self.air_name_to_machine
-                    .get(air_name)
-                    .map(|(machine, _)| machine)
-            })
+            .unwrap()
+            .clone()
+    }
+
+    fn get_instruction_air(&self, instruction: &Instr<F>) -> &SymbolicMachine<F> {
+        self.air_name_to_machine
+            .get(&self.get_instruction_air_id(instruction))
+            .map(|(machine, _)| machine)
             .unwrap()
     }
 
@@ -72,13 +75,6 @@ impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
         self.get_instruction_metrics(instruction.0.opcode)
             .map(|metrics| metrics.clone().into())
             .unwrap()
-    }
-
-    fn get_instruction_air_id(&self, instruction: &Instr<F>) -> String {
-        self.opcode_to_air
-            .get(&instruction.0.opcode)
-            .unwrap()
-            .clone()
     }
 }
 
