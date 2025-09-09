@@ -14,7 +14,6 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    adapter::Adapter,
     expression::RowEvaluator as AlgebraicRowEvaluator,
     trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
