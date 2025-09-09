@@ -14,7 +14,7 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    expression::RowEvaluator as AlgebraicRowEvaluator,
+    expression::RowEvaluator,
     trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
@@ -246,8 +246,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator =
-                    AlgebraicRowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
                 // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
