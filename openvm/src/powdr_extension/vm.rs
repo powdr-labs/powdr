@@ -1,10 +1,10 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
 use std::iter::once;
+use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
-use powdr_autoprecompiles::expression::AlgebraicReference;
 
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
@@ -20,16 +20,15 @@ use openvm_circuit::{
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
-use openvm_instructions::VmOpcode;
-use openvm_instructions::{instruction::Instruction, LocalOpcode};
+use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     ChipUsageGetter,
 };
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, PrecompileImplementation};
+use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
@@ -45,36 +44,11 @@ pub struct PowdrExtension<F> {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct OriginalInstruction<F> {
-    pub instruction: Instruction<F>,
-    /// The autoprecompile poly_ids that the instruction points to, in the same order as the corresponding original columns
-    pub subs: Vec<u64>,
-}
-
-impl<F> OriginalInstruction<F> {
-    pub fn new(instruction: Instruction<F>, subs: Vec<u64>) -> Self {
-        Self { instruction, subs }
-    }
-
-    pub fn opcode(&self) -> VmOpcode {
-        self.instruction.opcode
-    }
-}
-
-impl<F> AsRef<Instruction<F>> for OriginalInstruction<F> {
-    fn as_ref(&self) -> &Instruction<F> {
-        &self.instruction
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub machine: SymbolicMachine<F>,
-    pub original_instructions: Vec<OriginalInstruction<F>>,
-    pub is_valid_column: AlgebraicReference,
+    pub apc: Arc<Apc<F, Instr<F>>>,
     pub apc_stats: Option<OvmApcStats>,
 }
 
@@ -82,17 +56,13 @@ impl<F> PowdrPrecompile<F> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        machine: SymbolicMachine<F>,
-        original_instructions: Vec<OriginalInstruction<F>>,
-        is_valid_column: AlgebraicReference,
+        apc: Arc<Apc<F, Instr<F>>>,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
             name,
             opcode,
-            machine,
-            original_instructions,
-            is_valid_column,
+            apc,
             apc_stats,
         }
     }

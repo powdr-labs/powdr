@@ -4,18 +4,21 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs,
+    extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
+        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
 
-use super::{
-    chip::{RangeCheckerSend, RowEvaluator},
-    vm::OriginalInstruction,
+use powdr_autoprecompiles::{
+    trace_handler::{Trace, TraceHandler, TraceHandlerData},
+    Apc,
 };
+
+use super::chip::{RangeCheckerSend, RowEvaluator};
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -26,9 +29,11 @@ use openvm_circuit::{
 };
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
+    p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix,
+    p3_maybe_rayon::prelude::ParallelIterator,
 };
 
+use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{
     air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
@@ -36,46 +41,38 @@ use openvm_stark_backend::{
     p3_maybe_rayon::prelude::ParallelSliceMut,
     Chip,
 };
-use openvm_stark_backend::{
-    p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix,
-    p3_maybe_rayon::prelude::IntoParallelIterator,
-};
-use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
-};
+use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
+use powdr_autoprecompiles::InstructionHandler;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
+/// The trace handler for the PowdrExecutor used during witness generation
+mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
-    instructions: Vec<OriginalInstruction<F>>,
     air_by_opcode_id: OriginalAirs<F>,
-    is_valid_poly_id: u64,
     inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
+    apc: Arc<Apc<F, Instr<F>>>,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: OriginalAirs<F>,
-        is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
+        apc: Arc<Apc<F, Instr<F>>>,
     ) -> Self {
         Self {
-            instructions,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,
@@ -85,6 +82,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .inventory,
             number_of_calls: 0,
             periphery: periphery.real,
+            apc,
         }
     }
 
@@ -101,16 +99,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
-        let res = self
-            .instructions
-            .iter()
-            .try_fold(from_state, |execution_state, instruction| {
-                let executor = self
-                    .inventory
-                    .get_mut_executor(&instruction.opcode())
-                    .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
-            });
+        let res =
+            self.apc
+                .instructions()
+                .iter()
+                .try_fold(from_state, |execution_state, instruction| {
+                    let executor = self
+                        .inventory
+                        .get_mut_executor(&instruction.0.opcode)
+                        .unwrap();
+                    executor.execute(memory, &instruction.0, execution_state)
+                });
 
         self.number_of_calls += 1;
         let memory_logs = memory.get_memory_logs(); // exclusive range
@@ -143,102 +142,62 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn generate_witness<SC>(
         self,
         column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<F>],
     ) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
+        let is_valid_index = column_index_by_poly_id[&self.apc.is_valid_poly_id()];
         let width = column_index_by_poly_id.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         let original_instruction_air_names = self
-            .instructions
+            .apc
+            .instructions()
             .iter()
-            .map(|instruction| instruction.opcode())
-            .map(|opcode| self.inventory.get_executor(opcode).unwrap().air_name())
+            .map(|instruction| instruction.0.opcode)
+            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
             .collect::<Vec<_>>();
 
-        let dummy_trace_by_air_name: HashMap<_, _> =
-            self.inventory
-                .executors
-                .into_iter()
-                .map(|executor| {
-                    (
-                        executor.air_name().clone(),
-                        tracing::debug_span!("dummy trace", air_name = executor.air_name())
-                            .in_scope(|| {
-                                Chip::<SC>::generate_air_proof_input(executor)
-                                    .raw
-                                    .common_main
-                                    .unwrap()
-                            }),
-                    )
-                })
-                .collect();
-
-        let occurrences_by_table_name = original_instruction_air_names.iter().counts();
-
-        let instruction_index_to_table_offset = original_instruction_air_names
-            .iter()
-            .scan(
-                HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, air_name| {
-                    let count = counts.entry(air_name).or_default();
-                    let current_count = *count;
-                    *count += 1;
-                    Some(current_count)
-                },
-            )
-            .collect::<Vec<_>>();
-
-        let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .instructions
-            .iter()
-            .map(|instruction| {
-                let mut dummy_trace_index_to_apc_index = HashMap::new();
-                for (dummy_index, poly_id) in instruction.subs.iter().enumerate() {
-                    if let Some(apc_index) = column_index_by_poly_id.get(poly_id) {
-                        dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
-                    }
-                }
-                dummy_trace_index_to_apc_index
+        let dummy_trace_by_air_name: HashMap<_, _> = self
+            .inventory
+            .executors
+            .into_iter()
+            .map(|executor| {
+                let air_name = get_name::<SC>(executor.air());
+                let DenseMatrix { values, width, .. } =
+                    tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
+                        || {
+                            Chip::<SC>::generate_air_proof_input(executor)
+                                .raw
+                                .common_main
+                                .unwrap()
+                        },
+                    );
+                (air_name.clone(), Trace::new(values, width))
             })
             .collect();
 
-        assert_eq!(
-            self.instructions.len(),
-            dummy_trace_index_to_apc_index_by_instruction.len()
+        let trace_handler = OpenVmTraceHandler::new(
+            &dummy_trace_by_air_name,
+            original_instruction_air_names,
+            self.number_of_calls,
         );
 
-        let dummy_values = (0..self.number_of_calls)
-            .into_par_iter()
-            .map(|record_index| {
-                original_instruction_air_names
-                    .iter()
-                    .zip_eq(instruction_index_to_table_offset.iter())
-                    .map(|(air_name, offset)| {
-                        let table = dummy_trace_by_air_name.get(air_name).unwrap();
-                        let occurrences_per_record =
-                            occurrences_by_table_name.get(air_name).unwrap();
-                        let width = table.width();
-                        let start = (record_index * occurrences_per_record + offset) * width;
-                        let end = start + width;
-                        &table.values[start..end]
-                    })
-                    .collect_vec()
-            });
+        let TraceHandlerData {
+            dummy_values,
+            dummy_trace_index_to_apc_index_by_instruction,
+        } = trace_handler.data(&self.apc);
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
-            .instructions
+            .apc
+            .instructions()
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    // TODO: avoid cloning the instruction
-                    .get_instruction_air(&Instr(instruction.instruction.clone()))
+                    .get_instruction_air(instruction)
                     .bus_interactions
                     .iter()
                     .filter_map(|interaction| interaction.try_into().ok())
@@ -247,11 +206,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .collect_vec();
 
         // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
-            bus_interactions
-                .iter()
-                .map(|interaction| interaction.clone().into())
-                .collect_vec();
+        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> = self
+            .apc
+            .machine()
+            .bus_interactions
+            .iter()
+            .map(|interaction| interaction.clone().into())
+            .collect_vec();
 
         // go through the final table and fill in the values
         values

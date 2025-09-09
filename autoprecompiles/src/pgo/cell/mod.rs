@@ -25,7 +25,7 @@ pub use selection::KnapsackItem;
 pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: AdapterApc<A>,
+        apc: Arc<AdapterApc<A>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<A>,
         max_degree: usize,
@@ -127,7 +127,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 )
                 .ok()?;
                 let candidate = C::create(
-                    apc,
+                    Arc::new(apc),
                     &self.data,
                     vm_config.clone(),
                     config.degree_bound.identities,
