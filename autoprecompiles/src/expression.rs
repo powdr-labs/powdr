@@ -1,7 +1,9 @@
 //! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
 //! custom `AlgebraicReference` type.
+use core::ops::{Add, Mul, Neg, Sub};
+use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use serde::{Deserialize, Serialize};
-use std::{hash::Hash, sync::Arc};
+use std::{collections::BTreeMap, hash::Hash, sync::Arc};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
@@ -73,5 +75,58 @@ pub fn try_convert<T, R: TryInto<AlgebraicReference>>(
                 },
             ))
         }
+    }
+}
+
+pub struct RowEvaluator<
+    'a,
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+> {
+    pub row: &'a [F],
+    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
+}
+
+impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy>
+    RowEvaluator<'a, F>
+{
+    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
+        Self {
+            row,
+            witness_id_to_index,
+        }
+    }
+
+    pub fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> F {
+        match algebraic_expr {
+            AlgebraicExpression::Number(n) => self.eval_const(*n),
+            AlgebraicExpression::BinaryOperation(binary) => match binary.op {
+                AlgebraicBinaryOperator::Add => {
+                    self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
+                }
+                AlgebraicBinaryOperator::Sub => {
+                    self.eval_expr(&binary.left) - self.eval_expr(&binary.right)
+                }
+                AlgebraicBinaryOperator::Mul => {
+                    self.eval_expr(&binary.left) * self.eval_expr(&binary.right)
+                }
+            },
+            AlgebraicExpression::UnaryOperation(unary) => match unary.op {
+                AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
+            },
+            AlgebraicExpression::Reference(var) => self.eval_var(var.clone()),
+        }
+    }
+
+    fn eval_const(&self, c: F) -> F {
+        c
+    }
+
+    fn eval_var(&self, algebraic_var: AlgebraicReference) -> F {
+        let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
+            witness_id_to_index[&(algebraic_var.id)]
+        } else {
+            algebraic_var.id as usize
+        };
+        self.row[index]
     }
 }
