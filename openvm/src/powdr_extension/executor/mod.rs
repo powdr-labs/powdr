@@ -9,12 +9,12 @@ use crate::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
         trace_handler::OpenVmTraceHandler,
-        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
 
 use powdr_autoprecompiles::{
+    adapter::Adapter,
     trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
@@ -159,14 +159,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        let original_instruction_air_names = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| instruction.0.opcode)
-            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
-            .collect::<Vec<_>>();
-
         let dummy_trace_by_air_name: HashMap<_, _> = self
             .inventory
             .executors
@@ -186,9 +178,9 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect();
 
-        let trace_handler = OpenVmTraceHandler::new(
+        let trace_handler = OpenVmTraceHandler::<A>::new(
             &dummy_trace_by_air_name,
-            original_instruction_air_names,
+            &self.air_by_opcode_id,
             self.number_of_calls,
         );
 

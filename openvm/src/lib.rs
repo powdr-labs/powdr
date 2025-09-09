@@ -185,7 +185,7 @@ impl SpecializedConfig {
     ) -> Self {
         let airs = base_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
-        let powdr_extension = PowdrExtension::new(
+        let powdr_extension = PowdrExtension::<BabyBear, BabyBearOpenVmApcAdapter<'static>>::new(
             precompiles,
             base_config.config().clone(),
             implementation,

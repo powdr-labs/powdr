@@ -72,6 +72,7 @@ impl<F: PrimeField32, A: Adapter> PowdrChip<F, A> {
             opcode,
             executor,
             air,
+            _marker: std::marker::PhantomData,
         }
     }
 }
@@ -133,7 +134,7 @@ where
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
         let trace = self
             .executor
-            .generate_witness::<SC>(&self.air.column_index_by_poly_id);
+            .generate_witness::<SC, A>(&self.air.column_index_by_poly_id);
 
         assert_eq!(trace.width(), width);
 

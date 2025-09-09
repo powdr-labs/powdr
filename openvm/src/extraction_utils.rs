@@ -16,7 +16,6 @@ use openvm_instructions::VmOpcode;
 
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use openvm_stark_backend::ChipUsageGetter;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
 };

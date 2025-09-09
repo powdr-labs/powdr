@@ -1,14 +1,10 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::cmp::Eq;
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::sync::Arc;
 
 use crate::adapter::Adapter;
 use crate::Apc;
 use crate::InstructionHandler;
-
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceHandlerData<'a, F> {
@@ -19,9 +15,6 @@ pub struct TraceHandlerData<'a, F> {
 }
 
 pub trait TraceHandler<A: Adapter> {
-    /// Returns the original instructions of the APC chip
-    fn original_instructions(&self) -> Vec<A::Instruction>;
-
     /// Returns reference to the dummy instruction handler
     fn instruction_handler(&self) -> &A::InstructionHandler;
 
@@ -31,17 +24,13 @@ pub trait TraceHandler<A: Adapter> {
     /// Returns a mapping from air_id to the dummy trace
     fn air_id_to_dummy_trace(&self) -> &HashMap<A::AirId, Trace<A::Field>>;
 
-
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
-    fn data<'a>(
-        &'a self,
-        apc: &Apc<A::Field, A::Instruction>,
-    ) -> TraceHandlerData<'a, A::Field> {
+    fn data<'a>(&'a self, apc: &Apc<A::Field, A::Instruction>) -> TraceHandlerData<'a, A::Field> {
         let air_id_to_dummy_trace = self.air_id_to_dummy_trace();
 
         // Returns a vector with the same length as original instructions
-        let original_instruction_air_ids = self
-            .original_instructions()
+        let original_instruction_air_ids = apc
+            .instructions()
             .iter()
             .map(|instruction| {
                 self.instruction_handler()

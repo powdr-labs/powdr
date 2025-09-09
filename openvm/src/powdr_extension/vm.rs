@@ -2,7 +2,6 @@
 
 use std::iter::once;
 use std::sync::Arc;
-use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit_derive::InstructionExecutor;
@@ -23,16 +22,13 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::LocalOpcode;
-use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     ChipUsageGetter,
 };
 use powdr_autoprecompiles::Apc;
-use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
@@ -54,6 +50,7 @@ pub struct PowdrExtension<
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
+    _marker: std::marker::PhantomData<A>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

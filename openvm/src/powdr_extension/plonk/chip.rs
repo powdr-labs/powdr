@@ -76,6 +76,7 @@ impl<F: PrimeField32, A: Adapter> PlonkChip<F, A> {
             executor,
             bus_map,
             apc,
+            _marker: std::marker::PhantomData,
         }
     }
 }
@@ -151,7 +152,7 @@ where
             .collect();
         let witness = self
             .executor
-            .generate_witness::<SC>(&column_index_by_poly_id);
+            .generate_witness::<SC, A>(&column_index_by_poly_id);
 
         // TODO: This should be parallelized.
         let mut values = <Val<SC>>::zero_vec(height * width);
