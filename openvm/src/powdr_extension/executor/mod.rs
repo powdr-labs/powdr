@@ -14,12 +14,12 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    expression::RowEvaluator as AlgebraicRowEvaluator,
+    expression::RowEvaluator,
     trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
 
-use super::chip::{RangeCheckerSend, RowEvaluator};
+use super::chip::RangeCheckerSend;
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -36,7 +36,6 @@ use openvm_stark_backend::{
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{
-    air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
     p3_commit::{Pcs, PolynomialSpace},
     p3_maybe_rayon::prelude::ParallelSliceMut,
@@ -247,8 +246,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator =
-                    AlgebraicRowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
                 // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
