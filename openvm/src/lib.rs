@@ -1343,7 +1343,10 @@ mod tests {
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving pairing guest with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!(
+            "Proving pairing guest with PgoConfig::Cell took {:?}",
+            elapsed
+        );
     }
 
     #[test]
