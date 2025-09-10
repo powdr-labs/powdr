@@ -221,12 +221,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
                     range_checker_sends.iter().for_each(|interaction| {
-                        let ConcreteBusInteraction { mult, args, .. } =
+                        let ConcreteBusInteraction { mult, mut args, .. } =
                             evaluator.eval_bus_interaction(interaction);
                         for _ in 0..mult.as_canonical_u32() {
                             self.periphery.range_checker.remove_count(
-                                args[0].as_canonical_u32(),
-                                args[1].as_canonical_u32() as usize,
+                                args.next().unwrap().as_canonical_u32(),
+                                args.next().unwrap().as_canonical_u32() as usize,
                             );
                         }
                     });
@@ -252,7 +252,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         self.periphery.apply(
                             id as u16,
                             mult.as_canonical_u32(),
-                            args.iter().map(|arg| arg.as_canonical_u32()),
+                            args.map(|arg| arg.as_canonical_u32()),
                         );
                     });
             });

@@ -128,16 +128,15 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
         self.row[index]
     }
 
-    pub fn eval_bus_interaction(
-        &self,
-        bus_interaction: &SymbolicBusInteraction<F>,
-    ) -> ConcreteBusInteraction<F> {
+    pub fn eval_bus_interaction<'b>(
+        &'a self,
+        bus_interaction: &'b SymbolicBusInteraction<F>,
+    ) -> ConcreteBusInteraction<F, impl Iterator<Item = F> + 'b>
+    where
+        'a: 'b,
+    {
         let mult = self.eval_expr(&bus_interaction.mult);
-        let args = bus_interaction
-            .args
-            .iter()
-            .map(|arg| self.eval_expr(arg))
-            .collect();
+        let args = bus_interaction.args.iter().map(|arg| self.eval_expr(arg));
         ConcreteBusInteraction {
             id: bus_interaction.id,
             mult,
@@ -146,8 +145,8 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
     }
 }
 
-pub struct ConcreteBusInteraction<F> {
+pub struct ConcreteBusInteraction<F, I> {
     pub id: u64,
     pub mult: F,
-    pub args: Vec<F>,
+    pub args: I,
 }
