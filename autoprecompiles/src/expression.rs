@@ -5,6 +5,8 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, hash::Hash, sync::Arc};
 
+use crate::SymbolicBusInteraction;
+
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
@@ -129,4 +131,34 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
         };
         self.row[index]
     }
+
+    pub fn evaluate_bus_interactions(
+        &self,
+        bus_interactions: &Vec<&SymbolicBusInteraction<F>>,
+        filter_by: impl Fn(&SymbolicBusInteraction<F>) -> bool,
+    ) -> Vec<ConcreteBusInteraction<F>> {
+        bus_interactions
+            .iter()
+            .filter(|&bus_interaction| filter_by(bus_interaction))
+            .map(|bus_interaction| {
+                let mult = self.eval_expr(&bus_interaction.mult);
+                let args = bus_interaction
+                    .args
+                    .iter()
+                    .map(|arg| self.eval_expr(arg))
+                    .collect();
+                ConcreteBusInteraction {
+                    id: bus_interaction.id,
+                    mult,
+                    args,
+                }
+            })
+            .collect()
+    }
+}
+
+pub struct ConcreteBusInteraction<F> {
+    pub id: u64,
+    pub mult: F,
+    pub args: Vec<F>,
 }

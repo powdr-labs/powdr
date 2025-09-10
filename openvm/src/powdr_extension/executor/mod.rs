@@ -14,10 +14,8 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    expression::RowEvaluator,
-    trace_handler::{
-        ConcreteBusInteraction, InteractionEvaluator, Trace, TraceHandler, TraceHandlerData,
-    },
+    expression::{ConcreteBusInteraction, RowEvaluator},
+    trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
 
@@ -219,11 +217,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .zip_eq(&range_checker_sends_per_original_instruction)
                         .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
-                    let interaction_evaluator =
-                        InteractionEvaluator::new(RowEvaluator::new(dummy_row, None));
+                    let evaluator = RowEvaluator::new(dummy_row, None);
 
-                    for ConcreteBusInteraction { mult, args, .. } in interaction_evaluator
-                        .evaluate_bus_interactions(range_checker_sends, |_| true)
+                    for ConcreteBusInteraction { mult, args, .. } in
+                        evaluator.evaluate_bus_interactions(range_checker_sends, |_| true)
                     {
                         for _ in 0..mult.as_canonical_u32() {
                             self.periphery.range_checker.remove_count(
@@ -241,13 +238,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let interaction_evaluator = InteractionEvaluator::new(RowEvaluator::new(
-                    row_slice,
-                    Some(column_index_by_poly_id),
-                ));
+                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
-                for ConcreteBusInteraction { id, mult, args } in interaction_evaluator
+                for ConcreteBusInteraction { id, mult, args } in evaluator
                     .evaluate_bus_interactions(
                         &self.apc.machine().bus_interactions.iter().collect_vec(),
                         |_| true,
