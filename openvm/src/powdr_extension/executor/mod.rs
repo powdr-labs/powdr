@@ -8,14 +8,13 @@ use crate::{
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
-        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
 
 use powdr_autoprecompiles::{
     adapter::Adapter,
-    trace_handler::{Trace, TraceHandler, TraceHandlerData},
+    trace_handler::{generate_trace, Trace, TraceHandlerData},
     Apc,
 };
 
@@ -49,8 +48,6 @@ use powdr_autoprecompiles::InstructionHandler;
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
-/// The trace handler for the PowdrExecutor used during witness generation
-mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
@@ -178,16 +175,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect();
 
-        let trace_handler = OpenVmTraceHandler::<A>::new(
-            &dummy_trace_by_air_name,
-            &self.air_by_opcode_id,
-            self.number_of_calls,
-        );
-
         let TraceHandlerData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = trace_handler.data(&self.apc);
+        } = generate_trace::<A>(
+            &dummy_trace_by_air_name,
+            &self.air_by_opcode_id,
+            self.number_of_calls,
+            &self.apc,
+        );
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
