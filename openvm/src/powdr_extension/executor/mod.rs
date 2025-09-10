@@ -192,7 +192,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    .get_instruction_air(instruction)
+                    .get_instruction_air_and_id(instruction)
+                    .1
                     .bus_interactions
                     .iter()
                     .filter_map(|interaction| interaction.try_into().ok())

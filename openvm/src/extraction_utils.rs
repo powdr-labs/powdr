@@ -49,18 +49,18 @@ pub struct OriginalAirs<F> {
 }
 
 impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
-    fn get_instruction_air_id(&self, instruction: &Instr<F>) -> String {
-        self.opcode_to_air
+    fn get_instruction_air_and_id(&self, instruction: &Instr<F>) -> (String, &SymbolicMachine<F>) {
+        let id = self
+            .opcode_to_air
             .get(&instruction.0.opcode)
             .unwrap()
-            .clone()
-    }
-
-    fn get_instruction_air(&self, instruction: &Instr<F>) -> &SymbolicMachine<F> {
-        self.air_name_to_machine
-            .get(&self.get_instruction_air_id(instruction))
+            .clone();
+        let machine = self
+            .air_name_to_machine
+            .get(&id)
             .map(|(machine, _)| machine)
-            .unwrap()
+            .unwrap();
+        (id, machine)
     }
 
     fn is_allowed(&self, instruction: &Instr<F>) -> bool {

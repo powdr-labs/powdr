@@ -41,7 +41,11 @@ impl<'a, A: Adapter> TraceHandler<'a, A> {
         let original_instruction_air_ids = apc
             .instructions()
             .iter()
-            .map(|instruction| self.instruction_handler.get_instruction_air_id(instruction))
+            .map(|instruction| {
+                self.instruction_handler
+                    .get_instruction_air_and_id(instruction)
+                    .0
+            })
             .collect::<Vec<_>>();
 
         let air_id_occurrences = original_instruction_air_ids.iter().counts();

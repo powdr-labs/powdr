@@ -288,11 +288,8 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
 }
 
 pub trait InstructionHandler<T, I, D> {
-    /// Returns the AIR id for the given instruction.
-    fn get_instruction_air_id(&self, instruction: &I) -> D;
-
-    /// Returns the AIR for the given instruction.
-    fn get_instruction_air(&self, instruction: &I) -> &SymbolicMachine<T>;
+    /// Returns the AIR and id for the given instruction.
+    fn get_instruction_air_and_id(&self, instruction: &I) -> (D, &SymbolicMachine<T>);
 
     /// Returns the AIR stats for the given instruction.
     fn get_instruction_air_stats(&self, instruction: &I) -> AirStats;
