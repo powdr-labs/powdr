@@ -20,10 +20,9 @@ use openvm_circuit::{
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
     air_builders::symbolic::{
-        symbolic_expression::{SymbolicEvaluator, SymbolicExpression},
+        symbolic_expression::SymbolicEvaluator,
         symbolic_variable::{Entry, SymbolicVariable},
     },
-    interaction::BusIndex,
     p3_air::{Air, BaseAir},
     rap::ColumnsAir,
 };
@@ -31,7 +30,7 @@ use openvm_stark_backend::{
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     interaction::InteractionBuilder,
-    p3_field::{Field, PrimeField32},
+    p3_field::PrimeField32,
     p3_matrix::Matrix,
     prover::types::AirProofInput,
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
@@ -41,7 +40,6 @@ use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
     Apc,
 };
-use serde::{Deserialize, Serialize};
 
 pub struct PowdrChip<F: PrimeField32> {
     pub name: String,
@@ -143,77 +141,6 @@ pub struct PowdrAir<F> {
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
     fn columns(&self) -> Option<Vec<String>> {
         Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "F: Field")]
-pub struct SymbolicMachine<F> {
-    columns: Vec<AlgebraicReference>,
-    constraints: Vec<SymbolicConstraint<F>>,
-    pub bus_interactions: Vec<SymbolicBusInteraction<F>>,
-}
-
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicMachine<F>> for SymbolicMachine<F> {
-    fn from(machine: powdr_autoprecompiles::SymbolicMachine<F>) -> Self {
-        let columns = machine.main_columns().collect();
-
-        let powdr_autoprecompiles::SymbolicMachine {
-            constraints,
-            bus_interactions,
-        } = machine;
-        Self {
-            columns,
-            constraints: constraints
-                .into_iter()
-                .map(SymbolicConstraint::from)
-                .collect(),
-            bus_interactions: bus_interactions
-                .into_iter()
-                .map(SymbolicBusInteraction::from)
-                .collect(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "F: Field")]
-struct SymbolicConstraint<F> {
-    expr: SymbolicExpression<F>,
-}
-
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicConstraint<F>> for SymbolicConstraint<F> {
-    fn from(constraint: powdr_autoprecompiles::SymbolicConstraint<F>) -> Self {
-        let powdr_autoprecompiles::SymbolicConstraint { expr } = constraint;
-        Self {
-            expr: algebraic_to_symbolic(&expr),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "F: Field")]
-pub struct SymbolicBusInteraction<F> {
-    pub id: BusIndex,
-    pub mult: SymbolicExpression<F>,
-    pub args: Vec<SymbolicExpression<F>>,
-    pub count_weight: u32,
-}
-
-impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicBusInteraction<F>>
-    for SymbolicBusInteraction<F>
-{
-    fn from(bus_interaction: powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Self {
-        let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = bus_interaction;
-        let mult = algebraic_to_symbolic(&mult);
-        let args = args.iter().map(algebraic_to_symbolic).collect();
-        Self {
-            id: id as BusIndex,
-            mult,
-            args,
-            // TODO: Is this correct?
-            count_weight: 1,
-        }
     }
 }
 
