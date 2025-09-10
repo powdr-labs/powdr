@@ -113,7 +113,7 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
             AlgebraicExpression::UnaryOperation(unary) => match unary.op {
                 AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
             },
-            AlgebraicExpression::Reference(var) => self.eval_var(var.clone()),
+            AlgebraicExpression::Reference(var) => self.eval_var(var),
         }
     }
 
@@ -121,7 +121,7 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
         c
     }
 
-    fn eval_var(&self, algebraic_var: AlgebraicReference) -> F {
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
         let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
             witness_id_to_index[&(algebraic_var.id)]
         } else {
