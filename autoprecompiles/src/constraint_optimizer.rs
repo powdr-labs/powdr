@@ -62,7 +62,7 @@ pub fn optimize_constraints<
     let constraint_system = IndexedConstraintSystem::from(constraint_system);
 
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
-    stats_logger.log("solver-based optimization", &constraint_system);   
+    stats_logger.log("solver-based optimization", &constraint_system);
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
@@ -87,7 +87,6 @@ pub fn optimize_constraints<
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
     stats_logger.log("memory optimization", &constraint_system);
     let constraint_system = remove_register_zero_memory_bus(constraint_system, memory_bus_id);
-
 
     let constraint_system = LowDegreeBusInteractionOptimizer::new(
         solver,
@@ -369,14 +368,12 @@ fn remove_register_zero_memory_bus<P: FieldElement, V: Ord + Clone + Eq + Hash>(
     mut constraint_system: ConstraintSystem<P, V>,
     memory_bus_id: Option<u64>,
 ) -> ConstraintSystem<P, V> {
-
-    constraint_system.bus_interactions = constraint_system
+    constraint_system
         .bus_interactions
-        .into_iter()
-        .filter(|bus_interaction| {
-            !(bus_interaction.bus_id.try_to_number() == Some(P::from(memory_bus_id.unwrap())) && bus_interaction.payload[1].is_zero())
-        })
-        .collect();
+        .retain(|bus_interaction| {
+            !(bus_interaction.bus_id.try_to_number() == Some(P::from(memory_bus_id.unwrap()))
+                && bus_interaction.payload[1].is_zero())
+        });
 
     constraint_system
 }

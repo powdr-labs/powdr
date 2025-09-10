@@ -34,7 +34,6 @@ pub fn optimize_memory<
     let (to_remove, new_constraints) =
         redundant_memory_interactions_indices::<T, V, M>(&system, solver, memory_bus_id);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
-    println!("Removing {:?} memory interactions", to_remove);
     system.bus_interactions = system
         .bus_interactions
         .into_iter()
