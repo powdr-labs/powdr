@@ -98,7 +98,7 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
 
     pub fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> F {
         match algebraic_expr {
-            AlgebraicExpression::Number(n) => self.eval_const(*n),
+            AlgebraicExpression::Number(n) => *n,
             AlgebraicExpression::BinaryOperation(binary) => match binary.op {
                 AlgebraicBinaryOperator::Add => {
                     self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
@@ -115,10 +115,6 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
             },
             AlgebraicExpression::Reference(var) => self.eval_var(var),
         }
-    }
-
-    fn eval_const(&self, c: F) -> F {
-        c
     }
 
     fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
