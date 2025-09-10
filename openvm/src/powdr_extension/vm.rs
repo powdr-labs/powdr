@@ -100,8 +100,8 @@ pub enum PowdrExecutor<
             AirId = String,
         > + 'static,
 > {
-    Powdr(PowdrChip<F, A>),
-    Plonk(PlonkChip<F, A>),
+    Powdr(PowdrChip<A>),
+    Plonk(PlonkChip<A>),
 }
 
 impl<F: PrimeField32, A> PowdrExecutor<F, A>
