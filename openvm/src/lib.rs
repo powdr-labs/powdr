@@ -848,6 +848,10 @@ mod tests {
     const GUEST_U256_APC_PGO: u64 = 10;
     const GUEST_U256_SKIP: u64 = 0;
 
+    const GUEST_PAIRING: &str = "guest-pairing";
+    const GUEST_PAIRING_APC_PGO: u64 = 10;
+    const GUEST_PAIRING_SKIP: u64 = 0;
+
     const GUEST_HINTS_TEST: &str = "guest-hints-test";
 
     const GUEST_ECC_HINTS: &str = "guest-ecc-powdr-affine-hint";
@@ -1316,6 +1320,30 @@ mod tests {
         );
         let elapsed = start.elapsed();
         tracing::debug!("Proving U256 with PgoConfig::Cell took {:?}", elapsed);
+    }
+
+    #[test]
+    #[ignore = "Too slow"]
+    fn pairing_prove() {
+        use std::time::Instant;
+
+        let stdin = StdIn::default();
+        let config = default_powdr_openvm_config(GUEST_PAIRING_APC_PGO, GUEST_PAIRING_SKIP);
+
+        let pgo_data =
+            execution_profile_from_guest(GUEST_PAIRING, GuestOptions::default(), stdin.clone());
+
+        let start = Instant::now();
+        prove_simple(
+            GUEST_PAIRING,
+            config.clone(),
+            PrecompileImplementation::SingleRowChip,
+            stdin.clone(),
+            PgoConfig::Cell(pgo_data.clone(), None),
+            None,
+        );
+        let elapsed = start.elapsed();
+        tracing::debug!("Proving pairing guest with PgoConfig::Cell took {:?}", elapsed);
     }
 
     #[test]
