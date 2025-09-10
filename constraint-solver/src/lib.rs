@@ -11,6 +11,7 @@ pub mod reachability;
 pub mod runtime_constant;
 pub mod solver;
 pub mod symbolic_expression;
+pub mod system_splitter;
 pub mod test_utils;
 pub mod utils;
 pub mod variable_update;
