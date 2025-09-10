@@ -21,7 +21,6 @@ use powdr_autoprecompiles::{
     Apc,
 };
 
-use super::chip::RangeCheckerSend;
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -242,8 +241,10 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let interaction_evaluator =
-                    InteractionEvaluator::new(RowEvaluator::new(row_slice, None));
+                let interaction_evaluator = InteractionEvaluator::new(RowEvaluator::new(
+                    row_slice,
+                    Some(column_index_by_poly_id),
+                ));
 
                 // replay the side effects of this row on the main periphery
                 for ConcreteBusInteraction { id, mult, args } in interaction_evaluator
