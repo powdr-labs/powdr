@@ -217,26 +217,28 @@ impl<F: PrimeField32> From<powdr_autoprecompiles::SymbolicBusInteraction<F>>
     }
 }
 
-pub struct RangeCheckerSend<F> {
-    pub mult: AlgebraicExpression<F>,
-    pub value: AlgebraicExpression<F>,
-    pub max_bits: AlgebraicExpression<F>,
+pub struct RangeCheckerSend<'a, F> {
+    pub mult: &'a AlgebraicExpression<F>,
+    pub value: &'a AlgebraicExpression<F>,
+    pub max_bits: &'a AlgebraicExpression<F>,
 }
 
-impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
-    for RangeCheckerSend<F>
+impl<'a, F: PrimeField32> TryFrom<&'a powdr_autoprecompiles::SymbolicBusInteraction<F>>
+    for RangeCheckerSend<'a, F>
 {
     type Error = ();
 
-    fn try_from(i: &powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Result<Self, Self::Error> {
+    fn try_from(
+        i: &'a powdr_autoprecompiles::SymbolicBusInteraction<F>,
+    ) -> Result<Self, Self::Error> {
         if i.id == 3 {
             assert_eq!(i.args.len(), 2);
             let value = &i.args[0];
             let max_bits = &i.args[1];
             Ok(Self {
-                mult: i.mult.clone(),
-                value: value.clone(),
-                max_bits: max_bits.clone(),
+                mult: &i.mult,
+                value,
+                max_bits,
             })
         } else {
             Err(())

@@ -223,13 +223,13 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     // first remove the side effects of this row on the main periphery
                     for range_checker_send in range_checker_sends {
                         let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
+                            .eval_expr(range_checker_send.mult)
                             .as_canonical_u32();
                         let value = evaluator
-                            .eval_expr(&range_checker_send.value)
+                            .eval_expr(range_checker_send.value)
                             .as_canonical_u32();
                         let max_bits = evaluator
-                            .eval_expr(&range_checker_send.max_bits)
+                            .eval_expr(range_checker_send.max_bits)
                             .as_canonical_u32();
                         for _ in 0..mult {
                             self.periphery
