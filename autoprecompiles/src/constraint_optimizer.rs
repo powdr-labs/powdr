@@ -67,6 +67,12 @@ pub fn optimize_constraints<
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
 
+    let constraint_system = remove_register_zero_memory_bus(constraint_system, memory_bus_id);
+    stats_logger.log(
+        "removing register zero memory bus interactions",
+        &constraint_system,
+    );
+
     let constraint_system =
         remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing free variables", &constraint_system);
@@ -360,6 +366,18 @@ fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord
     constraint_system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
     constraint_system
         .retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
+    constraint_system
+}
+
+fn remove_register_zero_memory_bus<P: FieldElement, V: Ord + Clone + Eq + Hash>(
+    mut constraint_system: IndexedConstraintSystem<P, V>,
+    memory_bus_id: Option<u64>,
+) -> IndexedConstraintSystem<P, V> {
+    constraint_system.retain_bus_interactions(|bus_interaction| {
+        !(bus_interaction.bus_id.try_to_number() == Some(P::from(memory_bus_id.unwrap()))
+            && bus_interaction.payload[1].is_zero())
+    });
+
     constraint_system
 }
 
