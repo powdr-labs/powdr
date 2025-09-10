@@ -2,14 +2,12 @@ Instructions:
   SLT rd_ptr = 8, rs1_ptr = 0, rs2 = 5, rs2_as = 1
 
 APC advantage:
-  - Main columns: 37 -> 23 (1.61x reduction)
-  - Bus interactions: 18 -> 16 (1.12x reduction)
+  - Main columns: 37 -> 21 (1.76x reduction)
+  - Bus interactions: 18 -> 12 (1.50x reduction)
   - Constraints: 28 -> 18 (1.56x reduction)
 
-Symbolic machine using 23 unique main columns:
+Symbolic machine using 21 unique main columns:
   from_state__timestamp_0
-  reads_aux__0__base__prev_timestamp_0
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
   reads_aux__1__base__prev_timestamp_0
   reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
   writes_aux__base__prev_timestamp_0
@@ -36,16 +34,12 @@ mult=is_valid * -1, args=[0, from_state__timestamp_0]
 mult=is_valid * 1, args=[4, from_state__timestamp_0 + 3]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__0__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, from_state__timestamp_0]
 mult=is_valid * -1, args=[1, 5, c__0_0, c__1_0, c__2_0, c__3_0, reads_aux__1__base__prev_timestamp_0]
 mult=is_valid * 1, args=[1, 5, c__0_0, c__1_0, c__2_0, c__3_0, from_state__timestamp_0 + 1]
 mult=is_valid * -1, args=[1, 8, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
 mult=is_valid * 1, args=[1, 8, cmp_result_0, 0, 0, 0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
