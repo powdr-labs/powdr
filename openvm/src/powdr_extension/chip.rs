@@ -44,20 +44,20 @@ use powdr_autoprecompiles::{
 };
 use serde::{Deserialize, Serialize};
 
-pub struct PowdrChip<F: PrimeField32, A: Adapter> {
+pub struct PowdrChip<A: Adapter<Field: PrimeField32>> {
     pub name: String,
     pub opcode: PowdrOpcode,
     /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<F>,
-    pub air: Arc<PowdrAir<F>>,
+    pub executor: PowdrExecutor<A::Field>,
+    pub air: Arc<PowdrAir<A::Field>>,
     _marker: std::marker::PhantomData<A>,
 }
 
-impl<F: PrimeField32, A: Adapter> PowdrChip<F, A> {
+impl<A: Adapter<Field: PrimeField32>> PowdrChip<A> {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        original_airs: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        precompile: PowdrPrecompile<A::Field>,
+        original_airs: OriginalAirs<A::Field>,
+        memory: Arc<Mutex<OfflineMemory<A::Field>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
@@ -77,11 +77,11 @@ impl<F: PrimeField32, A: Adapter> PowdrChip<F, A> {
     }
 }
 
-impl<F: PrimeField32, A: Adapter> InstructionExecutor<F> for PowdrChip<F, A> {
+impl<A: Adapter<Field: PrimeField32>> InstructionExecutor<A::Field> for PowdrChip<A> {
     fn execute(
         &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
+        memory: &mut MemoryController<A::Field>,
+        instruction: &Instruction<A::Field>,
         from_state: ExecutionState<u32>,
     ) -> ExecutionResult<ExecutionState<u32>> {
         let &Instruction { opcode, .. } = instruction;
@@ -97,7 +97,7 @@ impl<F: PrimeField32, A: Adapter> InstructionExecutor<F> for PowdrChip<F, A> {
     }
 }
 
-impl<F: PrimeField32, A: Adapter> ChipUsageGetter for PowdrChip<F, A> {
+impl<A: Adapter<Field: PrimeField32>> ChipUsageGetter for PowdrChip<A> {
     fn air_name(&self) -> String {
         format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -110,7 +110,7 @@ impl<F: PrimeField32, A: Adapter> ChipUsageGetter for PowdrChip<F, A> {
     }
 }
 
-impl<SC: StarkGenericConfig, A> Chip<SC> for PowdrChip<Val<SC>, A>
+impl<SC: StarkGenericConfig, A: Adapter<Field = Val<SC>>> Chip<SC> for PowdrChip<A>
 where
     Val<SC>: PrimeField32,
     A: Adapter<
