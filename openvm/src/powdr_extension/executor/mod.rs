@@ -21,6 +21,7 @@ use powdr_autoprecompiles::{
     Apc,
 };
 
+use super::chip::RangeCheckerSend;
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
