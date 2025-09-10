@@ -132,28 +132,21 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
         self.row[index]
     }
 
-    pub fn evaluate_bus_interactions(
+    pub fn eval_bus_interaction(
         &self,
-        bus_interactions: &Vec<&SymbolicBusInteraction<F>>,
-        filter_by: impl Fn(&SymbolicBusInteraction<F>) -> bool,
-    ) -> Vec<ConcreteBusInteraction<F>> {
-        bus_interactions
+        bus_interaction: &SymbolicBusInteraction<F>,
+    ) -> ConcreteBusInteraction<F> {
+        let mult = self.eval_expr(&bus_interaction.mult);
+        let args = bus_interaction
+            .args
             .iter()
-            .filter(|&bus_interaction| filter_by(bus_interaction))
-            .map(|bus_interaction| {
-                let mult = self.eval_expr(&bus_interaction.mult);
-                let args = bus_interaction
-                    .args
-                    .iter()
-                    .map(|arg| self.eval_expr(arg))
-                    .collect();
-                ConcreteBusInteraction {
-                    id: bus_interaction.id,
-                    mult,
-                    args,
-                }
-            })
-            .collect()
+            .map(|arg| self.eval_expr(arg))
+            .collect();
+        ConcreteBusInteraction {
+            id: bus_interaction.id,
+            mult,
+            args,
+        }
     }
 }
 

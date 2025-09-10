@@ -220,16 +220,16 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 {
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
-                    for ConcreteBusInteraction { mult, args, .. } in
-                        evaluator.evaluate_bus_interactions(range_checker_sends, |_| true)
-                    {
+                    range_checker_sends.iter().for_each(|interaction| {
+                        let ConcreteBusInteraction { mult, args, .. } =
+                            evaluator.eval_bus_interaction(interaction);
                         for _ in 0..mult.as_canonical_u32() {
                             self.periphery.range_checker.remove_count(
                                 args[0].as_canonical_u32(),
                                 args[1].as_canonical_u32() as usize,
                             );
                         }
-                    }
+                    });
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
@@ -242,18 +242,19 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
-                for ConcreteBusInteraction { id, mult, args } in evaluator
-                    .evaluate_bus_interactions(
-                        &self.apc.machine().bus_interactions.iter().collect_vec(),
-                        |_| true,
-                    )
-                {
-                    self.periphery.apply(
-                        id as u16,
-                        mult.as_canonical_u32(),
-                        args.iter().map(|arg| arg.as_canonical_u32()),
-                    );
-                }
+                self.apc
+                    .machine()
+                    .bus_interactions
+                    .iter()
+                    .for_each(|interaction| {
+                        let ConcreteBusInteraction { id, mult, args } =
+                            evaluator.eval_bus_interaction(interaction);
+                        self.periphery.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.iter().map(|arg| arg.as_canonical_u32()),
+                        );
+                    });
             });
 
         RowMajorMatrix::new(values, width)
