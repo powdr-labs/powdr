@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
@@ -199,7 +200,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .get_instruction_air(instruction)
                     .bus_interactions
                     .iter()
-                    .filter(|interaction| interaction.id == 3)
+                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
                     .collect_vec()
             })
             .collect_vec();
