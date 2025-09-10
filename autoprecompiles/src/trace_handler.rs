@@ -1,8 +1,7 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::cmp::Eq;
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::{cmp::Eq, hash::Hash};
 
 use crate::Apc;
 

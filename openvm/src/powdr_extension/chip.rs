@@ -144,33 +144,6 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
     }
 }
 
-pub struct RangeCheckerSend<F> {
-    pub mult: AlgebraicExpression<F>,
-    pub value: AlgebraicExpression<F>,
-    pub max_bits: AlgebraicExpression<F>,
-}
-
-impl<F: PrimeField32> TryFrom<&powdr_autoprecompiles::SymbolicBusInteraction<F>>
-    for RangeCheckerSend<F>
-{
-    type Error = ();
-
-    fn try_from(i: &powdr_autoprecompiles::SymbolicBusInteraction<F>) -> Result<Self, Self::Error> {
-        if i.id == 3 {
-            assert_eq!(i.args.len(), 2);
-            let value = &i.args[0];
-            let max_bits = &i.args[1];
-            Ok(Self {
-                mult: i.mult.clone(),
-                value: value.clone(),
-                max_bits: max_bits.clone(),
-            })
-        } else {
-            Err(())
-        }
-    }
-}
-
 impl<F: PrimeField32> PowdrAir<F> {
     pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {
         let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = apc

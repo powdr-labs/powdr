@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
@@ -14,12 +15,11 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    expression::RowEvaluator,
+    expression::{ConcreteBusInteraction, RowEvaluator},
     trace_handler::{Trace, TraceHandler, TraceHandlerData},
     Apc,
 };
 
-use super::chip::RangeCheckerSend;
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -191,7 +191,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         } = trace_handler.data(&self.apc);
 
         // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
+        let range_checker_sends_per_original_instruction = self
             .apc
             .instructions()
             .iter()
@@ -200,7 +200,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .get_instruction_air(instruction)
                     .bus_interactions
                     .iter()
-                    .filter_map(|interaction| interaction.try_into().ok())
+                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
                     .collect_vec()
             })
             .collect_vec();
@@ -220,23 +220,16 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 {
                     let evaluator = RowEvaluator::new(dummy_row, None);
 
-                    // first remove the side effects of this row on the main periphery
-                    for range_checker_send in range_checker_sends {
-                        let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
-                            .as_canonical_u32();
-                        let value = evaluator
-                            .eval_expr(&range_checker_send.value)
-                            .as_canonical_u32();
-                        let max_bits = evaluator
-                            .eval_expr(&range_checker_send.max_bits)
-                            .as_canonical_u32();
-                        for _ in 0..mult {
-                            self.periphery
-                                .range_checker
-                                .remove_count(value, max_bits as usize);
+                    range_checker_sends.iter().for_each(|interaction| {
+                        let ConcreteBusInteraction { mult, args, .. } =
+                            evaluator.eval_bus_interaction(interaction);
+                        for _ in 0..mult.as_canonical_u32() {
+                            self.periphery.range_checker.remove_count(
+                                args[0].as_canonical_u32(),
+                                args[1].as_canonical_u32() as usize,
+                            );
                         }
-                    }
+                    });
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
@@ -249,18 +242,19 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
 
                 // replay the side effects of this row on the main periphery
-                // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
-                for bus_interaction in &self.apc.machine().bus_interactions {
-                    let mult = evaluator
-                        .eval_expr(&bus_interaction.mult)
-                        .as_canonical_u32();
-                    let args = bus_interaction
-                        .args
-                        .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32());
-
-                    self.periphery.apply(bus_interaction.id as u16, mult, args);
-                }
+                self.apc
+                    .machine()
+                    .bus_interactions
+                    .iter()
+                    .for_each(|interaction| {
+                        let ConcreteBusInteraction { id, mult, args } =
+                            evaluator.eval_bus_interaction(interaction);
+                        self.periphery.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.iter().map(|arg| arg.as_canonical_u32()),
+                        );
+                    });
             });
 
         RowMajorMatrix::new(values, width)
