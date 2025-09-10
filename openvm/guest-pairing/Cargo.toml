@@ -1,0 +1,15 @@
+[package]
+name = "guest-pairing"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", features = ["std"] }
+
+ark-bn254 = "0.5"
+ark-ec = "0.5"
+ark-ff = "0.5"
+hex = "0.4"
