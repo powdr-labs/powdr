@@ -15,7 +15,7 @@ use crate::{
 
 use powdr_autoprecompiles::{
     expression::{ConcreteBusInteraction, RowEvaluator},
-    trace_handler::{generate_trace, Trace, TraceHandlerData},
+    trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };
 
@@ -149,14 +149,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        let original_instruction_air_names = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| instruction.0.opcode)
-            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
-            .collect::<Vec<_>>();
-
         let dummy_trace_by_air_name: HashMap<_, _> = self
             .inventory
             .executors
@@ -176,12 +168,12 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect();
 
-        let TraceHandlerData {
+        let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = generate_trace::<A>(
+        } = generate_trace::<String, F, Instr<F>, OriginalAirs<F>>(
             &dummy_trace_by_air_name,
-            original_instruction_air_names,
+            &self.air_by_opcode_id,
             self.number_of_calls,
             &self.apc,
         );
@@ -193,7 +185,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    .get_instruction_air(instruction)
+                    .get_instruction_air_and_id(instruction)
+                    .1
                     .bus_interactions
                     .iter()
                     .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)

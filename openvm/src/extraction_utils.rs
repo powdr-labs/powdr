@@ -48,16 +48,15 @@ pub struct OriginalAirs<F> {
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<F> InstructionHandler<F, Instr<F>> for OriginalAirs<F> {
-    fn get_instruction_air(&self, instruction: &Instr<F>) -> &SymbolicMachine<F> {
-        self.opcode_to_air
+impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
+    fn get_instruction_air_and_id(&self, instruction: &Instr<F>) -> (String, &SymbolicMachine<F>) {
+        let id = self
+            .opcode_to_air
             .get(&instruction.0.opcode)
-            .and_then(|air_name| {
-                self.air_name_to_machine
-                    .get(air_name)
-                    .map(|(machine, _)| machine)
-            })
             .unwrap()
+            .clone();
+        let air = &self.air_name_to_machine.get(&id).unwrap().0;
+        (id, air)
     }
 
     fn is_allowed(&self, instruction: &Instr<F>) -> bool {
