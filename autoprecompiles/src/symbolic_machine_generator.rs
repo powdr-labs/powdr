@@ -92,7 +92,10 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     let mut global_idx: u64 = 3;
 
     for (i, instr) in block.statements.iter().enumerate() {
-        let machine = instruction_handler.get_instruction_air(instr).clone();
+        let machine = instruction_handler
+            .get_instruction_air_and_id(instr)
+            .1
+            .clone();
 
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine(machine, &|x| A::from_field(x));

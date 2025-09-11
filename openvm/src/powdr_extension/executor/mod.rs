@@ -9,14 +9,13 @@ use crate::{
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
-        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
 
 use powdr_autoprecompiles::{
     expression::{ConcreteBusInteraction, RowEvaluator},
-    trace_handler::{Trace, TraceHandler, TraceHandlerData},
+    trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };
 
@@ -48,8 +47,6 @@ use powdr_autoprecompiles::InstructionHandler;
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
-/// The trace handler for the PowdrExecutor used during witness generation
-mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
@@ -152,14 +149,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let height = next_power_of_two_or_zero(self.number_of_calls);
         let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
-        let original_instruction_air_names = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| instruction.0.opcode)
-            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
-            .collect::<Vec<_>>();
-
         let dummy_trace_by_air_name: HashMap<_, _> = self
             .inventory
             .executors
@@ -179,16 +168,15 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect();
 
-        let trace_handler = OpenVmTraceHandler::new(
-            &dummy_trace_by_air_name,
-            original_instruction_air_names,
-            self.number_of_calls,
-        );
-
-        let TraceHandlerData {
+        let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = trace_handler.data(&self.apc);
+        } = generate_trace::<String, F, Instr<F>, OriginalAirs<F>>(
+            &dummy_trace_by_air_name,
+            &self.air_by_opcode_id,
+            self.number_of_calls,
+            &self.apc,
+        );
 
         // precompute the symbolic bus sends to the range checker for each original instruction
         let range_checker_sends_per_original_instruction = self
@@ -197,7 +185,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    .get_instruction_air(instruction)
+                    .get_instruction_air_and_id(instruction)
+                    .1
                     .bus_interactions
                     .iter()
                     .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
