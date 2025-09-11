@@ -13,28 +13,35 @@ pub struct TraceHandlerData<'a, F> {
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
 }
 
-pub trait TraceHandler {
-    type AirId: Hash + Eq + Sync;
-    type Field: Sync + Clone + Ord + std::fmt::Display;
-    type Instruction;
+pub struct TraceHandler<'a, A: Adapter> {
+    pub air_id_to_dummy_trace: &'a HashMap<A::AirId, Trace<A::Field>>,
+    pub instruction_handler: &'a A::InstructionHandler,
+    pub apc_call_count: usize,
+}
 
-    /// Returns a vector with the same length as original instructions
-    fn original_instruction_air_ids(&self) -> Vec<Self::AirId>;
-
-    /// Returns the number of APC calls, which is also the number of rows in the APC trace
-    fn apc_call_count(&self) -> usize;
-
-    /// Returns a mapping from air_id to the dummy trace
-    fn air_id_to_dummy_trace(&self) -> &HashMap<Self::AirId, Trace<Self::Field>>;
+impl<'a, A: Adapter> TraceHandler<'a, A> {
+    pub fn new(
+        air_id_to_dummy_trace: &'a HashMap<A::AirId, Trace<A::Field>>,
+        instruction_handler: &'a A::InstructionHandler,
+        apc_call_count: usize,
+    ) -> Self {
+        Self {
+            air_id_to_dummy_trace,
+            instruction_handler,
+            apc_call_count,
+        }
+    }
 
     /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
-    fn data<'a>(
-        &'a self,
-        apc: &Apc<Self::Field, Self::Instruction>,
-    ) -> TraceHandlerData<'a, Self::Field> {
-        let air_id_to_dummy_trace = self.air_id_to_dummy_trace();
+    fn data(&self, apc: &Apc<A::Field, A::Instruction>) -> TraceHandlerData<'a, A::Field> {
+        let air_id_to_dummy_trace = self.air_id_to_dummy_trace;
 
-        let original_instruction_air_ids = self.original_instruction_air_ids();
+        // Returns a vector with the same length as original instructions
+        let original_instruction_air_ids = apc
+            .instructions()
+            .iter()
+            .map(|instruction| self.instruction_handler.get_instruction_air_id(instruction))
+            .collect::<Vec<_>>();
 
         let air_id_occurrences = original_instruction_air_ids.iter().counts();
 
@@ -72,7 +79,7 @@ pub trait TraceHandler {
             })
             .collect::<Vec<_>>();
 
-        let dummy_values = (0..self.apc_call_count())
+        let dummy_values = (0..self.apc_call_count)
             .into_par_iter()
             .map(|trace_row| {
                 original_instruction_air_ids
@@ -106,4 +113,13 @@ impl<F> Trace<F> {
     pub fn new(values: Vec<F>, width: usize) -> Self {
         Self { values, width }
     }
+}
+
+pub fn generate_trace<'a, A: Adapter>(
+    air_id_to_dummy_trace: &'a HashMap<A::AirId, Trace<A::Field>>,
+    instruction_handler: &'a A::InstructionHandler,
+    apc_call_count: usize,
+    apc: &Apc<A::Field, A::Instruction>,
+) -> TraceHandlerData<'a, A::Field> {
+    TraceHandler::<A>::new(air_id_to_dummy_trace, instruction_handler, apc_call_count).data(apc)
 }
