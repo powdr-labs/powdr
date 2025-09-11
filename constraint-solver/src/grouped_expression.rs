@@ -201,7 +201,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         &self,
     ) -> (
         &[(Self, Self)],
-        impl DoubleEndedIterator<Item = (&V, &T)>,
+        impl DoubleEndedIterator<Item = (&V, &T)> + Clone,
         &T,
     ) {
         (&self.quadratic, self.linear.iter(), &self.constant)
