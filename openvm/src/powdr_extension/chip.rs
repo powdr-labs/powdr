@@ -119,9 +119,7 @@ where
         let width = self.trace_width();
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self
-            .executor
-            .generate_witness::<SC>(&self.air.column_index_by_poly_id);
+        let trace = self.executor.generate_witness::<SC>();
 
         assert_eq!(trace.width(), width);
 
@@ -132,9 +130,6 @@ where
 pub struct PowdrAir<F> {
     /// The columns in arbitrary order
     columns: Vec<AlgebraicReference>,
-    /// The mapping from poly_id id to the index in the list of columns.
-    /// The values are always unique and contiguous
-    column_index_by_poly_id: BTreeMap<u64, usize>,
     apc: Arc<Apc<F, Instr<F>>>,
 }
 
@@ -146,16 +141,8 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
 
 impl<F: PrimeField32> PowdrAir<F> {
     pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {
-        let (column_index_by_poly_id, columns): (BTreeMap<_, _>, Vec<_>) = apc
-            .machine()
-            .main_columns()
-            .enumerate()
-            .map(|(index, c)| ((c.id, index), c.clone()))
-            .unzip();
-
         Self {
-            columns,
-            column_index_by_poly_id,
+            columns: apc.machine().main_columns().collect(),
             apc,
         }
     }

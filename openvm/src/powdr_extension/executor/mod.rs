@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
@@ -136,19 +136,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness<SC>(
-        self,
-        column_index_by_poly_id: &BTreeMap<u64, usize>,
-    ) -> RowMajorMatrix<F>
+    pub fn generate_witness<SC>(self) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.apc.is_valid_poly_id()];
-        let width = column_index_by_poly_id.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
-
         let dummy_trace_by_air_name: HashMap<_, _> = self
             .inventory
             .executors
@@ -171,6 +163,8 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
+            apc_poly_id_to_index,
+            is_valid_index,
         } = generate_trace(
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
@@ -193,6 +187,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     .collect_vec()
             })
             .collect_vec();
+
+        // allocate for apc trace
+        let width = apc_poly_id_to_index.len();
+        let height = next_power_of_two_or_zero(self.number_of_calls);
+        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
         values
@@ -228,7 +227,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = RowEvaluator::new(row_slice, Some(&apc_poly_id_to_index));
 
                 // replay the side effects of this row on the main periphery
                 self.apc
