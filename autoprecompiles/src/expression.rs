@@ -172,8 +172,7 @@ pub struct ConcreteBusInteraction<F, I> {
 
 pub struct WitnessEvaluator<'a, V, F, E> {
     pub witness: &'a BTreeMap<u64, V>,
-    _phantom: PhantomData<F>,
-    _phantom_e: PhantomData<E>,
+    _phantom: PhantomData<(F, E)>,
 }
 
 impl<'a, V, F, E> WitnessEvaluator<'a, V, F, E> {
@@ -181,7 +180,6 @@ impl<'a, V, F, E> WitnessEvaluator<'a, V, F, E> {
         Self {
             witness,
             _phantom: PhantomData,
-            _phantom_e: PhantomData,
         }
     }
 }
