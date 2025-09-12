@@ -3,7 +3,7 @@
 use core::ops::{Add, Mul, Neg, Sub};
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, hash::Hash, sync::Arc};
+use std::{collections::BTreeMap, hash::Hash, marker::PhantomData, sync::Arc};
 
 use crate::SymbolicBusInteraction;
 
@@ -149,4 +149,65 @@ pub struct ConcreteBusInteraction<F, I> {
     pub id: u64,
     pub mult: F,
     pub args: I,
+}
+
+pub trait AlgebraicEvaluator<F, E>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
+{
+    fn eval_const(&self, c: F) -> E;
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E;
+
+    fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> E {
+        match algebraic_expr {
+            AlgebraicExpression::Number(n) => self.eval_const(*n),
+            AlgebraicExpression::BinaryOperation(binary) => match binary.op {
+                AlgebraicBinaryOperator::Add => {
+                    self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
+                }
+                AlgebraicBinaryOperator::Sub => {
+                    self.eval_expr(&binary.left) - self.eval_expr(&binary.right)
+                }
+                AlgebraicBinaryOperator::Mul => {
+                    self.eval_expr(&binary.left) * self.eval_expr(&binary.right)
+                }
+            },
+            AlgebraicExpression::UnaryOperation(unary) => match unary.op {
+                AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
+            },
+            AlgebraicExpression::Reference(var) => self.eval_var(var),
+        }
+    }
+}
+
+pub struct WitnessEvaluator<'a, V, F, E> {
+    pub witness: &'a BTreeMap<u64, V>,
+    _phantom: PhantomData<F>,
+    _phantom_e: PhantomData<E>,
+}
+
+impl<'a, V, F, E> WitnessEvaluator<'a, V, F, E> {
+    pub fn new(witness: &'a BTreeMap<u64, V>) -> Self {
+        Self {
+            witness,
+            _phantom: PhantomData,
+            _phantom_e: PhantomData,
+        }
+    }
+}
+
+impl<V, F, E> AlgebraicEvaluator<F, E> for WitnessEvaluator<'_, V, F, E>
+where
+    V: Into<E> + Copy,
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + Into<E>,
+    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
+{
+    fn eval_const(&self, c: F) -> E {
+        c.into()
+    }
+
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E {
+        (*self.witness.get(&algebraic_var.id).unwrap()).into()
+    }
 }
