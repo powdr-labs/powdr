@@ -141,9 +141,7 @@ where
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-        let witness = self
-            .executor
-            .generate_witness::<SC>(&column_index_by_poly_id);
+        let witness = self.executor.generate_witness::<SC>();
 
         // TODO: This should be parallelized.
         let mut values = <Val<SC>>::zero_vec(height * width);

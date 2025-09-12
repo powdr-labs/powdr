@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::{cmp::Eq, hash::Hash};
 
 use crate::{Apc, InstructionHandler};
@@ -11,6 +11,11 @@ pub struct TraceData<'a, F> {
     pub dummy_values: Vec<Vec<&'a [F]>>,
     /// The mapping from dummy trace index to APC index for each instruction.
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
+    /// The mapping from poly_id to the index in the list of apc columns.
+    /// The values are always unique and contiguous.
+    pub apc_poly_id_to_index: BTreeMap<u64, usize>,
+    /// The index of is_valid column in the list of apc columns.
+    pub is_valid_index: usize,
 }
 
 pub struct Trace<F> {
@@ -48,12 +53,14 @@ where
 
     let air_id_occurrences = original_instruction_air_ids.iter().counts();
 
-    let apc_poly_id_to_index: HashMap<u64, usize> = apc
+    let apc_poly_id_to_index: BTreeMap<u64, usize> = apc
         .machine
         .main_columns()
         .enumerate()
         .map(|(index, c)| (c.id, index))
         .collect();
+
+    let is_valid_index = apc_poly_id_to_index[&apc.is_valid_poly_id()];
 
     let original_instruction_table_offsets = original_instruction_air_ids
         .iter()
@@ -102,5 +109,7 @@ where
     TraceData {
         dummy_values,
         dummy_trace_index_to_apc_index_by_instruction,
+        apc_poly_id_to_index,
+        is_valid_index,
     }
 }
