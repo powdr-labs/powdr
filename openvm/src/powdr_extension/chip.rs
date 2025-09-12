@@ -33,7 +33,7 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::{
-    expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
+    expression::{AlgebraicReference, WitnessEvaluator},
     Apc,
 };
 
@@ -170,25 +170,24 @@ where
             .zip_eq(witnesses.iter().cloned())
             .collect();
 
-        let witness_evaluator = WitnessEvaluator::<AB::Var, AB::F, AB::Expr>::new(&witness_values);
+        let witness_evaluator = WitnessEvaluator::new(&witness_values);
 
         for constraint in &self.apc.machine().constraints {
-            let e = witness_evaluator.eval_expr(&constraint.expr);
-            builder.assert_zero(e);
+            let constraint = witness_evaluator.eval_constraint(constraint);
+            builder.assert_zero(constraint);
         }
 
         for interaction in &self.apc.machine().bus_interactions {
-            let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = interaction;
-
-            let mult = witness_evaluator.eval_expr(mult);
-            let args = args
-                .iter()
-                .map(|arg| witness_evaluator.eval_expr(arg))
-                .collect_vec();
+            let interaction = witness_evaluator.eval_bus_interaction(interaction);
             // TODO: is this correct?
             let count_weight = 1;
 
-            builder.push_interaction(*id as u16, args, mult, count_weight);
+            builder.push_interaction(
+                interaction.id as u16,
+                interaction.args,
+                interaction.mult,
+                count_weight,
+            );
         }
     }
 }
