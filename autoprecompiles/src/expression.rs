@@ -80,6 +80,36 @@ pub fn try_convert<T, R: TryInto<AlgebraicReference>>(
     }
 }
 
+pub trait AlgebraicEvaluator<F, E>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
+{
+    fn eval_const(&self, c: F) -> E;
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E;
+
+    fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> E {
+        match algebraic_expr {
+            AlgebraicExpression::Number(n) => self.eval_const(*n),
+            AlgebraicExpression::BinaryOperation(binary) => match binary.op {
+                AlgebraicBinaryOperator::Add => {
+                    self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
+                }
+                AlgebraicBinaryOperator::Sub => {
+                    self.eval_expr(&binary.left) - self.eval_expr(&binary.right)
+                }
+                AlgebraicBinaryOperator::Mul => {
+                    self.eval_expr(&binary.left) * self.eval_expr(&binary.right)
+                }
+            },
+            AlgebraicExpression::UnaryOperation(unary) => match unary.op {
+                AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
+            },
+            AlgebraicExpression::Reference(var) => self.eval_var(var),
+        }
+    }
+}
+
 pub struct RowEvaluator<'a, F>
 where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
@@ -138,36 +168,6 @@ pub struct ConcreteBusInteraction<F, I> {
     pub id: u64,
     pub mult: F,
     pub args: I,
-}
-
-pub trait AlgebraicEvaluator<F, E>
-where
-    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
-    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
-{
-    fn eval_const(&self, c: F) -> E;
-    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E;
-
-    fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> E {
-        match algebraic_expr {
-            AlgebraicExpression::Number(n) => self.eval_const(*n),
-            AlgebraicExpression::BinaryOperation(binary) => match binary.op {
-                AlgebraicBinaryOperator::Add => {
-                    self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
-                }
-                AlgebraicBinaryOperator::Sub => {
-                    self.eval_expr(&binary.left) - self.eval_expr(&binary.right)
-                }
-                AlgebraicBinaryOperator::Mul => {
-                    self.eval_expr(&binary.left) * self.eval_expr(&binary.right)
-                }
-            },
-            AlgebraicExpression::UnaryOperation(unary) => match unary.op {
-                AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
-            },
-            AlgebraicExpression::Reference(var) => self.eval_var(var),
-        }
-    }
 }
 
 pub struct WitnessEvaluator<'a, V, F, E> {
