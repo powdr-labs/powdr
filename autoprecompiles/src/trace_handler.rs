@@ -29,16 +29,16 @@ impl<F> Trace<F> {
     }
 }
 
-pub fn generate_trace<'a, ID, F, I, IH>(
-    air_id_to_dummy_trace: &'a HashMap<ID, Trace<F>>,
+pub fn generate_trace<'a, IH>(
+    air_id_to_dummy_trace: &'a HashMap<IH::AirId, Trace<IH::Field>>,
     instruction_handler: &'a IH,
     apc_call_count: usize,
-    apc: &Apc<F, I>,
-) -> TraceData<'a, F>
+    apc: &Apc<IH::Field, IH::Instruction>,
+) -> TraceData<'a, IH::Field>
 where
-    F: Send + Sync,
-    IH: InstructionHandler<F, I, ID>,
-    ID: Eq + Hash + Send + Sync,
+    IH: InstructionHandler,
+    IH::Field: Send + Sync,
+    IH::AirId: Eq + Hash + Send + Sync,
 {
     // Returns a vector with the same length as original instructions
     let original_instruction_air_ids = apc
@@ -66,7 +66,7 @@ where
         .iter()
         .scan(
             HashMap::default(),
-            |counts: &mut HashMap<&ID, usize>, air_id| {
+            |counts: &mut HashMap<&IH::AirId, usize>, air_id| {
                 let count = counts.entry(air_id).or_default();
                 let current_count = *count;
                 *count += 1;

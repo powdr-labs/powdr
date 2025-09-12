@@ -63,10 +63,14 @@ pub trait PgoAdapter {
     }
 }
 
-pub trait Adapter: Sized {
+pub trait Adapter: Sized
+where
+    Self::InstructionHandler:
+        InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
+{
     type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
     type PowdrField: FieldElement;
-    type InstructionHandler: InstructionHandler<Self::Field, Self::Instruction, Self::AirId> + Sync;
+    type InstructionHandler: InstructionHandler + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>

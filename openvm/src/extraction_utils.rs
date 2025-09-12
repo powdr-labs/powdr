@@ -48,8 +48,15 @@ pub struct OriginalAirs<F> {
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
-impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
-    fn get_instruction_air_and_id(&self, instruction: &Instr<F>) -> (String, &SymbolicMachine<F>) {
+impl<F> InstructionHandler for OriginalAirs<F> {
+    type Field = F;
+    type Instruction = Instr<F>;
+    type AirId = String;
+
+    fn get_instruction_air_and_id(
+        &self,
+        instruction: &Self::Instruction,
+    ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
         let id = self
             .opcode_to_air
             .get(&instruction.0.opcode)
@@ -59,15 +66,15 @@ impl<F> InstructionHandler<F, Instr<F>, String> for OriginalAirs<F> {
         (id, air)
     }
 
-    fn is_allowed(&self, instruction: &Instr<F>) -> bool {
+    fn is_allowed(&self, instruction: &Self::Instruction) -> bool {
         self.opcode_to_air.contains_key(&instruction.0.opcode)
     }
 
-    fn is_branching(&self, instruction: &Instr<F>) -> bool {
+    fn is_branching(&self, instruction: &Self::Instruction) -> bool {
         branch_opcodes_set().contains(&instruction.0.opcode)
     }
 
-    fn get_instruction_air_stats(&self, instruction: &Instr<F>) -> AirStats {
+    fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats {
         self.get_instruction_metrics(instruction.0.opcode)
             .map(|metrics| metrics.clone().into())
             .unwrap()
