@@ -80,52 +80,23 @@ pub fn try_convert<T, R: TryInto<AlgebraicReference>>(
     }
 }
 
-pub struct RowEvaluator<
-    'a,
+pub struct RowEvaluator<'a, F>
+where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
-> {
+{
     pub row: &'a [F],
     pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
 }
 
-impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy>
-    RowEvaluator<'a, F>
+impl<'a, F> RowEvaluator<'a, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
 {
     pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
         Self {
             row,
             witness_id_to_index,
         }
-    }
-
-    pub fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> F {
-        match algebraic_expr {
-            AlgebraicExpression::Number(n) => *n,
-            AlgebraicExpression::BinaryOperation(binary) => match binary.op {
-                AlgebraicBinaryOperator::Add => {
-                    self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
-                }
-                AlgebraicBinaryOperator::Sub => {
-                    self.eval_expr(&binary.left) - self.eval_expr(&binary.right)
-                }
-                AlgebraicBinaryOperator::Mul => {
-                    self.eval_expr(&binary.left) * self.eval_expr(&binary.right)
-                }
-            },
-            AlgebraicExpression::UnaryOperation(unary) => match unary.op {
-                AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
-            },
-            AlgebraicExpression::Reference(var) => self.eval_var(var),
-        }
-    }
-
-    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
-        let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
-            witness_id_to_index[&(algebraic_var.id)]
-        } else {
-            algebraic_var.id as usize
-        };
-        self.row[index]
     }
 
     pub fn eval_bus_interaction<'b>(
@@ -142,6 +113,24 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
             mult,
             args,
         }
+    }
+}
+
+impl<F> AlgebraicEvaluator<F, F> for RowEvaluator<'_, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    fn eval_const(&self, c: F) -> F {
+        c
+    }
+
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
+        let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
+            witness_id_to_index[&(algebraic_var.id)]
+        } else {
+            algebraic_var.id as usize
+        };
+        self.row[index]
     }
 }
 
@@ -200,7 +189,7 @@ impl<'a, V, F, E> WitnessEvaluator<'a, V, F, E> {
 impl<V, F, E> AlgebraicEvaluator<F, E> for WitnessEvaluator<'_, V, F, E>
 where
     V: Into<E> + Copy,
-    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + Into<E>,
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Into<E> + Copy,
     E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
 {
     fn eval_const(&self, c: F) -> E {
