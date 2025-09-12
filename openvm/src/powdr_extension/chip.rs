@@ -33,7 +33,7 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::{
-    expression::{AlgebraicReference, WitnessEvaluator},
+    expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
 
@@ -174,7 +174,7 @@ where
 
         for constraint in &self.apc.machine().constraints {
             let constraint = witness_evaluator.eval_constraint(constraint);
-            builder.assert_zero(constraint);
+            builder.assert_zero(constraint.expr);
         }
 
         for interaction in &self.apc.machine().bus_interactions {
