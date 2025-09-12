@@ -171,7 +171,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = generate_trace::<OriginalAirs<F>>(
+        } = generate_trace(
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
             self.number_of_calls,
