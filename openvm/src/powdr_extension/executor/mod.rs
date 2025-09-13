@@ -14,7 +14,7 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    expression::{ConcreteBusInteraction, RowEvaluator},
+    expression::{AlgebraicEvaluator, ConcreteBusInteraction, RowEvaluator},
     trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };

@@ -109,6 +109,27 @@ where
             AlgebraicExpression::Reference(var) => self.eval_var(var),
         }
     }
+    fn eval_bus_interaction<'a, 'b>(
+        &'a self,
+        bus_interaction: &'b SymbolicBusInteraction<F>,
+    ) -> ConcreteBusInteraction<E, impl Iterator<Item = E> + 'b>
+    where
+        'a: 'b,
+    {
+        let mult = self.eval_expr(&bus_interaction.mult);
+        let args = bus_interaction.args.iter().map(|arg| self.eval_expr(arg));
+        ConcreteBusInteraction {
+            id: bus_interaction.id,
+            mult,
+            args,
+        }
+    }
+
+    fn eval_constraint(&self, constraint: &SymbolicConstraint<F>) -> ConcreteConstraint<E> {
+        ConcreteConstraint {
+            expr: self.eval_expr(&constraint.expr),
+        }
+    }
 }
 
 /// Evaluates an `AlgebraicExpression` to a concrete value, using a row of concrete values and with an optional mapping from witness id to row index.
@@ -128,22 +149,6 @@ where
         Self {
             row,
             witness_id_to_index,
-        }
-    }
-
-    pub fn eval_bus_interaction<'b>(
-        &'a self,
-        bus_interaction: &'b SymbolicBusInteraction<F>,
-    ) -> ConcreteBusInteraction<F, impl Iterator<Item = F> + 'b>
-    where
-        'a: 'b,
-    {
-        let mult = self.eval_expr(&bus_interaction.mult);
-        let args = bus_interaction.args.iter().map(|arg| self.eval_expr(arg));
-        ConcreteBusInteraction {
-            id: bus_interaction.id,
-            mult,
-            args,
         }
     }
 }
@@ -166,10 +171,14 @@ where
     }
 }
 
-pub struct ConcreteBusInteraction<F, I> {
+pub struct ConcreteBusInteraction<E, I> {
     pub id: u64,
-    pub mult: F,
+    pub mult: E,
     pub args: I,
+}
+
+pub struct ConcreteConstraint<E> {
+    pub expr: E,
 }
 
 /// Evaluates an `AlgebraicExpression` to a generic type, which is usually another expression type.
@@ -199,32 +208,5 @@ where
 
     fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E {
         (*self.witness.get(&algebraic_var.id).unwrap()).into()
-    }
-}
-
-impl<'a, V, F, E> WitnessEvaluator<'a, V, F, E>
-where
-    V: Into<E> + Copy,
-    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Into<E> + Copy,
-    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
-{
-    pub fn eval_constraint<'b>(&'a self, constraint: &'b SymbolicConstraint<F>) -> E {
-        self.eval_expr(&constraint.expr)
-    }
-
-    pub fn eval_bus_interaction<'b>(
-        &'a self,
-        bus_interaction: &'b SymbolicBusInteraction<F>,
-    ) -> ConcreteBusInteraction<E, impl Iterator<Item = E> + 'b>
-    where
-        'a: 'b,
-    {
-        let mult = self.eval_expr(&bus_interaction.mult);
-        let args = bus_interaction.args.iter().map(|arg| self.eval_expr(arg));
-        ConcreteBusInteraction {
-            id: bus_interaction.id,
-            mult,
-            args,
-        }
     }
 }
