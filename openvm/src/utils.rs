@@ -57,46 +57,6 @@ impl TryFrom<OpenVmReference> for AlgebraicReference {
     }
 }
 
-pub fn algebraic_to_symbolic<F: PrimeField32>(
-    expr: &AlgebraicExpression<F, AlgebraicReference>,
-) -> SymbolicExpression<F> {
-    match expr {
-        AlgebraicExpression::Number(n) => SymbolicExpression::Constant(*n),
-        AlgebraicExpression::BinaryOperation(binary) => match binary.op {
-            AlgebraicBinaryOperator::Add => SymbolicExpression::Add {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
-                degree_multiple: 0,
-            },
-            AlgebraicBinaryOperator::Sub => SymbolicExpression::Sub {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
-                degree_multiple: 0,
-            },
-            AlgebraicBinaryOperator::Mul => SymbolicExpression::Mul {
-                x: Arc::new(algebraic_to_symbolic(&binary.left)),
-                y: Arc::new(algebraic_to_symbolic(&binary.right)),
-                degree_multiple: 0,
-            },
-        },
-        AlgebraicExpression::UnaryOperation(unary) => match unary.op {
-            AlgebraicUnaryOperator::Minus => SymbolicExpression::Neg {
-                x: Arc::new(algebraic_to_symbolic(&unary.expr)),
-                degree_multiple: 0,
-            },
-        },
-        AlgebraicExpression::Reference(algebraic_reference) => {
-            SymbolicExpression::Variable(SymbolicVariable::new(
-                Entry::Main {
-                    part_index: 0,
-                    offset: 0,
-                },
-                algebraic_reference.id as usize,
-            ))
-        }
-    }
-}
-
 pub fn symbolic_to_algebraic<F: PrimeField32>(
     expr: &SymbolicExpression<F>,
     columns: &[Arc<String>],
