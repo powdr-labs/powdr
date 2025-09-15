@@ -1,101 +1,21 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::cmp::Eq;
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::collections::{BTreeMap, HashMap};
+use std::{cmp::Eq, hash::Hash};
 
-use crate::Apc;
+use crate::{Apc, InstructionHandler};
 
 /// Returns data needed for constructing the APC trace.
-pub struct TraceHandlerData<'a, F> {
+pub struct TraceData<'a, F> {
     /// The dummy trace values for each instruction.
     pub dummy_values: Vec<Vec<&'a [F]>>,
     /// The mapping from dummy trace index to APC index for each instruction.
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
-}
-
-pub trait TraceHandler {
-    type AirId: Hash + Eq + Sync;
-    type Field: Sync + Clone + Ord + std::fmt::Display;
-    type Instruction;
-
-    /// Returns a vector with the same length as original instructions
-    fn original_instruction_air_ids(&self) -> Vec<Self::AirId>;
-
-    /// Returns the number of APC calls, which is also the number of rows in the APC trace
-    fn apc_call_count(&self) -> usize;
-
-    /// Returns a mapping from air_id to the dummy trace
-    fn air_id_to_dummy_trace(&self) -> &HashMap<Self::AirId, Trace<Self::Field>>;
-
-    /// Returns the data needed for constructing the APC trace, namely the dummy traces and the mapping from dummy trace index to APC index for each instruction
-    fn data<'a>(
-        &'a self,
-        apc: &Apc<Self::Field, Self::Instruction>,
-    ) -> TraceHandlerData<'a, Self::Field> {
-        let air_id_to_dummy_trace = self.air_id_to_dummy_trace();
-
-        let original_instruction_air_ids = self.original_instruction_air_ids();
-
-        let air_id_occurrences = original_instruction_air_ids.iter().counts();
-
-        let apc_poly_id_to_index: HashMap<u64, usize> = apc
-            .machine
-            .main_columns()
-            .enumerate()
-            .map(|(index, c)| (c.id, index))
-            .collect();
-
-        let original_instruction_table_offsets = original_instruction_air_ids
-            .iter()
-            .scan(
-                HashMap::default(),
-                |counts: &mut HashMap<&Self::AirId, usize>, air_id| {
-                    let count = counts.entry(air_id).or_default();
-                    let current_count = *count;
-                    *count += 1;
-                    Some(current_count)
-                },
-            )
-            .collect::<Vec<_>>();
-
-        let dummy_trace_index_to_apc_index_by_instruction = apc
-            .subs
-            .iter()
-            .map(|subs| {
-                let mut dummy_trace_index_to_apc_index = HashMap::new();
-                for (dummy_index, poly_id) in subs.iter().enumerate() {
-                    if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
-                        dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
-                    }
-                }
-                dummy_trace_index_to_apc_index
-            })
-            .collect::<Vec<_>>();
-
-        let dummy_values = (0..self.apc_call_count())
-            .into_par_iter()
-            .map(|trace_row| {
-                original_instruction_air_ids
-                    .iter()
-                    .zip_eq(original_instruction_table_offsets.iter())
-                    .map(|(air_id, dummy_table_offset)| {
-                        let Trace { values, width } = air_id_to_dummy_trace.get(air_id).unwrap();
-                        let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
-                        let start =
-                            (trace_row * occurrences_per_record + dummy_table_offset) * width;
-                        let end = start + width;
-                        &values[start..end]
-                    })
-                    .collect_vec()
-            })
-            .collect();
-
-        TraceHandlerData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-        }
-    }
+    /// The mapping from poly_id to the index in the list of apc columns.
+    /// The values are always unique and contiguous.
+    pub apc_poly_id_to_index: BTreeMap<u64, usize>,
+    /// The index of is_valid column in the list of apc columns.
+    pub is_valid_index: usize,
 }
 
 pub struct Trace<F> {
@@ -106,5 +26,90 @@ pub struct Trace<F> {
 impl<F> Trace<F> {
     pub fn new(values: Vec<F>, width: usize) -> Self {
         Self { values, width }
+    }
+}
+
+pub fn generate_trace<'a, IH>(
+    air_id_to_dummy_trace: &'a HashMap<IH::AirId, Trace<IH::Field>>,
+    instruction_handler: &'a IH,
+    apc_call_count: usize,
+    apc: &Apc<IH::Field, IH::Instruction>,
+) -> TraceData<'a, IH::Field>
+where
+    IH: InstructionHandler,
+    IH::Field: Send + Sync,
+    IH::AirId: Eq + Hash + Send + Sync,
+{
+    // Returns a vector with the same length as original instructions
+    let original_instruction_air_ids = apc
+        .instructions()
+        .iter()
+        .map(|instruction| {
+            instruction_handler
+                .get_instruction_air_and_id(instruction)
+                .0
+        })
+        .collect::<Vec<_>>();
+
+    let air_id_occurrences = original_instruction_air_ids.iter().counts();
+
+    let apc_poly_id_to_index: BTreeMap<u64, usize> = apc
+        .machine
+        .main_columns()
+        .enumerate()
+        .map(|(index, c)| (c.id, index))
+        .collect();
+
+    let is_valid_index = apc_poly_id_to_index[&apc.is_valid_poly_id()];
+
+    let original_instruction_table_offsets = original_instruction_air_ids
+        .iter()
+        .scan(
+            HashMap::default(),
+            |counts: &mut HashMap<&IH::AirId, usize>, air_id| {
+                let count = counts.entry(air_id).or_default();
+                let current_count = *count;
+                *count += 1;
+                Some(current_count)
+            },
+        )
+        .collect::<Vec<_>>();
+
+    let dummy_trace_index_to_apc_index_by_instruction = apc
+        .subs
+        .iter()
+        .map(|subs| {
+            let mut dummy_trace_index_to_apc_index = HashMap::new();
+            for (dummy_index, poly_id) in subs.iter().enumerate() {
+                if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
+                    dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
+                }
+            }
+            dummy_trace_index_to_apc_index
+        })
+        .collect::<Vec<_>>();
+
+    let dummy_values = (0..apc_call_count)
+        .into_par_iter()
+        .map(|trace_row| {
+            original_instruction_air_ids
+                .iter()
+                .zip_eq(original_instruction_table_offsets.iter())
+                .map(|(air_id, dummy_table_offset)| {
+                    let Trace { values, width } = air_id_to_dummy_trace.get(air_id).unwrap();
+                    let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
+                    let start = (trace_row * occurrences_per_record + dummy_table_offset) * width;
+                    let end = start + width;
+                    &values[start..end]
+                })
+                .collect_vec()
+        })
+        .collect();
+
+    TraceData {
+        dummy_values,
+        dummy_trace_index_to_apc_index_by_instruction,
+        apc_poly_id_to_index,
+        is_valid_index,
     }
 }

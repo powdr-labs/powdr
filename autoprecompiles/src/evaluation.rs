@@ -57,15 +57,16 @@ pub struct EvaluationResult {
 
 /// Evaluate an APC by comparing its cost to the cost of executing the
 /// basic block in software.
-pub fn evaluate_apc<
-    F: Clone + Ord + std::fmt::Display,
-    I: Instruction<F>,
-    IH: InstructionHandler<F, I>,
->(
-    basic_block: &[I],
+pub fn evaluate_apc<IH>(
+    basic_block: &[IH::Instruction],
     instruction_handler: &IH,
     machine: &SymbolicMachine<impl Clone + Ord + std::fmt::Display>,
-) -> EvaluationResult {
+) -> EvaluationResult
+where
+    IH: InstructionHandler,
+    IH::Field: Clone + Ord + std::fmt::Display,
+    IH::Instruction: Instruction<IH::Field>,
+{
     let before = basic_block
         .iter()
         .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))

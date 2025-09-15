@@ -76,6 +76,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
+    type AirId = String;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(

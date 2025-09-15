@@ -286,18 +286,25 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
     }
 }
 
-pub trait InstructionHandler<T, I> {
+pub trait InstructionHandler {
+    type Field;
+    type Instruction;
+    type AirId;
+
     /// Returns the AIR for the given instruction.
-    fn get_instruction_air(&self, instruction: &I) -> &SymbolicMachine<T>;
+    fn get_instruction_air_and_id(
+        &self,
+        instruction: &Self::Instruction,
+    ) -> (Self::AirId, &SymbolicMachine<Self::Field>);
 
     /// Returns the AIR stats for the given instruction.
-    fn get_instruction_air_stats(&self, instruction: &I) -> AirStats;
+    fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats;
 
     /// Returns whether the given instruction is allowed in an autoprecompile.
-    fn is_allowed(&self, instruction: &I) -> bool;
+    fn is_allowed(&self, instruction: &Self::Instruction) -> bool;
 
     /// Returns whether the given instruction is a branching instruction.
-    fn is_branching(&self, instruction: &I) -> bool;
+    fn is_branching(&self, instruction: &Self::Instruction) -> bool;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
