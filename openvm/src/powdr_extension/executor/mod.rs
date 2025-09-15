@@ -14,7 +14,7 @@ use crate::{
 };
 
 use powdr_autoprecompiles::{
-    expression::{AlgebraicEvaluator, ConcreteBusInteraction, RowEvaluator},
+    expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
     trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };
@@ -206,7 +206,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .zip_eq(&range_checker_sends_per_original_instruction)
                         .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
+                    let evaluator = RowEvaluator::new(dummy_row);
 
                     range_checker_sends.iter().for_each(|interaction| {
                         let ConcreteBusInteraction { mult, mut args, .. } =
@@ -227,7 +227,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, Some(&apc_poly_id_to_index));
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
                 self.apc
