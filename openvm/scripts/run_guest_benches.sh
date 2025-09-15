@@ -96,7 +96,7 @@ popd
 
 ### ECRECOVER
 dir="results/ecrecover"
-input="50"
+input="20"
 
 mkdir -p "$dir"
 pushd "$dir"
