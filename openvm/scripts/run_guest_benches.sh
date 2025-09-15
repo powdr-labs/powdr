@@ -50,10 +50,10 @@ run_bench() {
 # pushd "$dir"
 
 # run_bench guest-keccak-manual-precompile "$input" 0 manual
-# run_bench guest-keccak "$input" 0 noapc
-# run_bench guest-keccak "$input" 3 3apc
-# run_bench guest-keccak "$input" 10 10apc
-# run_bench guest-keccak "$input" 30 30apc
+# run_bench guest-keccak "$input" 0 apc000
+# run_bench guest-keccak "$input" 3 apc003
+# run_bench guest-keccak "$input" 10 apc010
+# run_bench guest-keccak "$input" 30 apc030
 
 # python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 # popd
@@ -66,10 +66,10 @@ run_bench() {
 # pushd "$dir"
 
 # run_bench guest-sha256-manual-precompile "$input" 0 manual
-# run_bench guest-sha256 "$input" 0 noapc
-# run_bench guest-sha256 "$input" 3 3apc
-# run_bench guest-sha256 "$input" 10 10apc
-# run_bench guest-sha256 "$input" 30 30apc
+# run_bench guest-sha256 "$input" 0 apc000
+# run_bench guest-sha256 "$input" 3 apc003
+# run_bench guest-sha256 "$input" 10 apc010
+# run_bench guest-sha256 "$input" 30 apc030
 
 # python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 # popd
@@ -82,10 +82,11 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-pairing-manual-precompile "$input" 0 manual
-run_bench guest-pairing "$input" 0 noapc
-run_bench guest-pairing "$input" 3 3apc
-run_bench guest-pairing "$input" 10 10apc
-run_bench guest-pairing "$input" 30 30apc
+run_bench guest-pairing "$input" 0 apc000
+run_bench guest-pairing "$input" 3 apc003
+run_bench guest-pairing "$input" 10 apc010
+run_bench guest-pairing "$input" 30 apc030
+run_bench guest-pairing "$input" 100 apc100
 
 python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
@@ -98,10 +99,10 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-u256-manual-precompile "$input" 0 manual
-run_bench guest-u256 "$input" 0 noapc
-run_bench guest-u256 "$input" 3 3apc
-run_bench guest-u256 "$input" 10 10apc
-run_bench guest-u256 "$input" 30 30apc
+run_bench guest-u256 "$input" 0 apc000
+run_bench guest-u256 "$input" 3 apc003
+run_bench guest-u256 "$input" 10 apc010
+run_bench guest-u256 "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
@@ -112,10 +113,10 @@ popd
 # mkdir -p "$dir"
 # pushd "$dir"
 
-# run_bench guest-matmul 0 0 noapc
-# run_bench guest-matmul 0 3 3apc
-# run_bench guest-matmul 0 10 10apc
-# run_bench guest-matmul 0 30 30apc
+# run_bench guest-matmul 0 0 apc000
+# run_bench guest-matmul 0 3 apc003
+# run_bench guest-matmul 0 10 apc010
+# run_bench guest-matmul 0 30 apc030
 
 # python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 # popd
