@@ -132,7 +132,7 @@ where
     }
 }
 
-/// Evaluates an `AlgebraicExpression` to a concrete value, using a row of concrete values and with an optional mapping from witness id to row index.
+/// Evaluates an `AlgebraicExpression` to a concrete value by subsituting the polynomial references by known values.
 pub struct RowEvaluator<'a, F>
 where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
@@ -181,7 +181,7 @@ pub struct ConcreteConstraint<E> {
     pub expr: E,
 }
 
-/// Evaluates an `AlgebraicExpression` to a generic type, which is usually another expression type.
+/// Evaluates by subsituting the polynomial references by known values, potentially changing the expression type in the process.
 pub struct WitnessEvaluator<'a, V, F, E> {
     pub witness: &'a BTreeMap<u64, V>,
     _phantom: PhantomData<(F, E)>,
