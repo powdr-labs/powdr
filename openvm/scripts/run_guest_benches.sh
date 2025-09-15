@@ -60,15 +60,14 @@ run_bench() {
 
 ### SHA256
 dir="results/sha256"
-# TODO: What's a good amount?
-input="10000"
+input="30000"
 
 mkdir -p "$dir"
 pushd "$dir"
 
-#run_bench guest-sha256-manual-precompile "$input" 0 manual
+run_bench guest-sha256-manual-precompile "$input" 0 manual
 run_bench guest-sha256 "$input" 0 noapc
-#run_bench guest-sha256 "$input" 3 3apc
+run_bench guest-sha256 "$input" 3 3apc
 #run_bench guest-sha256 "$input" 10 10apc
 #run_bench guest-sha256 "$input" 30 30apc
 
