@@ -51,7 +51,9 @@ pushd "$dir"
 
 run_bench guest-keccak-manual-precompile "$input" 0 manual
 run_bench guest-keccak "$input" 0 noapc
-run_bench guest-keccak "$input" 100 100apc
+run_bench guest-keccak "$input" 3 3apc
+run_bench guest-keccak "$input" 10 10apc
+run_bench guest-keccak "$input" 30 30apc
 
 python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
@@ -63,7 +65,9 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-matmul 0 0 noapc
-run_bench guest-matmul 0 100 100apc
+run_bench guest-matmul 0 3 3apc
+run_bench guest-matmul 0 10 10apc
+run_bench guest-matmul 0 30 30apc
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
@@ -92,7 +96,7 @@ popd
 
 ### ECRECOVER
 dir="results/ecrecover"
-input="20"
+input="50"
 
 mkdir -p "$dir"
 pushd "$dir"
