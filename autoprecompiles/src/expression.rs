@@ -3,9 +3,9 @@
 use core::ops::{Add, Mul, Neg, Sub};
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, hash::Hash, sync::Arc};
+use std::{collections::BTreeMap, hash::Hash, marker::PhantomData, sync::Arc};
 
-use crate::SymbolicBusInteraction;
+use crate::{SymbolicBusInteraction, SymbolicConstraint};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
@@ -80,27 +80,18 @@ pub fn try_convert<T, R: TryInto<AlgebraicReference>>(
     }
 }
 
-pub struct RowEvaluator<
-    'a,
+/// Evaluate an `AlgebraicExpression` to a generic type, which for example can be an expression or a concrete value.
+pub trait AlgebraicEvaluator<F, E>
+where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
-> {
-    pub row: &'a [F],
-    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
-}
-
-impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy>
-    RowEvaluator<'a, F>
+    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
 {
-    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
-        Self {
-            row,
-            witness_id_to_index,
-        }
-    }
+    fn eval_const(&self, c: F) -> E;
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E;
 
-    pub fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> F {
+    fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> E {
         match algebraic_expr {
-            AlgebraicExpression::Number(n) => *n,
+            AlgebraicExpression::Number(n) => self.eval_const(*n),
             AlgebraicExpression::BinaryOperation(binary) => match binary.op {
                 AlgebraicBinaryOperator::Add => {
                     self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
@@ -118,20 +109,10 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
             AlgebraicExpression::Reference(var) => self.eval_var(var),
         }
     }
-
-    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
-        let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
-            witness_id_to_index[&(algebraic_var.id)]
-        } else {
-            algebraic_var.id as usize
-        };
-        self.row[index]
-    }
-
-    pub fn eval_bus_interaction<'b>(
+    fn eval_bus_interaction<'a, 'b>(
         &'a self,
         bus_interaction: &'b SymbolicBusInteraction<F>,
-    ) -> ConcreteBusInteraction<F, impl Iterator<Item = F> + 'b>
+    ) -> ConcreteBusInteraction<E, impl Iterator<Item = E> + 'b>
     where
         'a: 'b,
     {
@@ -143,10 +124,89 @@ impl<'a, F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F
             args,
         }
     }
+
+    fn eval_constraint(&self, constraint: &SymbolicConstraint<F>) -> ConcreteConstraint<E> {
+        ConcreteConstraint {
+            expr: self.eval_expr(&constraint.expr),
+        }
+    }
 }
 
-pub struct ConcreteBusInteraction<F, I> {
+/// Evaluates an `AlgebraicExpression` to a concrete value by subsituting the polynomial references by known values.
+pub struct RowEvaluator<'a, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    pub row: &'a [F],
+    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
+}
+
+impl<'a, F> RowEvaluator<'a, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
+        Self {
+            row,
+            witness_id_to_index,
+        }
+    }
+}
+
+impl<F> AlgebraicEvaluator<F, F> for RowEvaluator<'_, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    fn eval_const(&self, c: F) -> F {
+        c
+    }
+
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
+        let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
+            witness_id_to_index[&(algebraic_var.id)]
+        } else {
+            algebraic_var.id as usize
+        };
+        self.row[index]
+    }
+}
+
+pub struct ConcreteBusInteraction<E, I> {
     pub id: u64,
-    pub mult: F,
+    pub mult: E,
     pub args: I,
+}
+
+pub struct ConcreteConstraint<E> {
+    pub expr: E,
+}
+
+/// Evaluates by subsituting the polynomial references by known values, potentially changing the expression type in the process.
+pub struct WitnessEvaluator<'a, V, F, E> {
+    pub witness: &'a BTreeMap<u64, V>,
+    _phantom: PhantomData<(F, E)>,
+}
+
+impl<'a, V, F, E> WitnessEvaluator<'a, V, F, E> {
+    pub fn new(witness: &'a BTreeMap<u64, V>) -> Self {
+        Self {
+            witness,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<V, F, E> AlgebraicEvaluator<F, E> for WitnessEvaluator<'_, V, F, E>
+where
+    V: Into<E> + Copy,
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Into<E> + Copy,
+    E: Add<E, Output = E> + Sub<E, Output = E> + Mul<E, Output = E> + Neg<Output = E>,
+{
+    fn eval_const(&self, c: F) -> E {
+        c.into()
+    }
+
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E {
+        (*self.witness.get(&algebraic_var.id).unwrap()).into()
+    }
 }

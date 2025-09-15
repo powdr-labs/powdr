@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
-    utils::algebraic_to_symbolic, ExtendedVmConfig, Instr,
+    ExtendedVmConfig, Instr,
 };
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
@@ -19,10 +19,6 @@ use openvm_circuit::{
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
-    air_builders::symbolic::{
-        symbolic_expression::SymbolicEvaluator,
-        symbolic_variable::{Entry, SymbolicVariable},
-    },
     p3_air::{Air, BaseAir},
     rap::ColumnsAir,
 };
@@ -37,7 +33,7 @@ use openvm_stark_backend::{
     Chip, ChipUsageGetter,
 };
 use powdr_autoprecompiles::{
-    expression::{AlgebraicExpression, AlgebraicReference},
+    expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
 
@@ -174,73 +170,25 @@ where
             .zip_eq(witnesses.iter().cloned())
             .collect();
 
-        let witness_evaluator = WitnessEvaluator::<AB>::new(&witness_values);
-
-        let eval_expr = |expr: &AlgebraicExpression<_>| {
-            let symbolic_expr = algebraic_to_symbolic(expr);
-            witness_evaluator.eval_expr(&symbolic_expr)
-        };
+        let witness_evaluator = WitnessEvaluator::new(&witness_values);
 
         for constraint in &self.apc.machine().constraints {
-            let e = eval_expr(&constraint.expr);
-            builder.assert_zero(e);
+            let constraint = witness_evaluator.eval_constraint(constraint);
+            builder.assert_zero(constraint.expr);
         }
 
         for interaction in &self.apc.machine().bus_interactions {
-            let powdr_autoprecompiles::SymbolicBusInteraction { id, mult, args, .. } = interaction;
-
-            let mult = eval_expr(mult);
-            let args = args.iter().map(&eval_expr).collect_vec();
+            let interaction = witness_evaluator.eval_bus_interaction(interaction);
             // TODO: is this correct?
             let count_weight = 1;
 
-            builder.push_interaction(*id as u16, args, mult, count_weight);
+            builder.push_interaction(
+                interaction.id as u16,
+                interaction.args,
+                interaction.mult,
+                count_weight,
+            );
         }
-    }
-}
-
-pub struct WitnessEvaluator<'a, AB: InteractionBuilder> {
-    pub witness: &'a BTreeMap<u64, AB::Var>,
-}
-
-impl<'a, AB: InteractionBuilder> WitnessEvaluator<'a, AB> {
-    pub fn new(witness: &'a BTreeMap<u64, AB::Var>) -> Self {
-        Self { witness }
-    }
-}
-
-impl<AB: InteractionBuilder> SymbolicEvaluator<AB::F, AB::Expr> for WitnessEvaluator<'_, AB> {
-    fn eval_const(&self, c: AB::F) -> AB::Expr {
-        c.into()
-    }
-
-    fn eval_var(&self, symbolic_var: SymbolicVariable<AB::F>) -> AB::Expr {
-        match symbolic_var.entry {
-            Entry::Main { part_index, offset } => {
-                assert_eq!(part_index, 0);
-                assert_eq!(offset, 0);
-                (*self.witness.get(&(symbolic_var.index as u64)).unwrap()).into()
-            }
-            Entry::Public => unreachable!("Public variables are not supported"),
-            Entry::Challenge => unreachable!("Challenges are not supported"),
-            Entry::Exposed => unreachable!("Exposed values are not supported"),
-            Entry::Preprocessed { .. } => {
-                unimplemented!("Preprocessed values are not supported yet")
-            }
-            Entry::Permutation { .. } => unreachable!("Permutation values are not supported"),
-        }
-    }
-
-    fn eval_is_first_row(&self) -> AB::Expr {
-        unimplemented!()
-    }
-
-    fn eval_is_last_row(&self) -> AB::Expr {
-        unimplemented!()
-    }
-
-    fn eval_is_transition(&self) -> AB::Expr {
-        unimplemented!()
     }
 }
 
