@@ -193,17 +193,11 @@ jobs:
           mv metrics.json $RES_DIR/apc030.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
-          # prove with 100 APCs
-          MODE="prove-stark" APC=100 ./run.sh || exit 1
+          # prove with 100 APCs, recording mem usage
+          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
           echo "Finished proving with 100 APCs"
           mv metrics.json $RES_DIR/apc100.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc100.png $RES_DIR/apc100.json > $RES_DIR/trace_cells_apc100.txt
-
-          # prove with 300 APCs, recording mem usage
-          MODE="prove-stark" APC=300 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
-          echo "Finished proving with 300 APCs"
-          mv metrics.json $RES_DIR/apc300.json
-          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc300.png $RES_DIR/apc300.json > $RES_DIR/trace_cells_apc300.txt
 
           # The APC candidates would be the same for all runs, so just keep the last one
           mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
