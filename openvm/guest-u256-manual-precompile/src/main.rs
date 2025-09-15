@@ -5,7 +5,7 @@ use openvm_ruint::aliases::U256;
 
 openvm::entry!(main);
 
-const N: usize = 32;
+const N: usize = 100;
 type Matrix = [[U256; N]; N];
 
 pub fn get_matrix(val: u32) -> Matrix {

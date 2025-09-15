@@ -74,22 +74,22 @@ run_bench() {
 # python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 # popd
 
-### Pairing
-dir="results/pairing"
-input="0" # No input
+# ### Pairing
+# dir="results/pairing"
+# input="0" # No input
 
-mkdir -p "$dir"
-pushd "$dir"
+# mkdir -p "$dir"
+# pushd "$dir"
 
-run_bench guest-pairing-manual-precompile "$input" 0 manual
-run_bench guest-pairing "$input" 0 apc000
-run_bench guest-pairing "$input" 3 apc003
-run_bench guest-pairing "$input" 10 apc010
-run_bench guest-pairing "$input" 30 apc030
-run_bench guest-pairing "$input" 100 apc100
+# run_bench guest-pairing-manual-precompile "$input" 0 manual
+# run_bench guest-pairing "$input" 0 apc000
+# run_bench guest-pairing "$input" 3 apc003
+# run_bench guest-pairing "$input" 10 apc010
+# run_bench guest-pairing "$input" 30 apc030
+# run_bench guest-pairing "$input" 100 apc100
 
-python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
-popd
+# python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+# popd
 
 ### U256
 dir="results/u256"
