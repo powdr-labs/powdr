@@ -1,25 +1,24 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
 use crate::{
+    bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
-        trace_handler::OpenVmTraceHandler,
     },
     ExtendedVmConfig, Instr,
 };
 
 use powdr_autoprecompiles::{
-    expression::RowEvaluator,
-    trace_handler::{Trace, TraceHandler, TraceHandlerData},
+    expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
+    trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };
 
-use super::chip::RangeCheckerSend;
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -48,8 +47,6 @@ use powdr_autoprecompiles::InstructionHandler;
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
-/// The trace handler for the PowdrExecutor used during witness generation
-mod trace_handler;
 
 pub use periphery::PowdrPeripheryInstances;
 use powdr_openvm_hints_circuit::HintsExtension;
@@ -139,27 +136,11 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness<SC>(
-        self,
-        column_index_by_poly_id: &BTreeMap<u64, usize>,
-    ) -> RowMajorMatrix<F>
+    pub fn generate_witness<SC>(self) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.apc.is_valid_poly_id()];
-        let width = column_index_by_poly_id.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
-
-        let original_instruction_air_names = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| instruction.0.opcode)
-            .map(|opcode| get_name::<SC>(self.inventory.get_executor(opcode).unwrap().air()))
-            .collect::<Vec<_>>();
-
         let dummy_trace_by_air_name: HashMap<_, _> = self
             .inventory
             .executors
@@ -179,31 +160,38 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             })
             .collect();
 
-        let trace_handler = OpenVmTraceHandler::new(
-            &dummy_trace_by_air_name,
-            original_instruction_air_names,
-            self.number_of_calls,
-        );
-
-        let TraceHandlerData {
+        let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-        } = trace_handler.data(&self.apc);
+            apc_poly_id_to_index,
+            is_valid_index,
+        } = generate_trace(
+            &dummy_trace_by_air_name,
+            &self.air_by_opcode_id,
+            self.number_of_calls,
+            &self.apc,
+        );
 
         // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
+        let range_checker_sends_per_original_instruction = self
             .apc
             .instructions()
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    .get_instruction_air(instruction)
+                    .get_instruction_air_and_id(instruction)
+                    .1
                     .bus_interactions
                     .iter()
-                    .filter_map(|interaction| interaction.try_into().ok())
+                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
                     .collect_vec()
             })
             .collect_vec();
+
+        // allocate for apc trace
+        let width = apc_poly_id_to_index.len();
+        let height = next_power_of_two_or_zero(self.number_of_calls);
+        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
         values
@@ -218,25 +206,18 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .zip_eq(&range_checker_sends_per_original_instruction)
                         .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
+                    let evaluator = RowEvaluator::new(dummy_row);
 
-                    // first remove the side effects of this row on the main periphery
-                    for range_checker_send in range_checker_sends {
-                        let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
-                            .as_canonical_u32();
-                        let value = evaluator
-                            .eval_expr(&range_checker_send.value)
-                            .as_canonical_u32();
-                        let max_bits = evaluator
-                            .eval_expr(&range_checker_send.max_bits)
-                            .as_canonical_u32();
-                        for _ in 0..mult {
-                            self.periphery
-                                .range_checker
-                                .remove_count(value, max_bits as usize);
+                    range_checker_sends.iter().for_each(|interaction| {
+                        let ConcreteBusInteraction { mult, mut args, .. } =
+                            evaluator.eval_bus_interaction(interaction);
+                        for _ in 0..mult.as_canonical_u32() {
+                            self.periphery.range_checker.remove_count(
+                                args.next().unwrap().as_canonical_u32(),
+                                args.next().unwrap().as_canonical_u32() as usize,
+                            );
                         }
-                    }
+                    });
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
@@ -246,21 +227,22 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
-                // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
-                for bus_interaction in &self.apc.machine().bus_interactions {
-                    let mult = evaluator
-                        .eval_expr(&bus_interaction.mult)
-                        .as_canonical_u32();
-                    let args = bus_interaction
-                        .args
-                        .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32());
-
-                    self.periphery.apply(bus_interaction.id as u16, mult, args);
-                }
+                self.apc
+                    .machine()
+                    .bus_interactions
+                    .iter()
+                    .for_each(|interaction| {
+                        let ConcreteBusInteraction { id, mult, args } =
+                            evaluator.eval_bus_interaction(interaction);
+                        self.periphery.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.map(|arg| arg.as_canonical_u32()),
+                        );
+                    });
             });
 
         RowMajorMatrix::new(values, width)
