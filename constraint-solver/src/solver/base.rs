@@ -482,7 +482,7 @@ where
         let mut exprs = self
             .constraint_system
             .system()
-            .constraints_referencing_variables(expression.referenced_unknown_variables().cloned())
+            .constraints_referencing_variables(expression.referenced_unknown_variables())
             .filter_map(|constr| match constr {
                 ConstraintRef::AlgebraicConstraint(constr) => Some(constr),
                 ConstraintRef::BusInteraction(_) => None,
@@ -541,7 +541,7 @@ where
         let new_constraints = self
             .constraint_system
             .system()
-            .constraints_referencing_variables(once(variable.clone()))
+            .constraints_referencing_variables(once(variable))
             .filter_map(|constr| match constr {
                 ConstraintRef::AlgebraicConstraint(c) => Some(c),
                 ConstraintRef::BusInteraction(_) => None,
@@ -589,7 +589,7 @@ where
         constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
     ) -> bool {
         let constraint_ref = ConstraintRef::AlgebraicConstraint(constraint.as_ref());
-        let vars = constraint.referenced_unknown_variables().cloned();
+        let vars = constraint.referenced_unknown_variables();
         self.constraint_system
             .system()
             .constraints_referencing_variables(vars)

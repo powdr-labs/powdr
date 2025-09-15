@@ -1,6 +1,6 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use std::fmt::Display;
 use std::hash::Hash;
+use std::{fmt::Display, sync::Arc};
 
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize)]
 pub struct ApcWithStats<F, I, S> {
-    apc: Apc<F, I>,
+    apc: Arc<Apc<F, I>>,
     stats: Option<S>,
 }
 impl<F, I, S> ApcWithStats<F, I, S> {
@@ -24,13 +24,13 @@ impl<F, I, S> ApcWithStats<F, I, S> {
         self
     }
 
-    pub fn into_parts(self) -> (Apc<F, I>, Option<S>) {
+    pub fn into_parts(self) -> (Arc<Apc<F, I>>, Option<S>) {
         (self.apc, self.stats)
     }
 }
 
-impl<F, I, S> From<Apc<F, I>> for ApcWithStats<F, I, S> {
-    fn from(apc: Apc<F, I>) -> Self {
+impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
+    fn from(apc: Arc<Apc<F, I>>) -> Self {
         Self { apc, stats: None }
     }
 }
@@ -63,23 +63,28 @@ pub trait PgoAdapter {
     }
 }
 
-pub trait Adapter: Sized {
-    type Field: Serialize + for<'de> Deserialize<'de> + Send + Clone;
+pub trait Adapter: Sized
+where
+    Self::InstructionHandler:
+        InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
+{
+    type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
     type PowdrField: FieldElement;
-    type InstructionHandler: InstructionHandler<Self::Field, Self::Instruction> + Sync;
+    type InstructionHandler: InstructionHandler + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>
         + RangeConstraintHandler<Self::PowdrField>
         + Sync;
     type Program: Program<Self::Instruction> + Send;
-    type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send;
+    type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
         Self::PowdrField,
         V,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
+    type AirId: Eq + Hash + Send + Sync;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 

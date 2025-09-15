@@ -1,10 +1,11 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
 use crate::{
-    extraction_utils::OriginalAirs,
+    bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
+    extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{
         inventory::{DummyChipComplex, DummyInventory},
         periphery::SharedPeripheryChips,
@@ -12,10 +13,12 @@ use crate::{
     ExtendedVmConfig, Instr,
 };
 
-use super::{
-    chip::{RangeCheckerSend, RowEvaluator},
-    vm::OriginalInstruction,
+use powdr_autoprecompiles::{
+    expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
+    trace_handler::{generate_trace, Trace, TraceData},
+    Apc,
 };
+
 use itertools::Itertools;
 use openvm_circuit::{
     arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
@@ -26,24 +29,19 @@ use openvm_circuit::{
 };
 use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_matrix::Matrix, p3_maybe_rayon::prelude::ParallelIterator,
+    p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix,
+    p3_maybe_rayon::prelude::ParallelIterator,
 };
 
+use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{
-    air_builders::symbolic::symbolic_expression::SymbolicEvaluator,
     config::StarkGenericConfig,
     p3_commit::{Pcs, PolynomialSpace},
     p3_maybe_rayon::prelude::ParallelSliceMut,
     Chip,
 };
-use openvm_stark_backend::{
-    p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix,
-    p3_maybe_rayon::prelude::IntoParallelIterator,
-};
-use openvm_stark_backend::{p3_maybe_rayon::prelude::IndexedParallelIterator, ChipUsageGetter};
-use powdr_autoprecompiles::{
-    expression::AlgebraicReference, InstructionHandler, SymbolicBusInteraction,
-};
+use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
+use powdr_autoprecompiles::InstructionHandler;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -55,27 +53,23 @@ use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
-    instructions: Vec<OriginalInstruction<F>>,
     air_by_opcode_id: OriginalAirs<F>,
-    is_valid_poly_id: u64,
     inventory: DummyInventory<F>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
+    apc: Arc<Apc<F, Instr<F>>>,
 }
 
 impl<F: PrimeField32> PowdrExecutor<F> {
     pub fn new(
-        instructions: Vec<OriginalInstruction<F>>,
         air_by_opcode_id: OriginalAirs<F>,
-        is_valid_column: AlgebraicReference,
         memory: Arc<Mutex<OfflineMemory<F>>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
+        apc: Arc<Apc<F, Instr<F>>>,
     ) -> Self {
         Self {
-            instructions,
             air_by_opcode_id,
-            is_valid_poly_id: is_valid_column.id,
             inventory: create_chip_complex_with_memory(
                 memory,
                 periphery.dummy,
@@ -85,6 +79,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .inventory,
             number_of_calls: 0,
             periphery: periphery.real,
+            apc,
         }
     }
 
@@ -101,16 +96,17 @@ impl<F: PrimeField32> PowdrExecutor<F> {
         let from_record_id = memory.get_memory_logs().len();
 
         // execute the original instructions one by one
-        let res = self
-            .instructions
-            .iter()
-            .try_fold(from_state, |execution_state, instruction| {
-                let executor = self
-                    .inventory
-                    .get_mut_executor(&instruction.opcode())
-                    .unwrap();
-                executor.execute(memory, instruction.as_ref(), execution_state)
-            });
+        let res =
+            self.apc
+                .instructions()
+                .iter()
+                .try_fold(from_state, |execution_state, instruction| {
+                    let executor = self
+                        .inventory
+                        .get_mut_executor(&instruction.0.opcode)
+                        .unwrap();
+                    executor.execute(memory, &instruction.0, execution_state)
+                });
 
         self.number_of_calls += 1;
         let memory_logs = memory.get_memory_logs(); // exclusive range
@@ -140,154 +136,62 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness<SC>(
-        self,
-        column_index_by_poly_id: &BTreeMap<u64, usize>,
-        bus_interactions: &[SymbolicBusInteraction<F>],
-    ) -> RowMajorMatrix<F>
+    pub fn generate_witness<SC>(self) -> RowMajorMatrix<F>
     where
         SC: StarkGenericConfig,
         <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
     {
-        let is_valid_index = column_index_by_poly_id[&self.is_valid_poly_id];
-        let width = column_index_by_poly_id.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
-
-        // for each original opcode, the name of the dummy air it corresponds to
-        let air_name_by_opcode = self
-            .instructions
-            .iter()
-            .map(|instruction| instruction.opcode())
-            .unique()
-            .map(|opcode| {
-                (
-                    opcode,
-                    self.inventory.get_executor(opcode).unwrap().air_name(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-
-        let dummy_trace_by_air_name: HashMap<_, _> =
-            self.inventory
-                .executors
-                .into_iter()
-                .map(|executor| {
-                    (
-                        executor.air_name().clone(),
-                        tracing::debug_span!("dummy trace", air_name = executor.air_name())
-                            .in_scope(|| {
-                                Chip::<SC>::generate_air_proof_input(executor)
-                                    .raw
-                                    .common_main
-                                    .unwrap()
-                            }),
-                    )
-                })
-                .collect();
-
-        let instruction_index_to_table_offset = self
-            .instructions
-            .iter()
-            .enumerate()
-            .scan(
-                HashMap::default(),
-                |counts: &mut HashMap<&str, usize>, (index, instruction)| {
-                    let air_name = air_name_by_opcode.get(&instruction.opcode()).unwrap();
-                    let count = counts.entry(air_name).or_default();
-                    let current_count = *count;
-                    *count += 1;
-                    Some((index, (air_name, current_count)))
-                },
-            )
-            .collect::<HashMap<_, _>>();
-
-        let occurrences_by_table_name: HashMap<&String, usize> = self
-            .instructions
-            .iter()
-            .map(|instruction| air_name_by_opcode.get(&instruction.opcode()).unwrap())
-            .counts();
-
-        // A vector of HashMap<dummy_trace_index, apc_trace_index> by instruction, empty HashMap if none maps to apc
-        let dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>> = self
-            .instructions
-            .iter()
-            .map(|instruction| {
-                // look up how many dummy‐cells this AIR produces:
-                let air_width = dummy_trace_by_air_name
-                    .get(air_name_by_opcode.get(&instruction.opcode()).unwrap())
-                    .unwrap()
-                    .width();
-
-                // build a map only of the (dummy_index -> apc_index) pairs
-                let mut map = HashMap::with_capacity(air_width);
-                for dummy_trace_index in 0..air_width {
-                    if let Ok(apc_index) =
-                        global_index(dummy_trace_index, instruction, column_index_by_poly_id)
-                    {
-                        if map.insert(dummy_trace_index, apc_index).is_some() {
-                            panic!(
-                                "duplicate dummy_trace_index {} for instruction opcode {:?}",
-                                dummy_trace_index,
-                                instruction.opcode()
-                            );
-                        }
-                    }
-                }
-                map
+        let dummy_trace_by_air_name: HashMap<_, _> = self
+            .inventory
+            .executors
+            .into_iter()
+            .map(|executor| {
+                let air_name = get_name::<SC>(executor.air());
+                let DenseMatrix { values, width, .. } =
+                    tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
+                        || {
+                            Chip::<SC>::generate_air_proof_input(executor)
+                                .raw
+                                .common_main
+                                .unwrap()
+                        },
+                    );
+                (air_name.clone(), Trace::new(values, width))
             })
             .collect();
 
-        assert_eq!(
-            self.instructions.len(),
-            dummy_trace_index_to_apc_index_by_instruction.len()
+        let TraceData {
+            dummy_values,
+            dummy_trace_index_to_apc_index_by_instruction,
+            apc_poly_id_to_index,
+            is_valid_index,
+        } = generate_trace(
+            &dummy_trace_by_air_name,
+            &self.air_by_opcode_id,
+            self.number_of_calls,
+            &self.apc,
         );
 
-        let dummy_values = (0..self.number_of_calls)
-            .into_par_iter()
-            .map(|record_index| {
-                (0..self.instructions.len())
-                    .map(|index| {
-                        // get the air name and offset for this instruction (by index)
-                        let (air_name, offset) =
-                            instruction_index_to_table_offset.get(&index).unwrap();
-                        // get the table
-                        let table = dummy_trace_by_air_name.get(*air_name).unwrap();
-                        // get how many times this table is used per record
-                        let occurrences_per_record =
-                            occurrences_by_table_name.get(air_name).unwrap();
-                        // get the width of each occurrence
-                        let width = table.width();
-                        // start after the previous record ended, and offset by the correct offset
-                        let start = (record_index * occurrences_per_record + offset) * width;
-                        // end at the start + width
-                        let end = start + width;
-                        &table.values[start..end]
-                    })
-                    .collect_vec()
-            });
-
         // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction: Vec<Vec<RangeCheckerSend<_>>> = self
-            .instructions
+        let range_checker_sends_per_original_instruction = self
+            .apc
+            .instructions()
             .iter()
             .map(|instruction| {
                 self.air_by_opcode_id
-                    // TODO: avoid cloning the instruction
-                    .get_instruction_air(&Instr(instruction.instruction.clone()))
+                    .get_instruction_air_and_id(instruction)
+                    .1
                     .bus_interactions
                     .iter()
-                    .filter_map(|interaction| interaction.try_into().ok())
+                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
                     .collect_vec()
             })
             .collect_vec();
 
-        // precompute the symbolic bus interactions for the autoprecompile
-        let bus_interactions: Vec<crate::powdr_extension::chip::SymbolicBusInteraction<_>> =
-            bus_interactions
-                .iter()
-                .map(|interaction| interaction.clone().into())
-                .collect_vec();
+        // allocate for apc trace
+        let width = apc_poly_id_to_index.len();
+        let height = next_power_of_two_or_zero(self.number_of_calls);
+        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
         values
@@ -302,25 +206,18 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                         .zip_eq(&range_checker_sends_per_original_instruction)
                         .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
-                    let evaluator = RowEvaluator::new(dummy_row, None);
+                    let evaluator = RowEvaluator::new(dummy_row);
 
-                    // first remove the side effects of this row on the main periphery
-                    for range_checker_send in range_checker_sends {
-                        let mult = evaluator
-                            .eval_expr(&range_checker_send.mult)
-                            .as_canonical_u32();
-                        let value = evaluator
-                            .eval_expr(&range_checker_send.value)
-                            .as_canonical_u32();
-                        let max_bits = evaluator
-                            .eval_expr(&range_checker_send.max_bits)
-                            .as_canonical_u32();
-                        for _ in 0..mult {
-                            self.periphery
-                                .range_checker
-                                .remove_count(value, max_bits as usize);
+                    range_checker_sends.iter().for_each(|interaction| {
+                        let ConcreteBusInteraction { mult, mut args, .. } =
+                            evaluator.eval_bus_interaction(interaction);
+                        for _ in 0..mult.as_canonical_u32() {
+                            self.periphery.range_checker.remove_count(
+                                args.next().unwrap().as_canonical_u32(),
+                                args.next().unwrap().as_canonical_u32() as usize,
+                            );
                         }
-                    }
+                    });
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
@@ -330,49 +227,26 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 // Set the is_valid column to 1
                 row_slice[is_valid_index] = F::ONE;
 
-                let evaluator = RowEvaluator::new(row_slice, Some(column_index_by_poly_id));
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
-                // TODO: this could be done in parallel since `self.periphery` is thread safe, but is it worth it? cc @qwang98
-                for bus_interaction in &bus_interactions {
-                    let mult = evaluator
-                        .eval_expr(&bus_interaction.mult)
-                        .as_canonical_u32();
-                    let args = bus_interaction
-                        .args
-                        .iter()
-                        .map(|arg| evaluator.eval_expr(arg).as_canonical_u32());
-
-                    self.periphery.apply(bus_interaction.id, mult, args);
-                }
+                self.apc
+                    .machine()
+                    .bus_interactions
+                    .iter()
+                    .for_each(|interaction| {
+                        let ConcreteBusInteraction { id, mult, args } =
+                            evaluator.eval_bus_interaction(interaction);
+                        self.periphery.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.map(|arg| arg.as_canonical_u32()),
+                        );
+                    });
             });
 
         RowMajorMatrix::new(values, width)
     }
-}
-
-enum IndexError {
-    NotInDummy,
-    NotInAutoprecompile,
-}
-
-/// Maps the index of a column in the original AIR of a given instruction to the corresponding
-/// index in the autoprecompile AIR.
-fn global_index<F>(
-    local_index: usize,
-    instruction: &OriginalInstruction<F>,
-    autoprecompile_index_by_poly_id: &BTreeMap<u64, usize>,
-) -> Result<usize, IndexError> {
-    // Map to the poly_id in the original instruction to the poly_id in the autoprecompile.
-    let autoprecompile_poly_id = instruction
-        .subs
-        .get(local_index)
-        .ok_or(IndexError::NotInDummy)?;
-    // Map to the index in the autoprecompile.
-    let variable_index = autoprecompile_index_by_poly_id
-        .get(autoprecompile_poly_id)
-        .ok_or(IndexError::NotInAutoprecompile)?;
-    Ok(*variable_index)
 }
 
 // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.

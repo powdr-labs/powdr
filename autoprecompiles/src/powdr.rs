@@ -78,9 +78,7 @@ pub trait UniqueReferences<'a, T: 'a> {
     fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference>;
 }
 
-impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
-    UniqueReferences<'a, T> for E
-{
+impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> for E {
     fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference> {
         self.all_children()
             .filter_map(|e| {

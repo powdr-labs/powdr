@@ -74,7 +74,8 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
             .iter()
             .enumerate()
             // Filter out the candidate itself and all zero components
-            // because we set split components to zero when we extract them.
+            // because we set components to zero when we extract them instead
+            // of removing them.
             .filter(|(i, component)| *i != index && !component.is_zero())
             .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
             .collect_vec();
@@ -202,7 +203,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     let max_expr = expr_rc.range().1;
     let max_rest = rest_rc.range().1;
 
-    // Evaluate `expr + smallest_coeff * rest` for the largest possible value
+    // Evaluate `expr + coefficient * rest` for the largest possible value
     // and see if it wraps around in the field.
     if max_expr.to_arbitrary_integer()
         + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer()
@@ -212,10 +213,10 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     }
     // It does not wrap around, so we know that the equation can be translated to the
     // natural numbers:
-    // expr + smallest_coeff * rest = (-constant) % modulus
+    // expr + coefficient * rest = (-constant) % modulus
 
-    // Next, we apply `x -> x % smallest_coeff` to both sides of the equation to get
-    // expr % smallest_coeff = ((-constant) % modulus) % smallest_coeff
+    // Next, we apply `x -> x % coefficient` to both sides of the equation to get
+    // expr % coefficient = ((-constant) % modulus) % coefficient
     // Note that at this point, we only get an implication, not an equivalence,
     // but if the range constraints of `expr` only allow a unique solution,
     // it holds unconditionally.
@@ -232,9 +233,9 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
             % coefficient.to_integer().try_into_u64().unwrap(),
     );
 
-    // Now we try `rhs`, `rhs + smallest_coeff`, `rhs + 2 * smallest_coeff`, ...
-    // But because of the check above, we can stop at `2 * smallest_coeff`.
-    (0..=2)
+    // Now we try `rhs`, `rhs + coefficient`, `rhs + 2 * coefficient`, ...
+    // But because of the check above, we can stop at `2 * coefficient`.
+    (0..=1)
         .map(|i| rhs + T::FieldType::from(i) * coefficient)
         .filter(|candidate| expr_rc.allows_value(*candidate))
         .exactly_one()
@@ -561,18 +562,18 @@ l3 - 1 = 0"
 
     #[test]
     fn wrapping_2() {
-        // bool_17 + 943718400 * (a__0_0) = 1069547521
+        // bool_17 + 1069547521 * (a__0_0) = 943718400
         let bit_rc = RangeConstraint::from_mask(0x1u32);
         let rcs = [("bool_17", bit_rc.clone()), ("a__0_0", bit_rc.clone())]
             .into_iter()
             .collect::<HashMap<_, _>>();
         let expr: GroupedExpression<BabyBearField, _> =
             GroupedExpression::from_unknown_variable("bool_17")
-                + GroupedExpression::from_number(BabyBearField::from(943718400))
+                + GroupedExpression::from_number(BabyBearField::from(1069547521))
                     * GroupedExpression::from_unknown_variable("a__0_0")
-                - GroupedExpression::from_number(BabyBearField::from(1069547521));
+                - GroupedExpression::from_number(BabyBearField::from(943718400));
         let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
-        expect!["bool_17 = 0, a__0_0 + 1 = 0"].assert_eq(&result);
+        expect!["bool_17 = 0, -(a__0_0 + 1) = 0"].assert_eq(&result);
     }
 
     #[test]
