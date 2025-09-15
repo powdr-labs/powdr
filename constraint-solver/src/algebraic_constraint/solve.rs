@@ -659,10 +659,10 @@ mod tests {
         assert_eq!(t.to_string(), "(A * 11) * X + 11 * Y + 11");
     }
 
-    impl RangeConstraintProvider<GoldilocksField, &'static str>
-        for HashMap<&'static str, RangeConstraint<GoldilocksField>>
+    impl<T: FieldElement> RangeConstraintProvider<T, &'static str>
+        for HashMap<&'static str, RangeConstraint<T>>
     {
-        fn get(&self, var: &&'static str) -> RangeConstraint<GoldilocksField> {
+        fn get(&self, var: &&'static str) -> RangeConstraint<T> {
             self.get(var).cloned().unwrap_or_default()
         }
     }
