@@ -58,18 +58,50 @@ run_bench() {
 # python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 # popd
 
-### SHA256
-dir="results/sha256"
-input="30000"
+# ### SHA256
+# dir="results/sha256"
+# input="30000"
+
+# mkdir -p "$dir"
+# pushd "$dir"
+
+# run_bench guest-sha256-manual-precompile "$input" 0 manual
+# run_bench guest-sha256 "$input" 0 noapc
+# run_bench guest-sha256 "$input" 3 3apc
+# run_bench guest-sha256 "$input" 10 10apc
+# run_bench guest-sha256 "$input" 30 30apc
+
+# python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+# popd
+
+### Pairing
+dir="results/pairing"
+input="0" # No input
 
 mkdir -p "$dir"
 pushd "$dir"
 
-run_bench guest-sha256-manual-precompile "$input" 0 manual
-run_bench guest-sha256 "$input" 0 noapc
-run_bench guest-sha256 "$input" 3 3apc
-#run_bench guest-sha256 "$input" 10 10apc
-#run_bench guest-sha256 "$input" 30 30apc
+run_bench guest-pairing-manual-precompile "$input" 0 manual
+run_bench guest-pairing "$input" 0 noapc
+run_bench guest-pairing "$input" 3 3apc
+run_bench guest-pairing "$input" 10 10apc
+run_bench guest-pairing "$input" 30 30apc
+
+python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+popd
+
+### U256
+dir="results/u256"
+input="0" # No input
+
+mkdir -p "$dir"
+pushd "$dir"
+
+run_bench guest-u256-manual-precompile "$input" 0 manual
+run_bench guest-u256 "$input" 0 noapc
+run_bench guest-u256 "$input" 3 3apc
+run_bench guest-u256 "$input" 10 10apc
+run_bench guest-u256 "$input" 30 30apc
 
 python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
