@@ -138,18 +138,14 @@ where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
 {
     pub row: &'a [F],
-    pub witness_id_to_index: Option<&'a BTreeMap<u64, usize>>,
 }
 
 impl<'a, F> RowEvaluator<'a, F>
 where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
 {
-    pub fn new(row: &'a [F], witness_id_to_index: Option<&'a BTreeMap<u64, usize>>) -> Self {
-        Self {
-            row,
-            witness_id_to_index,
-        }
+    pub fn new(row: &'a [F]) -> Self {
+        Self { row }
     }
 }
 
@@ -162,11 +158,41 @@ where
     }
 
     fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
-        let index = if let Some(witness_id_to_index) = self.witness_id_to_index {
-            witness_id_to_index[&(algebraic_var.id)]
-        } else {
-            algebraic_var.id as usize
-        };
+        self.row[algebraic_var.id as usize]
+    }
+}
+
+/// Evaluates an `AlgebraicExpression` to a concrete value by subsituting the polynomial references by known values where known value is looked up via a column index mapping.
+pub struct MappingRowEvaluator<'a, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    pub row: &'a [F],
+    pub witness_id_to_index: &'a BTreeMap<u64, usize>,
+}
+
+impl<'a, F> MappingRowEvaluator<'a, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    pub fn new(row: &'a [F], witness_id_to_index: &'a BTreeMap<u64, usize>) -> Self {
+        Self {
+            row,
+            witness_id_to_index,
+        }
+    }
+}
+
+impl<F> AlgebraicEvaluator<F, F> for MappingRowEvaluator<'_, F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
+{
+    fn eval_const(&self, c: F) -> F {
+        c
+    }
+
+    fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
+        let index = self.witness_id_to_index[&(algebraic_var.id)];
         self.row[index]
     }
 }
