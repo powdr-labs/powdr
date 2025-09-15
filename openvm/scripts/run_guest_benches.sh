@@ -42,71 +42,88 @@ run_bench() {
     rm -f "${run_name}"/*.cbor
 }
 
-### Keccak
-dir="results/keccak"
-input="10000"
+# ### Keccak
+# dir="results/keccak"
+# input="10000"
+
+# mkdir -p "$dir"
+# pushd "$dir"
+
+# run_bench guest-keccak-manual-precompile "$input" 0 manual
+# run_bench guest-keccak "$input" 0 noapc
+# run_bench guest-keccak "$input" 3 3apc
+# run_bench guest-keccak "$input" 10 10apc
+# run_bench guest-keccak "$input" 30 30apc
+
+# python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+# popd
+
+### SHA256
+dir="results/sha256"
+# TODO: What's a good amount?
+input="1000"
 
 mkdir -p "$dir"
 pushd "$dir"
 
-run_bench guest-keccak-manual-precompile "$input" 0 manual
-run_bench guest-keccak "$input" 0 noapc
-run_bench guest-keccak "$input" 3 3apc
-run_bench guest-keccak "$input" 10 10apc
-run_bench guest-keccak "$input" 30 30apc
+run_bench guest-sha256-manual-precompile "$input" 0 manual
+run_bench guest-sha256 "$input" 0 noapc
+run_bench guest-sha256 "$input" 3 3apc
+run_bench guest-sha256 "$input" 10 10apc
+run_bench guest-sha256 "$input" 30 30apc
 
 python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
 popd
 
-### Matmul
-dir="results/matmul"
+# ### Matmul
+# dir="results/matmul"
 
-mkdir -p "$dir"
-pushd "$dir"
+# mkdir -p "$dir"
+# pushd "$dir"
 
-run_bench guest-matmul 0 0 noapc
-run_bench guest-matmul 0 3 3apc
-run_bench guest-matmul 0 10 10apc
-run_bench guest-matmul 0 30 30apc
+# run_bench guest-matmul 0 0 noapc
+# run_bench guest-matmul 0 3 3apc
+# run_bench guest-matmul 0 10 10apc
+# run_bench guest-matmul 0 30 30apc
 
-python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
-popd
+# python3 "$SCRIPTS_DIR"/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+# popd
 
-### ECC
-dir="results/ecc"
-input="50"
+# ### ECC
+# dir="results/ecc"
+# input="50"
 
-mkdir -p "$dir"
-pushd "$dir"
+# mkdir -p "$dir"
+# pushd "$dir"
 
-run_bench guest-ecc-manual $input 0 manual
-run_bench guest-ecc-projective $input 0 projective-apc000
-run_bench guest-ecc-projective $input 3 projective-apc003
-run_bench guest-ecc-projective $input 10 projective-apc010
-run_bench guest-ecc-projective $input 30 projective-apc030
-run_bench guest-ecc-projective $input 100 projective-apc100
-run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
-run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003
-run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010
-run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
-run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100
+# run_bench guest-ecc-manual $input 0 manual
+# run_bench guest-ecc-projective $input 0 projective-apc000
+# run_bench guest-ecc-projective $input 3 projective-apc003
+# run_bench guest-ecc-projective $input 10 projective-apc010
+# run_bench guest-ecc-projective $input 30 projective-apc030
+# run_bench guest-ecc-projective $input 100 projective-apc100
+# run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
+# run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003
+# run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010
+# run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
+# run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100
 
-python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
-popd
+# python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+# popd
 
-### ECRECOVER
-dir="results/ecrecover"
-input="20"
+# ### ECRECOVER
+# dir="results/ecrecover"
+# input="20"
 
-mkdir -p "$dir"
-pushd "$dir"
+# mkdir -p "$dir"
+# pushd "$dir"
 
-run_bench guest-ecrecover-manual $input 0 manual
-run_bench guest-ecrecover $input 0 apc000
-run_bench guest-ecrecover $input 3 apc003
-run_bench guest-ecrecover $input 10 apc010
-run_bench guest-ecrecover $input 30 apc030
-run_bench guest-ecrecover $input 100 apc100
+# run_bench guest-ecrecover-manual $input 0 manual
+# run_bench guest-ecrecover $input 0 apc000
+# run_bench guest-ecrecover $input 3 apc003
+# run_bench guest-ecrecover $input 10 apc010
+# run_bench guest-ecrecover $input 30 apc030
+# run_bench guest-ecrecover $input 100 apc100
 
-python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
-popd
+# python3 $SCRIPTS_DIR/basic_metrics.py --csv **/metrics.json > basic_metrics.csv
+# popd
