@@ -18,7 +18,7 @@ use crate::PrecompileImplementation;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::program::Program as OpenVmProgram;
+use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -135,7 +135,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
     }
 
     fn pc_step(&self) -> u32 {
-        self.0.step
+        DEFAULT_PC_STEP
     }
 
     fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
@@ -168,7 +168,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         &exe.program,
         labels.clone(),
         exe.program.pc_base,
-        exe.program.step,
+        DEFAULT_PC_STEP,
     );
 
     let program = Prog(&exe.program);
@@ -221,7 +221,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
-    let pc_step = exe.program.step;
+    let pc_step = DEFAULT_PC_STEP;
     let program = &mut exe.program;
 
     tracing::info!("Adjust the program with the autoprecompiles");
@@ -232,13 +232,15 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
             let opcode = POWDR_OPCODE + i;
-            let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
+            let start_index: u64 = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
-            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
+            
+            // TODO: This is not supported in 1.4.0, to be added
+            // program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", apc.start_pc()),

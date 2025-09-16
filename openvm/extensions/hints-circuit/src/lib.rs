@@ -1,5 +1,5 @@
-use openvm_circuit::arch::{VmExecutionExtension};
-use openvm_circuit::derive::{AnyEnum};
+use openvm_circuit::arch::VmExecutionExtension;
+use openvm_circuit::derive::{AnyEnum, PreflightExecutor};
 use openvm_circuit::system::phantom::PhantomChip;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -12,18 +12,18 @@ mod field10x26_k256;
 /// OpenVM extension with miscellaneous hint implementations.
 pub struct HintsExtension;
 
-#[derive(AnyEnum)]
+#[derive(AnyEnum, PreflightExecutor)]
 pub enum HintsExecutor<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
 impl<F: PrimeField32> VmExecutionExtension<F> for HintsExtension {
     type Executor = HintsExecutor<F>;
-    
+
     fn extend_execution(
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<F, Self::Executor>,
-    ) ->  Result<(), openvm_circuit::arch::ExecutorInventoryError> {
+    ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
         inventory.add_phantom_sub_executor(
             executors::ReverseBytesSubEx,
             PhantomDiscriminant(HintsPhantom::HintReverseBytes as u16),

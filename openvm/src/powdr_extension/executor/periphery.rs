@@ -1,11 +1,12 @@
-use crate::powdr_extension::executor::inventory::{SharedExecutor, SharedPeriphery};
+use crate::powdr_extension::executor::inventory::{DummyExecutor, SharedExecutor, SharedPeriphery};
 use itertools::Itertools;
-use openvm_circuit::arch::VmExtension;
+use openvm_circuit::{arch::{AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder, ExecutorInventoryError, RowMajorMatrixArena, VmCircuitExtension, VmExecutionExtension, VmProverExtension}, system::phantom::PhantomExecutor};
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
+    bitwise_op_lookup::{BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip}, range_tuple::{RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
     var_range::SharedVariableRangeCheckerChip,
 };
-use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_backend::{config::{StarkGenericConfig, Val}, p3_field::PrimeField32, prover::cpu::{CpuBackend, CpuDevice}};
+use openvm_stark_sdk::engine::StarkEngine;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
@@ -40,56 +41,70 @@ impl PowdrPeripheryInstances {
             // By not sharing them, we can throw away the dummy ones after execution and only apply the side effects from the apc air onto the main periphery.
             dummy: SharedPeripheryChips {
                 bitwise_lookup_8: bitwise_8
-                    .map(|bitwise_8| SharedBitwiseOperationLookupChip::new(bitwise_8.bus())),
+                    .map(|bitwise_8| SharedBitwiseOperationLookupChip::new(BitwiseOperationLookupChip::new(bitwise_8.bus()))),
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.map(|tuple_range_checker| {
-                    SharedRangeTupleCheckerChip::new(*tuple_range_checker.bus())
+                    SharedRangeTupleCheckerChip::new(RangeTupleCheckerChip::new(*tuple_range_checker.bus()))
                 }),
             },
         }
     }
 }
 
-/// We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
-impl<F> VmExtension<F> for SharedPeripheryChips
-where
-    F: PrimeField32,
-{
-    type Executor = SharedExecutor<F>;
+impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChips {
+    type Executor = DummyExecutor<F>;
 
-    type Periphery = SharedPeriphery<F>;
-
-    fn build(
+    fn extend_execution(
         &self,
-        builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
-    ) -> Result<
-        openvm_circuit::arch::VmInventory<Self::Executor, Self::Periphery>,
-        openvm_circuit::arch::VmInventoryError,
-    > {
-        let mut inventory = openvm_circuit::arch::VmInventory::new();
+        inventory: &mut ExecutorInventoryBuilder<F, Self::Executor>,
+    ) -> Result<(), ExecutorInventoryError> {
+        // TODO: what should go here? It seems like periphery chips should not change the executor inventory.
+        Ok(())
+    }
+}
 
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
+    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
+        // TODO: what should go here?
+        Ok(())
+    }
+}
+
+/// We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
+// This implementation is specific to CpuBackend because the lookup chips (VariableRangeChecker,
+// BitwiseOperationLookupChip) are specific to CpuBackend.
+impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChips> for SharedPeripheryChips
+where
+    SC: StarkGenericConfig,
+    E: StarkEngine<SC = SC, PB = CpuBackend<SC>, PD = CpuDevice<SC>>,
+    RA: RowMajorMatrixArena<Val<SC>>,
+    Val<SC>: PrimeField32 
+{
+    fn extend_prover(&self, extension: &SharedPeripheryChips,
+        inventory: &mut ChipInventory<SC, RA, CpuBackend<SC>>,) -> Result<(), ChipInventoryError> {
         // Sanity check that the shared chips are not already present in the builder.
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
-            assert!(builder
+            assert!(inventory
                 .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-                .is_empty());
+                .next().is_none());
             inventory.add_periphery_chip(bitwise_lookup_8.clone());
         }
 
         if let Some(tuple_checker) = &self.tuple_range_checker {
-            assert!(builder
+            assert!(inventory
                 .find_chip::<SharedRangeTupleCheckerChip<2>>()
-                .is_empty());
+                .next().is_none());
             inventory.add_periphery_chip(tuple_checker.clone());
         }
 
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
-        assert_eq!(
-            builder.find_chip::<SharedVariableRangeCheckerChip>().len(),
-            1
+        assert!(
+            inventory
+                .find_chip::<SharedVariableRangeCheckerChip>()
+                .skip(1).next().is_none()
         );
 
-        Ok(inventory)
+        Ok(())
     }
 }
 

@@ -2,24 +2,24 @@ use derive_more::From;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
-use openvm_circuit::arch::InitFileGenerator;
 use openvm_circuit::arch::{
-    instructions::exe::VmExe, segment::DefaultSegmentationStrategy, Streams, SystemConfig,
-    VirtualMachine, VmChipComplex, VmConfig, VmInventoryError,
+    instructions::exe::VmExe, Streams, SystemConfig, VirtualMachine, VmChipComplex, VmConfig,
 };
+use openvm_circuit::arch::{
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator,
+    VmCircuitConfig, VmExecutionConfig,
+};
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::InstructionExecutor;
+use openvm_circuit_derive::PreflightExecutor;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_instructions::program::Program;
 use openvm_sdk::{
-    config::{
-        AggStarkConfig, AppConfig, SdkVmConfig, SdkVmConfigExecutor, SdkVmConfigPeriphery,
-        DEFAULT_APP_LOG_BLOWUP,
-    },
-    keygen::AggStarkProvingKey,
+    config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     prover::AggStarkProver,
     Sdk, StdIn,
 };
+use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
@@ -31,8 +31,9 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
-use powdr_extension::{PowdrExecutor, PowdrExtension, PowdrPeriphery};
-use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
+use powdr_extension::{PowdrExecutor, PowdrExtension};
+use powdr_openvm_hints_circuit::HintsExecutor;
+// use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -121,7 +122,7 @@ impl InitFileGenerator for SpecializedConfig {
         &self,
         manifest_dir: &Path,
         init_file_name: Option<&str>,
-    ) -> eyre::Result<()> {
+    ) -> std::io::Result<()> {
         self.sdk_config
             .config()
             .write_to_init_file(manifest_dir, init_file_name)
@@ -129,7 +130,7 @@ impl InitFileGenerator for SpecializedConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
+#[derive(From, AnyEnum, PreflightExecutor, Chip)]
 pub enum SpecializedExecutor<F: PrimeField32> {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<F>),
@@ -137,33 +138,41 @@ pub enum SpecializedExecutor<F: PrimeField32> {
     PowdrExecutor(PowdrExecutor<F>),
 }
 
-#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
-pub enum MyPeriphery<F: PrimeField32> {
-    #[any_enum]
-    SdkPeriphery(ExtendedVmConfigPeriphery<F>),
-    #[any_enum]
-    PowdrPeriphery(PowdrPeriphery<F>),
+// impl VmConfig<BabyBear> for SpecializedConfig {
+//     type Executor = SpecializedExecutor<BabyBear>;
+//     type Periphery = MyPeriphery<BabyBear>;
+
+//     fn system(&self) -> &SystemConfig {
+//         VmConfig::<BabyBear>::system(self.sdk_config.config())
+//     }
+
+//     fn system_mut(&mut self) -> &mut SystemConfig {
+//         VmConfig::<BabyBear>::system_mut(self.sdk_config.config_mut())
+//     }
+
+//     fn create_chip_complex(
+//         &self,
+//     ) -> Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
+//         let chip = self.sdk_config.create_chip_complex()?;
+//         let chip = chip.extend(&self.powdr)?;
+
+//         Ok(chip)
+//     }
+// }
+
+impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for SpecializedConfig {
+    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
+        todo!()
+    }
 }
 
-impl VmConfig<BabyBear> for SpecializedConfig {
-    type Executor = SpecializedExecutor<BabyBear>;
-    type Periphery = MyPeriphery<BabyBear>;
+impl<F: PrimeField32> VmExecutionConfig<F> for SpecializedConfig {
+    type Executor = SpecializedExecutor<F>;
 
-    fn system(&self) -> &SystemConfig {
-        VmConfig::<BabyBear>::system(self.sdk_config.config())
-    }
-
-    fn system_mut(&mut self) -> &mut SystemConfig {
-        VmConfig::<BabyBear>::system_mut(self.sdk_config.config_mut())
-    }
-
-    fn create_chip_complex(
+    fn create_executors(
         &self,
-    ) -> Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
-        let chip = self.sdk_config.create_chip_complex()?;
-        let chip = chip.extend(&self.powdr)?;
-
-        Ok(chip)
+    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        todo!()
     }
 }
 
@@ -216,7 +225,7 @@ pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
-    let sdk = Sdk::default();
+    let sdk = Sdk::riscv32();
 
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -245,17 +254,16 @@ pub fn compile_openvm(
 
     let elf = sdk.build(
         guest_opts,
-        &sdk_vm_config,
         target_path,
         &Default::default(),
         Default::default(),
     )?;
 
     // Transpile the ELF into a VmExe.
-    let mut transpiler = sdk_vm_config.transpiler();
+    let mut transpiler = sdk.transpiler().unwrap();
 
     // Add our custom transpiler extensions
-    transpiler = transpiler.with_extension(HintsTranspilerExtension {});
+    transpiler = &transpiler.with_extension(HintsTranspilerExtension {});
 
     let exe = sdk.transpile(elf, transpiler)?;
 
@@ -447,27 +455,45 @@ pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
 }
 
-impl VmConfig<BabyBear> for ExtendedVmConfig {
-    type Executor = ExtendedVmConfigExecutor<BabyBear>;
-    type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
+// impl VmConfig<BabyBear> for ExtendedVmConfig {
+//     type Executor = ExtendedVmConfigExecutor<BabyBear>;
+//     type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
 
-    fn system(&self) -> &SystemConfig {
-        &self.sdk_vm_config.system.config
+//     fn system(&self) -> &SystemConfig {
+//         &self.sdk_vm_config.system.config
+//     }
+
+//     fn system_mut(&mut self) -> &mut SystemConfig {
+//         &mut self.sdk_vm_config.system.config
+//     }
+
+//     fn create_chip_complex(
+//         &self,
+//     ) -> Result<
+//         VmChipComplex<BabyBear, Self::Executor, Self::Periphery>,
+//         VmInventoryError,
+//     > {
+//         let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
+//         complex = complex.extend(&HintsExtension)?;
+//         Ok(complex)
+//     }
+// }
+
+impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for ExtendedVmConfig {
+    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
+        unimplemented!()
     }
+}
 
-    fn system_mut(&mut self) -> &mut SystemConfig {
-        &mut self.sdk_vm_config.system.config
-    }
+impl<F: PrimeField32> VmExecutionConfig<F> for ExtendedVmConfig {
+    type Executor = ExtendedVmConfigExecutor<F>;
 
-    fn create_chip_complex(
+    fn create_executors(
         &self,
-    ) -> std::result::Result<
-        VmChipComplex<BabyBear, Self::Executor, Self::Periphery>,
-        VmInventoryError,
-    > {
-        let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
-        complex = complex.extend(&HintsExtension)?;
-        Ok(complex)
+    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        let mut inventory = self.sdk_vm_config.create_executors()?.transmute();
+        // inventory = inventory.extend(&HintsExtension)?;
+        Ok(inventory)
     }
 }
 
@@ -480,27 +506,19 @@ impl InitFileGenerator for ExtendedVmConfig {
         &self,
         manifest_dir: &Path,
         init_file_name: Option<&str>,
-    ) -> eyre::Result<()> {
+    ) -> std::io::Result<()> {
         self.sdk_vm_config
             .write_to_init_file(manifest_dir, init_file_name)
     }
 }
 
-#[derive(ChipUsageGetter, Chip, InstructionExecutor, From, AnyEnum)]
+#[derive(PreflightExecutor, From, AnyEnum)]
 #[allow(clippy::large_enum_variant)]
 pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigExecutor<F>),
     #[any_enum]
     Hints(HintsExecutor<F>),
-}
-
-#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
-pub enum ExtendedVmConfigPeriphery<F: PrimeField32> {
-    #[any_enum]
-    Sdk(SdkVmConfigPeriphery<F>),
-    #[any_enum]
-    Hints(HintsPeriphery<F>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -628,7 +646,8 @@ pub fn prove(
             .system
             .config
             .segmentation_strategy = Arc::new(
-            DefaultSegmentationStrategy::new_with_max_segment_len(segment_height),
+            // DefaultSegmentationStrategy::new_with_max_segment_len(segment_height),
+            unimplemented!(),
         );
         tracing::debug!("Setting max segment len to {}", segment_height);
     }
@@ -647,25 +666,28 @@ pub fn prove(
     let app_pk = Arc::new(sdk.app_keygen(app_config)?);
 
     if mock {
-        tracing::info!("Checking constraints and witness in Mock prover...");
-        let engine = BabyBearPoseidon2Engine::new(app_fri_params);
-        let vm = VirtualMachine::new(engine, vm_config.clone());
-        let pk = vm.keygen();
-        let streams = Streams::from(inputs);
-        let mut result = vm.execute_and_generate(exe.clone(), streams).unwrap();
-        let _final_memory = Option::take(&mut result.final_memory);
-        let global_airs = vm.config().create_chip_complex().unwrap().airs();
-        for proof_input in &result.per_segment {
-            let (airs, pks, air_proof_inputs): (Vec<_>, Vec<_>, Vec<_>) =
-                multiunzip(proof_input.per_air.iter().map(|(air_id, air_proof_input)| {
-                    (
-                        global_airs[*air_id].clone(),
-                        pk.per_air[*air_id].clone(),
-                        air_proof_input.clone(),
-                    )
-                }));
-            vm.engine.debug(&airs, &pks, &air_proof_inputs);
-        }
+
+        // TODO: use `debug_proving_ctx`
+
+        // tracing::info!("Checking constraints and witness in Mock prover...");
+        // let engine = BabyBearPoseidon2Engine::new(app_fri_params);
+        // let vm = VirtualMachine::new(engine, vm_config.clone());
+        // let pk = vm.keygen();
+        // let streams = Streams::from(inputs);
+        // let mut result = vm.execute_and_generate(exe.clone(), streams).unwrap();
+        // let _final_memory = Option::take(&mut result.final_memory);
+        // let global_airs = vm.config().create_chip_complex().unwrap().airs();
+        // for proof_input in &result.per_segment {
+        //     let (airs, pks, air_proof_inputs): (Vec<_>, Vec<_>, Vec<_>) =
+        //         multiunzip(proof_input.per_air.iter().map(|(air_id, air_proof_input)| {
+        //             (
+        //                 global_airs[*air_id].clone(),
+        //                 pk.per_air[*air_id].clone(),
+        //                 air_proof_input.clone(),
+        //             )
+        //         }));
+        //     vm.engine.debug(&airs, &pks, &air_proof_inputs);
+        // }
     } else {
         // Generate a proof
         tracing::info!("Generating app proof...");
@@ -688,7 +710,8 @@ pub fn prove(
             // Generate the aggregation proving key
             tracing::info!("Generating aggregation proving key...");
             let (agg_stark_pk, _) =
-                AggStarkProvingKey::dummy_proof_and_keygen(AggStarkConfig::default());
+                // AggStarkProvingKey::dummy_proof_and_keygen(AggStarkConfig::default());
+                unimplemented!();
 
             tracing::info!("Generating aggregation proof...");
 

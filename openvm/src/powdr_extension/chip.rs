@@ -12,15 +12,14 @@ use crate::{
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
-use openvm_circuit::system::memory::MemoryController;
+use openvm_circuit::arch::ExecutionState;
 use openvm_circuit::{
-    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
-    system::memory::OfflineMemory,
+    arch::{ExecutionError, MatrixRecordArena, PreflightExecutor},
+    system::memory::{online::TracingMemory, MemoryController},
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
-    p3_air::{Air, BaseAir},
-    rap::ColumnsAir,
+    p3_air::{Air, BaseAir}, p3_matrix::dense::DenseMatrix, prover::{hal::ProverBackend, types::AirProvingContext}, ChipUsageGetter
 };
 
 use openvm_stark_backend::{
@@ -28,9 +27,8 @@ use openvm_stark_backend::{
     interaction::InteractionBuilder,
     p3_field::PrimeField32,
     p3_matrix::Matrix,
-    prover::types::AirProofInput,
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
-    Chip, ChipUsageGetter,
+    Chip, 
 };
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
@@ -49,7 +47,7 @@ impl<F: PrimeField32> PowdrChip<F> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<F>,
         original_airs: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
@@ -68,19 +66,16 @@ impl<F: PrimeField32> PowdrChip<F> {
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
+impl<F: PrimeField32> PreflightExecutor<F> for PowdrChip<F> {
     fn execute(
-        &mut self,
-        memory: &mut MemoryController<F>,
+        &self,
+        state: openvm_circuit::arch::VmStateMut<F, TracingMemory, MatrixRecordArena<F>>,
         instruction: &Instruction<F>,
-        from_state: ExecutionState<u32>,
-    ) -> ExecutionResult<ExecutionState<u32>> {
+    ) -> Result<(), ExecutionError> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state)?;
-
-        Ok(execution_state)
+        self.executor.execute(state)
     }
 
     fn get_opcode_name(&self, _: usize) -> String {
@@ -101,15 +96,11 @@ impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
     }
 }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PowdrChip<Val<SC>>
+impl<PB: ProverBackend<Matrix = DenseMatrix<Val<SC>>>, SC: StarkGenericConfig> Chip<SC, PB> for PowdrChip<Val<SC>>
 where
     Val<SC>: PrimeField32,
 {
-    fn air(&self) -> Arc<dyn AnyRap<SC>> {
-        self.air.clone()
-    }
-
-    fn generate_air_proof_input(self) -> AirProofInput<SC> {
+    fn generate_proving_ctx(&self, records: SC) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
         let width = self.trace_width();
@@ -119,7 +110,7 @@ where
 
         assert_eq!(trace.width(), width);
 
-        AirProofInput::simple(trace, vec![])
+        AirProvingContext::simple(trace, vec![])
     }
 }
 
@@ -129,11 +120,11 @@ pub struct PowdrAir<F> {
     apc: Arc<Apc<F, Instr<F>>>,
 }
 
-impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
-    fn columns(&self) -> Option<Vec<String>> {
-        Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
-    }
-}
+// impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
+//     fn columns(&self) -> Option<Vec<String>> {
+//         Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
+//     }
+// }
 
 impl<F: PrimeField32> PowdrAir<F> {
     pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {

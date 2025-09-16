@@ -9,7 +9,7 @@ use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
     p3_field::{FieldAlgebra, PrimeField32},
     p3_matrix::Matrix,
-    rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
+    rap::{BaseAirWithPublicValues, PartitionedBaseAir},
 };
 use std::borrow::Borrow;
 use struct_reflection::StructReflection;
@@ -56,11 +56,11 @@ pub struct PlonkAir<F> {
     pub _marker: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField32> ColumnsAir<F> for PlonkAir<F> {
-    fn columns(&self) -> Option<Vec<String>> {
-        PlonkColumns::<F>::struct_reflection()
-    }
-}
+// impl<F: PrimeField32> ColumnsAir<F> for PlonkAir<F> {
+//     fn columns(&self) -> Option<Vec<String>> {
+//         PlonkColumns::<F>::struct_reflection()
+//     }
+// }
 
 impl<F: PrimeField32> BaseAir<F> for PlonkAir<F> {
     fn width(&self) -> usize {

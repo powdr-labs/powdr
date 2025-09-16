@@ -75,7 +75,7 @@ impl<SC: StarkGenericConfig> AirKeygenBuilder<SC> {
             &width,
             &[],
             &[],
-            RapPhaseSeqKind::None,
+            RapPhaseSeqKind::FriLogUp, // TODO: this used to be None but this option was removed
             max_constraint_degree.unwrap_or(0),
         )
     }

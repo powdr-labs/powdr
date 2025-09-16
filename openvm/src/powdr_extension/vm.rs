@@ -4,15 +4,14 @@ use std::iter::once;
 use std::sync::Arc;
 
 use derive_more::From;
-use openvm_circuit_derive::InstructionExecutor;
+use openvm_circuit_derive::PreflightExecutor;
 
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::OriginalAirs;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
-use openvm_circuit::arch::VmInventoryError;
 use openvm_circuit::{
-    arch::{VmExtension, VmInventory},
+    arch::{AirInventory, AirInventoryError, ChipInventory, VmCircuitExtension},
     circuit_derive::{Chip, ChipUsageGetter},
     derive::AnyEnum,
     system::phantom::PhantomChip,
@@ -22,13 +21,14 @@ use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::{
+    config::StarkGenericConfig,
     p3_field::{Field, PrimeField32},
-    ChipUsageGetter,
+    
 };
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtendedVmConfig, ExtendedVmConfigPeriphery, Instr, PrecompileImplementation};
+use crate::{ExtendedVmConfig, Instr, PrecompileImplementation};
 
 use super::plonk::chip::PlonkChip;
 use super::{chip::PowdrChip, PowdrOpcode};
@@ -86,7 +86,7 @@ impl<F> PowdrExtension<F> {
     }
 }
 
-#[derive(ChipUsageGetter, From, AnyEnum, InstructionExecutor, Chip)]
+#[derive( From, AnyEnum, PreflightExecutor, Chip)]
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExecutor<F: PrimeField32> {
     Powdr(PowdrChip<F>),
@@ -102,35 +102,20 @@ impl<F: PrimeField32> PowdrExecutor<F> {
     }
 }
 
-#[derive(From, ChipUsageGetter, Chip, AnyEnum)]
-pub enum PowdrPeriphery<F: PrimeField32> {
-    Sdk(ExtendedVmConfigPeriphery<F>),
-    Phantom(PhantomChip<F>),
-}
-
-impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
-    type Executor = PowdrExecutor<F>;
-
-    type Periphery = PowdrPeriphery<F>;
-
-    fn build(
-        &self,
-        builder: &mut openvm_circuit::arch::VmInventoryBuilder<F>,
-    ) -> Result<VmInventory<Self::Executor, Self::Periphery>, VmInventoryError> {
-        let mut inventory = VmInventory::new();
-
-        let offline_memory = builder.system_base().offline_memory();
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for PowdrExtension<SC> {
+    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
+        let offline_memory = inventory.system_base().offline_memory();
 
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = builder
+        let bitwise_lookup = inventory
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
             .first()
             .cloned();
-        let range_checker = *builder
+        let range_checker = *inventory
             .find_chip::<SharedVariableRangeCheckerChip>()
             .first()
             .unwrap();
-        let tuple_range_checker = builder
+        let tuple_range_checker = inventory
             .find_chip::<SharedRangeTupleCheckerChip<2>>()
             .first()
             .cloned();
@@ -140,7 +125,7 @@ impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
             PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
 
         for precompile in &self.precompiles {
-            let powdr_chip: PowdrExecutor<F> = match self.implementation {
+            let powdr_chip: PowdrExecutor<_> = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     self.airs.clone(),
@@ -150,7 +135,7 @@ impl<F: PrimeField32> VmExtension<F> for PowdrExtension<F> {
                 )
                 .into(),
                 PrecompileImplementation::PlonkChip => {
-                    let copy_constraint_bus_id = builder.new_bus_idx();
+                    let copy_constraint_bus_id = inventory.new_bus_idx();
 
                     PlonkChip::new(
                         precompile.clone(),

@@ -13,10 +13,11 @@ use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::{ExtendedVmConfig, Instr};
 use itertools::Itertools;
+use openvm_circuit::system::memory::online::TracingMemory;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_circuit::{
-    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
-    system::memory::{MemoryController, OfflineMemory},
+    arch::{ExecutionState, PreflightExecutor},
+    system::memory::MemoryController,
 };
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
@@ -24,12 +25,13 @@ use openvm_stark_backend::p3_air::BaseAir;
 use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_stark_backend::p3_matrix::Matrix;
+use openvm_stark_backend::prover::hal::ProverBackend;
+use openvm_stark_backend::prover::types::AirProvingContext;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::PrimeField32,
-    prover::types::AirProofInput,
     rap::AnyRap,
-    Chip, ChipUsageGetter,
+    Chip, 
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
@@ -50,7 +52,7 @@ impl<F: PrimeField32> PlonkChip<F> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<F>,
         original_airs: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
@@ -78,17 +80,20 @@ impl<F: PrimeField32> PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
+impl<F: PrimeField32> PreflightExecutor<F> for PlonkChip<F> {
     fn execute(
-        &mut self,
-        memory: &mut MemoryController<F>,
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            F,
+            openvm_circuit::system::memory::online::TracingMemory,
+            openvm_circuit::arch::MatrixRecordArena<F>,
+        >,
         instruction: &Instruction<F>,
-        from_state: ExecutionState<u32>,
-    ) -> ExecutionResult<ExecutionState<u32>> {
+    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state)?;
+        let execution_state = self.executor.execute(state)?;
 
         Ok(execution_state)
     }
@@ -98,28 +103,24 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
-    fn air_name(&self) -> String {
-        format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
-    }
-    fn current_trace_height(&self) -> usize {
-        self.executor.number_of_calls()
-    }
+// impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
+//     fn air_name(&self) -> String {
+//         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
+//     }
+//     fn current_trace_height(&self) -> usize {
+//         self.executor.number_of_calls()
+//     }
 
-    fn trace_width(&self) -> usize {
-        self.air.width()
-    }
-}
+//     fn trace_width(&self) -> usize {
+//         self.air.width()
+//     }
+// }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PlonkChip<Val<SC>>
+impl<PB: ProverBackend, SC: StarkGenericConfig> Chip<SC, PB> for PlonkChip<Val<SC>>
 where
     Val<SC>: PrimeField32,
 {
-    fn air(&self) -> Arc<dyn AnyRap<SC>> {
-        self.air.clone()
-    }
-
-    fn generate_air_proof_input(self) -> AirProofInput<SC> {
+    fn generate_proving_ctx(&self, records: SC) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
@@ -212,7 +213,7 @@ where
 
         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
+        AirProvingContext::simple(RowMajorMatrix::new(values, width), vec![])
     }
 }
 
