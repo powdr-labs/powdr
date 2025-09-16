@@ -2,11 +2,11 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::{log2_exact, ExpressionConvertible, FieldElement, LargeInt};
+use powdr_number::ExpressionConvertible;
 
 use crate::{
     algebraic_constraint::AlgebraicConstraint,
-    effect::{Assertion, BitDecomposition, BitDecompositionComponent, Condition, Effect},
+    effect::{Assertion, Condition, Effect},
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
     runtime_constant::RuntimeConstant,
@@ -200,144 +200,11 @@ impl<
                 ProcessResult::empty()
             }
         } else {
-            // Solve expression of the form `a * X + b * Y + ... + self.constant = 0`
-            let r = self.solve_bit_decomposition(range_constraints)?;
-
-            if r.complete {
-                r
-            } else {
-                ProcessResult {
-                    effects: self.transfer_constraints(range_constraints),
-                    complete: false,
-                }
+            ProcessResult {
+                effects: self.transfer_constraints(range_constraints),
+                complete: false,
             }
         })
-    }
-
-    /// Tries to solve a bit-decomposition equation.
-    /// Assumptions:
-    /// - The constraint is linear
-    fn solve_bit_decomposition(
-        &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Result<ProcessResult<T, V>, Error> {
-        let expression = self.expression;
-
-        assert!(!expression.is_quadratic());
-        // All the coefficients need to be known numbers and the
-        // variables need to be range-constrained.
-        let constrained_coefficients = expression
-            .linear
-            .iter()
-            .map(|(var, coeff)| {
-                let coeff = coeff.try_to_number()?;
-                let rc = range_constraints.get(var);
-                let is_negative = !coeff.is_in_lower_half();
-                let coeff_abs = if is_negative { -coeff } else { coeff };
-                // We could work with non-powers of two, but it would require
-                // division instead of shifts.
-                let exponent = log2_exact(coeff_abs.to_arbitrary_integer())?;
-                // We negate here because we are solving
-                // c_1 * x_1 + c_2 * x_2 + ... + offset = 0,
-                // instead of
-                // c_1 * x_1 + c_2 * x_2 + ... = offset.
-                Some((var.clone(), rc, !is_negative, coeff_abs, exponent))
-            })
-            .collect::<Option<Vec<_>>>();
-        let Some(constrained_coefficients) = constrained_coefficients else {
-            return Ok(ProcessResult::empty());
-        };
-
-        // If the offset is a known number, we gradually remove the
-        // components from this number.
-        let mut offset = expression.constant.try_to_number();
-        let mut concrete_assignments = vec![];
-
-        let any_negative = constrained_coefficients
-            .iter()
-            .any(|(_, _, is_negative, _, _)| *is_negative);
-
-        // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: <T::FieldType as FieldElement>::Integer = 0.into();
-        let mut components: Vec<BitDecompositionComponent<T::FieldType, V>> = vec![];
-        for (variable, constraint, is_negative, coeff_abs, exponent) in constrained_coefficients
-            .into_iter()
-            .sorted_by_key(|(_, _, _, _, exponent)| *exponent)
-        {
-            let bit_mask = *constraint.multiple(coeff_abs).mask();
-            if !(bit_mask & covered_bits).is_zero() {
-                // Overlapping range constraints.
-                return Ok(ProcessResult::empty());
-            } else {
-                covered_bits |= bit_mask;
-            }
-
-            // If the offset is a known number, we create concrete assignments and modify the offset.
-            // if it is not known, we return a BitDecomposition effect.
-            if let Some(offset) = &mut offset {
-                let mut component = if is_negative { -*offset } else { *offset }.to_integer();
-                if component > (T::FieldType::modulus() - 1.into()) >> 1 {
-                    // Convert a signed finite field element into two's complement.
-                    // a regular subtraction would underflow, so we do this.
-                    // We add the difference between negative numbers in the field
-                    // and negative numbers in two's complement.
-                    component += <T::FieldType as FieldElement>::Integer::MAX
-                        - T::FieldType::modulus()
-                        + 1.into();
-                };
-                component &= bit_mask;
-                if component >= T::FieldType::modulus() {
-                    // If the component does not fit the field, the bit mask is not
-                    // tight good enough.
-                    return Ok(ProcessResult::empty());
-                }
-                concrete_assignments.push(
-                    // We're not using assignment_if_satisfies_range_constraints here, because we
-                    // might still exit early. The error case is handled below.
-                    Effect::Assignment(
-                        variable.clone(),
-                        T::FieldType::from(component >> exponent).into(),
-                    ),
-                );
-                if is_negative {
-                    *offset += T::FieldType::from(component);
-                } else {
-                    *offset -= T::FieldType::from(component);
-                }
-            } else {
-                components.push(BitDecompositionComponent {
-                    variable,
-                    is_negative,
-                    exponent: exponent as u64,
-                    bit_mask,
-                });
-            }
-        }
-
-        if covered_bits >= T::FieldType::modulus() {
-            return Ok(ProcessResult::empty());
-        }
-
-        if let Some(offset) = offset {
-            if offset != 0.into() {
-                if any_negative {
-                    // In case we have negative coefficients, the algorithm
-                    // does not always find the correct assignment.
-                    return Ok(ProcessResult::empty());
-                } else {
-                    return Err(Error::ConstraintUnsatisfiable(self.to_string()));
-                }
-            }
-            assert_eq!(concrete_assignments.len(), expression.linear.len());
-            Ok(ProcessResult::complete(concrete_assignments))
-        } else {
-            Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
-                BitDecomposition {
-                    value: expression.constant.clone(),
-                    components,
-                },
-            )]))
-        }
     }
 
     /// Extract the range constraints from the expression.
@@ -545,7 +412,7 @@ mod tests {
     };
 
     use super::*;
-    use powdr_number::GoldilocksField;
+    use powdr_number::{FieldElement, GoldilocksField};
 
     use pretty_assertions::assert_eq;
 
@@ -779,89 +646,6 @@ mod tests {
         };
         assert_eq!(var.to_string(), "X");
         assert_eq!(expr.to_string(), "(((7 * y) + -10) / -z)");
-    }
-
-    #[test]
-    fn solve_bit_decomposition() {
-        let rc = RangeConstraint::from_mask(0xffu32);
-        // First try without range constrain on a, but on b and c.
-        let a = Qse::from_unknown_variable("a");
-        let b = Qse::from_unknown_variable("b");
-        let c = Qse::from_unknown_variable("c");
-        let z = Qse::from_known_symbol("Z", Default::default());
-        // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
-        let ten = constant(10);
-        let constr: Qse = a * constant(0x100) - b * constant(0x10000)
-            + c * constant(0x1000000)
-            + ten.clone()
-            + z.clone();
-        // Without range constraints on a, this is not solvable.
-        let mut range_constraints = HashMap::from([("b", rc.clone()), ("c", rc.clone())]);
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(!result.complete && result.effects.is_empty());
-        // Now add the range constraint on a, it should be solvable.
-        range_constraints.insert("a", rc.clone());
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(result.complete);
-
-        let [effect] = &result.effects[..] else {
-            panic!();
-        };
-        let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
-            panic!();
-        };
-        assert_eq!(format!("{value}"), "(10 + Z)");
-        let formatted = components
-            .iter()
-            .map(|c| {
-                format!(
-                    "{} = (({value} & 0x{:0x}) >> {}){};\n",
-                    c.variable,
-                    c.bit_mask,
-                    c.exponent,
-                    if c.is_negative { " [negative]" } else { "" }
-                )
-            })
-            .join("");
-
-        assert_eq!(
-            formatted,
-            "\
-a = (((10 + Z) & 0xff00) >> 8) [negative];
-b = (((10 + Z) & 0xff0000) >> 16);
-c = (((10 + Z) & 0xff000000) >> 24) [negative];
-"
-        );
-    }
-
-    #[test]
-    fn bit_decomposition_bug() {
-        let lin = Qse::from_unknown_variable("lin");
-        let result = Qse::from_unknown_variable("result");
-        let constr = lin.clone() - constant(4) * result.clone() - constant(4);
-        let range_constraints = HashMap::from([
-            ("lin", RangeConstraint::from_mask(0x8u32)),
-            ("result", RangeConstraint::from_mask(0x1u32)),
-        ]);
-        // We try to solve `lin - 4 * result = 4` and the problem is
-        // that we cannot assign `lin = 4 & mask` for some mask, since
-        // it needs to be assigned `8`.
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(!result.complete);
-        // The algorithm has a bug, so we exect no bit decomposition.
-        let has_bit_decomp = result
-            .effects
-            .iter()
-            .filter(|e| matches!(e, Effect::BitDecomposition(_)))
-            .count()
-            != 0;
-        assert!(!has_bit_decomp);
     }
 
     #[test]

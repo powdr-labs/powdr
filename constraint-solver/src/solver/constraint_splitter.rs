@@ -602,6 +602,23 @@ l3 - 1 = 0"
     }
 
     #[test]
+    fn bit_decomposition_bug() {
+        // This tests against a bug that was present in the old bit
+        // decomposition algorithm.
+        let lin = var("lin");
+        let result = var("result");
+        let constr = lin.clone() - constant(4) * result.clone() - constant(4);
+        let range_constraints = HashMap::from([
+            ("lin", RangeConstraint::from_mask(0x8u32)),
+            ("result", RangeConstraint::from_mask(0x1u32)),
+        ]);
+        // We try to solve `lin - 4 * result = 4` and the problem is
+        // that we cannot assign `lin = 4 & mask` for some mask, since
+        // it needs to be assigned `8`.
+        assert!(try_split(constr, &range_constraints).is_none());
+    }
+
+    #[test]
     fn split_fail_overlapping() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
         let rcs = [("x", four_bit_rc.clone()), ("y", four_bit_rc.clone())]
