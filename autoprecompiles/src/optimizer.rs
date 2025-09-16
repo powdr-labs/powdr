@@ -13,6 +13,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
+use crate::powdr::UniqueReferences;
 use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
@@ -24,12 +25,25 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
+/// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
+/// All constraints in the returned machine will respect the given degree bound.
+/// New variables may be introduced in the process.
 pub fn optimize<A: Adapter>(
     mut machine: SymbolicMachine<A::PowdrField>,
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
+    let mut next_free_column_id = machine.unique_references().map(|c| c.id).max().unwrap_or(0) + 1;
+    let mut _new_var = || {
+        let id = next_free_column_id;
+        next_free_column_id += 1;
+        AlgebraicReference {
+            name: format!("var_{id}").into(),
+            id,
+        }
+    };
+
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
