@@ -1,9 +1,9 @@
 use openvm_circuit::arch::{PhantomSubExecutor, Streams};
-use openvm_circuit::system::memory::MemoryController;
 use openvm_instructions::riscv::RV32_MEMORY_AS;
 use openvm_instructions::PhantomDiscriminant;
-use openvm_rv32im_circuit::adapters::unsafe_read_rv32_register;
+use openvm_rv32im_circuit::adapters::read_rv32_register;
 use openvm_stark_backend::p3_field::PrimeField32;
+use rand::rngs::StdRng;
 
 use crate::field10x26_k256;
 
@@ -13,22 +13,23 @@ pub struct ReverseBytesSubEx;
 
 impl<F: PrimeField32> PhantomSubExecutor<F> for ReverseBytesSubEx {
     fn phantom_execute(
-        &mut self,
-        memory: &MemoryController<F>,
+        &self,
+        memory: &openvm_circuit::system::memory::online::GuestMemory,
         streams: &mut Streams<F>,
-        _discriminant: PhantomDiscriminant,
-        a: F,
-        _b: F,
+        _: &mut StdRng,
+        _: PhantomDiscriminant,
+        a: u32,
+        _: u32,
         c_upper: u16,
     ) -> eyre::Result<()> {
         assert_eq!(c_upper, 0);
         // read register
-        let rs1 = unsafe_read_rv32_register(memory, a);
+        let rs1 = read_rv32_register(memory, a);
         // read memory
-        let bytes = memory.unsafe_read::<4>(
-            F::from_canonical_u32(RV32_MEMORY_AS),
-            F::from_canonical_u32(rs1),
-        );
+        let bytes = unsafe { memory.read::<F, 4>(
+            RV32_MEMORY_AS,
+            rs1,
+        ) };
         // write hint as bytes in reverse
         let hint_bytes = bytes.into_iter().rev().collect();
         streams.hint_stream = hint_bytes;
@@ -55,23 +56,24 @@ impl_modulus!(
 
 impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseFieldSubEx {
     fn phantom_execute(
-        &mut self,
-        memory: &MemoryController<F>,
+        &self,
+        memory: &openvm_circuit::system::memory::online::GuestMemory,
         streams: &mut Streams<F>,
+        _: &mut StdRng,
         _: PhantomDiscriminant,
-        a: F,
-        _b: F,
+        a: u32,
+        _: u32,
         c_upper: u16,
     ) -> eyre::Result<()> {
         assert_eq!(c_upper, 0);
         // read register
-        let rs1 = unsafe_read_rv32_register(memory, a);
+        let rs1 = read_rv32_register(memory, a);
         // read the field element
-        let bytes: [u8; 32] = memory
-            .unsafe_read::<32>(
-                F::from_canonical_u32(RV32_MEMORY_AS),
-                F::from_canonical_u32(rs1),
-            )
+        let bytes: [u8; 32] = unsafe { memory
+            .read::<F, 32>(
+                RV32_MEMORY_AS,
+                rs1,
+            ) }
             .into_iter()
             .map(|f| u8::try_from(f.as_canonical_u32()).expect("value not a byte"))
             .collect::<Vec<_>>()
@@ -108,23 +110,24 @@ pub struct K256InverseField10x26SubEx;
 
 impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
     fn phantom_execute(
-        &mut self,
-        memory: &MemoryController<F>,
+        &self,
+        memory: &openvm_circuit::system::memory::online::GuestMemory,
         streams: &mut Streams<F>,
+        _: &mut StdRng,
         _: PhantomDiscriminant,
-        a: F,
-        _b: F,
+        a: u32,
+        _: u32,
         c_upper: u16,
     ) -> eyre::Result<()> {
         assert_eq!(c_upper, 0);
         // read register
-        let rs1 = unsafe_read_rv32_register(memory, a);
+        let rs1 = read_rv32_register(memory, a);
         // read the k256 field_10x26 as raw bytes
-        let bytes: [u8; FIELD10X26_BYTES] = memory
-            .unsafe_read::<{ FIELD10X26_BYTES }>(
-                F::from_canonical_u32(RV32_MEMORY_AS),
-                F::from_canonical_u32(rs1),
-            )
+        let bytes: [u8; FIELD10X26_BYTES] = unsafe {memory
+            .read::<F, { FIELD10X26_BYTES }>(
+                RV32_MEMORY_AS,
+                rs1,
+            ) }
             .into_iter()
             .map(|f| u8::try_from(f.as_canonical_u32()).expect("value not a byte"))
             .collect::<Vec<_>>()
@@ -164,23 +167,24 @@ pub struct K256SqrtField10x26SubEx;
 
 impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
     fn phantom_execute(
-        &mut self,
-        memory: &MemoryController<F>,
+        &self,
+        memory: &openvm_circuit::system::memory::online::GuestMemory,
         streams: &mut Streams<F>,
+        _: &mut StdRng,
         _: PhantomDiscriminant,
-        a: F,
-        _b: F,
+        a: u32,
+        _: u32,
         c_upper: u16,
     ) -> eyre::Result<()> {
         assert_eq!(c_upper, 0);
         // read register
-        let rs1 = unsafe_read_rv32_register(memory, a);
+        let rs1 = read_rv32_register(memory, a);
         // read the k256 field_10x26 as raw bytes
-        let bytes: [u8; FIELD10X26_BYTES] = memory
-            .unsafe_read::<{ FIELD10X26_BYTES }>(
-                F::from_canonical_u32(RV32_MEMORY_AS),
-                F::from_canonical_u32(rs1),
-            )
+        let bytes: [u8; FIELD10X26_BYTES] = unsafe { memory
+            .read::<F, { FIELD10X26_BYTES }>(
+                RV32_MEMORY_AS,
+                rs1,
+            )}
             .into_iter()
             .map(|f| u8::try_from(f.as_canonical_u32()).expect("value not a byte"))
             .collect::<Vec<_>>()
