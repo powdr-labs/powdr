@@ -15,7 +15,7 @@ use crate::{
 
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
-    trace_handler::{generate_trace, Trace, TraceData},
+    trace_handler::{generate_trace, ComputationMethod, Trace, TraceData},
     Apc,
 };
 
@@ -164,7 +164,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
             apc_poly_id_to_index,
-            is_valid_index,
+            columns_to_compute,
         } = generate_trace(
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
@@ -224,8 +224,19 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     }
                 }
 
-                // Set the is_valid column to 1
-                row_slice[is_valid_index] = F::ONE;
+                // Fill in the columns we have to compute from other columns
+                // (these are either new columns or for example the "is_valid" column).
+                for (col_index, computation_method) in &columns_to_compute {
+                    row_slice[*col_index] = match computation_method {
+                        ComputationMethod::Constant(c) => F::from_canonical_u64(*c),
+                        ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
+                            .iter()
+                            .map(|col| row_slice[*col])
+                            .reduce(|a, b| a + b)
+                            .unwrap()
+                            .inverse(),
+                    };
+                }
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
