@@ -566,7 +566,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sub for GroupedExpression<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord> GroupedExpression<T, V> {
+impl<T: Neg<Output = T> + Clone, V: Clone + Ord> GroupedExpression<T, V> {
     fn negate(&mut self) {
         for (first, _) in &mut self.quadratic {
             first.negate()
@@ -578,7 +578,7 @@ impl<T: RuntimeConstant, V: Clone + Ord> GroupedExpression<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord> Neg for GroupedExpression<T, V> {
+impl<T: Neg<Output = T> + Clone, V: Clone + Ord> Neg for GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn neg(mut self) -> Self {
@@ -587,7 +587,7 @@ impl<T: RuntimeConstant, V: Clone + Ord> Neg for GroupedExpression<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord> Neg for &GroupedExpression<T, V> {
+impl<T: Neg<Output = T> + Clone, V: Clone + Ord> Neg for &GroupedExpression<T, V> {
     type Output = GroupedExpression<T, V>;
 
     fn neg(self) -> Self::Output {
