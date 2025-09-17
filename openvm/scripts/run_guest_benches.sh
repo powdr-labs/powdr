@@ -44,7 +44,7 @@ run_bench() {
 
 ### Keccak
 dir="results/keccak"
-input="10000"
+input="25000"
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -60,7 +60,7 @@ popd
 
 ### SHA256
 dir="results/sha256"
-input="30000"
+input="100000"
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -123,7 +123,7 @@ popd
 
 ### ECC
 dir="results/ecc"
-input="50"
+input="75"
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -145,7 +145,7 @@ popd
 
 ### ECRECOVER
 dir="results/ecrecover"
-input="20"
+input="60"
 
 mkdir -p "$dir"
 pushd "$dir"
