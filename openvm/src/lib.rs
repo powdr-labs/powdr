@@ -2,6 +2,7 @@ use derive_more::From;
 use eyre::Result;
 use itertools::{multiunzip, Itertools};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
+use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
     instructions::exe::VmExe, Streams, SystemConfig, VirtualMachine, VmChipComplex, VmConfig,
 };
@@ -13,7 +14,8 @@ use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGeneric
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::PreflightExecutor;
 use openvm_circuit_primitives_derive::ChipUsageGetter;
-use openvm_instructions::program::Program;
+use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
+use openvm_sdk::prover::verify_app_proof;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     prover::AggStarkProver,
@@ -131,11 +133,11 @@ impl InitFileGenerator for SpecializedConfig {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(From, AnyEnum, PreflightExecutor, Chip)]
-pub enum SpecializedExecutor<F: PrimeField32> {
+pub enum SpecializedExecutor {
     #[any_enum]
-    SdkExecutor(ExtendedVmConfigExecutor<F>),
+    SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor<F>),
+    PowdrExecutor(PowdrExecutor),
 }
 
 // impl VmConfig<BabyBear> for SpecializedConfig {
@@ -166,8 +168,8 @@ impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for SpecializedConfig {
     }
 }
 
-impl<F: PrimeField32> VmExecutionConfig<F> for SpecializedConfig {
-    type Executor = SpecializedExecutor<F>;
+impl VmExecutionConfig<BabyBear> for SpecializedConfig {
+    type Executor = SpecializedExecutor;
 
     fn create_executors(
         &self,
@@ -225,7 +227,16 @@ pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
-    let sdk = Sdk::riscv32();
+    let mut sdk = Sdk::riscv32();
+
+    let transpiler = sdk.transpiler().unwrap();
+
+    // Add our custom transpiler extensions
+    sdk.set_transpiler(
+        transpiler
+            .clone()
+            .with_extension(HintsTranspilerExtension {}),
+    );
 
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
@@ -260,12 +271,7 @@ pub fn compile_openvm(
     )?;
 
     // Transpile the ELF into a VmExe.
-    let mut transpiler = sdk.transpiler().unwrap();
-
-    // Add our custom transpiler extensions
-    transpiler = &transpiler.with_extension(HintsTranspilerExtension {});
-
-    let exe = sdk.transpile(elf, transpiler)?;
+    let exe = sdk.convert_to_exe(elf)?;
 
     let vm_config = ExtendedVmConfig { sdk_vm_config };
 
@@ -308,7 +314,7 @@ pub fn compile_guest(
 }
 
 fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
-    (program.pc_base + (idx as u32 * program.step)) as u64
+    (program.pc_base + (idx as u32 * DEFAULT_PC_STEP)) as u64
 }
 
 fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
@@ -390,11 +396,12 @@ pub fn compile_exe_with_elf(
             let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
                 let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
 
-                let total_non_apc_columns = original_config
-                    .chip_inventory_air_metrics(config.degree_bound.identities)
-                    .values()
-                    .map(|m| m.total_width())
-                    .sum::<usize>();
+                let total_non_apc_columns: usize = unimplemented!();
+                // original_config
+                //     .chip_inventory_air_metrics(config.degree_bound.identities)
+                //     .values()
+                //     .map(|m| m.total_width())
+                //     .sum::<usize>();
                 max_total_columns - total_non_apc_columns
             });
 
@@ -444,7 +451,7 @@ pub struct CompiledProgram {
 // the original openvm program and config without powdr extension
 #[derive(Clone)]
 pub struct OriginalCompiledProgram {
-    pub exe: VmExe<BabyBear>,
+    pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: ExtendedVmConfig,
 }
 
@@ -573,55 +580,57 @@ impl CompiledProgram {
 
         use crate::extraction_utils::get_air_metrics;
 
-        let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
+        unimplemented!("change in inventory api");
 
-        // Order of precompile is the same as that of Powdr executors in chip inventory
-        let mut apc_stats = self
-            .vm_config
-            .powdr
-            .precompiles
-            .iter()
-            .map(|precompile| precompile.apc_stats.clone());
+        // let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
 
-        inventory
-            .executors()
-            .iter()
-            .map(|executor| executor.air())
-            .chain(
-                inventory
-                    .periphery()
-                    .iter()
-                    .map(|periphery| periphery.air()),
-            )
-            .fold(
-                (Vec::new(), Vec::new()),
-                |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
-                    let name = air.name();
+        // // Order of precompile is the same as that of Powdr executors in chip inventory
+        // let mut apc_stats = self
+        //     .vm_config
+        //     .powdr
+        //     .precompiles
+        //     .iter()
+        //     .map(|precompile| precompile.apc_stats.clone());
 
-                    // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
-                    // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
-                    // TODO this is hacky but not sure how to do it better rn.
-                    if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                        powdr_air_metrics.push((
-                            get_air_metrics(air, max_degree),
-                            apc_stats.next().unwrap().map(|stats| stats.widths),
-                        ));
-                    } else {
-                        non_powdr_air_metrics.push(get_air_metrics(air, max_degree));
-                    }
+        // inventory
+        //     .executors()
+        //     .iter()
+        //     .map(|executor| executor.air())
+        //     .chain(
+        //         inventory
+        //             .periphery()
+        //             .iter()
+        //             .map(|periphery| periphery.air()),
+        //     )
+        //     .fold(
+        //         (Vec::new(), Vec::new()),
+        //         |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
+        //             let name = air.name();
 
-                    (powdr_air_metrics, non_powdr_air_metrics)
-                },
-            )
+        //             // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
+        //             // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
+        //             // TODO this is hacky but not sure how to do it better rn.
+        //             if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
+        //                 powdr_air_metrics.push((
+        //                     get_air_metrics(air, max_degree),
+        //                     apc_stats.next().unwrap().map(|stats| stats.widths),
+        //                 ));
+        //             } else {
+        //                 non_powdr_air_metrics.push(get_air_metrics(air, max_degree));
+        //             }
+
+        //             (powdr_air_metrics, non_powdr_air_metrics)
+        //         },
+        //     )
     }
 }
 
 pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
 
-    let sdk = Sdk::default();
+    let sdk = Sdk::riscv32();
 
-    let output = sdk.execute(exe.clone(), vm_config.clone(), inputs)?;
+    let output = sdk.execute(exe.clone(), inputs)?;
     tracing::info!("Public values output: {:?}", output);
 
     Ok(())
@@ -645,25 +654,25 @@ pub fn prove(
             .sdk_vm_config
             .system
             .config
-            .segmentation_strategy = Arc::new(
-            // DefaultSegmentationStrategy::new_with_max_segment_len(segment_height),
-            unimplemented!(),
-        );
+            .segmentation_limits =
+            SegmentationLimits::default().with_max_trace_height(segment_height as u32);
         tracing::debug!("Setting max segment len to {}", segment_height);
     }
 
-    let sdk = Sdk::default();
+    let sdk = Sdk::riscv32();
 
     // Set app configuration
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
+    let mut app_prover = sdk.app_prover(exe.clone())?;
+
     // Commit the exe
-    let app_committed_exe = sdk.commit_app_exe(app_fri_params, exe.clone())?;
+    let app_committed_exe = app_prover.app_commit();
 
     // Generate an AppProvingKey
-    let app_pk = Arc::new(sdk.app_keygen(app_config)?);
+    sdk.app_keygen();
 
     if mock {
 
@@ -692,39 +701,24 @@ pub fn prove(
         // Generate a proof
         tracing::info!("Generating app proof...");
         let start = std::time::Instant::now();
-        let app_proof =
-            sdk.generate_app_proof(app_pk.clone(), app_committed_exe.clone(), inputs.clone())?;
+        let app_proof = app_prover.prove(inputs.clone())?;
         tracing::info!("App proof took {:?}", start.elapsed());
 
-        tracing::info!(
-            "Public values: {:?}",
-            app_proof.user_public_values.public_values
-        );
+        tracing::info!("Public values: {:?}", app_proof.user_public_values);
 
         // Verify
-        let app_vk = app_pk.get_app_vk();
-        sdk.verify_app_proof(&app_vk, &app_proof)?;
+        let app_vk = sdk.app_pk().get_app_vk();
+        verify_app_proof(&app_vk, &app_proof)?;
         tracing::info!("App proof verification done.");
 
         if recursion {
-            // Generate the aggregation proving key
-            tracing::info!("Generating aggregation proving key...");
-            let (agg_stark_pk, _) =
-                // AggStarkProvingKey::dummy_proof_and_keygen(AggStarkConfig::default());
-                unimplemented!();
+            let mut agg_prover = sdk.prover(exe.clone())?.agg_prover;
 
-            tracing::info!("Generating aggregation proof...");
-
-            let agg_prover = AggStarkProver::<BabyBearPoseidon2Engine>::new(
-                agg_stark_pk,
-                app_pk.leaf_committed_exe.clone(),
-                *sdk.agg_tree_config(),
-            );
             // Note that this proof is not verified. We assume that any valid app proof
             // (verified above) also leads to a valid aggregation proof.
             // If this was not the case, it would be a completeness bug in OpenVM.
             let start = std::time::Instant::now();
-            let _proof_with_publics = agg_prover.generate_root_verifier_input(app_proof);
+            let _ = agg_prover.generate_root_verifier_input(app_proof)?;
             tracing::info!("Agg proof (inner recursion) took {:?}", start.elapsed());
         }
 
@@ -744,11 +738,10 @@ pub fn execution_profile_from_guest(
     let program = Prog::from(&exe.program);
 
     // prepare for execute
-    let sdk = Sdk::default();
+    let sdk = Sdk::riscv32();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute(exe.clone(), vm_config.clone(), inputs.clone())
-            .unwrap();
+        sdk.execute(exe.clone(), inputs.clone()).unwrap();
     })
 }
 
