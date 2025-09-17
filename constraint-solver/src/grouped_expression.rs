@@ -76,7 +76,12 @@ where
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> One for GroupedExpression<T, V> {
+impl<T, V> One for GroupedExpression<T, V>
+where
+    // The bounds are so strict because One requise Mul
+    T: Zero + One + PartialEq + Neg<Output = T> + AddAssign<T> + MulAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     fn one() -> Self {
         Self {
             quadratic: Default::default(),
@@ -86,7 +91,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> One for GroupedExpression<T, V> {
     }
 
     fn is_one(&self) -> bool {
-        self.try_to_known().is_some_and(|k| k.is_known_one())
+        self.try_to_known().is_some_and(|k| k.is_one())
     }
 }
 
@@ -678,7 +683,11 @@ where
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sum for GroupedExpression<T, V> {
+impl<T, V> Sum for GroupedExpression<T, V>
+where
+    T: Zero + PartialEq + Neg<Output = T> + AddAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Self::zero(), |mut acc, item| {
             acc += item;
@@ -687,7 +696,11 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> Sum for GroupedExpression<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul for GroupedExpression<T, V> {
+impl<T, V> Mul for GroupedExpression<T, V>
+where
+    T: Zero + PartialEq + Neg<Output = T> + AddAssign<T> + MulAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     type Output = GroupedExpression<T, V>;
 
     fn mul(self, rhs: GroupedExpression<T, V>) -> Self {
