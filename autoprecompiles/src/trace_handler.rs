@@ -14,8 +14,9 @@ pub struct TraceData<'a, F> {
     /// The mapping from poly_id to the index in the list of apc columns.
     /// The values are always unique and contiguous.
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
-    /// The index of is_valid column in the list of apc columns.
-    pub is_valid_index: usize,
+    /// Indices of columns to compute and the way to compute them
+    /// (from other values).
+    pub columns_to_compute: BTreeMap<usize, ComputationMethod>,
 }
 
 pub struct Trace<F> {
@@ -27,6 +28,14 @@ impl<F> Trace<F> {
     pub fn new(values: Vec<F>, width: usize) -> Self {
         Self { values, width }
     }
+}
+
+pub enum ComputationMethod {
+    /// A constant value.
+    Constant(u64),
+    /// The field inverse of a sum of values of other columns,
+    /// given by their indices.
+    InverseOfSum(Vec<usize>),
 }
 
 pub fn generate_trace<'a, IH>(
@@ -60,6 +69,7 @@ where
         .map(|(index, c)| (c.id, index))
         .collect();
 
+    // The index of the "is_valid" column.
     let is_valid_index = apc_poly_id_to_index[&apc.is_valid_poly_id()];
 
     let original_instruction_table_offsets = original_instruction_air_ids
@@ -110,6 +120,8 @@ where
         dummy_values,
         dummy_trace_index_to_apc_index_by_instruction,
         apc_poly_id_to_index,
-        is_valid_index,
+        columns_to_compute: [(is_valid_index, ComputationMethod::Constant(1u64))]
+            .into_iter()
+            .collect(),
     }
 }
