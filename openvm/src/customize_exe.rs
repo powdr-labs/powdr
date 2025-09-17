@@ -19,7 +19,6 @@ use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
-use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
@@ -153,7 +152,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 }
 
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
-    OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
+    OriginalCompiledProgram { exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,
@@ -222,7 +221,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     let pc_base = exe.program.pc_base;
     let pc_step = DEFAULT_PC_STEP;
-    let program = &mut exe.program;
+    let program = exe.program.clone();
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -238,7 +237,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
-            
+
             // TODO: This is not supported in 1.4.0, to be added
             // program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 

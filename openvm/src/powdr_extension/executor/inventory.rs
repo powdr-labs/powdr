@@ -1,12 +1,12 @@
 use derive_more::From;
 use openvm_circuit::{
-    arch::{ChipInventory, ExecutorInventory, MatrixRecordArena, VmChipComplex},
+    arch::{ChipInventory, ExecutorInventory, MatrixRecordArena, PreflightExecutor},
     system::{phantom::PhantomChip, SystemExecutor},
 };
 use openvm_circuit_derive::{AnyEnum, PreflightExecutor};
 use openvm_circuit_primitives::{
     bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
-    var_range::SharedVariableRangeCheckerChip, Chip, 
+    var_range::SharedVariableRangeCheckerChip, Chip,
 };
 use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
 
@@ -19,7 +19,7 @@ pub type DummyExecutorInventory<F> = ExecutorInventory<DummyExecutor<F>>;
 // pub type DummyChipComplex<SC, RA, PB> = VmChipComplex<SC, RA, PB, F, DummyExecutor<F>>;
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Chip, PreflightExecutor, AnyEnum, From)]
+#[derive(Chip, AnyEnum, From)]
 pub enum DummyExecutor<F: PrimeField32> {
     #[any_enum]
     Sdk(ExtendedVmConfigExecutor<F>),
@@ -31,12 +31,30 @@ pub enum DummyExecutor<F: PrimeField32> {
     System(SystemExecutor<F>),
 }
 
-#[derive( Chip, PreflightExecutor, From, AnyEnum)]
+impl<F: PrimeField32, RA> PreflightExecutor<F, RA> for DummyExecutor<F> {
+    fn execute(
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            F,
+            openvm_circuit::system::memory::online::TracingMemory,
+            RA,
+        >,
+        instruction: &openvm_instructions::instruction::Instruction<F>,
+    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
+        todo!()
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        todo!()
+    }
+}
+
+#[derive(Chip, PreflightExecutor, From, AnyEnum)]
 pub enum SharedExecutor<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }
 
-#[derive(From,  Chip, AnyEnum)]
+#[derive(From, Chip, AnyEnum)]
 pub enum SharedPeriphery<F: PrimeField32> {
     BitwiseLookup8(SharedBitwiseOperationLookupChip<8>),
     RangeChecker(SharedRangeTupleCheckerChip<2>),
@@ -52,10 +70,10 @@ mod from_implementations {
 
     // Import all the relevant executor and periphery types
     use openvm_algebra_circuit::{Fp2ExtensionExecutor, ModularExtensionExecutor};
-    use openvm_bigint_circuit::Int256Executor;
+    
     use openvm_ecc_circuit::WeierstrassExtensionExecutor;
     use openvm_keccak256_circuit::Keccak256Executor;
-    use openvm_native_circuit::{CastFExtensionExecutor, NativeExecutor};
+    use openvm_native_circuit::NativeExecutor;
     use openvm_pairing_circuit::PairingExtensionExecutor;
     use openvm_rv32im_circuit::{Rv32IExecutor, Rv32IoExecutor, Rv32MExecutor};
     use openvm_sha256_circuit::Sha256Executor;

@@ -44,40 +44,40 @@ powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler",
 powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
 
 # openvm
-openvm = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-build = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-rv32im-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-rv32im-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-rv32im-guest = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0", default-features = false }
-openvm-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-circuit-derive = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-circuit-primitives = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-circuit-primitives-derive = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-instructions = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-instructions-derive = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-sdk = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0", default-features = false, features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-build = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false }
+openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
   "evm-prove",
 ] }
-openvm-ecc-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-ecc-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-keccak256-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-keccak256-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-sha256-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-sha256-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-algebra-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-algebra-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-bigint-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-bigint-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-pairing-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-pairing-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-native-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0", default-features = false }
-openvm-native-recursion = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0", default-features = false }
-openvm-platform = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
-openvm-custom-insn = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
+openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false }
+openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
 
 # stark-backend
 openvm-stark-sdk = { git = "https://github.com/openvm-org/stark-backend.git", tag = "v1.2.0", default-features = false, features = [

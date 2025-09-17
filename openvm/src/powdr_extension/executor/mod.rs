@@ -5,11 +5,15 @@ use std::{
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::{get_name, OriginalAirs},
-    powdr_extension::executor::{inventory::{DummyChipInventory, DummyExecutor, DummyExecutorInventory}, periphery::SharedPeripheryChips},
-    ExtendedVmConfig, Instr,
+    extraction_utils::OriginalAirs,
+    powdr_extension::executor::{
+        inventory::{DummyChipInventory, DummyExecutorInventory},
+        periphery::SharedPeripheryChips,
+    },
+    BabyBearSC, ExtendedVmConfig, Instr,
 };
 
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
     trace_handler::{generate_trace, Trace, TraceData},
@@ -17,24 +21,18 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
-use openvm_circuit::arch::{ExecutionState, PreflightExecutor};
+use openvm_circuit::arch::{PreflightExecutor, VmStateMut};
 use openvm_circuit::{
-    arch::{ChipInventoryError, ExecutionError, MatrixRecordArena, VmConfig},
-    system::memory::{online::TracingMemory, MemoryController},
+    arch::{ExecutionError, MatrixRecordArena},
+    system::memory::online::TracingMemory,
     utils::next_power_of_two_or_zero,
 };
-use openvm_native_circuit::CastFExtension;
 use openvm_stark_backend::{
-    config::Val, p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix, p3_maybe_rayon::prelude::ParallelIterator
+    p3_field::FieldAlgebra,
+    p3_maybe_rayon::prelude::ParallelIterator,
 };
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
-use openvm_stark_backend::{
-    config::StarkGenericConfig,
-    p3_commit::{Pcs, PolynomialSpace},
-    p3_maybe_rayon::prelude::ParallelSliceMut,
-    Chip,
-};
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
 use powdr_autoprecompiles::InstructionHandler;
 
@@ -47,22 +45,22 @@ pub use periphery::PowdrPeripheryInstances;
 // use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<SC: StarkGenericConfig> where Val<SC>: PrimeField32 {
-    air_by_opcode_id: OriginalAirs<Val<SC>>,
-    chip_inventory: DummyChipInventory<SC>,
-    executor_inventory: DummyExecutorInventory<Val<SC>>,
+pub struct PowdrExecutor {
+    air_by_opcode_id: OriginalAirs<BabyBear>,
+    chip_inventory: Mutex<DummyChipInventory<BabyBearSC>>,
+    executor_inventory: DummyExecutorInventory<BabyBear>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
-    apc: Arc<Apc<Val<SC>, Instr<Val<SC>>>>,
+    apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
 }
 
-impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
+impl PowdrExecutor {
     pub fn new(
-        air_by_opcode_id: OriginalAirs<Val<SC>>,
+        air_by_opcode_id: OriginalAirs<BabyBear>,
         memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
-        apc: Arc<Apc<Val<SC>, Instr<Val<SC>>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
         Self {
             air_by_opcode_id,
@@ -86,25 +84,44 @@ impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
     }
 
     pub fn execute(
-        &mut self,
-        state: openvm_circuit::arch::VmStateMut<Val<SC>, TracingMemory, MatrixRecordArena<Val<SC>>>,
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            BabyBear,
+            TracingMemory,
+            MatrixRecordArena<BabyBear>,
+        >,
     ) -> Result<(), ExecutionError> {
+        // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
+        let VmStateMut {
+            pc,
+            memory,
+            streams,
+            rng,
+            custom_pvs,
+            ctx,
+        } = state;
+
         // save the next available `RecordId`
         // let from_record_id = state.memory.get_memory_logs().len();
         // execute the original instructions one by one
-        self
-            .apc
-            .instructions()
-            .iter()
-            .for_each(|instruction| {
-                let executor = self
-                    .executor_inventory
-                    .get_mut_executor(&instruction.0.opcode)
-                    .unwrap();
-                executor.execute(state, &instruction.0);
-            });
+        for instruction in self.apc.instructions().iter() {
+            let executor = self
+                .executor_inventory
+                .get_executor(instruction.0.opcode)
+                .unwrap();
+            use openvm_circuit::arch::PreflightExecutor;
+            let state = VmStateMut {
+                pc,
+                memory,
+                streams,
+                rng,
+                custom_pvs,
+                ctx,
+            };
+            executor.execute(state, &instruction.0)?;
+        }
 
-        self.number_of_calls += 1;
+        // self.number_of_calls += 1;
         // let memory_logs = state.memory.get_memory_logs(); // exclusive range
 
         // let to_record_id = memory_logs.len();
@@ -132,24 +149,23 @@ impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness(&mut self) -> RowMajorMatrix<Val<SC>>
-    {
-        let dummy_trace_by_air_name: HashMap<_, _> = self
+    pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
+        let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = self
             .executor_inventory
             .executors
-            .into_iter()
+            .iter()
             .map(|executor| {
                 // let air_name = get_name::<SC>(executor.air());
-                let air_name: String = unimplemented!();
-                let DenseMatrix { values, width, .. } =
-                    *tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
-                        || {
-                            Chip::generate_proving_ctx(&executor, unimplemented!())
-                                .common_main
-                                .unwrap()
-                        },
-                    );
-                (air_name.clone(), Trace::new(values, width))
+                // let DenseMatrix { values, width, .. } =
+                //     *tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
+                //         || {
+                //             Chip::generate_proving_ctx(&executor, unimplemented!())
+                //                 .common_main
+                //                 .unwrap()
+                //         },
+                //     );
+                // (air_name.clone(), Trace::new(values, width))
+                unimplemented!()
             })
             .collect();
 
@@ -158,9 +174,10 @@ impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
             dummy_trace_index_to_apc_index_by_instruction,
             apc_poly_id_to_index,
             is_valid_index,
-        } = generate_trace(
+        } = generate_trace::<OriginalAirs<BabyBear>>(
             &dummy_trace_by_air_name,
-            &self.air_by_opcode_id,
+            // &self.air_by_opcode_id,
+            unimplemented!("not Sync because of RefCell"),
             self.number_of_calls,
             &self.apc,
         );
@@ -184,12 +201,13 @@ impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <Val<SC> as FieldAlgebra>::zero_vec(height * width);
+        let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
         values
             // a record is `width` values
-            .par_chunks_mut(width)
+            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Senf`
+            .chunks_mut(width)
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
@@ -202,7 +220,7 @@ impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
                     let evaluator = RowEvaluator::new(dummy_row);
 
                     range_checker_sends.iter().for_each(|interaction| {
-                        let ConcreteBusInteraction { mult, mut args, .. } =
+                        let ConcreteBusInteraction { mult,  .. } =
                             evaluator.eval_bus_interaction(interaction);
                         for _ in 0..mult.as_canonical_u32() {
                             // TODO: remove count is not implemented in openvm 1.4.0
@@ -219,7 +237,7 @@ impl<SC: StarkGenericConfig> PowdrExecutor<SC> where Val<SC>: PrimeField32 {
                 }
 
                 // Set the is_valid column to 1
-                row_slice[is_valid_index] = Val::<SC>::ONE;
+                row_slice[is_valid_index] = BabyBear::ONE;
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 

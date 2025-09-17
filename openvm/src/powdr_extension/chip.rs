@@ -12,41 +12,44 @@ use crate::{
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
-use openvm_circuit::arch::ExecutionState;
+use openvm_circuit::arch::VmStateMut;
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena, PreflightExecutor},
-    system::memory::{online::TracingMemory, MemoryController},
+    system::memory::online::TracingMemory,
 };
 use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
-    p3_air::{Air, BaseAir}, p3_matrix::dense::DenseMatrix, prover::{hal::ProverBackend, types::AirProvingContext}, ChipUsageGetter
+    p3_air::{Air, BaseAir},
+    p3_matrix::dense::DenseMatrix,
+    prover::{hal::ProverBackend, types::AirProvingContext},
+    ChipUsageGetter,
 };
 
 use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
     interaction::InteractionBuilder,
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
-    Chip, 
+    Chip,
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
 
-pub struct PowdrChip<F: PrimeField32> {
+pub struct PowdrChip {
     pub name: String,
     pub opcode: PowdrOpcode,
     /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<F>,
-    pub air: Arc<PowdrAir<F>>,
+    pub executor: PowdrExecutor,
+    pub air: Arc<PowdrAir<BabyBear>>,
 }
 
-impl<F: PrimeField32> PowdrChip<F> {
+impl PowdrChip {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        original_airs: OriginalAirs<F>,
+        precompile: PowdrPrecompile<BabyBear>,
+        original_airs: OriginalAirs<BabyBear>,
         memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
@@ -66,11 +69,11 @@ impl<F: PrimeField32> PowdrChip<F> {
     }
 }
 
-impl<F: PrimeField32> PreflightExecutor<F> for PowdrChip<F> {
+impl PreflightExecutor<BabyBear> for PowdrChip {
     fn execute(
         &self,
-        state: openvm_circuit::arch::VmStateMut<F, TracingMemory, MatrixRecordArena<F>>,
-        instruction: &Instruction<F>,
+        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
+        instruction: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
@@ -83,7 +86,7 @@ impl<F: PrimeField32> PreflightExecutor<F> for PowdrChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
+impl ChipUsageGetter for PowdrChip {
     fn air_name(&self) -> String {
         format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -96,17 +99,14 @@ impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
     }
 }
 
-impl<PB: ProverBackend<Matrix = DenseMatrix<Val<SC>>>, SC: StarkGenericConfig> Chip<SC, PB> for PowdrChip<Val<SC>>
-where
-    Val<SC>: PrimeField32,
-{
-    fn generate_proving_ctx(&self, records: SC) -> AirProvingContext<PB> {
+impl<R, PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<R, PB> for PowdrChip {
+    fn generate_proving_ctx(&self, records: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
         let width = self.trace_width();
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self.executor.generate_witness::<SC>();
+        let trace = self.executor.generate_witness();
 
         assert_eq!(trace.width(), width);
 

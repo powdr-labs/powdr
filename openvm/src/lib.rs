@@ -1,27 +1,22 @@
 use derive_more::From;
 use eyre::Result;
-use itertools::{multiunzip, Itertools};
+use itertools::Itertools;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
-use openvm_circuit::arch::{
-    instructions::exe::VmExe, Streams, SystemConfig, VirtualMachine, VmChipComplex, VmConfig,
-};
+use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator,
-    VmCircuitConfig, VmExecutionConfig,
+    PreflightExecutor, VmCircuitConfig, VmExecutionConfig,
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::PreflightExecutor;
-use openvm_circuit_primitives_derive::ChipUsageGetter;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_sdk::prover::verify_app_proof;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
-    prover::AggStarkProver,
     Sdk, StdIn,
 };
-use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
@@ -444,7 +439,7 @@ pub fn compile_exe_with_elf(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CompiledProgram {
-    pub exe: VmExe<BabyBear>,
+    pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: SpecializedConfig,
 }
 
@@ -498,7 +493,7 @@ impl<F: PrimeField32> VmExecutionConfig<F> for ExtendedVmConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory = self.sdk_vm_config.create_executors()?.transmute();
+        let inventory = self.sdk_vm_config.create_executors()?.transmute();
         // inventory = inventory.extend(&HintsExtension)?;
         Ok(inventory)
     }
@@ -519,13 +514,31 @@ impl InitFileGenerator for ExtendedVmConfig {
     }
 }
 
-#[derive(PreflightExecutor, From, AnyEnum)]
+#[derive(From, AnyEnum)]
 #[allow(clippy::large_enum_variant)]
 pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
     #[any_enum]
     Sdk(SdkVmConfigExecutor<F>),
     #[any_enum]
     Hints(HintsExecutor<F>),
+}
+
+impl<F: PrimeField32, RA> PreflightExecutor<F, RA> for ExtendedVmConfigExecutor<F> {
+    fn execute(
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            F,
+            openvm_circuit::system::memory::online::TracingMemory,
+            RA,
+        >,
+        instruction: &openvm_instructions::instruction::Instruction<F>,
+    ) -> std::result::Result<(), openvm_circuit::arch::ExecutionError> {
+        todo!()
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        todo!()
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -576,10 +589,6 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        use openvm_stark_backend::Chip;
-
-        use crate::extraction_utils::get_air_metrics;
-
         unimplemented!("change in inventory api");
 
         // let inventory = self.vm_config.create_chip_complex().unwrap().inventory;
