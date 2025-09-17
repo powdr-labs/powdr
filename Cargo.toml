@@ -60,6 +60,7 @@ openvm-sdk = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0",
   "parallel",
   "jemalloc",
   "nightly-features",
+  "evm-prove",
 ] }
 openvm-ecc-circuit = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
 openvm-ecc-transpiler = { git = "https://github.com/openvm-org/openvm.git", tag = "v1.4.0" }
