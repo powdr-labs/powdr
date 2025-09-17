@@ -131,7 +131,7 @@ impl<F> OriginalAirs<F> {
 fn to_option<T>(mut iter: impl Iterator<Item = T>) -> Option<T> {
     match (iter.next(), iter.next()) {
         (None, None) => None,
-        (None, Some(elem)) => Some(elem),
+        (Some(elem), None) => Some(elem),
         _ => panic!("Expected at most one element, got multiple"),
     }
 }
@@ -352,6 +352,9 @@ impl OriginalVmConfig {
     // ) -> Result<
     //     VmChipComplex<
     //         BabyBearSC,
+    //         MatrixRecordArena<Val<BabyBearSC>>,
+    //         CpuBackend<BabyBearSC>,
+    //         SystemChipInventory<BabyBearSC>,
     //     >,
     //     AirInventoryError,
     // > {
