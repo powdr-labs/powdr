@@ -151,7 +151,7 @@ fn derive_computation_method<T>(
     machine: &SymbolicMachine<T>,
 ) -> ComputationMethod {
     for constr in &machine.constraints {
-        if !constr.unique_references().contains(&column) {
+        if !constr.unique_references().contains(column) {
             continue;
         }
     }
