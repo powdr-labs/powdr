@@ -18,6 +18,8 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
+use openvm_sdk::config::SdkVmBuilder;
+use openvm_sdk::Sdk;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -171,8 +173,8 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 #[serde(bound = "")]
 pub struct OriginalVmConfig {
     sdk_config: ExtendedVmConfig,
-    // #[serde(skip)]
-    // chip_complex: CachedChipComplex,
+    #[serde(skip)]
+    chip_complex: CachedChipComplex,
 }
 
 impl OriginalVmConfig {
@@ -193,28 +195,30 @@ impl OriginalVmConfig {
         &mut self.sdk_config
     }
 
-    // /// Returns a guard that provides access to the chip complex, initializing it if necessary.
-    // fn chip_complex(&self) -> ChipComplexGuard {
-    //     let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+    /// Returns a guard that provides access to the chip complex, initializing it if necessary.
+    fn chip_complex(&self) -> ChipComplexGuard {
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
-    //     if guard.is_none() {
-    //         // This is the expensive part that we want to run a single time: create the chip complex
-    //         let airs: AirInventory<BabyBearSC> = self
-    //             .sdk_config
-    //             .create_airs()
-    //             .expect("Failed to create air inventory");
-    //         let complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(
-    //             &SystemCpuBuilder,
-    //             &self.sdk_config.sdk_vm_config.system.config,
-    //             airs,
-    //         )
-    //         .expect("Failed to create chip complex");
-    //         // Store the complex in the guard
-    //         *guard = Some(complex);
-    //     }
+        if guard.is_none() {
+            // This is the expensive part that we want to run a single time: create the chip complex
+            let airs: AirInventory<BabyBearSC> = self
+                .sdk_config
+                .sdk_vm_config
+                .create_airs()
+                .expect("Failed to create air inventory");
+            let builder = SdkVmBuilder::default();
+            let complex = <SdkVmBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+                &builder,
+                &self.sdk_config.sdk_vm_config,
+                airs,
+            )
+            .expect("Failed to create chip complex");
+            // Store the complex in the guard
+            *guard = Some(complex);
+        }
 
-    //     ChipComplexGuard { guard }
-    // }
+        ChipComplexGuard { guard }
+    }
 
     /// Given a VM configuration and a set of used instructions, computes:
     /// - The opcode -> AIR map
@@ -225,18 +229,20 @@ impl OriginalVmConfig {
         &self,
         max_degree: usize,
     ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
-        let chip_complex: VmChipComplex<
-        BabyBearSC,
-        MatrixRecordArena<Val<BabyBearSC>>,
-        CpuBackend<BabyBearSC>,
-        SystemChipInventory<BabyBearSC>,
-    > = unimplemented!("create chip complex, or something which gives use access to both opcodes and their associated airs");
+        let chip_complex
+            : &VmChipComplex<
+            BabyBearSC,
+            MatrixRecordArena<Val<BabyBearSC>>,
+            CpuBackend<BabyBearSC>,
+            SystemChipInventory<BabyBearSC>,
+        > 
+        = &*self.chip_complex();
 
         let instruction_allowlist = instruction_allowlist();
 
         let res = instruction_allowlist
             .into_iter()
-            .filter_map(|op| Some((op, unimplemented!("find executor for opcode {op}")))) // find executor for opcode
+            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)))) // find executor for opcode
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
                 airs.insert_opcode(op, unimplemented!("find air name/id for this opcode"), || {
                     unimplemented!("get symbolic machine for this opcode, using the executor?");
