@@ -195,6 +195,10 @@ impl OriginalVmConfig {
         &mut self.sdk_config
     }
 
+    fn executor_complex(&self) -> ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> {
+        ExecutorInventory::new(self.sdk_config.sdk_vm_config.system.config.clone())
+    }
+
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
     fn chip_complex(&self) -> ChipComplexGuard {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
@@ -238,11 +242,13 @@ impl OriginalVmConfig {
         > 
         = &*self.chip_complex();
 
+        let executor_complex = self.executor_complex();
+
         let instruction_allowlist = instruction_allowlist();
 
         let res = instruction_allowlist
             .into_iter()
-            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)))) // find executor for opcode
+            .filter_map(|op| Some((op, executor_complex.get_executor(op)))) // find executor for opcode
             .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
                 airs.insert_opcode(op, unimplemented!("find air name/id for this opcode"), || {
                     unimplemented!("get symbolic machine for this opcode, using the executor?");
