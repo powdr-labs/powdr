@@ -238,8 +238,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
 
     /// Returns the coefficient of the variable `variable` in the affine part of this
     /// expression.
-    /// Note that the quadratic part of the expression can also contain the variable
-    /// and thus the actual coefficient might be different or even zero.
+    /// If the expression is affine, this is the actual coefficient of the variable
+    /// in the expression. Otherwise, the quadratic part of the expression could
+    /// also contain the variable and thus the actual coefficient might be different
+    /// (even zero).
     pub fn coefficient_of_variable<'a>(&'a self, var: &V) -> Option<&'a T> {
         self.linear.get(var)
     }
