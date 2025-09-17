@@ -39,7 +39,7 @@ pub fn optimize<A: Adapter>(
         let id = next_free_column_id;
         next_free_column_id += 1;
         AlgebraicReference {
-            name: format!("var_{id}").into(),
+            name: format!("new_var_{id}").into(),
             id,
         }
     };

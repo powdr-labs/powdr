@@ -1,9 +1,11 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::{cmp::Eq, hash::Hash};
 
-use crate::{Apc, InstructionHandler};
+use crate::expression::AlgebraicReference;
+use crate::powdr::UniqueReferences;
+use crate::{Apc, InstructionHandler, SymbolicMachine};
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceData<'a, F> {
@@ -85,6 +87,9 @@ where
         )
         .collect::<Vec<_>>();
 
+    // The Poly IDs for which we have found a column in the dummy trace.
+    let mut mapped_poly_ids = BTreeSet::new();
+
     let dummy_trace_index_to_apc_index_by_instruction = apc
         .subs
         .iter()
@@ -93,6 +98,7 @@ where
             for (dummy_index, poly_id) in subs.iter().enumerate() {
                 if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
                     dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
+                    mapped_poly_ids.insert(*poly_id);
                 }
             }
             dummy_trace_index_to_apc_index
@@ -116,12 +122,38 @@ where
         })
         .collect();
 
+    let mut columns_to_compute = [(is_valid_index, ComputationMethod::Constant(1u64))]
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+    // Column IDs for which we could not find a corresponding column in the dummy trace.
+    // Those are newly created columns that we will need to compute.
+    for column in apc
+        .machine
+        .main_columns()
+        .filter(|id| !mapped_poly_ids.contains(&id.id))
+    {
+        columns_to_compute.insert(
+            apc_poly_id_to_index[&column.id],
+            derive_computation_method(&column, apc.machine()),
+        );
+    }
+
     TraceData {
         dummy_values,
         dummy_trace_index_to_apc_index_by_instruction,
         apc_poly_id_to_index,
-        columns_to_compute: [(is_valid_index, ComputationMethod::Constant(1u64))]
-            .into_iter()
-            .collect(),
+        columns_to_compute,
     }
+}
+
+fn derive_computation_method<T>(
+    column: &AlgebraicReference,
+    machine: &SymbolicMachine<T>,
+) -> ComputationMethod {
+    for constr in &machine.constraints {
+        if !constr.unique_references().contains(&column) {
+            continue;
+        }
+    }
+    panic!("Could not derive a computation method for column {column}");
 }
