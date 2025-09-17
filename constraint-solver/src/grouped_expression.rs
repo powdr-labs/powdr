@@ -39,12 +39,12 @@ pub struct GroupedExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are grouped expressions that
     /// have at least one unknown.
-    pub(crate) quadratic: Vec<(Self, Self)>,
+    quadratic: Vec<(Self, Self)>,
     /// Linear terms of the form `a * X`, where `a` is a (symbolically) known
     /// value and `X` is an unknown variable.
-    pub(crate) linear: BTreeMap<V, T>,
+    linear: BTreeMap<V, T>,
     /// Constant term, a (symbolically) known value.
-    pub(crate) constant: T,
+    constant: T,
 }
 
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T, V> {
@@ -236,10 +236,11 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             .unwrap()
     }
 
-    /// Returns the coefficient of the variable `variable` if this is an affine expression.
-    /// Panics if the expression is quadratic.
+    /// Returns the coefficient of the variable `variable` in the affine part of this
+    /// expression.
+    /// Note that the quadratic part of the expression can also contain the variable
+    /// and thus the actual coefficient might be different or even zero.
     pub fn coefficient_of_variable<'a>(&'a self, var: &V) -> Option<&'a T> {
-        assert!(!self.is_quadratic());
         self.linear.get(var)
     }
 

@@ -85,24 +85,19 @@ where
     ///
     /// Returns the resulting solved grouped expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
-        let expression = self.expression;
+        let coefficient = self.expression.coefficient_of_variable(variable)?.clone();
+        if !coefficient.is_known_nonzero() {
+            return None;
+        }
 
-        if expression
-            .quadratic
-            .iter()
-            .flat_map(|(l, r)| [l, r])
-            .flat_map(|c| c.referenced_unknown_variables())
-            .contains(variable)
-        {
-            // The variable is in the quadratic component, we cannot solve for it.
+        let subtracted = self.expression.clone()
+            - GroupedExpression::from_unknown_variable(variable.clone()) * coefficient.clone();
+        if subtracted.referenced_unknown_variables().contains(variable) {
+            // There is another occurrence of the variable in the quadratic component,
+            // we cannot solve for it.
             return None;
         }
-        if !expression.linear.get(variable)?.is_known_nonzero() {
-            return None;
-        }
-        let mut result = self.expression.clone();
-        let coefficient = result.linear.remove(variable)?;
-        Some(result * (-T::one().field_div(&coefficient)))
+        Some(subtracted * (-T::one().field_div(&coefficient)))
     }
 
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
@@ -159,10 +154,10 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        let expression = self.expression;
+        let (_, mut linear, constant) = self.expression.components();
 
-        Ok(if expression.linear.len() == 1 {
-            let (var, coeff) = expression.linear.iter().next().unwrap();
+        Ok(if linear.clone().count() == 1 {
+            let (var, coeff) = linear.next().unwrap();
             // Solve "coeff * X + self.constant = 0" by division.
             assert!(
                 !coeff.is_known_zero(),
@@ -170,16 +165,16 @@ where
             );
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
-                let value = expression.constant.field_div(&-coeff.clone());
+                let value = constant.field_div(&-coeff.clone());
                 ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
                     var.clone(),
                     value,
                     range_constraints,
                 )?])
-            } else if expression.constant.is_known_nonzero() {
+            } else if constant.is_known_nonzero() {
                 // If the offset is not zero, then the coefficient must be non-zero,
                 // otherwise the constraint is violated.
-                let value = expression.constant.field_div(&-coeff.clone());
+                let value = constant.field_div(&-coeff.clone());
                 ProcessResult::complete(vec![
                     Assertion::assert_is_nonzero(coeff.clone()),
                     assignment_if_satisfies_range_constraints(
@@ -208,13 +203,12 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Vec<Effect<T, V>> {
-        let expression = self.expression;
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
-        assert!(!expression.is_quadratic());
-        expression
-            .linear
-            .iter()
+        assert!(!self.expression.is_quadratic());
+        self.expression
+            .components()
+            .1
             .filter_map(|(var, _)| {
                 let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
                 Some((var, rc))
@@ -852,7 +846,7 @@ mod tests {
 
         expr.substitute_by_unknown(&"x", &subst);
         assert!(!expr.is_quadratic());
-        assert_eq!(expr.linear.len(), 3);
+        assert_eq!(expr.components().1.count(), 3);
         assert_eq!(expr.to_string(), "a + b + y");
     }
 
@@ -874,14 +868,17 @@ mod tests {
         );
         // Structural validation
         assert_eq!(quadratic.len(), 2);
-        assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
-        assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
-        assert_eq!(quadratic[0].0.quadratic[0].1.to_string(), "b");
-        assert!(quadratic[0].0.linear.is_empty());
-        assert_eq!(
-            quadratic[0].0.constant.try_to_number(),
-            Some(GoldilocksField::from(1)),
-        );
+        {
+            assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
+            let (inner_quadratic, inner_linear, inner_constant) = quadratic[0].0.components();
+            assert_eq!(inner_quadratic[0].0.to_string(), "a");
+            assert_eq!(inner_quadratic[0].1.to_string(), "b");
+            assert!(inner_linear.count() == 0);
+            assert_eq!(
+                inner_constant.try_to_number(),
+                Some(GoldilocksField::from(1)),
+            );
+        }
         assert_eq!(quadratic[0].1.to_string(), "w");
         assert_eq!(quadratic[1].0.to_string(), "a");
         assert_eq!(quadratic[1].1.to_string(), "b");
