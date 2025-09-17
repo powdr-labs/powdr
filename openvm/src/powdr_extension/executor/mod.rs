@@ -13,10 +13,11 @@ use crate::{
     BabyBearSC, ExtendedVmConfig, Instr,
 };
 
+use openvm_stark_backend::p3_field::Field;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
-    trace_handler::{generate_trace, Trace, TraceData},
+    trace_handler::{generate_trace, ComputationMethod, Trace, TraceData},
     Apc,
 };
 
@@ -170,7 +171,7 @@ impl PowdrExecutor {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
             apc_poly_id_to_index,
-            is_valid_index,
+            columns_to_compute,
         } = generate_trace::<OriginalAirs<BabyBear>>(
             &dummy_trace_by_air_name,
             // &self.air_by_opcode_id,
@@ -233,8 +234,19 @@ impl PowdrExecutor {
                     }
                 }
 
-                // Set the is_valid column to 1
-                row_slice[is_valid_index] = BabyBear::ONE;
+                // Fill in the columns we have to compute from other columns
+                // (these are either new columns or for example the "is_valid" column).
+                for (col_index, computation_method) in &columns_to_compute {
+                    row_slice[*col_index] = match computation_method {
+                        ComputationMethod::Constant(c) => BabyBear::from_canonical_u64(*c),
+                        ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
+                            .iter()
+                            .map(|col| row_slice[*col])
+                            .reduce(|a, b| a + b)
+                            .unwrap()
+                            .inverse(),
+                    };
+                }
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
