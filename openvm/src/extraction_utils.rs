@@ -13,9 +13,7 @@ use openvm_circuit::arch::{
     VmChipComplex, VmCircuitConfig,
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
-use openvm_circuit::system::{SystemChipInventory, SystemCpuBuilder};
-use openvm_circuit::utils::TestStarkEngine;
-use openvm_circuit::{arch::ExecutionBus, system::memory::offline_checker::MemoryBus};
+use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
@@ -310,10 +308,12 @@ impl OriginalVmConfig {
         let chip_complex = self.chip_complex();
         let inventory = &chip_complex.inventory;
 
-        let shared_bitwise_lookup =
-            to_option(inventory.find_chip::<SharedBitwiseOperationLookupChip<8>>());
-        let shared_range_tuple_checker =
-            to_option(inventory.find_chip::<SharedRangeTupleCheckerChip<2>>());
+        let shared_bitwise_lookup = inventory
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .next();
+        let shared_range_tuple_checker = inventory
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .next();
 
         let system_air_inventory = inventory.airs().system();
         let connector_air = system_air_inventory.connector;
@@ -321,7 +321,6 @@ impl OriginalVmConfig {
 
         BusMap::from_id_type_pairs(
             {
-                let base = &chip_complex.system;
                 [
                     (
                         connector_air.execution_bus.index(),
@@ -400,15 +399,16 @@ impl OriginalVmConfig {
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
-    let blacklist = [
-        "KeccakVmAir",
-        "VariableRangeCheckerAir",
-        "Poseidon2PeripheryAir<BabyBearParameters>, 1>",
-        "PhantomAir",
-    ];
+    let blacklist = ["KeccakVmAir"];
     let bus_map = vm_config.sdk_config.bus_map();
-    let air_inventory = vm_config.create_airs().unwrap();
-    for air in air_inventory.ext_airs() {
+    let chip_complex = vm_config.sdk_config.chip_complex();
+
+    for air in chip_complex
+        .inventory
+        .executor_idx_to_insertion_idx
+        .iter()
+        .map(|insertion_idx| &chip_complex.inventory.airs().ext_airs()[*insertion_idx])
+    {
         let name = get_name(air.clone());
 
         if blacklist.contains(&name.as_str()) {
@@ -593,7 +593,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig};
+    use openvm_sdk::config::SdkVmConfig;
 
     #[test]
     fn test_get_bus_map() {
@@ -648,9 +648,7 @@ mod tests {
     fn test_export_pil() {
         let writer = &mut Vec::new();
         let ext_config = ExtendedVmConfig {
-            sdk_vm_config: SdkVmConfig::builder()
-                .system(SdkSystemConfig::default())
-                .build(),
+            sdk_vm_config: SdkVmConfig::riscv32(),
         };
         let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config = SpecializedConfig::new(

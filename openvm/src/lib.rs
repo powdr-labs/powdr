@@ -10,7 +10,7 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::{PreflightExecutor, VmConfig};
+use openvm_circuit_derive::PreflightExecutor;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_sdk::prover::verify_app_proof;
 use openvm_sdk::{
