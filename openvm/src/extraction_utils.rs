@@ -195,7 +195,7 @@ impl OriginalVmConfig {
         &mut self.sdk_config
     }
 
-    fn executor_complex(&self) -> ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> {
+    fn executor_inventory(&self) -> ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> {
         ExecutorInventory::new(self.sdk_config.sdk_vm_config.system.config.clone())
     }
 
@@ -242,40 +242,45 @@ impl OriginalVmConfig {
         > 
         = &*self.chip_complex();
 
-        let executor_complex = self.executor_complex();
+        let chip_inventory = &chip_complex.inventory;
+
+        let executor_inventory = self.executor_inventory();
 
         let instruction_allowlist = instruction_allowlist();
 
         let res = instruction_allowlist
             .into_iter()
-            .filter_map(|op| Some((op, executor_complex.get_executor(op)))) // find executor for opcode
-            .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
-                airs.insert_opcode(op, unimplemented!("find air name/id for this opcode"), || {
-                    unimplemented!("get symbolic machine for this opcode, using the executor?");
-                    // let air = unimplemented!("get air for this executor");
-                    // let columns = get_columns(air.clone());
-                    // let constraints = get_constraints(air.clone());
-                    // let metrics = get_air_metrics(air, max_degree);
+            .filter_map(|op| {
+                let executor_id = *executor_inventory.instruction_lookup.get(&op).unwrap() as usize;
+                let insertion_index = chip_inventory.executor_idx_to_insertion_idx[executor_id];
+                let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
+                Some((op, air_ref))
+            }) // find executor for opcode
+            .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
+                airs.insert_opcode(op, air_ref.name(), || {
+                    let columns = get_columns(air_ref.clone());
+                    let constraints = get_constraints(air_ref.clone());
+                    let metrics = get_air_metrics(air_ref.clone(), max_degree);
 
-                    // let powdr_exprs = constraints
-                    //     .constraints
-                    //     .iter()
-                    //     .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
-                    //     .collect::<Result<Vec<_>, _>>()?;
+                    let powdr_exprs = constraints
+                        .constraints
+                        .iter()
+                        .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
+                        .collect::<Result<Vec<_>, _>>()?;
 
-                    // let powdr_bus_interactions = constraints
-                    //     .interactions
-                    //     .iter()
-                    //     .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                    //     .collect::<Result<_, _>>()?;
+                    let powdr_bus_interactions = constraints
+                        .interactions
+                        .iter()
+                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                        .collect::<Result<_, _>>()?;
 
-                    // Ok((
-                    //     SymbolicMachine {
-                    //         constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                    //         bus_interactions: powdr_bus_interactions,
-                    //     },
-                    //     metrics,
-                    // ))
+                    Ok((
+                        SymbolicMachine {
+                            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                            bus_interactions: powdr_bus_interactions,
+                        },
+                        metrics,
+                    ))
                 })?;
 
                 Ok(airs)
@@ -398,15 +403,18 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
     let width = air.width();
+    // TODO: I don't seem to find a function similar to `ColumnsAir::columns` that returns a `Vec<String>` or column names in openvm or in stark-backend
+    // Need to search more for this API or it might not exist any more.
+    // I'm not sure if this will create any concrete difference? Could be an issue if tools like `debug.pil` rely on it.
     // air.columns()
-    None
         // .inspect(|columns| {
         //     assert_eq!(columns.len(), width);
         // })
-        .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect_vec())
-        .into_iter()
-        .map(Arc::new)
-        .collect()
+        // .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect_vec())
+        // .into_iter()
+        // .map(Arc::new)
+        // .collect()
+    (0..width).map(|i| Arc::new(format!("unknown_{i}"))).collect_vec()
 }
 
 pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
