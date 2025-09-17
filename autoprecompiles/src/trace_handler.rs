@@ -1,9 +1,15 @@
 use itertools::Itertools;
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator};
+use powdr_number::ExpressionConvertible;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fmt::{Debug, Display};
 use std::{cmp::Eq, hash::Hash};
 
-use crate::expression::AlgebraicReference;
+use crate::adapter::Adapter;
+use crate::expression::{AlgebraicExpression, AlgebraicReference};
+use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::powdr::UniqueReferences;
 use crate::{Apc, InstructionHandler, SymbolicMachine};
 
@@ -48,7 +54,7 @@ pub fn generate_trace<'a, IH>(
 ) -> TraceData<'a, IH::Field>
 where
     IH: InstructionHandler,
-    IH::Field: Send + Sync,
+    IH::Field: Display + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
 {
     // Returns a vector with the same length as original instructions
@@ -130,7 +136,7 @@ where
     for column in apc
         .machine
         .main_columns()
-        .filter(|id| !mapped_poly_ids.contains(&id.id))
+        .filter(|id| !mapped_poly_ids.contains(&id.id) && id.id != apc.is_valid_poly_id())
     {
         columns_to_compute.insert(
             apc_poly_id_to_index[&column.id],
@@ -146,7 +152,7 @@ where
     }
 }
 
-fn derive_computation_method<T>(
+fn derive_computation_method<T: Display>(
     column: &AlgebraicReference,
     machine: &SymbolicMachine<T>,
 ) -> ComputationMethod {
@@ -154,6 +160,61 @@ fn derive_computation_method<T>(
         if !constr.unique_references().contains(column) {
             continue;
         }
+        println!("{constr}");
+        // // We try to match against the pattern `column * something - 1 = 0`.
+        // // TODO cannot use GroupedExpression here, unfortunately.
+        // // TODO avoid doing the conversion multiple times.
+        // let expr = constr.expr.to_expression(
+        //     &|n| GroupedExpression::<_, AlgebraicReference>::from_number(A::from_field(*n)),
+        //     &|r| GroupedExpression::from_unknown_variable(r.clone()),
+        // );
+        // let (quadratic, linear, constant) = expr.components();
     }
     panic!("Could not derive a computation method for column {column}");
+}
+
+fn try_derive_method_from_constr<T: Display>(
+    column: &AlgebraicReference,
+    expr: &AlgebraicExpression<T>,
+) -> Option<ComputationMethod> {
+    match expr {
+        AlgebraicExpression::Reference(_) => todo!(),
+        AlgebraicExpression::Number(_) => None,
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => None,
+                AlgebraicBinaryOperator::Mul => try_derive_method_from_constr(column, left)
+                    .or_else(|| try_derive_method_from_constr(column, right)),
+            }
+        }
+        AlgebraicExpression::UnaryOperation(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_try_derive() {
+        let x = AlgebraicReference {
+            id: 0,
+            name: "x".to_string().into(),
+        };
+        let x_expr = AlgebraicExpression::Reference(x.clone());
+        let y = AlgebraicExpression::Reference(AlgebraicReference {
+            id: 1,
+            name: "y".to_string().into(),
+        });
+        let z = AlgebraicExpression::Reference(AlgebraicReference {
+            id: 2,
+            name: "z".to_string().into(),
+        });
+        // (1 - x * (y + z)) * z
+        let expr = (AlgebraicExpression::from(1u64) - x_expr.clone() * (y.clone() + z.clone()))
+            * z.clone();
+        let result = try_derive_method_from_constr(&x, &expr);
+        assert!(result.is_some());
+        // TODO more
+    }
 }
