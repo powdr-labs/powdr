@@ -70,7 +70,7 @@ mod from_implementations {
 
     // Import all the relevant executor and periphery types
     use openvm_algebra_circuit::{Fp2ExtensionExecutor, ModularExtensionExecutor};
-    
+
     use openvm_ecc_circuit::WeierstrassExtensionExecutor;
     use openvm_keccak256_circuit::Keccak256Executor;
     use openvm_native_circuit::NativeExecutor;

@@ -27,10 +27,7 @@ use openvm_circuit::{
     system::memory::online::TracingMemory,
     utils::next_power_of_two_or_zero,
 };
-use openvm_stark_backend::{
-    p3_field::FieldAlgebra,
-    p3_maybe_rayon::prelude::ParallelIterator,
-};
+use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator};
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
@@ -220,7 +217,7 @@ impl PowdrExecutor {
                     let evaluator = RowEvaluator::new(dummy_row);
 
                     range_checker_sends.iter().for_each(|interaction| {
-                        let ConcreteBusInteraction { mult,  .. } =
+                        let ConcreteBusInteraction { mult, .. } =
                             evaluator.eval_bus_interaction(interaction);
                         for _ in 0..mult.as_canonical_u32() {
                             // TODO: remove count is not implemented in openvm 1.4.0

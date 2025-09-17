@@ -2,17 +2,21 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
-use crate::bus_map::BusMap;
+use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::BabyBearPoseidon2Engine;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, ExecutorInventory, MatrixRecordArena, VmBuilder,
-    VmChipComplex, VmCircuitConfig,
+    AirInventory, ExecutorInventory, MatrixRecordArena, VmBuilder, VmChipComplex, VmCircuitConfig,
 };
-use openvm_circuit::system::SystemChipInventory;
+use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
+use openvm_circuit::system::{SystemChipInventory, SystemCpuBuilder};
+use openvm_circuit::utils::TestStarkEngine;
+use openvm_circuit::{arch::ExecutionBus, system::memory::offline_checker::MemoryBus};
+use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
+use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
 use openvm_sdk::config::SdkVmBuilder;
@@ -28,6 +32,7 @@ use openvm_stark_sdk::config::{
     fri_params::SecurityParameters,
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
+use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
@@ -120,10 +125,10 @@ impl<F> OriginalAirs<F> {
     }
 }
 
-fn to_option<T>(mut v: Vec<T>) -> Option<T> {
-    match v.len() {
-        0 => None,
-        1 => Some(v.pop().unwrap()),
+fn to_option<T>(mut iter: impl Iterator<Item = T>) -> Option<T> {
+    match (iter.next(), iter.next()) {
+        (None, None) => None,
+        (None, Some(elem)) => Some(elem),
         _ => panic!("Expected at most one element, got multiple"),
     }
 }
@@ -283,47 +288,60 @@ impl OriginalVmConfig {
     }
 
     pub fn bus_map(&self) -> BusMap {
-        unimplemented!()
-        // let chip_complex: VmChipComplex<
-        //         BabyBearSC,
-        //         MatrixRecordArena<Val<BabyBearSC>>,
-        //         CpuBackend<BabyBearSC>,
-        //         SystemChipInventory<BabyBearSC>,
-        //     > = unimplemented!("create chip complex, or something which gives use access to both opcodes and their associated airs");        let builder = chip_complex.inventory_builder();
+        let chip_complex = self.chip_complex();
+        let inventory = &chip_complex.inventory;
 
-        //         let shared_bitwise_lookup =
-        //             to_option(builder.find_chip::<SharedBitwiseOperationLookupChip<8>>());
-        //         let shared_range_tuple_checker =
-        //             to_option(builder.find_chip::<SharedRangeTupleCheckerChip<2>>());
+        let shared_bitwise_lookup =
+            to_option(inventory.find_chip::<SharedBitwiseOperationLookupChip<8>>());
+        let shared_range_tuple_checker =
+            to_option(inventory.find_chip::<SharedRangeTupleCheckerChip<2>>());
 
-        //         BusMap::from_id_type_pairs(
-        //             {
-        //                 let base = &chip_complex.system;
-        //                 [
-        //                     (base.execution_bus().inner.index, BusType::ExecutionBridge),
-        //                     (base.memory_bus().inner.index, BusType::Memory),
-        //                     (base.program_bus().inner.index, BusType::PcLookup),
-        //                     (
-        //                         base.range_checker_bus().inner.index,
-        //                         BusType::Other(OpenVmBusType::VariableRangeChecker),
-        //                     ),
-        //                 ]
-        //                 .into_iter()
-        //             }
-        //             .chain(shared_bitwise_lookup.into_iter().map(|chip| {
-        //                 (
-        //                     chip.bus().inner.index,
-        //                     BusType::Other(OpenVmBusType::BitwiseLookup),
-        //                 )
-        //             }))
-        //             .chain(shared_range_tuple_checker.into_iter().map(|chip| {
-        //                 (
-        //                     chip.bus().inner.index,
-        //                     BusType::Other(OpenVmBusType::TupleRangeChecker),
-        //                 )
-        //             }))
-        //             .map(|(id, bus_type)| (id as u64, bus_type)),
-        //         )
+        let system_air_inventory = inventory.airs().system();
+        let connector_air = system_air_inventory.connector;
+        let memory_air = &system_air_inventory.memory;
+
+        BusMap::from_id_type_pairs(
+            {
+                let base = &chip_complex.system;
+                [
+                    (
+                        connector_air.execution_bus.index(),
+                        BusType::ExecutionBridge,
+                    ),
+                    (
+                        // TODO: make getting memory bus index a helper function
+                        match &memory_air.interface {
+                            MemoryInterfaceAirs::Volatile { boundary } => {
+                                boundary.memory_bus.inner.index
+                            }
+                            MemoryInterfaceAirs::Persistent { boundary, .. } => {
+                                boundary.memory_bus.inner.index
+                            }
+                        },
+                        BusType::Memory,
+                    ),
+                    (connector_air.program_bus.index(), BusType::PcLookup),
+                    (
+                        connector_air.range_bus.index(),
+                        BusType::Other(OpenVmBusType::VariableRangeChecker),
+                    ),
+                ]
+                .into_iter()
+            }
+            .chain(shared_bitwise_lookup.into_iter().map(|chip| {
+                (
+                    chip.bus().inner.index,
+                    BusType::Other(OpenVmBusType::BitwiseLookup),
+                )
+            }))
+            .chain(shared_range_tuple_checker.into_iter().map(|chip| {
+                (
+                    chip.bus().inner.index,
+                    BusType::Other(OpenVmBusType::TupleRangeChecker),
+                )
+            }))
+            .map(|(id, bus_type)| (id as u64, bus_type)),
+        )
     }
 
     // pub fn create_chip_complex(

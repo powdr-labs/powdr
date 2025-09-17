@@ -13,9 +13,9 @@ use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::{BabyBearSC, ExtendedVmConfig, Instr};
 use itertools::Itertools;
+use openvm_circuit::arch::PreflightExecutor;
 use openvm_circuit::system::memory::online::TracingMemory;
 use openvm_circuit::utils::next_power_of_two_or_zero;
-use openvm_circuit::arch::PreflightExecutor;
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::p3_air::BaseAir;
@@ -25,11 +25,7 @@ use openvm_stark_backend::p3_matrix::Matrix;
 use openvm_stark_backend::prover::hal::ProverBackend;
 use openvm_stark_backend::prover::types::AirProvingContext;
 use openvm_stark_backend::ChipUsageGetter;
-use openvm_stark_backend::{
-    p3_field::PrimeField32,
-    rap::AnyRap,
-    Chip,
-};
+use openvm_stark_backend::{p3_field::PrimeField32, rap::AnyRap, Chip};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;

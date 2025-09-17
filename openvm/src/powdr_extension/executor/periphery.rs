@@ -1,10 +1,10 @@
 use crate::powdr_extension::executor::inventory::DummyExecutor;
 use itertools::Itertools;
 use openvm_circuit::arch::{
-        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
-        ExecutorInventoryBuilder, ExecutorInventoryError, RowMajorMatrixArena, VmCircuitExtension,
-        VmExecutionExtension, VmProverExtension,
-    };
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
+    ExecutorInventoryError, RowMajorMatrixArena, VmCircuitExtension, VmExecutionExtension,
+    VmProverExtension,
+};
 use openvm_circuit_primitives::{
     bitwise_op_lookup::{BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip},
     range_tuple::{RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
@@ -118,7 +118,8 @@ where
 
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
         assert!(inventory
-            .find_chip::<SharedVariableRangeCheckerChip>().nth(1)
+            .find_chip::<SharedVariableRangeCheckerChip>()
+            .nth(1)
             .is_none());
 
         Ok(())
