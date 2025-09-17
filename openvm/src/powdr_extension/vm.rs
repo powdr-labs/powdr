@@ -187,6 +187,7 @@ where
 
 impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for PowdrExtension<Val<SC>> {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        todo!()
+        // TODO: add apc airs
+        Ok(())
     }
 }

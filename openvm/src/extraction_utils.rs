@@ -9,7 +9,8 @@ use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, ExecutorInventory, MatrixRecordArena, VmBuilder, VmChipComplex, VmCircuitConfig,
+    AirInventory, AirInventoryError, ExecutorInventory, MatrixRecordArena, VmBuilder,
+    VmChipComplex, VmCircuitConfig,
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
 use openvm_circuit::system::{SystemChipInventory, SystemCpuBuilder};
@@ -22,8 +23,10 @@ use openvm_instructions::VmOpcode;
 use openvm_sdk::config::SdkVmBuilder;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_backend::prover::cpu::CpuBackend;
 // use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
+use crate::utils::get_pil;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
@@ -176,6 +179,17 @@ pub struct OriginalVmConfig {
     chip_complex: CachedChipComplex,
 }
 
+// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
+impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
+where
+    Val<SC>: PrimeField32,
+{
+    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
+        let inventory = self.sdk_config.create_airs()?;
+        Ok(inventory)
+    }
+}
+
 impl OriginalVmConfig {
     pub fn new(sdk_config: ExtendedVmConfig) -> Self {
         Self {
@@ -249,10 +263,15 @@ impl OriginalVmConfig {
         let res = instruction_allowlist
             .into_iter()
             .filter_map(|op| {
-                let executor_id = *executor_inventory.instruction_lookup.get(&op).unwrap() as usize;
+                executor_inventory
+                    .instruction_lookup
+                    .get(&op)
+                    .map(|id| (op, *id as usize))
+            })
+            .map(|(op, executor_id)| {
                 let insertion_index = chip_inventory.executor_idx_to_insertion_idx[executor_id];
                 let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
-                Some((op, air_ref))
+                (op, air_ref)
             }) // find executor for opcode
             .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
                 airs.insert_opcode(op, air_ref.name(), || {
@@ -381,35 +400,29 @@ impl OriginalVmConfig {
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
-    //     let blacklist = ["KeccakVmAir"];
-    //     let bus_map = vm_config.sdk_config.bus_map();
-    // let chip_complex: VmChipComplex<
-    //         BabyBearSC,
-    //         MatrixRecordArena<Val<BabyBearSC>>,
-    //         CpuBackend<BabyBearSC>,
-    //         SystemChipInventory<BabyBearSC>,
-    //     > = unimplemented!("create chip complex, or something which gives use access to both opcodes and their associated airs");
-    //     for executor in chip_complex.inventory.executors().iter() {
-    //         let air = executor.air();
-    //         let name = match executor {
-    //             SpecializedExecutor::PowdrExecutor(powdr_executor) => {
-    //                 powdr_executor.air_name() // name with opcode
-    //             }
-    //             _ => air.name(),
-    //         };
+    let blacklist = [
+        "KeccakVmAir",
+        "VariableRangeCheckerAir",
+        "Poseidon2PeripheryAir<BabyBearParameters>, 1>",
+        "PhantomAir",
+    ];
+    let bus_map = vm_config.sdk_config.bus_map();
+    let air_inventory = vm_config.create_airs().unwrap();
+    for air in air_inventory.ext_airs() {
+        let name = get_name(air.clone());
 
-    //         if blacklist.contains(&name.as_str()) {
-    //             log::warn!("Skipping blacklisted AIR: {name}");
-    //             continue;
-    //         }
+        if blacklist.contains(&name.as_str()) {
+            log::warn!("Skipping blacklisted AIR: {name}");
+            continue;
+        }
 
-    //         let columns = get_columns(air.clone());
+        let columns = get_columns(air.clone());
 
-    //         let constraints = get_constraints(air);
+        let constraints = get_constraints(air.clone());
 
-    //         let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
-    //         writeln!(writer, "{pil}\n").unwrap();
-    //     }
+        let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
+        writeln!(writer, "{pil}\n").unwrap();
+    }
 }
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {

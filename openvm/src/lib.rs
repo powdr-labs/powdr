@@ -6,17 +6,18 @@ use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimi
 use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator,
-    PreflightExecutor, VmCircuitConfig, VmExecutionConfig,
+    PreflightExecutor, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::PreflightExecutor;
+use openvm_circuit_derive::{PreflightExecutor, VmConfig};
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_sdk::prover::verify_app_proof;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
 };
+use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
@@ -29,7 +30,7 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::{PowdrExecutor, PowdrExtension};
-use powdr_openvm_hints_circuit::HintsExecutor;
+use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension};
 // use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
@@ -135,31 +136,14 @@ pub enum SpecializedExecutor {
     PowdrExecutor(PowdrExecutor),
 }
 
-// impl VmConfig<BabyBear> for SpecializedConfig {
-//     type Executor = SpecializedExecutor<BabyBear>;
-//     type Periphery = MyPeriphery<BabyBear>;
-
-//     fn system(&self) -> &SystemConfig {
-//         VmConfig::<BabyBear>::system(self.sdk_config.config())
-//     }
-
-//     fn system_mut(&mut self) -> &mut SystemConfig {
-//         VmConfig::<BabyBear>::system_mut(self.sdk_config.config_mut())
-//     }
-
-//     fn create_chip_complex(
-//         &self,
-//     ) -> Result<VmChipComplex<BabyBear, Self::Executor, Self::Periphery>, VmInventoryError> {
-//         let chip = self.sdk_config.create_chip_complex()?;
-//         let chip = chip.extend(&self.powdr)?;
-
-//         Ok(chip)
-//     }
-// }
-
-impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for SpecializedConfig {
-    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        todo!()
+// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
+// Also `start_new_extension` is normally only used in derive
+impl VmCircuitConfig<BabyBearSC> for SpecializedConfig {
+    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
+        let mut inventory = self.sdk_config.create_airs()?;
+        inventory.start_new_extension();
+        self.powdr.extend_circuit(&mut inventory)?;
+        Ok(inventory)
     }
 }
 
@@ -481,9 +465,15 @@ pub struct ExtendedVmConfig {
 //     }
 // }
 
-impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for ExtendedVmConfig {
+// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
+impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for ExtendedVmConfig
+where
+    Val<SC>: PrimeField32,
+{
     fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        unimplemented!()
+        let inventory = self.sdk_vm_config.create_airs()?;
+        // TODO: extend with hints?
+        Ok(inventory)
     }
 }
 
@@ -493,8 +483,8 @@ impl<F: PrimeField32> VmExecutionConfig<F> for ExtendedVmConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let inventory = self.sdk_vm_config.create_executors()?.transmute();
-        // inventory = inventory.extend(&HintsExtension)?;
+        let mut inventory = self.sdk_vm_config.create_executors()?.transmute();
+        inventory = inventory.extend(&HintsExtension)?;
         Ok(inventory)
     }
 }
