@@ -57,7 +57,12 @@ impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T,
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> Zero for GroupedExpression<T, V> {
+impl<T: Zero, V: Clone + Ord + Eq> Zero for GroupedExpression<T, V>
+where
+    // The bounds are so strict because Zero requires Add
+    T: Zero + PartialEq + Neg<Output = T> + AddAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     fn zero() -> Self {
         Self {
             quadratic: Default::default(),
@@ -67,7 +72,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> Zero for GroupedExpression<T, V> {
     }
 
     fn is_zero(&self) -> bool {
-        self.try_to_known().is_some_and(|k| k.is_known_zero())
+        self.try_to_known().is_some_and(|k| k.is_zero())
     }
 }
 
@@ -628,7 +633,11 @@ impl<T: Neg<Output = T> + Clone, V: Clone + Ord> Neg for &GroupedExpression<T, V
 }
 
 /// Multiply by known symbolic expression.
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul<&T> for GroupedExpression<T, V> {
+impl<T, V> Mul<&T> for GroupedExpression<T, V>
+where
+    T: Zero + PartialEq + Neg<Output = T> + AddAssign<T> + MulAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     type Output = GroupedExpression<T, V>;
 
     fn mul(mut self, rhs: &T) -> Self {
@@ -637,7 +646,11 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul<&T> for GroupedExpression<T, V
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul<T> for GroupedExpression<T, V> {
+impl<T, V> Mul<T> for GroupedExpression<T, V>
+where
+    T: Zero + PartialEq + Neg<Output = T> + AddAssign<T> + MulAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     type Output = GroupedExpression<T, V>;
 
     fn mul(self, rhs: T) -> Self {
@@ -645,9 +658,13 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> Mul<T> for GroupedExpression<T, V>
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord + Eq> MulAssign<&T> for GroupedExpression<T, V> {
+impl<T, V> MulAssign<&T> for GroupedExpression<T, V>
+where
+    T: Zero + PartialEq + Neg<Output = T> + AddAssign<T> + MulAssign<T> + Clone,
+    V: Clone + Ord + Eq,
+{
     fn mul_assign(&mut self, rhs: &T) {
-        if rhs.is_known_zero() {
+        if rhs.is_zero() {
             *self = Self::zero();
         } else {
             for (first, _) in &mut self.quadratic {
