@@ -181,7 +181,7 @@ impl SpecializedConfig {
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(
             precompiles,
-            base_config.config().clone(),
+            base_config.clone(),
             implementation,
             bus_map,
             airs,
