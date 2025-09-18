@@ -60,7 +60,7 @@ popd
 
 ### SHA256
 dir="results/sha256"
-input="100000"
+input="80000"
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -123,7 +123,7 @@ popd
 
 ### ECC
 dir="results/ecc"
-input="75"
+input="150"
 
 mkdir -p "$dir"
 pushd "$dir"
