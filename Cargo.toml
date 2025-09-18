@@ -38,59 +38,56 @@ powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }
-powdr-cli-openvm = { path = "./cli-openvm", version = "0.1.4" }
 
 powdr-openvm-hints-guest = { path = "./openvm/extensions/hints-guest", version = "0.1.4" }
 powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler", version = "0.1.4" }
 powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
 
 # openvm
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26", default-features = false }
-openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26", default-features = false, features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-build = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false }
+openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
-  "bench-metrics",
+  "evm-prove",
 ] }
-openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26", default-features = false }
-openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26", default-features = false }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
-openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
+openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false }
+openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", default-features = false }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
 
 # stark-backend
-openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "ee4e22b", default-features = false, features = [
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "1.2.0-wip", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
-  "bench-metrics",
 ] }
-openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "ee4e22b", default-features = false, features = [
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "1.2.0-wip", default-features = false, features = [
   "parallel",
   "jemalloc",
-  "bench-metrics",
 ] }
 
 [profile.pr-tests]

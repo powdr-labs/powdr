@@ -1,6 +1,6 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::bus_map::BusMap;
 use crate::extraction_utils::OriginalAirs;
@@ -11,46 +11,41 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{ExtendedVmConfig, Instr};
+use crate::{BabyBearSC, ExtendedVmConfig, Instr};
 use itertools::Itertools;
+use openvm_circuit::arch::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit::utils::next_power_of_two_or_zero;
-use openvm_circuit::{
-    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
-    system::memory::{MemoryController, OfflineMemory},
-};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::p3_air::BaseAir;
 use openvm_stark_backend::p3_field::FieldAlgebra;
-use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
+use openvm_stark_backend::p3_matrix::dense::{DenseMatrix, RowMajorMatrix};
 use openvm_stark_backend::p3_matrix::Matrix;
-use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
-    p3_field::PrimeField32,
-    prover::types::AirProofInput,
-    rap::AnyRap,
-    Chip, ChipUsageGetter,
-};
+use openvm_stark_backend::prover::hal::ProverBackend;
+use openvm_stark_backend::prover::types::AirProvingContext;
+use openvm_stark_backend::ChipUsageGetter;
+use openvm_stark_backend::{p3_field::PrimeField32, rap::AnyRap, Chip};
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
 use super::air::PlonkAir;
 
-pub struct PlonkChip<F: PrimeField32> {
+pub struct PlonkChip {
     name: String,
     opcode: PowdrOpcode,
-    air: Arc<PlonkAir<F>>,
-    executor: PowdrExecutor<F>,
-    apc: Arc<Apc<F, Instr<F>>>,
+    air: Arc<PlonkAir<BabyBear>>,
+    executor: PowdrExecutor,
+    apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
 }
 
-impl<F: PrimeField32> PlonkChip<F> {
+impl PlonkChip {
     #[allow(dead_code)]
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        original_airs: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
+        precompile: PowdrPrecompile<BabyBear>,
+        original_airs: OriginalAirs<BabyBear>,
+        // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
@@ -64,8 +59,7 @@ impl<F: PrimeField32> PlonkChip<F> {
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         });
-        let executor =
-            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
+        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc.clone());
 
         Self {
             name,
@@ -78,19 +72,20 @@ impl<F: PrimeField32> PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
+impl PreflightExecutor<BabyBear> for PlonkChip {
     fn execute(
-        &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
-        from_state: ExecutionState<u32>,
-    ) -> ExecutionResult<ExecutionState<u32>> {
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            BabyBear,
+            openvm_circuit::system::memory::online::TracingMemory,
+            openvm_circuit::arch::MatrixRecordArena<BabyBear>,
+        >,
+        instruction: &Instruction<BabyBear>,
+    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
         let &Instruction { opcode, .. } = instruction;
         assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
 
-        let execution_state = self.executor.execute(memory, from_state)?;
-
-        Ok(execution_state)
+        self.executor.execute(state)
     }
 
     fn get_opcode_name(&self, _opcode: usize) -> String {
@@ -98,7 +93,50 @@ impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
     }
 }
 
-impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
+impl Executor<BabyBear> for PlonkChip {
+    fn pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn pre_compute<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+    {
+        todo!()
+    }
+}
+
+impl MeteredExecutor<BabyBear> for PlonkChip {
+    fn metered_pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn metered_pre_compute<Ctx>(
+        &self,
+        air_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::MeteredExecutionCtxTrait,
+    {
+        todo!()
+    }
+}
+
+impl ChipUsageGetter for PlonkChip {
     fn air_name(&self) -> String {
         format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
     }
@@ -111,15 +149,8 @@ impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
     }
 }
 
-impl<SC: StarkGenericConfig> Chip<SC> for PlonkChip<Val<SC>>
-where
-    Val<SC>: PrimeField32,
-{
-    fn air(&self) -> Arc<dyn AnyRap<SC>> {
-        self.air.clone()
-    }
-
-    fn generate_air_proof_input(self) -> AirProofInput<SC> {
+impl<PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<BabyBearSC, PB> for PlonkChip {
+    fn generate_proving_ctx(&self, records: BabyBearSC) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
@@ -141,10 +172,10 @@ where
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-        let witness = self.executor.generate_witness::<SC>();
+        let witness = self.executor.generate_witness();
 
         // TODO: This should be parallelized.
-        let mut values = <Val<SC>>::zero_vec(height * width);
+        let mut values = BabyBear::zero_vec(height * width);
         let num_tmp_vars = plonk_circuit.num_tmp_vars();
         for (call_index, witness) in witness.rows().take(number_of_calls).enumerate() {
             // Computing the trace values for the current call (starting at row call_index * circuit_length).
@@ -212,7 +243,7 @@ where
 
         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
+        AirProvingContext::simple(RowMajorMatrix::new(values, width), vec![])
     }
 }
 

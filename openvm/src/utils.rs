@@ -109,7 +109,7 @@ pub fn symbolic_to_algebraic<F: PrimeField32>(
                     next,
                 ))
             }
-            _ => unimplemented!(),
+            e => unimplemented!("{e:?}"),
         },
         SymbolicExpression::IsFirstRow => {
             AlgebraicExpression::Reference(OpenVmReference::IsFirstRow)
