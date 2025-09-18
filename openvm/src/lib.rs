@@ -5,8 +5,7 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator,
-    PreflightExecutor, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator, PreflightExecutor, SystemConfig, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -127,6 +126,18 @@ impl InitFileGenerator for SpecializedConfig {
     }
 }
 
+impl AsRef<SystemConfig> for SpecializedConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for SpecializedConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_config.as_mut()
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(From, AnyEnum, PreflightExecutor, Chip)]
 pub enum SpecializedExecutor {
@@ -153,7 +164,9 @@ impl VmExecutionConfig<BabyBear> for SpecializedConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        todo!()
+        let mut inventory = self.sdk_config.create_executors()?.transmute();
+        inventory = inventory.extend(&self.powdr)?;
+        Ok(inventory)
     }
 }
 
@@ -168,7 +181,7 @@ impl SpecializedConfig {
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(
             precompiles,
-            base_config.config().clone(),
+            base_config.clone(),
             implementation,
             bus_map,
             airs,
@@ -441,6 +454,18 @@ pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
 }
 
+impl AsRef<SystemConfig> for ExtendedVmConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_vm_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for ExtendedVmConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_vm_config.as_mut()
+    }
+}
+
 // impl VmConfig<BabyBear> for ExtendedVmConfig {
 //     type Executor = ExtendedVmConfigExecutor<BabyBear>;
 //     type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
@@ -471,8 +496,9 @@ where
     Val<SC>: PrimeField32,
 {
     fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        let inventory = self.sdk_vm_config.create_airs()?;
-        // TODO: extend with hints?
+        let mut inventory = self.sdk_vm_config.create_airs()?;
+        let hints_extension = HintsExtension;
+        hints_extension.extend_circuit(&mut inventory)?;
         Ok(inventory)
     }
 }

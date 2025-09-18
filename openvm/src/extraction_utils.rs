@@ -9,8 +9,7 @@ use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, MatrixRecordArena, VmBuilder,
-    VmChipComplex, VmCircuitConfig,
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
 use openvm_circuit::system::SystemChipInventory;
@@ -188,6 +187,28 @@ where
     }
 }
 
+impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
+    type Executor = ExtendedVmConfigExecutor<F>;
+
+    fn create_executors(
+        &self,
+    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        self.sdk_config.create_executors()
+    }
+}
+
+impl AsRef<SystemConfig> for OriginalVmConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for OriginalVmConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_config.as_mut()
+    }
+}
+
 impl OriginalVmConfig {
     pub fn new(sdk_config: ExtendedVmConfig) -> Self {
         Self {
@@ -206,12 +227,8 @@ impl OriginalVmConfig {
         &mut self.sdk_config
     }
 
-    fn executor_inventory(&self) -> ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> {
-        ExecutorInventory::new(self.sdk_config.sdk_vm_config.system.config.clone())
-    }
-
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
-    fn chip_complex(&self) -> ChipComplexGuard {
+    pub fn chip_complex(&self) -> ChipComplexGuard {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
         if guard.is_none() {
@@ -254,7 +271,7 @@ impl OriginalVmConfig {
 
         let chip_inventory = &chip_complex.inventory;
 
-        let executor_inventory = self.executor_inventory();
+        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> = self.create_executors().unwrap();
 
         let instruction_allowlist = instruction_allowlist();
 
