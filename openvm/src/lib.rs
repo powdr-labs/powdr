@@ -473,8 +473,9 @@ where
     Val<SC>: PrimeField32,
 {
     fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        let inventory = self.sdk_vm_config.create_airs()?;
-        // TODO: extend with hints?
+        let mut inventory = self.sdk_vm_config.create_airs()?;
+        let hints_extension = HintsExtension;
+        hints_extension.extend_circuit(&mut inventory)?;
         Ok(inventory)
     }
 }

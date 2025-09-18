@@ -11,6 +11,7 @@ use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
 
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::OriginalAirs;
+use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use crate::{bus_map::BusMap, BabyBearSC};
 use openvm_circuit::{
@@ -225,7 +226,9 @@ where
 
 impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for PowdrExtension<Val<SC>> {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        // TODO: add apc airs
+        for apc in self.precompiles.iter() {
+            inventory.add_air(PowdrAir::new(apc.clone()));
+        }
         Ok(())
     }
 }

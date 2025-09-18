@@ -1,7 +1,8 @@
-use openvm_circuit::arch::VmExecutionExtension;
+use openvm_circuit::arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension};
 use openvm_circuit::derive::{AnyEnum, PreflightExecutor};
 use openvm_circuit::system::phantom::PhantomChip;
 use openvm_instructions::PhantomDiscriminant;
+use openvm_stark_backend::config::StarkGenericConfig;
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_openvm_hints_transpiler::HintsPhantom;
 
@@ -40,6 +41,13 @@ impl<F: PrimeField32> VmExecutionExtension<F> for HintsExtension {
             executors::K256SqrtField10x26SubEx,
             PhantomDiscriminant(HintsPhantom::HintK256SqrtField10x26 as u16),
         )?;
+        Ok(())
+    }
+}
+
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for HintsExtension {
+    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
+        // TODO: i don't think hints contains an air per se? this is needed still to be called by parent types?
         Ok(())
     }
 }
