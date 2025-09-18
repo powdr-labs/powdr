@@ -13,7 +13,8 @@ use crate::{
     BabyBearSC, ExtendedVmConfig, Instr,
 };
 
-use openvm_stark_backend::p3_field::Field;
+use openvm_sdk::config::{SdkVmBuilder, SdkVmConfig, SdkVmConfigExecutor};
+use openvm_stark_backend::{p3_field::Field, prover::cpu::CpuBackend};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
@@ -22,7 +23,12 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
-use openvm_circuit::arch::{PreflightExecutor, VmStateMut};
+use openvm_circuit::{
+    arch::{
+        AirInventory, ChipInventory, ExecutorInventory, PreflightExecutor, VmBuilder, VmStateMut,
+    },
+    utils::TestStarkEngine,
+};
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena},
     system::memory::online::TracingMemory,
@@ -45,12 +51,17 @@ pub use periphery::PowdrPeripheryInstances;
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor {
     air_by_opcode_id: OriginalAirs<BabyBear>,
-    chip_inventory: Mutex<DummyChipInventory<BabyBearSC>>,
-    executor_inventory: DummyExecutorInventory<BabyBear>,
+    chip_inventory:
+        Mutex<ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>>,
+    executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
 }
+
+use openvm_circuit::arch::VmCircuitConfig;
+use openvm_circuit::arch::VmExecutionConfig;
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 impl PowdrExecutor {
     pub fn new(
@@ -62,15 +73,19 @@ impl PowdrExecutor {
     ) -> Self {
         Self {
             air_by_opcode_id,
-            chip_inventory: unimplemented!(),
-            executor_inventory: unimplemented!(),
-            // inventory: create_chip_complex_with_memory(
-            //     memory,
-            //     periphery.dummy,
-            //     base_config.clone(),
-            // )
-            // .unwrap()
-            // .inventory,
+            chip_inventory: Mutex::new({
+                let builder = SdkVmBuilder;
+                let airs: AirInventory<BabyBearSC> =
+                    base_config.sdk_vm_config.create_airs().unwrap();
+                <SdkVmBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+                    &builder,
+                    &base_config.sdk_vm_config,
+                    airs,
+                )
+                .expect("Failed to create chip complex")
+                .inventory
+            }),
+            executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             number_of_calls: 0,
             periphery: periphery.real,
             apc,
