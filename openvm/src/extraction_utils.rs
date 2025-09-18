@@ -9,7 +9,7 @@ use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
 use openvm_circuit::system::SystemChipInventory;
@@ -194,6 +194,18 @@ impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
         self.sdk_config.create_executors()
+    }
+}
+
+impl AsRef<SystemConfig> for OriginalVmConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for OriginalVmConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_config.as_mut()
     }
 }
 

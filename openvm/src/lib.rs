@@ -5,8 +5,7 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator,
-    PreflightExecutor, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator, PreflightExecutor, SystemConfig, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -124,6 +123,18 @@ impl InitFileGenerator for SpecializedConfig {
         self.sdk_config
             .config()
             .write_to_init_file(manifest_dir, init_file_name)
+    }
+}
+
+impl AsRef<SystemConfig> for SpecializedConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for SpecializedConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_config.as_mut()
     }
 }
 
@@ -441,6 +452,18 @@ pub struct OriginalCompiledProgram {
 // For now, only includes custom hints.
 pub struct ExtendedVmConfig {
     pub sdk_vm_config: SdkVmConfig,
+}
+
+impl AsRef<SystemConfig> for ExtendedVmConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_vm_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for ExtendedVmConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_vm_config.as_mut()
+    }
 }
 
 // impl VmConfig<BabyBear> for ExtendedVmConfig {
