@@ -13,7 +13,7 @@ use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::{BabyBearSC, ExtendedVmConfig, Instr};
 use itertools::Itertools;
-use openvm_circuit::arch::PreflightExecutor;
+use openvm_circuit::arch::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit::system::memory::online::TracingMemory;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_instructions::instruction::Instruction;
@@ -92,6 +92,49 @@ impl PreflightExecutor<BabyBear> for PlonkChip {
 
     fn get_opcode_name(&self, _opcode: usize) -> String {
         self.name.clone()
+    }
+}
+
+impl Executor<BabyBear> for PlonkChip {
+    fn pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn pre_compute<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+    {
+        todo!()
+    }
+}
+
+impl MeteredExecutor<BabyBear> for PlonkChip {
+    fn metered_pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn metered_pre_compute<Ctx>(
+        &self,
+        air_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::MeteredExecutionCtxTrait,
+    {
+        todo!()
     }
 }
 

@@ -1,5 +1,7 @@
-use openvm_circuit::arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension};
-use openvm_circuit::derive::{AnyEnum, PreflightExecutor};
+use openvm_circuit::arch::{
+    AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension,
+};
+use openvm_circuit::derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit::system::phantom::PhantomChip;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_stark_backend::config::StarkGenericConfig;
@@ -13,7 +15,7 @@ mod field10x26_k256;
 /// OpenVM extension with miscellaneous hint implementations.
 pub struct HintsExtension;
 
-#[derive(AnyEnum, PreflightExecutor)]
+#[derive(AnyEnum, PreflightExecutor, Executor, MeteredExecutor)]
 pub enum HintsExecutor<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }

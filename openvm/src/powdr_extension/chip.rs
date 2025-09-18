@@ -12,7 +12,7 @@ use crate::{
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
-use openvm_circuit::arch::VmStateMut;
+use openvm_circuit::arch::{Executor, MeteredExecutor, VmStateMut};
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena, PreflightExecutor},
     system::memory::online::TracingMemory,
@@ -83,6 +83,49 @@ impl PreflightExecutor<BabyBear> for PowdrChip {
 
     fn get_opcode_name(&self, _: usize) -> String {
         self.name.clone()
+    }
+}
+
+impl Executor<BabyBear> for PowdrChip {
+    fn pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn pre_compute<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+    {
+        todo!()
+    }
+}
+
+impl MeteredExecutor<BabyBear> for PowdrChip {
+    fn metered_pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn metered_pre_compute<Ctx>(
+        &self,
+        air_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::MeteredExecutionCtxTrait,
+    {
+        todo!()
     }
 }
 

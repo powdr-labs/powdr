@@ -3,7 +3,7 @@ use openvm_circuit::{
     arch::{ChipInventory, ExecutorInventory, MatrixRecordArena, PreflightExecutor},
     system::{phantom::PhantomChip, SystemExecutor},
 };
-use openvm_circuit_derive::{AnyEnum, PreflightExecutor};
+use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit_primitives::{
     bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
     var_range::SharedVariableRangeCheckerChip, Chip,
@@ -49,7 +49,7 @@ impl<F: PrimeField32, RA> PreflightExecutor<F, RA> for DummyExecutor<F> {
     }
 }
 
-#[derive(Chip, PreflightExecutor, From, AnyEnum)]
+#[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
 pub enum SharedExecutor<F: PrimeField32> {
     Phantom(PhantomChip<F>),
 }

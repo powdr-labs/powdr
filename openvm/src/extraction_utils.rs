@@ -9,7 +9,8 @@ use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
+    SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
 use openvm_circuit::system::SystemChipInventory;
@@ -271,7 +272,8 @@ impl OriginalVmConfig {
 
         let chip_inventory = &chip_complex.inventory;
 
-        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> = self.create_executors().unwrap();
+        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> =
+            self.create_executors().unwrap();
 
         let instruction_allowlist = instruction_allowlist();
 
@@ -482,12 +484,12 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    let log_up = unimplemented!();
-    // (find_interaction_chunks(&interactions, max_degree)
-    //     .interaction_partitions()
-    //     .len()
-    //     + 1)
-    //     * EXT_DEGREE;
+    let log_up = 0; // TODO: replace by :point_down:
+                    // (find_interaction_chunks(&interactions, max_degree)
+                    //     .interaction_partitions()
+                    //     .len()
+                    //     + 1)
+                    //     * EXT_DEGREE;
 
     AirMetrics {
         widths: AirWidths {

@@ -4,7 +4,7 @@ use std::iter::once;
 use std::sync::Arc;
 
 use derive_more::From;
-use openvm_circuit_derive::PreflightExecutor;
+use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_sdk::SC;
 use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
@@ -92,7 +92,7 @@ impl<F> PowdrExtension<F> {
     }
 }
 
-#[derive(ChipUsageGetter, From, AnyEnum, PreflightExecutor, Chip)]
+#[derive(ChipUsageGetter, From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExecutor {
     Powdr(PowdrChip),
@@ -108,8 +108,7 @@ impl PowdrExecutor {
     }
 }
 
-impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> 
-{
+impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
     type Executor = PowdrExecutor;
 
     // TODO: this part seems duplicated to `extend_prover`, so need to study the split of functionalities between them
@@ -120,7 +119,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear>
         let chip_complex = &self.base_config.chip_complex();
 
         let chip_inventory = &chip_complex.inventory;
-            
+
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
         let bitwise_lookup = chip_inventory
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
@@ -136,9 +135,11 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear>
             .cloned();
 
         // Create the shared chips and the dummy shared chips
-        let shared_chips_pair =
-            PowdrPeripheryInstances::new(range_checker.clone(), bitwise_lookup, tuple_range_checker);
-
+        let shared_chips_pair = PowdrPeripheryInstances::new(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+        );
 
         for precompile in self.precompiles.iter() {
             let powdr_executor: PowdrExecutor = match self.implementation {
