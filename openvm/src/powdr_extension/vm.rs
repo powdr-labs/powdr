@@ -6,20 +6,16 @@ use std::sync::Arc;
 use derive_more::From;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
-use openvm_sdk::SC;
 use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
 
+use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
-use crate::{bus_map::BusMap, BabyBearSC};
 use openvm_circuit::{
-    arch::{
-        AirInventory, AirInventoryError, ChipInventory, RowMajorMatrixArena, VmCircuitExtension,
-        VmExecutionExtension, VmProverExtension,
-    },
-    circuit_derive::{Chip, ChipUsageGetter},
+    arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
+    circuit_derive::Chip,
     derive::AnyEnum,
 };
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
@@ -28,16 +24,13 @@ use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::{Field, PrimeField32},
-    prover::cpu::{CpuBackend, CpuDevice},
-    ChipUsageGetter,
 };
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtendedVmConfig, Instr, PrecompileImplementation};
+use crate::{Instr, PrecompileImplementation};
 
-use super::plonk::chip::PlonkChip;
-use super::{chip::PowdrChip, PowdrOpcode};
+use super::PowdrOpcode;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
@@ -92,20 +85,10 @@ impl<F> PowdrExtension<F> {
     }
 }
 
-#[derive(ChipUsageGetter, From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
+#[derive(From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExecutor {
-    Powdr(PowdrChip),
-    Plonk(PlonkChip),
-}
-
-impl PowdrExecutor {
-    pub fn air_name(&self) -> String {
-        match self {
-            PowdrExecutor::Powdr(powdr_chip) => powdr_chip.air_name(),
-            PowdrExecutor::Plonk(plonk_chip) => plonk_chip.air_name(),
-        }
-    }
+    Powdr(crate::powdr_extension::executor::PowdrExecutor),
 }
 
 impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
@@ -142,104 +125,14 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         );
 
         for precompile in self.precompiles.iter() {
-            let powdr_executor: PowdrExecutor = match self.implementation {
-                PrecompileImplementation::SingleRowChip => PowdrChip::new(
-                    precompile.clone(),
+            let powdr_executor =
+                PowdrExecutor::Powdr(crate::powdr_extension::executor::PowdrExecutor::new(
                     self.airs.clone(),
-                    unimplemented!("no access to memory here"),
-                    // offline_memory.clone(),
                     self.base_config.config().clone(),
                     shared_chips_pair.clone(),
-                )
-                .into(),
-                PrecompileImplementation::PlonkChip => {
-                    // let copy_constraint_bus_id = inventory.new_bus_idx();
-                    let copy_constraint_bus_id = unimplemented!(
-                        "cannot create a new bus id here, probably in VmCircuitExtension?"
-                    );
-                    PlonkChip::new(
-                        precompile.clone(),
-                        self.airs.clone(),
-                        unimplemented!("no access to memory here"),
-                        // offline_memory.clone(),
-                        self.base_config.config().clone(),
-                        shared_chips_pair.clone(),
-                        self.bus_map.clone(),
-                        copy_constraint_bus_id,
-                    )
-                    .into()
-                }
-            };
+                    precompile.apc.clone(),
+                ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
-        }
-
-        Ok(())
-    }
-}
-
-impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrExtension<BabyBear>
-where
-    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
-    RA: RowMajorMatrixArena<BabyBear>,
-{
-    fn extend_prover(
-        &self,
-        extension: &PowdrExtension<Val<SC>>,
-        inventory: &mut ChipInventory<E::SC, RA, E::PB>,
-    ) -> Result<(), openvm_circuit::arch::ChipInventoryError> {
-        let offline_memory: () = unimplemented!("no access to memory here");
-
-        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = inventory
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .next()
-            .cloned();
-        let range_checker = *inventory
-            .find_chip::<SharedVariableRangeCheckerChip>()
-            .next()
-            .unwrap();
-        let tuple_range_checker = inventory
-            .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .next()
-            .cloned();
-
-        // Create the shared chips and the dummy shared chips
-        let shared_chips_pair =
-            PowdrPeripheryInstances::new(range_checker, bitwise_lookup, tuple_range_checker);
-
-        if let Some(precompile) = self.precompiles.first() {
-            let powdr_chip: PowdrExecutor = match self.implementation {
-                PrecompileImplementation::SingleRowChip => PowdrChip::new(
-                    precompile.clone(),
-                    self.airs.clone(),
-                    unimplemented!("no access to memory here"),
-                    // offline_memory.clone(),
-                    self.base_config.config().clone(),
-                    shared_chips_pair.clone(),
-                )
-                .into(),
-                PrecompileImplementation::PlonkChip => {
-                    // let copy_constraint_bus_id = inventory.new_bus_idx();
-                    let copy_constraint_bus_id = unimplemented!(
-                        "cannot create a new bus id here, probably in VmCircuitExtension?"
-                    );
-
-                    PlonkChip::new(
-                        precompile.clone(),
-                        self.airs.clone(),
-                        unimplemented!("no access to memory here"),
-                        // offline_memory.clone(),
-                        self.base_config.config().clone(),
-                        shared_chips_pair.clone(),
-                        self.bus_map.clone(),
-                        copy_constraint_bus_id,
-                    )
-                    .into()
-                }
-            };
-
-            // TODO: no execution stuff is done here, maybe in VmExecutionExtension?
-            // inventory.add_executor(powdr_chip, once(precompile.opcode.global_opcode()))?;
         }
 
         Ok(())

@@ -1,6 +1,6 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::bus_map::BusMap;
 use crate::extraction_utils::OriginalAirs;
@@ -14,7 +14,6 @@ use crate::powdr_extension::PowdrPrecompile;
 use crate::{BabyBearSC, ExtendedVmConfig, Instr};
 use itertools::Itertools;
 use openvm_circuit::arch::{Executor, MeteredExecutor, PreflightExecutor};
-use openvm_circuit::system::memory::online::TracingMemory;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
@@ -46,7 +45,7 @@ impl PlonkChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-        memory: Arc<Mutex<TracingMemory>>,
+        // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
@@ -60,8 +59,7 @@ impl PlonkChip {
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         });
-        let executor =
-            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
+        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc.clone());
 
         Self {
             name,

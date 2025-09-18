@@ -16,8 +16,8 @@ use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_native_circuit::NativeCpuBuilder;
-use openvm_sdk::config::{SdkVmBuilder, TranspilerConfig};
-use openvm_sdk::prover::{verify_app_proof, AggStarkProver, AppProver};
+use openvm_sdk::config::TranspilerConfig;
+use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
 use openvm_sdk::GenericSdk;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
@@ -37,7 +37,7 @@ use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
-use powdr_extension::{PowdrExecutor, PowdrExtension};
+use powdr_extension::PowdrExtension;
 use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension};
 // use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
@@ -61,7 +61,7 @@ use tracing::Level;
 use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
-use crate::powdr_extension::PowdrPrecompile;
+use crate::powdr_extension::{PowdrExecutor, PowdrPrecompile};
 
 mod air_builder;
 pub mod bus_map;

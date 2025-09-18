@@ -1,9 +1,6 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
@@ -50,7 +47,7 @@ impl PowdrChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-        memory: Arc<Mutex<TracingMemory>>,
+        // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
@@ -58,7 +55,7 @@ impl PowdrChip {
             name, opcode, apc, ..
         } = precompile;
         let air = Arc::new(PowdrAir::new(apc.clone()));
-        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
+        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc);
 
         Self {
             name,

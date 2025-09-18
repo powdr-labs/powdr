@@ -55,7 +55,7 @@ pub struct PowdrExecutor {
 impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
-        memory: Arc<Mutex<TracingMemory>>,
+        // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
