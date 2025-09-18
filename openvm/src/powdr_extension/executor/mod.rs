@@ -6,14 +6,11 @@ use std::{
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     extraction_utils::OriginalAirs,
-    powdr_extension::executor::{
-        inventory::{DummyChipInventory, DummyExecutorInventory},
-        periphery::SharedPeripheryChips,
-    },
+    powdr_extension::executor::periphery::SharedPeripheryChips,
     BabyBearSC, ExtendedVmConfig, Instr,
 };
 
-use openvm_sdk::config::{SdkVmBuilder, SdkVmConfig, SdkVmConfigExecutor};
+use openvm_sdk::config::{SdkVmBuilder, SdkVmConfigExecutor};
 use openvm_stark_backend::{p3_field::Field, prover::cpu::CpuBackend};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
@@ -23,12 +20,9 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
-use openvm_circuit::{
-    arch::{
+use openvm_circuit::arch::{
         AirInventory, ChipInventory, ExecutorInventory, PreflightExecutor, VmBuilder, VmStateMut,
-    },
-    utils::TestStarkEngine,
-};
+    };
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena},
     system::memory::online::TracingMemory,

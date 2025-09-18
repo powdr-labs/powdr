@@ -139,7 +139,7 @@ impl ChipUsageGetter for PowdrChip {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<R, PB> for PowdrChip {
+impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PowdrChip {
     fn generate_proving_ctx(&self, records: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
@@ -150,7 +150,7 @@ impl<R, PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<R, PB> for Powdr
 
         assert_eq!(trace.width(), width);
 
-        AirProvingContext::simple(trace, vec![])
+        AirProvingContext::simple(Arc::new(trace), vec![])
     }
 }
 

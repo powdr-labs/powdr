@@ -172,9 +172,9 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
 pub struct OriginalVmConfig {
-    sdk_config: ExtendedVmConfig,
+    pub sdk_config: ExtendedVmConfig,
     #[serde(skip)]
-    chip_complex: CachedChipComplex,
+    pub chip_complex: CachedChipComplex,
 }
 
 // TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere

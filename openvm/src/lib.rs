@@ -5,14 +5,21 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ChipInventoryError, ExecutorInventory, ExecutorInventoryError,
-    InitFileGenerator, MatrixRecordArena, PreflightExecutor, SystemConfig, VmBuilder,
-    VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
+    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, PreflightExecutor, SystemConfig,
+    VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
+    VmProverExtension,
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
+use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
+use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
+use openvm_circuit::arch::RowMajorMatrixArena;
+use openvm_sdk::config::SdkVmCpuBuilder;
+
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_native_circuit::NativeCpuBuilder;
@@ -55,6 +62,8 @@ use std::{
 
 use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
+use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
+use crate::powdr_extension::executor::PowdrPeripheryInstances;
 use tracing::Level;
 
 #[cfg(test)]
@@ -137,7 +146,65 @@ where
         VmChipComplex<BabyBearSC, Self::RecordArena, E::PB, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        unimplemented!()
+        let mut chip_complex = VmBuilder::<E>::create_chip_complex(
+            &SdkVmCpuBuilder,
+            &config.sdk_config.sdk_config.sdk_vm_config,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<E, _, _>::extend_prover(&PowdrCpuProverExt, &config.powdr, inventory)?;
+        Ok(chip_complex)
+    }
+}
+
+struct PowdrCpuProverExt;
+
+impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
+where
+    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
+    RA: RowMajorMatrixArena<BabyBear>,
+{
+    fn extend_prover(
+        &self,
+        extension: &PowdrExtension<BabyBear>,
+        inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
+    ) -> Result<(), ChipInventoryError> {
+        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
+        let bitwise_lookup = inventory
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .next()
+            .cloned();
+        let range_checker = inventory
+            .find_chip::<SharedVariableRangeCheckerChip>()
+            .next()
+            .unwrap();
+        let tuple_range_checker = inventory
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .next()
+            .cloned();
+
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair = PowdrPeripheryInstances::new(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+        );
+
+        for precompile in extension.precompiles.iter() {
+            inventory.next_air::<PowdrAir<BabyBear>>()?;
+            let powdr_chip = match extension.implementation {
+                PrecompileImplementation::SingleRowChip => PowdrChip::new(
+                    precompile.clone(),
+                    extension.airs.clone(),
+                    extension.base_config.sdk_config.clone(),
+                    shared_chips_pair.clone(),
+                ),
+                PrecompileImplementation::PlonkChip => todo!(),
+            };
+            inventory.add_executor_chip(powdr_chip);
+        }
+
+        Ok(())
     }
 }
 
