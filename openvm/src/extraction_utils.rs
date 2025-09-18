@@ -227,10 +227,6 @@ impl OriginalVmConfig {
         &mut self.sdk_config
     }
 
-    fn executor_inventory(&self) -> ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> {
-        ExecutorInventory::new(self.sdk_config.sdk_vm_config.system.config.clone())
-    }
-
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
     fn chip_complex(&self) -> ChipComplexGuard {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
@@ -275,7 +271,7 @@ impl OriginalVmConfig {
 
         let chip_inventory = &chip_complex.inventory;
 
-        let executor_inventory = self.executor_inventory();
+        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> = self.create_executors().unwrap();
 
         let instruction_allowlist = instruction_allowlist();
 
