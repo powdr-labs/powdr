@@ -224,10 +224,14 @@ where
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for PowdrExtension<Val<SC>> {
+impl<SC> VmCircuitExtension<SC> for PowdrExtension<Val<SC>>
+where
+    SC: StarkGenericConfig,
+    Val<SC>: PrimeField32,
+{
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         for apc in self.precompiles.iter() {
-            inventory.add_air(PowdrAir::new(apc.clone()));
+            inventory.add_air(PowdrAir::new(apc.apc.clone()));
         }
         Ok(())
     }
