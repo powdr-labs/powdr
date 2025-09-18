@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::OriginalAirs,
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::executor::{
         inventory::{DummyChipInventory, DummyExecutorInventory},
         periphery::SharedPeripheryChips,
@@ -55,11 +55,12 @@ pub struct PowdrExecutor {
 impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
-        memory: Arc<Mutex<TracingMemory>>,
-        base_config: ExtendedVmConfig,
+        // memory: Arc<Mutex<TracingMemory>>,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
+        let inventory_complex = &base_config.chip_complex();
         Self {
             air_by_opcode_id,
             chip_inventory: unimplemented!(),

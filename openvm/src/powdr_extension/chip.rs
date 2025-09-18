@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
+    extraction_utils::{OriginalAirs, OriginalVmConfig}, powdr_extension::executor::PowdrPeripheryInstances,
     ExtendedVmConfig, Instr,
 };
 
@@ -50,15 +50,15 @@ impl PowdrChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-        memory: Arc<Mutex<TracingMemory>>,
-        base_config: ExtendedVmConfig,
+        // memory: Arc<Mutex<TracingMemory>>,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
             name, opcode, apc, ..
         } = precompile;
         let air = Arc::new(PowdrAir::new(apc.clone()));
-        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
+        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc);
 
         Self {
             name,

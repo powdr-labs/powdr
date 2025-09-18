@@ -139,15 +139,14 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear>
         let shared_chips_pair =
             PowdrPeripheryInstances::new(range_checker.clone(), bitwise_lookup, tuple_range_checker);
 
-
         for precompile in self.precompiles.iter() {
             let powdr_executor: PowdrExecutor = match self.implementation {
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     self.airs.clone(),
-                    unimplemented!("no access to memory here"),
+                    // unimplemented!("no access to memory here"),
                     // offline_memory.clone(),
-                    self.base_config.config().clone(),
+                    self.base_config.clone(),
                     shared_chips_pair.clone(),
                 )
                 .into(),
@@ -159,7 +158,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear>
                     PlonkChip::new(
                         precompile.clone(),
                         self.airs.clone(),
-                        unimplemented!("no access to memory here"),
+                        // unimplemented!("no access to memory here"),
                         // offline_memory.clone(),
                         self.base_config.config().clone(),
                         shared_chips_pair.clone(),
@@ -211,7 +210,7 @@ where
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     self.airs.clone(),
-                    unimplemented!("no access to memory here"),
+                    // unimplemented!("no access to memory here"),
                     // offline_memory.clone(),
                     self.base_config.config().clone(),
                     shared_chips_pair.clone(),
@@ -226,7 +225,7 @@ where
                     PlonkChip::new(
                         precompile.clone(),
                         self.airs.clone(),
-                        unimplemented!("no access to memory here"),
+                        // unimplemented!("no access to memory here"),
                         // offline_memory.clone(),
                         self.base_config.config().clone(),
                         shared_chips_pair.clone(),

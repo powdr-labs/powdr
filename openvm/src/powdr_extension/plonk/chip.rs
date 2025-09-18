@@ -46,7 +46,7 @@ impl PlonkChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-        memory: Arc<Mutex<TracingMemory>>,
+        // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
@@ -61,7 +61,7 @@ impl PlonkChip {
             _marker: std::marker::PhantomData,
         });
         let executor =
-            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
+            PowdrExecutor::new(original_airs, base_config, periphery, apc.clone());
 
         Self {
             name,
