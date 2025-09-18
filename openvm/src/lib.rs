@@ -153,7 +153,9 @@ impl VmExecutionConfig<BabyBear> for SpecializedConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        todo!()
+        let mut inventory = self.sdk_config.create_executors()?.transmute();
+        inventory = inventory.extend(&self.powdr)?;
+        Ok(inventory)
     }
 }
 

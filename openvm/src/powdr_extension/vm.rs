@@ -1,9 +1,11 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
+use std::iter::once;
 use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit_derive::PreflightExecutor;
+use openvm_instructions::LocalOpcode;
 use openvm_sdk::SC;
 use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
 
@@ -105,14 +107,50 @@ impl PowdrExecutor {
     }
 }
 
-impl<F: PrimeField32> VmExecutionExtension<F> for PowdrExtension<F> {
+impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> 
+{
     type Executor = PowdrExecutor;
 
+    // TODO: this part seems duplicated to `extend_prover`, so need to study the split of functionalities between them
     fn extend_execution(
         &self,
-        inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<F, Self::Executor>,
+        inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        todo!()
+        for precompile in self.precompiles.iter() {
+            let powdr_executor: PowdrExecutor = match self.implementation {
+                PrecompileImplementation::SingleRowChip => PowdrChip::new(
+                    precompile.clone(),
+                    self.airs.clone(),
+                    unimplemented!("no access to memory here"),
+                    // offline_memory.clone(),
+                    self.base_config.clone(),
+                    // TODO: PowdrExtension might need a reference to ChipInventory
+                    unimplemented!("no access to shared chips pair here"),
+                )
+                .into(),
+                PrecompileImplementation::PlonkChip => {
+                    // let copy_constraint_bus_id = inventory.new_bus_idx();
+                    let copy_constraint_bus_id = unimplemented!(
+                        "cannot create a new bus id here, probably in VmCircuitExtension?"
+                    );
+                    PlonkChip::new(
+                        precompile.clone(),
+                        self.airs.clone(),
+                        unimplemented!("no access to memory here"),
+                        // offline_memory.clone(),
+                        self.base_config.clone(),
+                        // TODO: PowdrExtension might need a reference to ChipInventory
+                    unimplemented!("no access to shared chips pair here"),
+                        self.bus_map.clone(),
+                        copy_constraint_bus_id,
+                    )
+                    .into()
+                }
+            };
+            inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
+        }
+
+        Ok(())
     }
 }
 
