@@ -6,12 +6,20 @@ use std::{
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     extraction_utils::OriginalAirs,
-    powdr_extension::executor::periphery::SharedPeripheryChips,
+    powdr_extension::executor::{inventory::DummyChipComplex, periphery::SharedPeripheryChips},
     BabyBearSC, ExtendedVmConfig, Instr,
 };
 
-use openvm_sdk::config::{SdkVmBuilder, SdkVmConfigExecutor};
-use openvm_stark_backend::{p3_field::Field, prover::cpu::CpuBackend};
+use openvm_algebra_circuit::AlgebraCpuProverExt;
+use openvm_bigint_circuit::Int256CpuProverExt;
+use openvm_ecc_circuit::EccCpuProverExt;
+use openvm_keccak256_circuit::Keccak256CpuProverExt;
+use openvm_native_circuit::NativeCpuProverExt;
+use openvm_pairing_circuit::PairingProverExt;
+use openvm_rv32im_circuit::Rv32ImCpuProverExt;
+use openvm_sdk::config::{SdkVmBuilder, SdkVmConfig, SdkVmConfigExecutor};
+use openvm_sha256_circuit::Sha2CpuProverExt;
+use openvm_stark_backend::{config::StarkGenericConfig, p3_field::Field, prover::cpu::CpuBackend};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
@@ -20,9 +28,9 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
-use openvm_circuit::arch::{
-        AirInventory, ChipInventory, ExecutorInventory, PreflightExecutor, VmBuilder, VmStateMut,
-    };
+use openvm_circuit::{arch::{
+        AirInventory, ChipInventory, ChipInventoryError, ExecutorInventory, PreflightExecutor, VmBuilder, VmProverExtension, VmStateMut
+    }, system::SystemCpuBuilder};
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena},
     system::memory::online::TracingMemory,
@@ -68,13 +76,12 @@ impl PowdrExecutor {
         Self {
             air_by_opcode_id,
             chip_inventory: Mutex::new({
-                let builder = SdkVmBuilder;
                 let airs: AirInventory<BabyBearSC> =
                     base_config.sdk_vm_config.create_airs().unwrap();
-                <SdkVmBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
-                    &builder,
+                create_chip_complex(
                     &base_config.sdk_vm_config,
                     airs,
+                    periphery.dummy,
                 )
                 .expect("Failed to create chip complex")
                 .inventory
@@ -279,88 +286,59 @@ impl PowdrExecutor {
     }
 }
 
-// // Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
-// fn create_chip_complex_with_memory<F: PrimeField32>(
-//     memory: Arc<Mutex<TracingMemory>>,
-//     shared_chips: SharedPeripheryChips,
-//     base_config: ExtendedVmConfig,
-// ) -> std::result::Result<DummyChipComplex<F>, ChipInventoryError> {
-//     use openvm_keccak256_circuit::Keccak256;
-//     use openvm_native_circuit::Native;
-//     use openvm_rv32im_circuit::{Rv32I, Rv32Io};
-//     use openvm_sha256_circuit::Sha256;
+fn create_chip_complex(
+    config: &SdkVmConfig,
+    circuit: AirInventory<BabyBearSC>,
+    shared_chips: SharedPeripheryChips,
+) -> Result<
+    DummyChipComplex<BabyBearSC>,
+    ChipInventoryError,
+> {
+    let config = config.to_inner();
+    let mut chip_complex =
+        VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(&SystemCpuBuilder, &config.system, circuit)?;
+    let inventory = &mut chip_complex.inventory;
 
-//     let this = base_config;
-//     let mut complex: DummyChipComplex<F> = this
-//         .sdk_vm_config
-//         .system
-//         .config
-//         .create_chip_complex()?
-//         .transmute();
+    // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
+    VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&shared_chips, &shared_chips, inventory)?;
+    // END CHANGE
 
-//     // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
-//     complex.base.memory_controller.offline_memory = memory.clone();
-//     complex.base.range_checker_chip = shared_chips.range_checker.clone();
-//     // END CHANGE
+    if let Some(rv32i) = &config.rv32i {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, rv32i, inventory)?;
+    }
+    if let Some(io) = &config.io {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, io, inventory)?;
+    }
+    if let Some(keccak) = &config.keccak {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Keccak256CpuProverExt, keccak, inventory)?;
+    }
+    if let Some(sha256) = &config.sha256 {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Sha2CpuProverExt, sha256, inventory)?;
+    }
+    if let Some(native) = &config.native {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&NativeCpuProverExt, native, inventory)?;
+    }
+    if let Some(castf) = &config.castf {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&NativeCpuProverExt, castf, inventory)?;
+    }
+    if let Some(rv32m) = &config.rv32m {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, rv32m, inventory)?;
+    }
+    if let Some(bigint) = &config.bigint {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Int256CpuProverExt, bigint, inventory)?;
+    }
+    if let Some(modular) = &config.modular {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&AlgebraCpuProverExt, modular, inventory)?;
+    }
+    if let Some(fp2) = &config.fp2 {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&AlgebraCpuProverExt, fp2, inventory)?;
+    }
+    if let Some(pairing) = &config.pairing {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&PairingProverExt, pairing, inventory)?;
+    }
+    if let Some(ecc) = &config.ecc {
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&EccCpuProverExt, ecc, inventory)?;
+    }
+    Ok(chip_complex)
+}
 
-//     // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
-//     complex = complex.extend(&shared_chips)?;
-//     // END CHANGE
-
-//     if this.sdk_vm_config.rv32i.is_some() {
-//         complex = complex.extend(&Rv32I)?;
-//     }
-//     if this.sdk_vm_config.io.is_some() {
-//         complex = complex.extend(&Rv32Io)?;
-//     }
-//     if this.sdk_vm_config.keccak.is_some() {
-//         complex = complex.extend(&Keccak256)?;
-//     }
-//     if this.sdk_vm_config.sha256.is_some() {
-//         complex = complex.extend(&Sha256)?;
-//     }
-//     if this.sdk_vm_config.native.is_some() {
-//         complex = complex.extend(&Native)?;
-//     }
-//     if this.sdk_vm_config.castf.is_some() {
-//         complex = complex.extend(&CastFExtension)?;
-//     }
-
-//     if let Some(rv32m) = this.sdk_vm_config.rv32m {
-//         let mut rv32m = rv32m;
-//         if let Some(ref bigint) = this.sdk_vm_config.bigint {
-//             rv32m.range_tuple_checker_sizes[0] =
-//                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
-//             rv32m.range_tuple_checker_sizes[1] =
-//                 rv32m.range_tuple_checker_sizes[1].max(bigint.range_tuple_checker_sizes[1]);
-//         }
-//         complex = complex.extend(&rv32m)?;
-//     }
-//     if let Some(bigint) = this.sdk_vm_config.bigint {
-//         let mut bigint = bigint;
-//         if let Some(ref rv32m) = this.sdk_vm_config.rv32m {
-//             bigint.range_tuple_checker_sizes[0] =
-//                 rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
-//             bigint.range_tuple_checker_sizes[1] =
-//                 rv32m.range_tuple_checker_sizes[1].max(bigint.range_tuple_checker_sizes[1]);
-//         }
-//         complex = complex.extend(&bigint)?;
-//     }
-//     if let Some(ref modular) = this.sdk_vm_config.modular {
-//         complex = complex.extend(modular)?;
-//     }
-//     if let Some(ref fp2) = this.sdk_vm_config.fp2 {
-//         complex = complex.extend(fp2)?;
-//     }
-//     if let Some(ref pairing) = this.sdk_vm_config.pairing {
-//         complex = complex.extend(pairing)?;
-//     }
-//     if let Some(ref ecc) = this.sdk_vm_config.ecc {
-//         complex = complex.extend(ecc)?;
-//     }
-
-//     // add custom extensions
-//     // complex = complex.extend(&HintsExtension)?;
-
-//     Ok(complex)
-// }

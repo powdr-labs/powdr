@@ -99,6 +99,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
+        // cached instance
         let chip_complex = &self.base_config.chip_complex();
 
         let chip_inventory = &chip_complex.inventory;
