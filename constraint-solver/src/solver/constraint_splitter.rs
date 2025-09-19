@@ -35,26 +35,27 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
     constraint: &AlgebraicConstraint<&GroupedExpression<T, V>>,
     range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
 ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
-    let (quadratic, linear, constant) = constraint.expression.components();
-    if !quadratic.is_empty() {
+    let expression = constraint.expression;
+    if expression.is_quadratic() {
         // We cannot split quadratic constraints.
         return None;
     }
-    if linear
-        .clone()
+    if expression
+        .linear_components()
         .any(|(var, _)| range_constraints.get(var).is_unconstrained())
     {
         // If any variable is unconstrained, we cannot split.
         return None;
     }
 
-    let mut constant = constant.try_to_number()?;
+    let mut constant = expression.constant_offset().try_to_number()?;
 
     // Turn the linear part into components ("coefficient * expression"),
     // and combine components with the same coefficient, ending up with
     // components of the form "coefficient * (var1 + var2 - var3)".
     let mut components = group_components_by_coefficients(
-        linear
+        expression
+            .linear_components()
             .map(|(var, coeff)| Component::try_from((var, coeff)).ok())
             .collect::<Option<Vec<_>>>()?,
     )

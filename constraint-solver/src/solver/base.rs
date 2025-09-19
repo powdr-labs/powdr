@@ -608,10 +608,10 @@ fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
     if !constr.expression.is_affine() {
         return None;
     }
-    let (_, linear, offset) = constr.expression.components();
-    if !offset.is_zero() {
+    if !constr.expression.constant_offset().is_zero() {
         return None;
     }
+    let linear = constr.expression.linear_components();
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
     // c1 = 1, c2 = -1 or vice-versa
     if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {

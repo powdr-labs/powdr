@@ -865,14 +865,13 @@ mod tests {
 
         expr.substitute_by_unknown(&"x", &subst);
 
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(
             expr.to_string(),
             "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
         );
+
         // Structural validation
+        let quadratic = expr.quadratic_components();
         assert_eq!(quadratic.len(), 2);
         assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
         assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
@@ -885,9 +884,14 @@ mod tests {
         assert_eq!(quadratic[0].1.to_string(), "w");
         assert_eq!(quadratic[1].0.to_string(), "a");
         assert_eq!(quadratic[1].1.to_string(), "b");
+
+        let linear: Vec<_> = expr.linear_components().collect();
         assert_eq!(linear[0].0.to_string(), "y");
         assert_eq!(linear.len(), 1);
-        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(6)),);
+        assert_eq!(
+            expr.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(6)),
+        );
     }
 
     #[test]
@@ -899,16 +903,17 @@ mod tests {
 
         expr.substitute_by_unknown(&"a", &subst);
 
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
 
+        let quadratic = expr.quadratic_components();
         assert_eq!(quadratic.len(), 1);
         assert_eq!(quadratic[0].0.to_string(), "2 * x");
         assert_eq!(quadratic[0].1.to_string(), "y");
-        assert!(linear.is_empty());
-        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
+        assert!(expr.linear_components().next().is_none());
+        assert_eq!(
+            expr.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(7))
+        );
     }
 
     #[test]
