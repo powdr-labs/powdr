@@ -83,9 +83,15 @@ where
     /// `variable` does not appear in the quadratic component and
     /// has a coefficient which is known to be not zero.
     ///
+    /// If the constraint has the form `A + k * x = 0` where `A` does not
+    /// contain the variable `x` and `k` is a non-zero runtime constant,
+    /// it returns `A * (-k^(-1))`.
+    ///
     /// Returns the resulting solved grouped expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
-        let coefficient = self.expression.coefficient_of_variable(variable)?.clone();
+        let coefficient = self
+            .expression
+            .coefficient_of_variable_in_affine_part(variable)?;
         if !coefficient.is_known_nonzero() {
             return None;
         }
@@ -97,7 +103,7 @@ where
             // we cannot solve for it.
             return None;
         }
-        Some(subtracted * (-T::one().field_div(&coefficient)))
+        Some(subtracted * (-T::one().field_div(coefficient)))
     }
 
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
@@ -123,10 +129,14 @@ where
         let normalization_factor = expr
             .referenced_unknown_variables()
             .find_map(|var| {
-                let coeff = expression.coefficient_of_variable(var)?;
+                let coeff = expression.coefficient_of_variable_in_affine_part(var)?;
                 // We can only divide if we know the coefficient is non-zero.
                 if coeff.is_known_nonzero() {
-                    Some(expr.coefficient_of_variable(var).unwrap().field_div(coeff))
+                    Some(
+                        expr.coefficient_of_variable_in_affine_part(var)
+                            .unwrap()
+                            .field_div(coeff),
+                    )
                 } else {
                     None
                 }
