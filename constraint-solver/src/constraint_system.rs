@@ -189,7 +189,10 @@ impl<
                     // `k * var + e` is in range rc <=>
                     // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
                     // If we solve `expr` for `var`, we get `-e / k`.
-                    let k = expr.coefficient_of_variable(var).unwrap().try_to_number()?;
+                    let k = expr
+                        .coefficient_of_variable_in_affine_part(var)
+                        .unwrap()
+                        .try_to_number()?;
                     let expr = AlgebraicConstraint::assert_zero(expr).try_solve_for(var)?;
                     let rc = rc
                         .multiple(T::FieldType::from(1) / k)
