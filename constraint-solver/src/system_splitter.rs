@@ -4,15 +4,14 @@ use std::{collections::BTreeSet, fmt::Display};
 use crate::constraint_system::{AlgebraicConstraint, ConstraintRef};
 use crate::reachability::reachable_variables;
 use crate::{
-    constraint_system::ConstraintSystem,
-    indexed_constraint_system::IndexedConstraintSystem,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant},
+    constraint_system::ConstraintSystem, indexed_constraint_system::IndexedConstraintSystem,
+    runtime_constant::RuntimeConstant,
 };
 
 /// Splits the constraint system into independent subsets.
 /// Each variable occurs in exactly one subset and all constraints referencing a
 /// certain variable have to be in the same subsystem.
-pub fn split_system<T: RuntimeConstant + ReferencedSymbols<V>, V: Clone + Ord + Hash + Display>(
+pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
 ) -> Vec<ConstraintSystem<T, V>> {
     let mut systems = Vec::new();

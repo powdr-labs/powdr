@@ -1,12 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Display;
+use std::collections::BTreeMap;
 use std::hash::Hash;
 
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
+use crate::runtime_constant::{RuntimeConstant, Substitutable};
 
 /// Returns the number of possible assignments for the variables given the range constraints.
 /// Returns `None` if this number would not fit a `u64`.

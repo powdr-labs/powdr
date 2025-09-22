@@ -5,7 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant};
+use crate::runtime_constant::RuntimeConstant;
 
 /// Returns the set of all variables reachable from an initial set via shared constraints
 /// (algebraic constraints and bus interactions).
@@ -15,7 +15,7 @@ pub fn reachable_variables<T, V>(
     constraint_system: &IndexedConstraintSystem<T, V>,
 ) -> HashSet<V>
 where
-    T: RuntimeConstant + ReferencedSymbols<V>,
+    T: RuntimeConstant,
     V: Clone + Ord + Hash + Display,
 {
     reachable_variables_except_blocked(initial_variables, std::iter::empty(), constraint_system)
@@ -33,7 +33,7 @@ pub fn reachable_variables_except_blocked<T, V>(
     constraint_system: &IndexedConstraintSystem<T, V>,
 ) -> HashSet<V>
 where
-    T: RuntimeConstant + ReferencedSymbols<V>,
+    T: RuntimeConstant,
     V: Clone + Ord + Hash + Display,
 {
     let mut reachable_variables = initial_variables.into_iter().collect::<HashSet<_>>();
