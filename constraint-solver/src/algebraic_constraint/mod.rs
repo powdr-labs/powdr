@@ -45,13 +45,6 @@ impl<V: Clone> AlgebraicConstraint<&V> {
     }
 }
 
-impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
-    /// Returns the referenced unknown variables. Might contain repetitions.
-    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        self.expression.referenced_unknown_variables()
-    }
-}
-
 impl<T: RuntimeConstant, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns a constraint which asserts that the two expressions are equal.
     pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
@@ -87,6 +80,20 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Eq + Ord>
 impl<V: Display> Display for AlgebraicConstraint<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} = 0", self.expression)
+    }
+}
+
+impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_unknown_variables()
+    }
+}
+
+impl<T, V> AlgebraicConstraint<&GroupedExpression<T, V>> {
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_unknown_variables()
     }
 }
 

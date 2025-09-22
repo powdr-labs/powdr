@@ -81,7 +81,7 @@ pub fn get_brute_force_candidates<
         .expressions()
         .map(|expression| {
             expression
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .cloned()
                 .collect::<BTreeSet<_>>()
         })

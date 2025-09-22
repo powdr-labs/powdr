@@ -207,13 +207,13 @@ where
         variables_to_keep.extend(self.var_dispenser.all_linearized_vars());
 
         self.constraint_system.retain_algebraic_constraints(|c| {
-            c.referenced_variables()
+            c.referenced_unknown_variables()
                 .any(|v| variables_to_keep.contains(v))
         });
         self.constraint_system
             .retain_bus_interactions(|bus_interaction| {
                 bus_interaction
-                    .referenced_variables()
+                    .referenced_unknown_variables()
                     .any(|v| variables_to_keep.contains(v))
             });
         let remaining_variables = self

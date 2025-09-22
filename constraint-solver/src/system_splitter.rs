@@ -36,12 +36,12 @@ pub fn split_system<T: RuntimeConstant + ReferencedSymbols<V>, V: Clone + Ord + 
         }
         constraint_system.retain_algebraic_constraints(|constr| {
             !constr
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .any(|var| variables_to_extract.contains(var))
         });
         constraint_system.retain_bus_interactions(|constr| {
             !constr
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .any(|var| variables_to_extract.contains(var))
         });
         systems.push(ConstraintSystem {

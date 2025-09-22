@@ -46,12 +46,12 @@ where
             constraint_system.constraints_referencing_variables(&reachable_variables_vec)
         {
             if constraint
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .any(|var| reachable_variables.contains(var) && !blocking_variables.contains(var))
             {
                 // This constraint is connected to a reachable variable,
                 // add all variables of this constraint.
-                reachable_variables.extend(constraint.referenced_variables().cloned());
+                reachable_variables.extend(constraint.referenced_unknown_variables().cloned());
             }
         }
         if reachable_variables.len() == size_before {
