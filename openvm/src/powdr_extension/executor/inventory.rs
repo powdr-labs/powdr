@@ -1,7 +1,10 @@
 use derive_more::From;
 use openvm_circuit::{
     arch::{ChipInventory, ExecutorInventory, MatrixRecordArena, VmChipComplex},
-    system::{phantom::PhantomChip, SystemChipInventory, SystemExecutor},
+    system::{
+        phantom::{PhantomChip, PhantomExecutor},
+        SystemChipInventory, SystemExecutor,
+    },
 };
 use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit_primitives::{
@@ -34,7 +37,7 @@ pub enum DummyExecutor<F: PrimeField32> {
 
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
 pub enum SharedExecutor<F: PrimeField32> {
-    Phantom(PhantomChip<F>),
+    Phantom(PhantomExecutor<F>),
 }
 
 #[derive(From, Chip, AnyEnum)]
