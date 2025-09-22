@@ -80,7 +80,7 @@ impl PowdrExecutor {
                     &base_config.sdk_vm_config,
                     periphery.dummy.clone(),
                 ).expect("Failed to create dummy airs");
-                // print all ext air name
+
                 create_dummy_chip_complex(
                     &base_config.sdk_vm_config,
                     airs,
