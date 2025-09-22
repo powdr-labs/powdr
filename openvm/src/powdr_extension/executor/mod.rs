@@ -31,15 +31,12 @@ use powdr_autoprecompiles::{
 use itertools::Itertools;
 use openvm_circuit::{
     arch::{
-        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, Executor,
-        ExecutorInventory, MeteredExecutor, PreflightExecutor, VmBuilder, VmCircuitExtension,
-        VmProverExtension, VmStateMut,
+        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecuteFunc, ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory, MeteredExecutor, PreflightExecutor, StaticProgramError, VmBuilder, VmCircuitExtension, VmProverExtension, VmStateMut
     },
-    system::SystemCpuBuilder,
+    system::{memory::online::TracingMemory, SystemCpuBuilder},
 };
 use openvm_circuit::{
-    arch::{ExecutionError, MatrixRecordArena},
-    system::memory::online::TracingMemory,
+    arch::MatrixRecordArena,
     utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator};
@@ -78,11 +75,11 @@ impl Executor<BabyBear> for PowdrExecutor {
         inst: &Instruction<BabyBear>,
         data: &mut [u8],
     ) -> Result<
-        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
-        openvm_circuit::arch::StaticProgramError,
+        ExecuteFunc<BabyBear, Ctx>,
+        StaticProgramError,
     >
     where
-        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+        Ctx: ExecutionCtxTrait,
     {
         todo!()
     }
@@ -99,9 +96,9 @@ impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
         pc: u32,
         inst: &Instruction<F>,
         data: &mut [u8],
-    ) -> Result<openvm_circuit::arch::ExecuteFunc<F, Ctx>, openvm_circuit::arch::StaticProgramError>
+    ) -> Result<ExecuteFunc<F, Ctx>, StaticProgramError>
     where
-        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+        Ctx: ExecutionCtxTrait,
     {
         todo!()
     }
@@ -110,13 +107,13 @@ impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
 impl<F: PrimeField32> PreflightExecutor<F> for PowdrExecutor {
     fn execute(
         &self,
-        state: openvm_circuit::arch::VmStateMut<
+        state: VmStateMut<
             F,
-            openvm_circuit::system::memory::online::TracingMemory,
+            TracingMemory,
             MatrixRecordArena<F>,
         >,
-        instruction: &openvm_instructions::instruction::Instruction<F>,
-    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
+        instruction: &Instruction<F>,
+    ) -> Result<(), ExecutionError> {
         todo!()
     }
 
@@ -161,7 +158,7 @@ impl PowdrExecutor {
 
     pub fn execute(
         &self,
-        state: openvm_circuit::arch::VmStateMut<
+        state: VmStateMut<
             BabyBear,
             TracingMemory,
             MatrixRecordArena<BabyBear>,
@@ -252,8 +249,7 @@ impl PowdrExecutor {
             columns_to_compute,
         } = generate_trace::<OriginalAirs<BabyBear>>(
             &dummy_trace_by_air_name,
-            // &self.air_by_opcode_id,
-            unimplemented!("not Sync because of RefCell"),
+            &self.air_by_opcode_id,
             self.number_of_calls,
             &self.apc,
         );
