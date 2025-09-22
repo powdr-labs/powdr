@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use crate::{
@@ -29,15 +29,15 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
+use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_circuit::{
     arch::{
-        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecuteFunc, ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory, MeteredExecutor, PreflightExecutor, StaticProgramError, VmBuilder, VmCircuitExtension, VmProverExtension, VmStateMut
+        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecuteFunc,
+        ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory, MeteredExecutor,
+        PreflightExecutor, StaticProgramError, VmBuilder, VmCircuitExtension, VmProverExtension,
+        VmStateMut,
     },
     system::{memory::online::TracingMemory, SystemCpuBuilder},
-};
-use openvm_circuit::{
-    arch::MatrixRecordArena,
-    utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator};
 
@@ -56,8 +56,7 @@ pub use periphery::PowdrPeripheryInstances;
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor {
     air_by_opcode_id: OriginalAirs<BabyBear>,
-    chip_inventory:
-        Mutex<ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>>,
+    chip_inventory: ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>,
     executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
@@ -74,10 +73,7 @@ impl Executor<BabyBear> for PowdrExecutor {
         pc: u32,
         inst: &Instruction<BabyBear>,
         data: &mut [u8],
-    ) -> Result<
-        ExecuteFunc<BabyBear, Ctx>,
-        StaticProgramError,
-    >
+    ) -> Result<ExecuteFunc<BabyBear, Ctx>, StaticProgramError>
     where
         Ctx: ExecutionCtxTrait,
     {
@@ -107,11 +103,7 @@ impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
 impl<F: PrimeField32> PreflightExecutor<F> for PowdrExecutor {
     fn execute(
         &self,
-        state: VmStateMut<
-            F,
-            TracingMemory,
-            MatrixRecordArena<F>,
-        >,
+        state: VmStateMut<F, TracingMemory, MatrixRecordArena<F>>,
         instruction: &Instruction<F>,
     ) -> Result<(), ExecutionError> {
         todo!()
@@ -136,7 +128,7 @@ impl PowdrExecutor {
     ) -> Self {
         Self {
             air_by_opcode_id,
-            chip_inventory: Mutex::new({
+            chip_inventory: {
                 let airs: AirInventory<BabyBearSC> =
                     create_dummy_airs(&base_config.sdk_vm_config, periphery.dummy.clone())
                         .expect("Failed to create dummy airs");
@@ -144,7 +136,7 @@ impl PowdrExecutor {
                 create_dummy_chip_complex(&base_config.sdk_vm_config, airs, periphery.dummy)
                     .expect("Failed to create chip complex")
                     .inventory
-            }),
+            },
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             number_of_calls: 0,
             periphery: periphery.real,
@@ -158,11 +150,7 @@ impl PowdrExecutor {
 
     pub fn execute(
         &self,
-        state: VmStateMut<
-            BabyBear,
-            TracingMemory,
-            MatrixRecordArena<BabyBear>,
-        >,
+        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
     ) -> Result<(), ExecutionError> {
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
