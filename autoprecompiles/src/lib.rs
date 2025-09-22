@@ -3,7 +3,7 @@ use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
-use crate::symbolic_machine_generator::convert_machine;
+use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -382,7 +382,7 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = convert_machine(machine, &A::into_field);
+    let machine = convert_machine_field_type(machine, &A::into_field);
 
     let apc = Apc {
         block,

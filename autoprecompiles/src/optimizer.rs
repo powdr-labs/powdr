@@ -157,7 +157,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .iter()
                 .map(|arg| {
                     let mut arg = arg.clone();
-                    powdr::substitute_algebraic_algebraic(&mut arg, &subs);
+                    powdr::substitute_subexpressions(&mut arg, &subs);
                     simplify_expression(arg)
                 })
                 .collect();
@@ -185,14 +185,14 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.bus_interactions.push(latest_send.unwrap());
 
     for c in &mut machine.constraints {
-        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs);
+        powdr::substitute_subexpressions(&mut c.expr, &subs);
         c.expr = simplify_expression(c.expr.clone());
     }
     for b in &mut machine.bus_interactions {
-        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs);
+        powdr::substitute_subexpressions(&mut b.mult, &subs);
         b.mult = simplify_expression(b.mult.clone());
         for a in &mut b.args {
-            powdr::substitute_algebraic_algebraic(a, &subs);
+            powdr::substitute_subexpressions(a, &subs);
             *a = simplify_expression(a.clone());
         }
     }
