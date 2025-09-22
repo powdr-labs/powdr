@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -7,6 +7,20 @@ use powdr_number::FieldElement;
 
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::SymbolicMachine;
+
+// After powdr and lib are adjusted, this function can be renamed and the old substitute removed
+pub fn substitute_algebraic<T: Clone>(
+    expr: &mut AlgebraicExpression<T>,
+    sub: &BTreeMap<AlgebraicReference, AlgebraicExpression<T>>,
+) {
+    expr.pre_visit_expressions_mut(&mut |expr| {
+        if let AlgebraicExpression::Reference(r) = expr {
+            if let Some(sub_expr) = sub.get(r) {
+                *expr = sub_expr.clone();
+            }
+        }
+    });
+}
 
 pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
     let zero = AlgebraicExpression::Number(T::zero());
@@ -22,7 +36,18 @@ pub fn make_bool<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpr
     expr.clone() * (expr - one)
 }
 
-pub fn substitute_subexpressions<T: Clone + std::cmp::Ord>(
+pub fn has_ref<T: Clone + std::cmp::PartialEq>(
+    expr: &AlgebraicExpression<T>,
+    r: &AlgebraicExpression<T>,
+) -> bool {
+    expr.all_children().any(|expr| expr == r)
+}
+
+pub fn is_ref<T: Clone>(expr: &AlgebraicExpression<T>) -> bool {
+    matches!(expr, AlgebraicExpression::Reference(_))
+}
+
+pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
 ) {
@@ -31,6 +56,21 @@ pub fn substitute_subexpressions<T: Clone + std::cmp::Ord>(
             *expr = sub_expr.clone();
         }
     });
+}
+
+// After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
+pub fn collect_cols_algebraic<T: Clone + Ord>(
+    expr: &AlgebraicExpression<T>,
+) -> BTreeSet<AlgebraicExpression<T>> {
+    expr.all_children()
+        .filter_map(|expr| {
+            if let AlgebraicExpression::Reference(..) = expr {
+                Some(expr.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 pub trait UniqueReferences<'a, T: 'a> {

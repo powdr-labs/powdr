@@ -1300,7 +1300,7 @@ mod tests {
 
     #[test]
     #[ignore = "Too much RAM"]
-    fn u256_prove_large() {
+    fn u256_prove() {
         use std::time::Instant;
 
         let stdin = StdIn::default();
