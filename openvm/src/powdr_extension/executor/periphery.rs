@@ -6,9 +6,9 @@ use openvm_circuit::arch::{
     VmProverExtension,
 };
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::{BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip},
-    range_tuple::{RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
-    var_range::SharedVariableRangeCheckerChip,
+    bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupBus, BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip},
+    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
+    var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
 };
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
@@ -79,7 +79,26 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChips {
 
 impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        // TODO: what should go here?
+        // create dummy airs
+        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
+            assert!(inventory.find_air::<BitwiseOperationLookupAir<8>>().next().is_none());
+            inventory.add_air(BitwiseOperationLookupAir::<8>::new(
+                bitwise_lookup_8.air.bus.clone()
+            ));
+        }
+
+        if let Some(tuple_range_checker) = &self.tuple_range_checker {
+            assert!(inventory.find_air::<RangeTupleCheckerAir<2>>().next().is_none());
+            inventory.add_air(
+                RangeTupleCheckerAir::<2> {
+                    bus: tuple_range_checker.air.bus.clone()
+                }
+            );
+        }
+
+        // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
+        assert!(inventory.find_air::<VariableRangeCheckerAir>().nth(1).is_none());
+
         Ok(())
     }
 }
