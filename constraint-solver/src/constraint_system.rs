@@ -6,7 +6,7 @@ use crate::{
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
-use std::{fmt::Display, hash::Hash};
+use std::{collections::BTreeMap, fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
 
@@ -18,6 +18,16 @@ pub struct ConstraintSystem<T, V> {
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
+    /// Newly added variables whose values are derived from existing variables.
+    pub derived_columns: Vec<(V, ComputationMethod<T, V>)>,
+}
+
+#[derive(Clone)]
+pub enum ComputationMethod<T, V> {
+    /// A constant value.
+    Constant(T),
+    /// The field inverse of a grouped expression if it exists or zero otherwise.
+    InverseOrZero(GroupedExpression<T, V>),
 }
 
 impl<T, V> Default for ConstraintSystem<T, V> {
@@ -25,6 +35,7 @@ impl<T, V> Default for ConstraintSystem<T, V> {
         ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
+            derived_columns: Vec::new(),
         }
     }
 }
@@ -90,6 +101,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
+        self.derived_columns.extend(system.derived_columns);
     }
 }
 
