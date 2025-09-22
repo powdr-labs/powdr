@@ -29,7 +29,7 @@ use powdr_autoprecompiles::{
 
 use itertools::Itertools;
 use openvm_circuit::{arch::{
-        AirInventory, ChipInventory, ChipInventoryError, ExecutorInventory, PreflightExecutor, VmBuilder, VmProverExtension, VmStateMut
+        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory, PreflightExecutor, VmBuilder, VmCircuitExtension, VmProverExtension, VmStateMut
     }, system::SystemCpuBuilder};
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena},
@@ -76,9 +76,15 @@ impl PowdrExecutor {
         Self {
             air_by_opcode_id,
             chip_inventory: Mutex::new({
-                let airs: AirInventory<BabyBearSC> =
-                    base_config.sdk_vm_config.create_airs().unwrap();
-                create_chip_complex(
+                let airs: AirInventory<BabyBearSC> = create_dummy_airs(
+                    &base_config.sdk_vm_config,
+                    periphery.dummy.clone(),
+                ).expect("Failed to create dummy airs");
+                // print all ext air name
+                airs.ext_airs().iter().for_each(|air| {
+                    println!("airname: {}", air.name());
+                });
+                create_dummy_chip_complex(
                     &base_config.sdk_vm_config,
                     airs,
                     periphery.dummy,
@@ -286,7 +292,58 @@ impl PowdrExecutor {
     }
 }
 
-fn create_chip_complex(
+fn create_dummy_airs(
+    config: &SdkVmConfig,
+    shared_chips: SharedPeripheryChips,
+) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
+    let config = config.to_inner();
+    let mut inventory = config.system.create_airs()?;
+
+    // CHANGE: add dummy periphery
+    inventory.start_new_extension();
+    VmCircuitExtension::extend_circuit(&shared_chips, &mut inventory)?;
+    // END CHANGE
+
+    if let Some(rv32i) = &config.rv32i {
+        VmCircuitExtension::extend_circuit(rv32i, &mut inventory)?;
+    }
+    if let Some(io) = &config.io {
+        VmCircuitExtension::extend_circuit(io, &mut inventory)?;
+    }
+    if let Some(keccak) = &config.keccak {
+        VmCircuitExtension::extend_circuit(keccak, &mut inventory)?;
+    }
+    if let Some(sha256) = &config.sha256 {
+        VmCircuitExtension::extend_circuit(sha256, &mut inventory)?;
+    }
+    if let Some(native) = &config.native {
+        VmCircuitExtension::extend_circuit(native, &mut inventory)?;
+    }
+    if let Some(castf) = &config.castf {
+        VmCircuitExtension::extend_circuit(castf, &mut inventory)?;
+    }
+    if let Some(rv32m) = &config.rv32m {
+        VmCircuitExtension::extend_circuit(rv32m, &mut inventory)?;
+    }
+    if let Some(bigint) = &config.bigint {
+        VmCircuitExtension::extend_circuit(bigint, &mut inventory)?;
+    }
+    if let Some(modular) = &config.modular {
+        VmCircuitExtension::extend_circuit(modular, &mut inventory)?;
+    }
+    if let Some(fp2) = &config.fp2 {
+        VmCircuitExtension::extend_circuit(fp2, &mut inventory)?;
+    }
+    if let Some(pairing) = &config.pairing {
+        VmCircuitExtension::extend_circuit(pairing, &mut inventory)?;
+    }
+    if let Some(ecc) = &config.ecc {
+        VmCircuitExtension::extend_circuit(ecc, &mut inventory)?;
+    }
+    Ok(inventory)
+}
+
+fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChips,
@@ -298,47 +355,62 @@ fn create_chip_complex(
     let mut chip_complex =
         VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(&SystemCpuBuilder, &config.system, circuit)?;
     let inventory = &mut chip_complex.inventory;
+    println!("created chip complex");
 
     // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
     VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&shared_chips, &shared_chips, inventory)?;
     // END CHANGE
+    println!("extended periphery");
 
     if let Some(rv32i) = &config.rv32i {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, rv32i, inventory)?;
     }
+    println!("extended rv32i");
+
     if let Some(io) = &config.io {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, io, inventory)?;
     }
+    println!("extended io");
     if let Some(keccak) = &config.keccak {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Keccak256CpuProverExt, keccak, inventory)?;
     }
+    println!("extended keccak");
     if let Some(sha256) = &config.sha256 {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Sha2CpuProverExt, sha256, inventory)?;
     }
+    println!("extended sha256");
     if let Some(native) = &config.native {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&NativeCpuProverExt, native, inventory)?;
     }
+    println!("extended native");
     if let Some(castf) = &config.castf {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&NativeCpuProverExt, castf, inventory)?;
     }
+    println!("extended castf");
     if let Some(rv32m) = &config.rv32m {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, rv32m, inventory)?;
     }
+    println!("extended rv32m");
     if let Some(bigint) = &config.bigint {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Int256CpuProverExt, bigint, inventory)?;
     }
+    println!("extended rv32m");
     if let Some(modular) = &config.modular {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&AlgebraCpuProverExt, modular, inventory)?;
     }
+    println!("extended modular");
     if let Some(fp2) = &config.fp2 {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&AlgebraCpuProverExt, fp2, inventory)?;
     }
+    println!("extended fp2");
     if let Some(pairing) = &config.pairing {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&PairingProverExt, pairing, inventory)?;
     }
+    println!("extended pairing");
     if let Some(ecc) = &config.ecc {
         VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&EccCpuProverExt, ecc, inventory)?;
     }
+    println!("extended bigint");
     Ok(chip_complex)
 }
 
