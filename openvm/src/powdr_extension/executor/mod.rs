@@ -224,21 +224,18 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                     }
                 }
 
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
                 for (col_index, computation_method) in &columns_to_compute {
                     row_slice[*col_index] = match computation_method {
                         ComputationMethod::Constant(c) => F::from_canonical_u64(*c),
-                        ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
-                            .iter()
-                            .map(|col| row_slice[*col])
-                            .reduce(|a, b| a + b)
-                            .unwrap()
-                            .inverse(),
+                        ComputationMethod::InverseOrZero(expr) => {
+                            evaluator.eval_expr(expr).inverse()
+                        }
                     };
                 }
-
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
                 self.apc

@@ -6,7 +6,7 @@ use crate::{
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
-use std::{collections::BTreeMap, fmt::Display, hash::Hash};
+use std::{fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
 
@@ -19,15 +19,24 @@ pub struct ConstraintSystem<T, V> {
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
-    pub derived_columns: Vec<(V, ComputationMethod<T, V>)>,
+    pub derived_columns: Vec<(V, ComputationMethod<T, GroupedExpression<T, V>>)>,
 }
 
 #[derive(Clone)]
-pub enum ComputationMethod<T, V> {
-    /// A constant value.
+pub enum ComputationMethod<T, E> {
+    /// A constant value. TODO this is weird because we could also just have 'E' here.
     Constant(T),
-    /// The field inverse of a grouped expression if it exists or zero otherwise.
-    InverseOrZero(GroupedExpression<T, V>),
+    /// The field inverse of an expression if it exists or zero otherwise.
+    InverseOrZero(E),
+}
+
+impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComputationMethod::Constant(c) => write!(f, "{c}"),
+            ComputationMethod::InverseOrZero(e) => write!(f, "InverseOrZero({e})"),
+        }
+    }
 }
 
 impl<T, V> Default for ConstraintSystem<T, V> {
@@ -52,6 +61,11 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                     self.bus_interactions
                         .iter()
                         .map(|bus_inter| format!("{bus_inter}"))
+                )
+                .chain(
+                    self.derived_columns
+                        .iter()
+                        .map(|(var, method)| { format!("{var} := {method}") })
                 )
                 .format("\n")
         )

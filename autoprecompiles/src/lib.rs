@@ -4,6 +4,7 @@ use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
+use crate::trace_handler::ComputationMethod;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -167,7 +168,10 @@ pub enum BusInteractionKind {
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+    pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
 }
+
+pub type ComputationMethod<T> = powdr_constraint_solver::ComputationMethod<T, AlgebraicExpression>;
 
 impl<T> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {

@@ -1,9 +1,17 @@
 use itertools::Itertools;
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
+use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator};
+use powdr_number::ExpressionConvertible;
 use rayon::prelude::*;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fmt::{Debug, Display};
 use std::{cmp::Eq, hash::Hash};
 
-use crate::{Apc, InstructionHandler};
+use crate::adapter::Adapter;
+use crate::expression::{AlgebraicExpression, AlgebraicReference};
+use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::powdr::UniqueReferences;
+use crate::{Apc, ComputationMethod, InstructionHandler, SymbolicMachine};
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceData<'a, F> {
@@ -16,7 +24,7 @@ pub struct TraceData<'a, F> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: BTreeMap<usize, ComputationMethod>,
+    pub columns_to_compute: BTreeMap<usize, ComputationMethod<F, AlgebraicReference>>,
 }
 
 pub struct Trace<F> {
@@ -30,14 +38,6 @@ impl<F> Trace<F> {
     }
 }
 
-pub enum ComputationMethod {
-    /// A constant value.
-    Constant(u64),
-    /// The field inverse of a sum of values of other columns,
-    /// given by their indices.
-    InverseOfSum(Vec<usize>),
-}
-
 pub fn generate_trace<'a, IH>(
     air_id_to_dummy_trace: &'a HashMap<IH::AirId, Trace<IH::Field>>,
     instruction_handler: &'a IH,
@@ -46,7 +46,7 @@ pub fn generate_trace<'a, IH>(
 ) -> TraceData<'a, IH::Field>
 where
     IH: InstructionHandler,
-    IH::Field: Send + Sync,
+    IH::Field: Display + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
 {
     // Returns a vector with the same length as original instructions
@@ -85,6 +85,9 @@ where
         )
         .collect::<Vec<_>>();
 
+    // The Poly IDs for which we have found a column in the dummy trace.
+    let mut mapped_poly_ids = BTreeSet::new();
+
     let dummy_trace_index_to_apc_index_by_instruction = apc
         .subs
         .iter()
@@ -93,6 +96,7 @@ where
             for (dummy_index, poly_id) in subs.iter().enumerate() {
                 if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
                     dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
+                    mapped_poly_ids.insert(*poly_id);
                 }
             }
             dummy_trace_index_to_apc_index
@@ -116,12 +120,16 @@ where
         })
         .collect();
 
+    // TODO do we get the 1 as a field element somewhere?
+    let columns_to_compute = [(is_valid_index, ComputationMethod::Constant(1u64))]
+        .into_iter()
+        .chain(apc.machine.derived_columns.iter().cloned())
+        .collect::<BTreeMap<_, _>>();
+
     TraceData {
         dummy_values,
         dummy_trace_index_to_apc_index_by_instruction,
         apc_poly_id_to_index,
-        columns_to_compute: [(is_valid_index, ComputationMethod::Constant(1u64))]
-            .into_iter()
-            .collect(),
+        columns_to_compute,
     }
 }
