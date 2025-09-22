@@ -13,13 +13,14 @@ use crate::{
 use openvm_algebra_circuit::AlgebraCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
 use openvm_ecc_circuit::EccCpuProverExt;
+use openvm_instructions::instruction::Instruction;
 use openvm_keccak256_circuit::Keccak256CpuProverExt;
 use openvm_native_circuit::NativeCpuProverExt;
 use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
-use openvm_sdk::config::{SdkVmBuilder, SdkVmConfig, SdkVmConfigExecutor};
+use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
 use openvm_sha256_circuit::Sha2CpuProverExt;
-use openvm_stark_backend::{config::StarkGenericConfig, p3_field::Field, prover::cpu::CpuBackend};
+use openvm_stark_backend::{p3_field::Field, prover::cpu::CpuBackend};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
@@ -28,9 +29,14 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
-use openvm_circuit::{arch::{
-        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory, PreflightExecutor, VmBuilder, VmCircuitExtension, VmProverExtension, VmStateMut
-    }, system::SystemCpuBuilder};
+use openvm_circuit::{
+    arch::{
+        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, Executor,
+        ExecutorInventory, MeteredExecutor, PreflightExecutor, VmBuilder, VmCircuitExtension,
+        VmProverExtension, VmStateMut,
+    },
+    system::SystemCpuBuilder,
+};
 use openvm_circuit::{
     arch::{ExecutionError, MatrixRecordArena},
     system::memory::online::TracingMemory,
@@ -61,6 +67,64 @@ pub struct PowdrExecutor {
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
 }
 
+impl Executor<BabyBear> for PowdrExecutor {
+    fn pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn pre_compute<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+    {
+        todo!()
+    }
+}
+
+impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
+    fn metered_pre_compute_size(&self) -> usize {
+        todo!()
+    }
+
+    fn metered_pre_compute<Ctx>(
+        &self,
+        air_idx: usize,
+        pc: u32,
+        inst: &Instruction<F>,
+        data: &mut [u8],
+    ) -> Result<openvm_circuit::arch::ExecuteFunc<F, Ctx>, openvm_circuit::arch::StaticProgramError>
+    where
+        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
+    {
+        todo!()
+    }
+}
+
+impl<F: PrimeField32> PreflightExecutor<F> for PowdrExecutor {
+    fn execute(
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            F,
+            openvm_circuit::system::memory::online::TracingMemory,
+            MatrixRecordArena<F>,
+        >,
+        instruction: &openvm_instructions::instruction::Instruction<F>,
+    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
+        todo!()
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        todo!()
+    }
+}
+
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_circuit::arch::VmExecutionConfig;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
@@ -76,18 +140,13 @@ impl PowdrExecutor {
         Self {
             air_by_opcode_id,
             chip_inventory: Mutex::new({
-                let airs: AirInventory<BabyBearSC> = create_dummy_airs(
-                    &base_config.sdk_vm_config,
-                    periphery.dummy.clone(),
-                ).expect("Failed to create dummy airs");
+                let airs: AirInventory<BabyBearSC> =
+                    create_dummy_airs(&base_config.sdk_vm_config, periphery.dummy.clone())
+                        .expect("Failed to create dummy airs");
 
-                create_dummy_chip_complex(
-                    &base_config.sdk_vm_config,
-                    airs,
-                    periphery.dummy,
-                )
-                .expect("Failed to create chip complex")
-                .inventory
+                create_dummy_chip_complex(&base_config.sdk_vm_config, airs, periphery.dummy)
+                    .expect("Failed to create chip complex")
+                    .inventory
             }),
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             number_of_calls: 0,
@@ -344,56 +403,107 @@ fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChips,
-) -> Result<
-    DummyChipComplex<BabyBearSC>,
-    ChipInventoryError,
-> {
+) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
     let config = config.to_inner();
-    let mut chip_complex =
-        VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(&SystemCpuBuilder, &config.system, circuit)?;
+    let mut chip_complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(
+        &SystemCpuBuilder,
+        &config.system,
+        circuit,
+    )?;
     let inventory = &mut chip_complex.inventory;
 
     // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
-    VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&shared_chips, &shared_chips, inventory)?;
+    VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+        &shared_chips,
+        &shared_chips,
+        inventory,
+    )?;
     // END CHANGE
 
     if let Some(rv32i) = &config.rv32i {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, rv32i, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &Rv32ImCpuProverExt,
+            rv32i,
+            inventory,
+        )?;
     }
     if let Some(io) = &config.io {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, io, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &Rv32ImCpuProverExt,
+            io,
+            inventory,
+        )?;
     }
     if let Some(keccak) = &config.keccak {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Keccak256CpuProverExt, keccak, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &Keccak256CpuProverExt,
+            keccak,
+            inventory,
+        )?;
     }
     if let Some(sha256) = &config.sha256 {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Sha2CpuProverExt, sha256, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &Sha2CpuProverExt,
+            sha256,
+            inventory,
+        )?;
     }
     if let Some(native) = &config.native {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&NativeCpuProverExt, native, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &NativeCpuProverExt,
+            native,
+            inventory,
+        )?;
     }
     if let Some(castf) = &config.castf {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&NativeCpuProverExt, castf, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &NativeCpuProverExt,
+            castf,
+            inventory,
+        )?;
     }
     if let Some(rv32m) = &config.rv32m {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Rv32ImCpuProverExt, rv32m, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &Rv32ImCpuProverExt,
+            rv32m,
+            inventory,
+        )?;
     }
     if let Some(bigint) = &config.bigint {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&Int256CpuProverExt, bigint, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &Int256CpuProverExt,
+            bigint,
+            inventory,
+        )?;
     }
     if let Some(modular) = &config.modular {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&AlgebraCpuProverExt, modular, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &AlgebraCpuProverExt,
+            modular,
+            inventory,
+        )?;
     }
     if let Some(fp2) = &config.fp2 {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&AlgebraCpuProverExt, fp2, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &AlgebraCpuProverExt,
+            fp2,
+            inventory,
+        )?;
     }
     if let Some(pairing) = &config.pairing {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&PairingProverExt, pairing, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &PairingProverExt,
+            pairing,
+            inventory,
+        )?;
     }
     if let Some(ecc) = &config.ecc {
-        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(&EccCpuProverExt, ecc, inventory)?;
+        VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+            &EccCpuProverExt,
+            ecc,
+            inventory,
+        )?;
     }
 
     Ok(chip_complex)
 }
-

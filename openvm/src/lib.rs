@@ -4,23 +4,22 @@ use itertools::Itertools;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::instructions::exe::VmExe;
+use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
-    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, PreflightExecutor, SystemConfig,
+    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig,
     VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
     VmProverExtension,
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_derive::{MeteredExecutor, PreflightExecutor, Executor};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
-use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_sdk::config::SdkVmCpuBuilder;
 
-use openvm_instructions::instruction::Instruction;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_native_circuit::NativeCpuBuilder;
 use openvm_sdk::config::TranspilerConfig;
@@ -244,7 +243,7 @@ impl AsMut<SystemConfig> for SpecializedConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(From, AnyEnum, Chip)]
+#[derive(From, AnyEnum, Chip, Executor, MeteredExecutor, PreflightExecutor)]
 pub enum SpecializedExecutor {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
@@ -252,68 +251,6 @@ pub enum SpecializedExecutor {
     PowdrExecutor(PowdrExecutor),
 }
 
-use openvm_circuit::arch::ExecutionError;
-use openvm_circuit::arch::Executor;
-use openvm_circuit::arch::MeteredExecutor;
-use openvm_circuit::arch::VmStateMut;
-use openvm_circuit::system::memory::online::TracingMemory;
-
-impl PreflightExecutor<BabyBear> for SpecializedExecutor {
-    fn execute(
-        &self,
-        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
-        instruction: &Instruction<BabyBear>,
-    ) -> Result<(), ExecutionError> {
-        todo!()
-    }
-
-    fn get_opcode_name(&self, _: usize) -> String {
-        todo!()
-    }
-}
-
-impl Executor<BabyBear> for SpecializedExecutor {
-    fn pre_compute_size(&self) -> usize {
-        todo!()
-    }
-
-    fn pre_compute<Ctx>(
-        &self,
-        pc: u32,
-        inst: &Instruction<BabyBear>,
-        data: &mut [u8],
-    ) -> Result<
-        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
-        openvm_circuit::arch::StaticProgramError,
-    >
-    where
-        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
-    {
-        todo!()
-    }
-}
-
-impl MeteredExecutor<BabyBear> for SpecializedExecutor {
-    fn metered_pre_compute_size(&self) -> usize {
-        todo!()
-    }
-
-    fn metered_pre_compute<Ctx>(
-        &self,
-        air_idx: usize,
-        pc: u32,
-        inst: &Instruction<BabyBear>,
-        data: &mut [u8],
-    ) -> Result<
-        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
-        openvm_circuit::arch::StaticProgramError,
-    >
-    where
-        Ctx: openvm_circuit::arch::MeteredExecutionCtxTrait,
-    {
-        todo!()
-    }
-}
 
 // TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
 // Also `start_new_extension` is normally only used in derive

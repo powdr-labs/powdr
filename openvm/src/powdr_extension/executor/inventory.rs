@@ -31,24 +31,6 @@ pub enum DummyExecutor<F: PrimeField32> {
     System(SystemExecutor<F>),
 }
 
-impl<F: PrimeField32, RA> PreflightExecutor<F, RA> for DummyExecutor<F> {
-    fn execute(
-        &self,
-        state: openvm_circuit::arch::VmStateMut<
-            F,
-            openvm_circuit::system::memory::online::TracingMemory,
-            RA,
-        >,
-        instruction: &openvm_instructions::instruction::Instruction<F>,
-    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
-        todo!()
-    }
-
-    fn get_opcode_name(&self, opcode: usize) -> String {
-        todo!()
-    }
-}
-
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
 pub enum SharedExecutor<F: PrimeField32> {
     Phantom(PhantomChip<F>),
