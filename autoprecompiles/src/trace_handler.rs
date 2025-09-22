@@ -24,7 +24,7 @@ pub struct TraceData<'a, F> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: BTreeMap<usize, ComputationMethod<F, AlgebraicReference>>,
+    pub columns_to_compute: BTreeMap<usize, ComputationMethod<F>>,
 }
 
 pub struct Trace<F> {

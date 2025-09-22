@@ -6,6 +6,7 @@ use crate::{
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
+use serde::{Deserialize, Serialize};
 use std::{fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
@@ -22,7 +23,7 @@ pub struct ConstraintSystem<T, V> {
     pub derived_columns: Vec<(V, ComputationMethod<T, GroupedExpression<T, V>>)>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComputationMethod<T, E> {
     /// A constant value. TODO this is weird because we could also just have 'E' here.
     Constant(T),

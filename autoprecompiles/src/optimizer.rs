@@ -14,6 +14,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::ComputationMethod;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,
@@ -201,7 +202,19 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .iter()
             .map(symbolic_bus_interaction_to_bus_interaction)
             .collect(),
-        derived_columns: symbolic_machine.derived_columns.iter().map,
+        derived_columns: symbolic_machine
+            .derived_columns
+            .iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
+                    ComputationMethod::InverseOrZero(c) => {
+                        ComputationMethod::InverseOrZero(algebraic_to_grouped_expression(c))
+                    }
+                };
+                (v.clone(), method)
+            })
+            .collect(),
     }
 }
 

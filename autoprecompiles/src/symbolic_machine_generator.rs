@@ -26,6 +26,7 @@ pub fn convert_machine_field_type<T, U>(
             .into_iter()
             .map(|i| convert_bus_interaction(i, convert_field_element))
             .collect(),
+        derived_columns: machine.derived_columns,
     }
 }
 
@@ -166,6 +167,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         SymbolicMachine {
             constraints,
             bus_interactions,
+            derived_columns: vec![],
         },
         col_subs,
     )

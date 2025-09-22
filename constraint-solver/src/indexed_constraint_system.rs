@@ -39,6 +39,7 @@ pub fn apply_substitutions_to_expressions<
                 .map(AlgebraicConstraint::assert_zero)
                 .collect(),
             bus_interactions: Vec::new(),
+            derived_columns: Vec::new(),
         },
         substitutions,
     )
@@ -248,6 +249,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         self.extend(ConstraintSystem {
             algebraic_constraints: constraints.into_iter().collect(),
             bus_interactions: Vec::new(),
+            derived_columns: Vec::new(),
         });
     }
 
@@ -259,6 +261,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         self.extend(ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: bus_interactions.into_iter().collect(),
+            derived_columns: Vec::new(),
         });
     }
 
@@ -284,6 +287,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
                 .or_default()
                 .extend(occurrences);
         }
+        // TODO
         self.constraint_system.extend(system)
     }
 }
