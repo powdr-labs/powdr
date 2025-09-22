@@ -1,6 +1,6 @@
 use derive_more::From;
 use openvm_circuit::{
-    arch::{ChipInventory, ExecutorInventory, MatrixRecordArena, PreflightExecutor, VmChipComplex},
+    arch::{ChipInventory, ExecutorInventory, MatrixRecordArena, VmChipComplex},
     system::{phantom::PhantomChip, SystemChipInventory, SystemExecutor},
 };
 use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
@@ -8,7 +8,7 @@ use openvm_circuit_primitives::{
     bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
     var_range::SharedVariableRangeCheckerChip, Chip,
 };
-use openvm_stark_backend::{config::Val, p3_field::PrimeField32, p3_matrix::Matrix, prover::cpu::CpuBackend};
+use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
 
 use crate::ExtendedVmConfigExecutor;
 
@@ -16,7 +16,8 @@ use crate::ExtendedVmConfigExecutor;
 /// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
 pub type DummyChipInventory<SC> = ChipInventory<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>>;
 pub type DummyExecutorInventory<F> = ExecutorInventory<DummyExecutor<F>>;
-pub type DummyChipComplex<SC> = VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
+pub type DummyChipComplex<SC> =
+    VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Chip, AnyEnum, From)]

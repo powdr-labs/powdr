@@ -7,14 +7,13 @@ use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
-    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig,
-    VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
-    VmProverExtension,
+    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig, VmBuilder,
+    VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmProverExtension,
 };
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::{MeteredExecutor, PreflightExecutor, Executor};
+use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
@@ -250,7 +249,6 @@ pub enum SpecializedExecutor {
     #[any_enum]
     PowdrExecutor(PowdrExecutor),
 }
-
 
 // TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
 // Also `start_new_extension` is normally only used in derive
