@@ -105,6 +105,8 @@ impl Executor<BabyBear> for PowdrChip {
 }
 
 impl MeteredExecutor<BabyBear> for PowdrChip {
+    // TODO: if any of these functions has access to trace height of original instructions, make sure we don't increase them
+    // so that recordarena::with_capacity is initialized with non-apc original instructions only
     fn metered_pre_compute_size(&self) -> usize {
         todo!()
     }
@@ -146,7 +148,8 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
         let width = self.trace_width();
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self.executor.generate_witness();
+        // TODO: generate_witness should take another argument that's dummy ctx attached to powdrexecutor
+        let trace = self.executor.generate_witness(records);
 
         assert_eq!(trace.width(), width);
 

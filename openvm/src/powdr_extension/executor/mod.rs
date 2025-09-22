@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::OriginalAirs,
+    extraction_utils::{get_name, OriginalAirs},
     powdr_extension::executor::{inventory::DummyChipComplex, periphery::SharedPeripheryChips},
     BabyBearSC, ExtendedVmConfig, Instr,
 };
@@ -19,7 +19,7 @@ use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sdk::config::{SdkVmBuilder, SdkVmConfig, SdkVmConfigExecutor};
 use openvm_sha256_circuit::Sha2CpuProverExt;
-use openvm_stark_backend::{config::StarkGenericConfig, p3_field::Field, prover::cpu::CpuBackend};
+use openvm_stark_backend::{config::StarkGenericConfig, p3_field::Field, p3_matrix::dense::DenseMatrix, prover::cpu::CpuBackend};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
@@ -36,7 +36,7 @@ use openvm_circuit::{
     system::memory::online::TracingMemory,
     utils::next_power_of_two_or_zero,
 };
-use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator};
+use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator, Chip};
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
@@ -54,7 +54,7 @@ pub use periphery::PowdrPeripheryInstances;
 pub struct PowdrExecutor {
     air_by_opcode_id: OriginalAirs<BabyBear>,
     chip_inventory:
-        Mutex<ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>>,
+        ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>,
     executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
@@ -75,7 +75,7 @@ impl PowdrExecutor {
     ) -> Self {
         Self {
             air_by_opcode_id,
-            chip_inventory: Mutex::new({
+            chip_inventory: {
                 let airs: AirInventory<BabyBearSC> = create_dummy_airs(
                     &base_config.sdk_vm_config,
                     periphery.dummy.clone(),
@@ -88,7 +88,7 @@ impl PowdrExecutor {
                 )
                 .expect("Failed to create chip complex")
                 .inventory
-            }),
+            },
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             number_of_calls: 0,
             periphery: periphery.real,
@@ -101,7 +101,7 @@ impl PowdrExecutor {
     }
 
     pub fn execute(
-        &self,
+        &mut self,
         state: openvm_circuit::arch::VmStateMut<
             BabyBear,
             TracingMemory,
@@ -115,8 +115,14 @@ impl PowdrExecutor {
             streams,
             rng,
             custom_pvs,
-            ctx,
+            ctx: original_ctx,
         } = state;
+
+        // TODO: 
+        // 1. create empty ctx with trace height (# of calls to each instruction) and swap off the original ctx
+        // 2. obtain trace widths
+        // 3. need to do this for all airs because arena is index by air id, so some arenas can be empty but they still need to be there
+        // Note: this has the effect of isolating APC original instruction records to the ctx object here.
 
         // save the next available `RecordId`
         // let from_record_id = state.memory.get_memory_logs().len();
@@ -138,7 +144,11 @@ impl PowdrExecutor {
             executor.execute(state, &instruction.0)?;
         }
 
-        // self.number_of_calls += 1;
+        // TODO: 
+        // 1. after execution, put back the original ctx
+        // 2. attach dummy ctx to a field of PowdrExecutor for later generate_proving_ctx
+
+        self.number_of_calls += 1;
         // let memory_logs = state.memory.get_memory_logs(); // exclusive range
 
         // let to_record_id = memory_logs.len();
@@ -166,23 +176,29 @@ impl PowdrExecutor {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
+    pub fn generate_witness<R>(&self) -> RowMajorMatrix<BabyBear> {
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = self
             .executor_inventory
             .executors
             .iter()
-            .map(|executor| {
-                // let air_name = get_name::<SC>(executor.air());
-                // let DenseMatrix { values, width, .. } =
-                //     *tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
-                //         || {
-                //             Chip::generate_proving_ctx(&executor, unimplemented!())
-                //                 .common_main
-                //                 .unwrap()
-                //         },
-                //     );
-                // (air_name.clone(), Trace::new(values, width))
-                unimplemented!()
+            .enumerate()
+            .map(|(executor_id, executor)| {
+                let insertion_index = self.chip_inventory.executor_idx_to_insertion_idx[executor_id];
+                let air_ref = &self.chip_inventory.airs().ext_airs()[insertion_index];
+                let air_name = air_ref.name();
+                
+                // TODO: zip_eq dummy ctx (Vec<arena>) generated by PowdrExecutor
+                // then call generate_proving_ctx on the corresponding executor and record arena
+
+                let DenseMatrix { values, width, .. } =
+                    *tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
+                        || {
+                            Chip::generate_proving_ctx(&executor)
+                                .common_main
+                                .unwrap()
+                        },
+                    );
+                (air_name, Trace::new(values, width))
             })
             .collect();
 
