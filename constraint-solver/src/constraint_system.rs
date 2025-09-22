@@ -60,15 +60,6 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
             )
     }
 
-    pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
-        Box::new(
-            self.algebraic_constraints
-                .iter()
-                .map(|c| &c.expression)
-                .chain(self.bus_interactions.iter().flat_map(|b| b.fields())),
-        )
-    }
-
     /// Extends the constraint system by the constraints of another system.
     /// No de-duplication is performed.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {

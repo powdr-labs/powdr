@@ -61,10 +61,9 @@ pub fn replace_constrained_witness_columns<
     });
 
     // sanity check
-    assert!(constraint_system.expressions().all(|expr| {
-        expr.referenced_unknown_variables()
-            .all(|var| !inlined_vars.contains(var))
-    }));
+    assert!(constraint_system
+        .referenced_unknown_variables()
+        .all(|var| { !inlined_vars.contains(var) }));
 
     constraint_system
 }

@@ -159,12 +159,6 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         self.variable_occurrences.keys()
     }
 
-    /// Returns all expressions that appear in the constraint system, i.e. all algebraic
-    /// constraints and all expressions in bus interactions.
-    pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
-        self.constraint_system.expressions()
-    }
-
     /// Removes all constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,

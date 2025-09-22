@@ -44,10 +44,6 @@ impl<T: RuntimeConstant, V: Hash + Clone + Eq> JournalingConstraintSystem<T, V> 
     ) -> impl Iterator<Item = &BusInteraction<GroupedExpression<T, V>>> {
         self.system.bus_interactions().iter()
     }
-
-    pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
-        self.system.expressions()
-    }
 }
 
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq + Hash + Display>
