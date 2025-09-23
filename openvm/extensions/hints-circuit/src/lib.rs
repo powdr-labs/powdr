@@ -1,8 +1,8 @@
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension
+    AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension,
 };
 use openvm_circuit::derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
-use openvm_circuit::system::phantom::{PhantomExecutor};
+use openvm_circuit::system::phantom::PhantomExecutor;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_stark_backend::config::StarkGenericConfig;
 use openvm_stark_backend::p3_field::PrimeField32;
