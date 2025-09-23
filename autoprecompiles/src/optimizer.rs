@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::AlgebraicConstraint;
+use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, ComputationMethod};
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
@@ -14,7 +14,6 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
-use crate::ComputationMethod;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,

@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
@@ -26,7 +27,21 @@ pub fn convert_machine_field_type<T, U>(
             .into_iter()
             .map(|i| convert_bus_interaction(i, convert_field_element))
             .collect(),
-        derived_columns: machine.derived_columns,
+        derived_columns: machine
+            .derived_columns
+            .into_iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => {
+                        ComputationMethod::Constant(convert_field_element(c))
+                    }
+                    ComputationMethod::InverseOrZero(e) => ComputationMethod::InverseOrZero(
+                        convert_expression(e, convert_field_element),
+                    ),
+                };
+                (v.clone(), method)
+            })
+            .collect(),
     }
 }
 

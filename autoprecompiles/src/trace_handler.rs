@@ -1,17 +1,12 @@
 use itertools::Itertools;
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator};
-use powdr_number::ExpressionConvertible;
+use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_expression::AlgebraicExpression;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
-use crate::adapter::Adapter;
-use crate::expression::{AlgebraicExpression, AlgebraicReference};
-use crate::expression_conversion::algebraic_to_grouped_expression;
-use crate::powdr::UniqueReferences;
-use crate::{Apc, ComputationMethod, InstructionHandler, SymbolicMachine};
+use crate::{Apc, InstructionHandler};
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceData<'a, F> {
@@ -24,7 +19,7 @@ pub struct TraceData<'a, F> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: BTreeMap<usize, ComputationMethod<F>>,
+    pub columns_to_compute: BTreeMap<usize, ComputationMethod<F, AlgebraicExpression<F, usize>>>,
 }
 
 pub struct Trace<F> {
@@ -43,10 +38,11 @@ pub fn generate_trace<'a, IH>(
     instruction_handler: &'a IH,
     apc_call_count: usize,
     apc: &Apc<IH::Field, IH::Instruction>,
+    field_unity: IH::Field,
 ) -> TraceData<'a, IH::Field>
 where
     IH: InstructionHandler,
-    IH::Field: Display + Send + Sync,
+    IH::Field: Display + Clone + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
 {
     // Returns a vector with the same length as original instructions
@@ -120,11 +116,10 @@ where
         })
         .collect();
 
-    // TODO do we get the 1 as a field element somewhere?
-    let columns_to_compute = [(is_valid_index, ComputationMethod::Constant(1u64))]
+    let columns_to_compute = [(is_valid_index, ComputationMethod::Constant(field_unity))]
         .into_iter()
-        .chain(apc.machine.derived_columns.iter().cloned())
-        .collect::<BTreeMap<_, _>>();
+        // TODO        .chain(apc.machine.derived_columns.iter().cloned())
+        .collect();
 
     TraceData {
         dummy_values,
