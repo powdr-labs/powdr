@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::{get_name, OriginalAirs},
+    extraction_utils::OriginalAirs,
     powdr_extension::executor::{inventory::DummyChipComplex, periphery::SharedPeripheryChips},
     BabyBearSC, ExtendedVmConfig, Instr,
 };
@@ -18,11 +18,10 @@ use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
 use openvm_sha256_circuit::Sha2CpuProverExt;
 use openvm_stark_backend::{
-    config::StarkGenericConfig, p3_field::Field, p3_matrix::dense::DenseMatrix,
+    p3_field::Field,
     prover::cpu::CpuBackend,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use openvm_transpiler::util::unimp;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
     trace_handler::{generate_trace, ComputationMethod, Trace, TraceData},
@@ -44,7 +43,7 @@ use openvm_circuit::{
     utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator, Chip,
+    p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator,
 };
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
@@ -296,25 +295,34 @@ impl PowdrExecutor {
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
     pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
+        assert_eq!(
+            self.number_of_calls, 0,
+            "program is not modified to run apcs yet, so this should be zero"
+        );
+
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = self
             .executor_inventory
             .executors
             .iter()
             .enumerate()
-            .map(|(executor_id, executor)| {
-                // let insertion_index =
-                //     self.chip_inventory.executor_idx_to_insertion_idx[executor_id];
-                // let air_ref = &self.chip_inventory.airs().ext_airs()[insertion_index];
-                // let air_name = air_ref.name();
+            .map(|(executor_id, _)| {
+                let insertion_index =
+                    self.chip_inventory.executor_idx_to_insertion_idx[executor_id];
+                let air_ref = &self.chip_inventory.airs().ext_airs()[insertion_index];
+                let air_name = air_ref.name();
 
-                // // TODO: fetch the record arena from `PowdrExecutor.record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>`
-                // // then call generate_proving_ctx on it and the corresponding executor
+                // TODO: fetch the record arena from `PowdrExecutor.record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>`
+                // then call generate_proving_ctx on it and the corresponding executor
 
                 // let DenseMatrix { values, width, .. } =
                 //     *tracing::debug_span!("dummy trace", air_name = air_name.clone())
                 //         .in_scope(|| Chip::generate_proving_ctx(&executor, unimplemented!("HashMap<air_name, MatrixRecordArena<BabyBear>>")).common_main.unwrap());
-                // (air_name, Trace::new(values, width))
-                unimplemented!()
+
+                // TODO: replace the empty trace by the result of calling `generate_proving_ctx` above
+                let values = vec![];
+                let width = air_ref.width();
+
+                (air_name, Trace::new(values, width))
             })
             .collect();
 
