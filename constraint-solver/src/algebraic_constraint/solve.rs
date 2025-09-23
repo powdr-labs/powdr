@@ -164,15 +164,14 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        let (_, mut linear, constant) = self.expression.components();
-
-        Ok(if linear.clone().count() == 1 {
-            let (var, coeff) = linear.next().unwrap();
+        Ok(if self.expression.linear_components().count() == 1 {
+            let (var, coeff) = self.expression.linear_components().next().unwrap();
             // Solve "coeff * X + self.constant = 0" by division.
             assert!(
                 !coeff.is_known_zero(),
                 "Zero coefficient has not been removed: {self}"
             );
+            let constant = self.expression.constant_offset();
             if coeff.is_known_nonzero() {
                 // In this case, we can always compute a solution.
                 let value = constant.field_div(&-coeff.clone());
@@ -217,8 +216,7 @@ where
         // compute the range constraints.
         assert!(!self.expression.is_quadratic());
         self.expression
-            .components()
-            .1
+            .linear_components()
             .filter_map(|(var, _)| {
                 let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
                 Some((var, rc))
@@ -856,7 +854,7 @@ mod tests {
 
         expr.substitute_by_unknown(&"x", &subst);
         assert!(!expr.is_quadratic());
-        assert_eq!(expr.components().1.count(), 3);
+        assert_eq!(expr.linear_components().count(), 3);
         assert_eq!(expr.to_string(), "a + b + y");
     }
 
@@ -869,32 +867,40 @@ mod tests {
 
         expr.substitute_by_unknown(&"x", &subst);
 
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(
             expr.to_string(),
             "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
         );
+
         // Structural validation
-        assert_eq!(quadratic.len(), 2);
-        {
-            assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
-            let (inner_quadratic, inner_linear, inner_constant) = quadratic[0].0.components();
-            assert_eq!(inner_quadratic[0].0.to_string(), "a");
-            assert_eq!(inner_quadratic[0].1.to_string(), "b");
-            assert!(inner_linear.count() == 0);
-            assert_eq!(
-                inner_constant.try_to_number(),
-                Some(GoldilocksField::from(1)),
-            );
-        }
-        assert_eq!(quadratic[0].1.to_string(), "w");
-        assert_eq!(quadratic[1].0.to_string(), "a");
-        assert_eq!(quadratic[1].1.to_string(), "b");
-        assert_eq!(linear[0].0.to_string(), "y");
-        assert_eq!(linear.len(), 1);
-        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(6)),);
+        let [first_quadratic, second_quadratic] = expr
+            .quadratic_components()
+            .iter()
+            .cloned()
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        assert_eq!(first_quadratic.0.to_string(), "(a) * (b) + 1");
+        let inner_quadratic = first_quadratic.0.quadratic_components();
+        assert_eq!(inner_quadratic[0].0.to_string(), "a");
+        assert_eq!(inner_quadratic[0].1.to_string(), "b");
+        assert!(first_quadratic.0.linear_components().count() == 0);
+        assert_eq!(
+            first_quadratic.0.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(1)),
+        );
+        assert_eq!(first_quadratic.1.to_string(), "w");
+
+        assert_eq!(second_quadratic.0.to_string(), "a");
+        assert_eq!(second_quadratic.1.to_string(), "b");
+
+        let [linear] = expr.linear_components().collect_vec().try_into().unwrap();
+        assert_eq!(linear.0.to_string(), "y");
+        assert_eq!(
+            expr.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(6)),
+        );
     }
 
     #[test]
@@ -906,16 +912,17 @@ mod tests {
 
         expr.substitute_by_unknown(&"a", &subst);
 
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
 
+        let quadratic = expr.quadratic_components();
         assert_eq!(quadratic.len(), 1);
         assert_eq!(quadratic[0].0.to_string(), "2 * x");
         assert_eq!(quadratic[0].1.to_string(), "y");
-        assert!(linear.is_empty());
-        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
+        assert!(expr.linear_components().next().is_none());
+        assert_eq!(
+            expr.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(7))
+        );
     }
 
     #[test]
