@@ -2,7 +2,7 @@ use crate::{
     effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant},
+    runtime_constant::RuntimeConstant,
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
@@ -48,18 +48,16 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 }
 
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
-    pub fn iter(&self) -> impl Iterator<Item = ConstraintRef<'_, T, V>> {
-        Box::new(
-            self.algebraic_constraints
-                .iter()
-                .map(|c| c.as_ref())
-                .map(ConstraintRef::AlgebraicConstraint)
-                .chain(
-                    self.bus_interactions
-                        .iter()
-                        .map(ConstraintRef::BusInteraction),
-                ),
-        )
+    /// Returns all referenced unknown variables in the system. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
+        self.algebraic_constraints
+            .iter()
+            .flat_map(|c| c.referenced_unknown_variables())
+            .chain(
+                self.bus_interactions
+                    .iter()
+                    .flat_map(|b| b.referenced_unknown_variables()),
+            )
     }
 
     pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
@@ -68,19 +66,6 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
                 .iter()
                 .map(|c| &c.expression)
                 .chain(self.bus_interactions.iter().flat_map(|b| b.fields())),
-        )
-    }
-
-    pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut GroupedExpression<T, V>> {
-        Box::new(
-            self.algebraic_constraints
-                .iter_mut()
-                .map(|c| &mut c.expression)
-                .chain(
-                    self.bus_interactions
-                        .iter_mut()
-                        .flat_map(|b| b.fields_mut()),
-                ),
         )
     }
 
@@ -164,7 +149,7 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> BusInteraction<GroupedExpression<T
 }
 
 impl<
-        T: RuntimeConstant + ReferencedSymbols<V> + Display + ExpressionConvertible<T::FieldType, V>,
+        T: RuntimeConstant + Display + ExpressionConvertible<T::FieldType, V>,
         V: Clone + Hash + Ord + Eq + Display,
     > BusInteraction<GroupedExpression<T, V>>
 {
@@ -203,10 +188,14 @@ impl<
             .collect())
     }
 }
-impl<T: ReferencedSymbols<V>, V> BusInteraction<GroupedExpression<T, V>> {
-    /// Returns the set of referenced variables, both know and unknown.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        Box::new(self.fields().flat_map(|expr| expr.referenced_variables()))
+
+impl<T, V> BusInteraction<GroupedExpression<T, V>> {
+    /// Returns the set of referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        Box::new(
+            self.fields()
+                .flat_map(|expr| expr.referenced_unknown_variables()),
+        )
     }
 }
 
@@ -276,12 +265,12 @@ pub enum ConstraintRef<'a, T, V> {
     BusInteraction(&'a BusInteraction<GroupedExpression<T, V>>),
 }
 
-impl<'a, T: ReferencedSymbols<V>, V> ConstraintRef<'a, T, V> {
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+impl<'a, T, V> ConstraintRef<'a, T, V> {
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         match self {
-            ConstraintRef::AlgebraicConstraint(expr) => Box::new(expr.referenced_variables()),
+            ConstraintRef::AlgebraicConstraint(expr) => expr.referenced_unknown_variables(),
             ConstraintRef::BusInteraction(bus_interaction) => {
-                Box::new(bus_interaction.referenced_variables())
+                bus_interaction.referenced_unknown_variables()
             }
         }
     }
