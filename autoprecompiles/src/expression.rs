@@ -1,7 +1,7 @@
 //! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
 //! custom `AlgebraicReference` type.
 use core::ops::{Add, Mul, Neg, Sub};
-use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
+use powdr_number::ExpressionConvertible;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, hash::Hash, marker::PhantomData, sync::Arc};
 
