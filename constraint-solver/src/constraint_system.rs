@@ -20,8 +20,10 @@ pub struct ConstraintSystem<T, V> {
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
-    pub derived_columns: Vec<(V, ComputationMethod<T, GroupedExpression<T, V>>)>,
+    pub derived_columns: Vec<DerivedColumn<T, V>>,
 }
+
+pub type DerivedColumn<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComputationMethod<T, E> {
