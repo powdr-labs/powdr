@@ -1,5 +1,4 @@
 use auto_enums::auto_enum;
-use itertools::Itertools;
 use num_traits::{One, Zero};
 use std::hash::Hash;
 use std::ops::Sub;
@@ -13,9 +12,7 @@ use std::{
 
 use powdr_number::{ExpressionConvertible, FieldElement};
 
-use crate::runtime_constant::{
-    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
-};
+use crate::runtime_constant::{RuntimeConstant, Substitutable, VarTransformable};
 
 use super::range_constraint::RangeConstraint;
 
@@ -194,17 +191,6 @@ impl<T: FieldElement, S1: Ord + Clone, S2: Ord + Clone> VarTransformable<S1, S2>
                 )
             }
         })
-    }
-}
-
-impl<T: FieldElement, S: Hash + Eq> SymbolicExpression<T, S> {
-    pub fn referenced_symbols(&self) -> impl Iterator<Item = &S> {
-        self.all_children()
-            .flat_map(|e| match e {
-                SymbolicExpression::Symbol(s, _) => Some(s),
-                _ => None,
-            })
-            .unique()
     }
 }
 
@@ -514,17 +500,6 @@ impl<T: FieldElement, V: Clone + Eq> RuntimeConstant for SymbolicExpression<T, V
 
     fn from_u64(k: u64) -> Self {
         SymbolicExpression::Concrete(T::from(k))
-    }
-}
-
-impl<T: FieldElement, V: Clone + Hash + Eq + Ord> ReferencedSymbols<V>
-    for SymbolicExpression<T, V>
-{
-    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
-    where
-        V: 'a,
-    {
-        SymbolicExpression::referenced_symbols(self)
     }
 }
 

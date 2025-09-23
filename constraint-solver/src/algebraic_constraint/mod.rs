@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     grouped_expression::GroupedExpression,
-    runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable},
+    runtime_constant::{RuntimeConstant, Substitutable},
 };
 
 use num_traits::{One, Zero};
@@ -45,13 +45,6 @@ impl<V: Clone> AlgebraicConstraint<&V> {
     }
 }
 
-impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
-    /// Returns the referenced unknown variables. Might contain repetitions.
-    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        self.expression.referenced_unknown_variables()
-    }
-}
-
 impl<T: RuntimeConstant, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns a constraint which asserts that the two expressions are equal.
     pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {
@@ -90,16 +83,16 @@ impl<V: Display> Display for AlgebraicConstraint<V> {
     }
 }
 
-impl<T: ReferencedSymbols<V>, V> AlgebraicConstraint<GroupedExpression<T, V>> {
-    /// Returns the set of referenced variables, both know and unknown.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        self.expression.referenced_variables()
+impl<T, V> AlgebraicConstraint<GroupedExpression<T, V>> {
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_unknown_variables()
     }
 }
 
-impl<T: ReferencedSymbols<V>, V> AlgebraicConstraint<&GroupedExpression<T, V>> {
-    /// Returns the set of referenced variables, both know and unknown.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        self.expression.referenced_variables()
+impl<T, V> AlgebraicConstraint<&GroupedExpression<T, V>> {
+    /// Returns the referenced unknown variables. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        self.expression.referenced_unknown_variables()
     }
 }

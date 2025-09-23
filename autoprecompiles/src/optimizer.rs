@@ -223,8 +223,8 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
     SymbolicMachine {
         constraints: constraint_system
             .algebraic_constraints
-            .iter()
-            .map(|constraint| grouped_expression_to_algebraic(&constraint.expression).into())
+            .into_iter()
+            .map(|constraint| grouped_expression_to_algebraic(constraint.expression).into())
             .collect(),
         bus_interactions: constraint_system
             .bus_interactions
@@ -270,14 +270,14 @@ fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
         args: bus_interaction
             .payload
             .into_iter()
-            .map(|arg| grouped_expression_to_algebraic(&arg))
+            .map(|arg| grouped_expression_to_algebraic(arg))
             .collect(),
-        mult: grouped_expression_to_algebraic(&bus_interaction.multiplicity),
+        mult: grouped_expression_to_algebraic(bus_interaction.multiplicity),
     }
 }
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    grouped_expression_to_algebraic(&algebraic_to_grouped_expression(&e))
+    grouped_expression_to_algebraic(algebraic_to_grouped_expression(&e))
 }
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.

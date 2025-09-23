@@ -4,6 +4,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 
 use crate::constraint_system::AlgebraicConstraint;
+use crate::grouped_expression::GroupedExpressionComponent;
 use crate::indexed_constraint_system::apply_substitutions_to_expressions;
 use crate::runtime_constant::Substitutable;
 use crate::solver::VariableAssignment;
@@ -37,20 +38,28 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         if expr.is_affine() {
             return expr;
         }
-        let (quadratic, linear, constant) = expr.into_components();
-        quadratic
-            .into_iter()
-            .map(|(l, r)| {
-                let l =
-                    self.linearize_and_substitute_by_var(l, var_dispenser, constraint_collection);
-                let r =
-                    self.linearize_and_substitute_by_var(r, var_dispenser, constraint_collection);
-                self.substitute_by_var(l * r, var_dispenser, constraint_collection)
+        expr.into_summands()
+            .map(|c| match c {
+                GroupedExpressionComponent::Quadratic(l, r) => {
+                    let l = self.linearize_and_substitute_by_var(
+                        l,
+                        var_dispenser,
+                        constraint_collection,
+                    );
+                    let r = self.linearize_and_substitute_by_var(
+                        r,
+                        var_dispenser,
+                        constraint_collection,
+                    );
+                    self.substitute_by_var(l * r, var_dispenser, constraint_collection)
+                }
+                GroupedExpressionComponent::Linear(v, coeff) => {
+                    GroupedExpression::from_unknown_variable(v) * coeff
+                }
+                GroupedExpressionComponent::Constant(c) => {
+                    GroupedExpression::from_runtime_constant(c)
+                }
             })
-            .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
-            .chain(std::iter::once(GroupedExpression::from_runtime_constant(
-                constant,
-            )))
             .sum()
     }
 
@@ -62,23 +71,25 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         if expr.is_affine() {
             return Some(expr);
         }
-        let (quadratic, linear, constant) = expr.into_components();
         Some(
-            quadratic
-                .into_iter()
-                .map(|(l, r)| {
-                    let l =
-                        self.try_substitute_by_existing_var(&self.try_linearize_existing(l)?)?;
-                    let r =
-                        self.try_substitute_by_existing_var(&self.try_linearize_existing(r)?)?;
-                    self.try_substitute_by_existing_var(&(l * r))
+            expr.into_summands()
+                .map(|c| match c {
+                    GroupedExpressionComponent::Quadratic(l, r) => {
+                        let l =
+                            self.try_substitute_by_existing_var(&self.try_linearize_existing(l)?)?;
+                        let r =
+                            self.try_substitute_by_existing_var(&self.try_linearize_existing(r)?)?;
+                        self.try_substitute_by_existing_var(&(l * r))
+                    }
+                    GroupedExpressionComponent::Linear(v, coeff) => {
+                        Some(GroupedExpression::from_unknown_variable(v) * coeff)
+                    }
+                    GroupedExpressionComponent::Constant(c) => {
+                        Some(GroupedExpression::from_runtime_constant(c))
+                    }
                 })
                 .collect::<Option<Vec<_>>>()?
                 .into_iter()
-                .chain(linear.map(|(v, c)| GroupedExpression::from_unknown_variable(v) * c))
-                .chain(std::iter::once(GroupedExpression::from_runtime_constant(
-                    constant,
-                )))
                 .sum(),
         )
     }
