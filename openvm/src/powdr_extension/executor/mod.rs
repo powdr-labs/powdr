@@ -83,7 +83,13 @@ impl Executor<BabyBear> for PowdrExecutor {
 
 impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
     fn metered_pre_compute_size(&self) -> usize {
-        todo!()
+        // Note: this is only used in `get_metered_pre_compute_max_size` in OVM to pre allocate buffers for precomputed instructions.
+        // `get_metered_pre_compute_max_size` takes the max of the pre compute sizes of all instructions (including Powdr instruction) and pad to next power of two.
+        // Then, `alloc_pre_compute_buf` allocates the calculated max size * length of the program.
+        // TODO: Here I'm summing (instead of max'ing) over all original instructions and am assuming that we execute the Powdr opcode + NOOP modified program, but we need to confirm if this is true.
+        self.apc.instructions().iter().map(|instruction| {
+            self.executor_inventory.get_executor(instruction.0.opcode).unwrap().metered_pre_compute_size()
+        }).sum::<usize>().next_power_of_two()
     }
 
     fn metered_pre_compute<Ctx>(
