@@ -99,7 +99,7 @@ impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
                     .metered_pre_compute_size()
             })
             .sum::<usize>()
-            .next_power_of_two()
+        // TOOD: also account for the length markers
     }
 
     fn metered_pre_compute<Ctx>(
@@ -112,8 +112,36 @@ impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
     where
         Ctx: ExecutionCtxTrait,
     {
+        // TODO:
+        // 1. call pre_compute_impl to populate data
+        // 2. given the Vec<ExecuteFunc>
+
         todo!()
     }
+}
+
+impl PowdrExecutor {
+    fn pre_compute_impl(&self, pc: u32, data: &mut [u8]) -> Vec<ExecuteFunc<F, Ctx>> {
+        // TODO: populate data
+        // 1. start the data by a usize number of instructions marker
+        // 2. for each self.apc.instruction, start the data by a usize pre_compute_size marker
+        // 3. then populate the data with pre_compute_size bytes by calling metered_pre_compute for each instruction
+        // 4. collect the return value ExecuteFunc for each instruction
+        // 5. at the end of the function, return a vec<executefunc>
+    }
+}
+
+#[inline(always)]
+unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
+    pre_compute: &[u8],
+    vm_state: &mut VmStateMut<F, TracingMemory, CTX>,
+) {
+    // TODO:
+    // 1. read a usize number of instructions
+    // 2. loop the number of instructions times and within each loop
+    //    3. read a usize pre_compute_size marker
+    //    4. call the corresponding ExecuteFunc for the instruction from Vec<ExecuteFunc> and populate the data (this should be known at compile time and attached as a generic type)
+    //    5. advance the data pointer by pre_compute_size
 }
 
 impl<F: PrimeField32> PreflightExecutor<F> for PowdrExecutor {
