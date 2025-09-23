@@ -159,6 +159,7 @@ impl<F: PrimeField32> PreflightExecutor<F> for PowdrExecutor {
         state: VmStateMut<F, TracingMemory, MatrixRecordArena<F>>,
         instruction: &Instruction<F>,
     ) -> Result<(), ExecutionError> {
+        // This is pretty much done, just need to move up from `execute()` below with very small modifications
         todo!()
     }
 
