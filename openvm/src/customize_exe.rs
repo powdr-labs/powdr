@@ -19,6 +19,7 @@ use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
+use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
@@ -221,7 +222,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     let pc_base = exe.program.pc_base;
     let pc_step = DEFAULT_PC_STEP;
-    let program = exe.program.clone();
+    let mut program = exe.program.clone();
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -231,15 +232,13 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
             let opcode = POWDR_OPCODE + i;
-            let start_index: u64 = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
+            let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
-
-            // TODO: This is not supported in 1.4.0, to be added
-            // program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
+            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", apc.start_pc()),

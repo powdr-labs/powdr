@@ -17,10 +17,7 @@ use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
 use openvm_sha256_circuit::Sha2CpuProverExt;
-use openvm_stark_backend::{
-    p3_field::Field,
-    prover::cpu::CpuBackend,
-};
+use openvm_stark_backend::{p3_field::Field, prover::cpu::CpuBackend};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
@@ -42,9 +39,7 @@ use openvm_circuit::{
     arch::{Arena, MatrixRecordArena},
     utils::next_power_of_two_or_zero,
 };
-use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator,
-};
+use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator};
 
 use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
