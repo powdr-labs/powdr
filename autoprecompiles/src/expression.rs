@@ -1,7 +1,7 @@
 //! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
 //! custom `AlgebraicReference` type.
 use core::ops::{Add, Mul, Neg, Sub};
-use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
+use powdr_number::ExpressionConvertible;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, hash::Hash, marker::PhantomData, sync::Arc};
 
@@ -90,24 +90,7 @@ where
     fn eval_var(&self, algebraic_var: &AlgebraicReference) -> E;
 
     fn eval_expr(&self, algebraic_expr: &AlgebraicExpression<F>) -> E {
-        match algebraic_expr {
-            AlgebraicExpression::Number(n) => self.eval_const(*n),
-            AlgebraicExpression::BinaryOperation(binary) => match binary.op {
-                AlgebraicBinaryOperator::Add => {
-                    self.eval_expr(&binary.left) + self.eval_expr(&binary.right)
-                }
-                AlgebraicBinaryOperator::Sub => {
-                    self.eval_expr(&binary.left) - self.eval_expr(&binary.right)
-                }
-                AlgebraicBinaryOperator::Mul => {
-                    self.eval_expr(&binary.left) * self.eval_expr(&binary.right)
-                }
-            },
-            AlgebraicExpression::UnaryOperation(unary) => match unary.op {
-                AlgebraicUnaryOperator::Minus => -self.eval_expr(&unary.expr),
-            },
-            AlgebraicExpression::Reference(var) => self.eval_var(var),
-        }
+        algebraic_expr.to_expression(&|n| self.eval_const(*n), &|var| self.eval_var(var))
     }
     fn eval_bus_interaction<'a, 'b>(
         &'a self,
