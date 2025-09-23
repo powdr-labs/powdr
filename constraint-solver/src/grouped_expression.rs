@@ -6,9 +6,7 @@ use std::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
-use crate::runtime_constant::{
-    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
-};
+use crate::runtime_constant::{RuntimeConstant, Substitutable, VarTransformable};
 use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
@@ -389,23 +387,6 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
         remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
 
         *self += to_add;
-    }
-}
-
-impl<T: ReferencedSymbols<V>, V> GroupedExpression<T, V> {
-    /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        let quadr = self
-            .quadratic
-            .iter()
-            .flat_map(|(a, b)| a.referenced_variables().chain(b.referenced_variables()));
-
-        let linear = self
-            .linear
-            .iter()
-            .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
-        let constant = self.constant.referenced_symbols();
-        Box::new(quadr.chain(linear).chain(constant))
     }
 }
 
