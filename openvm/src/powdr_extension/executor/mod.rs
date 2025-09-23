@@ -29,7 +29,6 @@ use powdr_autoprecompiles::{
 };
 
 use itertools::Itertools;
-use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_circuit::{
     arch::{
         AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecuteFunc,
@@ -38,6 +37,10 @@ use openvm_circuit::{
         VmStateMut,
     },
     system::{memory::online::TracingMemory, SystemCpuBuilder},
+};
+use openvm_circuit::{
+    arch::{Arena, MatrixRecordArena},
+    utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{
     p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator, Chip,
@@ -63,6 +66,7 @@ pub struct PowdrExecutor {
     number_of_calls: usize,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>,
 }
 
 impl Executor<BabyBear> for PowdrExecutor {
@@ -185,6 +189,7 @@ impl PowdrExecutor {
             number_of_calls: 0,
             periphery: periphery.real,
             apc,
+            record_arena_by_air_name: Default::default(),
         }
     }
 
@@ -203,17 +208,43 @@ impl PowdrExecutor {
             streams,
             rng,
             custom_pvs,
+            // Swap off the original ctx
+            // TODO: `original_ctx` here is initialized for the APC at the start of preflight execution but probably is useless and just tossed away
             ctx: original_ctx,
         } = state;
 
-        // TODO:
-        // 1. create empty ctx with trace height (# of calls to each instruction) and swap off the original ctx
-        // 2. obtain trace widths
-        // 3. need to do this for all airs because arena is index by air id, so some arenas can be empty but they still need to be there
-        // Note: this has the effect of isolating APC original instruction records to the ctx object here.
+        // Create dummy record arenas by air name, initialized with number of original air calls as height and original air width as width
+        let mut record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>> = self
+            .apc
+            .instructions()
+            .iter()
+            .fold(HashMap::new(), |mut acc, instruction| {
+                let air_name = self
+                    .air_by_opcode_id
+                    .get_instruction_air_and_id(instruction)
+                    .0;
+                // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
+                // pub fn main_width(&self) -> usize {
+                //     self.cached_mains.iter().sum::<usize>() + self.common_main
+                // }
+                let air_width = self
+                    .air_by_opcode_id
+                    .get_instruction_air_stats(instruction)
+                    .main_columns;
 
-        // save the next available `RecordId`
-        // let from_record_id = state.memory.get_memory_logs().len();
+                acc.entry(air_name.clone()).or_insert((0, 0)).0 += 1;
+                acc.entry(air_name).or_insert((0, 0)).1 = air_width;
+                acc
+            })
+            .into_iter()
+            .map(|(air_name, (num_calls, air_width))| {
+                (
+                    air_name,
+                    MatrixRecordArena::with_capacity(num_calls, air_width),
+                )
+            })
+            .collect();
+
         // execute the original instructions one by one
         for instruction in self.apc.instructions().iter() {
             let executor = self
@@ -221,42 +252,36 @@ impl PowdrExecutor {
                 .get_executor(instruction.0.opcode)
                 .unwrap();
             use openvm_circuit::arch::PreflightExecutor;
+
+            // TODO: this chunk is a bit repetitive
+            let air_name = self
+                .air_by_opcode_id
+                .get_instruction_air_and_id(instruction)
+                .0;
+
             let state = VmStateMut {
                 pc,
                 memory,
                 streams,
                 rng,
                 custom_pvs,
-                ctx,
+                // Use dummy record arena
+                // Note: this has the effect of isolating APC original instruction records to the ctx object here.
+                ctx: record_arena_by_air_name.get_mut(&air_name).unwrap(),
             };
+
             executor.execute(state, &instruction.0)?;
         }
 
-        // TODO:
-        // 1. after execution, put back the original ctx
-        // 2. attach dummy ctx to a field of PowdrExecutor for later generate_proving_ctx
+        // After execution, put back the original ctx
+        // TODO: `original_ctx` might just be useless and tossed away
+        state.ctx = original_ctx;
+
+        // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
+        self.record_arena_by_air_name
+            .extend(record_arena_by_air_name);
 
         self.number_of_calls += 1;
-        // let memory_logs = state.memory.get_memory_logs(); // exclusive range
-
-        // let to_record_id = memory_logs.len();
-
-        // let last_read_write = memory_logs[from_record_id..to_record_id]
-        //     .iter()
-        //     .rposition(|entry| {
-        //         matches!(
-        //             entry,
-        //             MemoryLogEntry::Read { .. } | MemoryLogEntry::Write { .. }
-        //         )
-        //     })
-        //     .map(|idx| idx + from_record_id);
-
-        // tracing::trace!(
-        //     "APC range (exclusive): {}..{} (last read/write at {})",
-        //     from_record_id,
-        //     to_record_id,
-        //     last_read_write.unwrap_or(to_record_id)
-        // );
 
         Ok(())
     }
