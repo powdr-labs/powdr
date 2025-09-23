@@ -106,7 +106,7 @@ impl<PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<BabyBearSC, PB> for
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-        let witness = self.executor.generate_witness(records);
+        let witness = self.executor.generate_witness();
 
         // TODO: This should be parallelized.
         let mut values = BabyBear::zero_vec(height * width);

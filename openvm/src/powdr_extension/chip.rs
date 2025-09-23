@@ -82,7 +82,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
         let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
         metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
         // TODO: generate_witness should take another argument that's dummy ctx attached to powdrexecutor
-        let trace = self.executor.generate_witness(records);
+        let trace = self.executor.generate_witness();
 
         assert_eq!(trace.width(), width);
 
