@@ -214,7 +214,7 @@ where
         let remaining_variables = self
             .constraint_system
             .system()
-            .variables()
+            .referenced_unknown_variables()
             .collect::<HashSet<_>>();
         self.range_constraints
             .range_constraints

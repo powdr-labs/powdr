@@ -69,7 +69,15 @@ pub fn get_brute_force_candidates<'a, T: RuntimeConstant, V: Clone + Hash + Ord>
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
     constraint_system
-        .expressions()
+        .algebraic_constraints()
+        .iter()
+        .map(|c| &c.expression)
+        .chain(
+            constraint_system
+                .bus_interactions()
+                .iter()
+                .flat_map(|b| b.fields()),
+        )
         .map(|expression| {
             expression
                 .referenced_unknown_variables()

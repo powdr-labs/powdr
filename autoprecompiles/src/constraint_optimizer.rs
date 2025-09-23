@@ -201,8 +201,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 ) -> IndexedConstraintSystem<T, V> {
     let all_variables = constraint_system
         .system()
-        .expressions()
-        .flat_map(|expr| expr.referenced_unknown_variables())
+        .referenced_unknown_variables()
         .cloned()
         .collect::<HashSet<_>>();
 

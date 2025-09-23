@@ -63,8 +63,7 @@ impl<P: FieldElement, V: Ord + Clone + Hash + Eq> From<&ConstraintSystem<P, V>> 
             num_constraints: constraint_system.algebraic_constraints.len(),
             num_bus_interactions: constraint_system.bus_interactions.len(),
             num_witness_columns: constraint_system
-                .expressions()
-                .flat_map(|e| e.referenced_unknown_variables())
+                .referenced_unknown_variables()
                 .unique()
                 .count(),
         }
