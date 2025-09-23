@@ -9,12 +9,7 @@ use crate::{
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
-use openvm_circuit::arch::{Executor, MeteredExecutor, VmStateMut};
-use openvm_circuit::{
-    arch::{ExecutionError, MatrixRecordArena, PreflightExecutor},
-    system::memory::online::TracingMemory,
-};
-use openvm_instructions::{instruction::Instruction, LocalOpcode};
+use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
     p3_matrix::dense::DenseMatrix,
@@ -63,68 +58,6 @@ impl PowdrChip {
             executor,
             air,
         }
-    }
-}
-
-impl PreflightExecutor<BabyBear> for PowdrChip {
-    fn execute(
-        &self,
-        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
-        instruction: &Instruction<BabyBear>,
-    ) -> Result<(), ExecutionError> {
-        let &Instruction { opcode, .. } = instruction;
-        assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
-
-        self.executor.execute(state)
-    }
-
-    fn get_opcode_name(&self, _: usize) -> String {
-        self.name.clone()
-    }
-}
-
-impl Executor<BabyBear> for PowdrChip {
-    fn pre_compute_size(&self) -> usize {
-        todo!()
-    }
-
-    fn pre_compute<Ctx>(
-        &self,
-        pc: u32,
-        inst: &Instruction<BabyBear>,
-        data: &mut [u8],
-    ) -> Result<
-        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
-        openvm_circuit::arch::StaticProgramError,
-    >
-    where
-        Ctx: openvm_circuit::arch::ExecutionCtxTrait,
-    {
-        todo!()
-    }
-}
-
-impl MeteredExecutor<BabyBear> for PowdrChip {
-    // TODO: if any of these functions has access to trace height of original instructions, make sure we don't increase them
-    // so that recordarena::with_capacity is initialized with non-apc original instructions only
-    fn metered_pre_compute_size(&self) -> usize {
-        todo!()
-    }
-
-    fn metered_pre_compute<Ctx>(
-        &self,
-        air_idx: usize,
-        pc: u32,
-        inst: &Instruction<BabyBear>,
-        data: &mut [u8],
-    ) -> Result<
-        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
-        openvm_circuit::arch::StaticProgramError,
-    >
-    where
-        Ctx: openvm_circuit::arch::MeteredExecutionCtxTrait,
-    {
-        todo!()
     }
 }
 
