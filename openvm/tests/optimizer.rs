@@ -1,6 +1,6 @@
 use expect_test::expect;
 use powdr_autoprecompiles::optimizer::optimize;
-use powdr_autoprecompiles::SymbolicMachine;
+use powdr_autoprecompiles::{SymbolicMachine, SymbolicMachineOld};
 use powdr_number::BabyBearField;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
@@ -14,6 +14,8 @@ fn load_machine_cbor() {
     let file = std::fs::File::open("tests/keccak_apc_pre_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    assert!(machine.derived_columns.is_empty());
+
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
@@ -35,6 +37,7 @@ fn test_optimize() {
     let file = std::fs::File::open("tests/keccak_apc_pre_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    assert!(machine.derived_columns.is_empty());
 
     let machine = optimize::<BabyBearOpenVmApcAdapter>(
         machine,
@@ -65,6 +68,7 @@ fn test_sha256() {
     let file = std::fs::File::open("tests/sha256_apc_pre_opt.cbor.gz").unwrap();
     let reader = flate2::read::GzDecoder::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    assert!(machine.derived_columns.is_empty());
 
     let machine = optimize::<BabyBearOpenVmApcAdapter>(
         machine,
