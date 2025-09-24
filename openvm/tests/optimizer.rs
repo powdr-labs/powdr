@@ -1,6 +1,6 @@
 use expect_test::expect;
 use powdr_autoprecompiles::optimizer::optimize;
-use powdr_autoprecompiles::{SymbolicMachine, SymbolicMachineOld};
+use powdr_autoprecompiles::SymbolicMachine;
 use powdr_number::BabyBearField;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
