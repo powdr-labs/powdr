@@ -1,15 +1,11 @@
 use itertools::Itertools;
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator};
-use powdr_number::ExpressionConvertible;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
-use crate::adapter::Adapter;
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
-use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::powdr::UniqueReferences;
 use crate::{Apc, InstructionHandler, SymbolicMachine};
 

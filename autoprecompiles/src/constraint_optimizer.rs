@@ -215,8 +215,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 ) -> IndexedConstraintSystem<T, V> {
     let all_variables = constraint_system
         .system()
-        .expressions()
-        .flat_map(|expr| expr.referenced_unknown_variables())
+        .referenced_unknown_variables()
         .cloned()
         .collect::<HashSet<_>>();
 
@@ -274,7 +273,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
-            .referenced_variables()
+            .referenced_unknown_variables()
             .all(|var| variables_to_keep.contains(var))
     });
 
@@ -282,7 +281,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
         bus_interaction_handler.is_stateful(bus_id)
             || bus_interaction
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .all(|var| variables_to_keep.contains(var))
     });
 
@@ -336,14 +335,14 @@ fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
 
     constraint_system.retain_algebraic_constraints(|constraint| {
         constraint
-            .referenced_variables()
+            .referenced_unknown_variables()
             .any(|var| variables_to_keep.contains(var))
     });
 
     constraint_system.retain_bus_interactions(|bus_interaction| {
         let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
         let has_vars_to_keep = bus_interaction
-            .referenced_variables()
+            .referenced_unknown_variables()
             .any(|var| variables_to_keep.contains(var));
         // has_vars_to_keep would also be false for bus interactions containing only
         // constants, so we also check again whether it is stateful.
@@ -365,7 +364,7 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
             let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
             bus_interaction_handler.is_stateful(bus_id)
         })
-        .flat_map(|bus_interaction| bus_interaction.referenced_variables())
+        .flat_map(|bus_interaction| bus_interaction.referenced_unknown_variables())
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(

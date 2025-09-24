@@ -41,12 +41,12 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         constraint_system.clone(),
         bus_interaction_handler.clone(),
     ) {
-        if subsystem.unknown_variables().count() > 200 {
+        if subsystem.referenced_unknown_variables().count() > 200 {
             // Searching for equal zero checks in such a large
             // system would take too long.
             log::debug!(
                 "Skipping equal zero check optimization for subsystem with {} variables",
-                subsystem.unknown_variables().count()
+                subsystem.referenced_unknown_variables().count()
             );
             continue;
         }
@@ -55,7 +55,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         //     subsystem.unknown_variables().count()
         // );
         let binary_variables = subsystem
-            .unknown_variables()
+            .referenced_unknown_variables()
             .filter(|v| solver.get(v) == binary_range_constraint)
             .cloned()
             .collect::<BTreeSet<_>>();
@@ -96,14 +96,18 @@ fn split_at_stateful_bus_interactions<T: FieldElement, V: Clone + Ord + Hash + D
         .into_iter()
         .map(|mut subsystem| {
             let vars = subsystem
-                .unknown_variables()
+                .referenced_unknown_variables()
                 .cloned()
                 .collect::<BTreeSet<_>>();
             // Re-add the stateful bus interactions that are connected to this subsystem.
             subsystem.bus_interactions.extend(
                 stateful_bus_interactions
                     .iter()
-                    .filter(|bus_int| bus_int.referenced_variables().any(|v| vars.contains(v)))
+                    .filter(|bus_int| {
+                        bus_int
+                            .referenced_unknown_variables()
+                            .any(|v| vars.contains(v))
+                    })
                     .cloned(),
             );
             subsystem
@@ -244,21 +248,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         return;
     }
 
-    // We should be able to remove all constraints that contain
-    // at least one variable in `variables_to_remove`.
-    // All other variables in such a constraint should either be inputs,
-    // the output or other variables we can remove.
-    for constr in constraint_system.system().iter() {
-        if constr
-            .referenced_variables()
-            .any(|var| variables_to_remove.contains(var))
-        {
-            assert!(constr.referenced_variables().all(|var| {
-                inputs.contains(var) || var == &output || variables_to_remove.contains(var)
-            }));
-        }
-    }
-
     let mut isolated_system = ConstraintSystem {
         algebraic_constraints: vec![],
         bus_interactions: vec![],
@@ -268,19 +257,27 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         // or if it only references the output (which is fully determined
         // by the algebraic constraints we will add).
         let remove = constr
-            .referenced_variables()
+            .referenced_unknown_variables()
             .any(|var| variables_to_remove.contains(var))
-            || constr.referenced_variables().all(|v| v == &output);
+            || constr.referenced_unknown_variables().all(|v| v == &output);
         if remove {
+            // Sanity check that we do not remove anything we should not.
+            assert!(constr.referenced_unknown_variables().all(|var| {
+                inputs.contains(var) || var == &output || variables_to_remove.contains(var)
+            }));
             isolated_system.algebraic_constraints.push(constr.clone());
         }
         !remove
     });
     constraint_system.retain_bus_interactions(|bus_interaction| {
         let remove = bus_interaction
-            .referenced_variables()
+            .referenced_unknown_variables()
             .any(|var| variables_to_remove.contains(var));
         if remove {
+            // Sanity check that we do not remove anything we should not.
+            assert!(bus_interaction.referenced_unknown_variables().all(|var| {
+                inputs.contains(var) || var == &output || variables_to_remove.contains(var)
+            }));
             isolated_system
                 .bus_interactions
                 .push(bus_interaction.clone());
@@ -366,7 +363,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ) -> bool {
     let solver = solver::new_solver(isolated_system.clone(), bus_interaction_handler.clone());
     let mut booleans = isolated_system
-        .unknown_variables()
+        .referenced_unknown_variables()
         .filter(|v| {
             let range = solver.get(v);
             range == RangeConstraint::from_mask(1)
@@ -525,7 +522,7 @@ fn inline_non_input_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
             // If the constraint has exactly one non-input variable,
             // inline that one.
             let var = constr
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .filter(|v| !input_variables.contains_key(v))
                 .exactly_one()
                 .ok()?;
@@ -559,19 +556,22 @@ fn remove_range_constraint_bus_interactions<
                         // Keep the bus interaction
                         return true;
                     }
-                    match expr.referenced_variables().count() {
+                    match expr.referenced_unknown_variables().count() {
                         0 => { /* TODO assert that it matches rc */ }
                         1 => {
-                            let var = expr.referenced_variables().next().unwrap();
-                            if expr.coefficient_of_variable(var).unwrap() != &T::one() {
+                            let var = expr.referenced_unknown_variables().next().unwrap();
+                            if expr.coefficient_of_variable_in_affine_part(var).unwrap()
+                                != &T::one()
+                            {
                                 // Keep the bus interaction
                                 return true;
                             }
                             // This is lossles, at least for the range.
                             // TODO is it ok? If we model a mask?
                             // TODO we could check if undoing it results in the same.
-                            let rc =
-                                rc.combine_sum(&RangeConstraint::from_value(-*expr.components().2));
+                            let rc = rc.combine_sum(&RangeConstraint::from_value(
+                                -*expr.constant_offset(),
+                            ));
                             to_constrain.push((var.clone(), rc));
                         }
                         _ => {

@@ -8,7 +8,6 @@ use crate::constraint_system::ConstraintRef;
 use crate::effect::Effect;
 use crate::grouped_expression::RangeConstraintProvider;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::runtime_constant::ReferencedSymbols;
 use crate::runtime_constant::RuntimeConstant;
 use crate::runtime_constant::Substitutable;
 use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
@@ -36,11 +35,7 @@ pub fn find_unique_assignment_for_set<T, V: Clone + Hash + Ord + Eq + Display>(
     bus_interaction_handler: &impl BusInteractionHandler<T::FieldType>,
 ) -> Result<Option<BTreeMap<V, T::FieldType>>, Error>
 where
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Substitutable<V>
-        + ExpressionConvertible<T::FieldType, V>
-        + Display,
+    T: RuntimeConstant + Substitutable<V> + ExpressionConvertible<T::FieldType, V> + Display,
 {
     let mut assignments =
         get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
@@ -69,19 +64,23 @@ where
 /// Returns all unique sets of variables that appear together in an identity
 /// (either in an algebraic constraint or in the same field of a bus interaction),
 /// IF the number of possible assignments is less than `MAX_SEARCH_WIDTH`.
-pub fn get_brute_force_candidates<
-    'a,
-    T: RuntimeConstant + ReferencedSymbols<V>,
-    V: Clone + Hash + Ord,
->(
+pub fn get_brute_force_candidates<'a, T: RuntimeConstant, V: Clone + Hash + Ord>(
     constraint_system: &'a IndexedConstraintSystem<T, V>,
     rc: impl RangeConstraintProvider<T::FieldType, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
     constraint_system
-        .expressions()
+        .algebraic_constraints()
+        .iter()
+        .map(|c| &c.expression)
+        .chain(
+            constraint_system
+                .bus_interactions()
+                .iter()
+                .flat_map(|b| b.fields()),
+        )
         .map(|expression| {
             expression
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .cloned()
                 .collect::<BTreeSet<_>>()
         })
@@ -147,7 +146,6 @@ fn derive_more_assignments<T, V: Clone + Hash + Ord + Eq + Display>(
 where
     T: RuntimeConstant
         + Substitutable<V>
-        + ReferencedSymbols<V>
         + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>
         + Display,
 {
