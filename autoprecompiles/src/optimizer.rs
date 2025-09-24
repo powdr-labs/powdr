@@ -201,7 +201,7 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .iter()
             .map(symbolic_bus_interaction_to_bus_interaction)
             .collect(),
-        derived_columns: symbolic_machine
+        derived_variables: symbolic_machine
             .derived_columns
             .iter()
             .map(|(v, method)| {
@@ -232,7 +232,7 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .map(bus_interaction_to_symbolic_bus_interaction)
             .collect(),
         derived_columns: constraint_system
-            .derived_columns
+            .derived_variables
             .into_iter()
             .map(|_| panic!("Derived columns should have been inlined away by now."))
             .collect(),

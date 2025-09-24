@@ -46,7 +46,7 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
         systems.push(ConstraintSystem {
             algebraic_constraints,
             bus_interactions,
-            derived_columns: Vec::new(), // TODO As long as we re-compine the system later on it does not matter much where we put them.
+            derived_variables: Vec::new(), // TODO As long as we re-compine the system later on it does not matter much where we put them.
         });
         remaining_variables.retain(|var| !variables_to_extract.contains(var));
     }

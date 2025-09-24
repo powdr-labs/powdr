@@ -20,10 +20,10 @@ pub struct ConstraintSystem<T, V> {
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
-    pub derived_columns: Vec<DerivedColumn<T, V>>,
+    pub derived_variables: Vec<DerivedVariable<T, V>>,
 }
 
-pub type DerivedColumn<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
+pub type DerivedVariable<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
 
 /// Specifies a way to compute the value of a variable from other variables.
 /// It is generic over the field `T` and the expression type `E`.
@@ -44,12 +44,22 @@ impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
     }
 }
 
+impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
+    /// Returns the set of referenced unknown variables in the computation method. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &F> + '_> {
+        match self {
+            ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
+            ComputationMethod::InverseOrZero(e) => e.referenced_unknown_variables(),
+        }
+    }
+}
+
 impl<T, V> Default for ConstraintSystem<T, V> {
     fn default() -> Self {
         ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
-            derived_columns: Vec::new(),
+            derived_variables: Vec::new(),
         }
     }
 }
@@ -68,7 +78,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                         .map(|bus_inter| format!("{bus_inter}"))
                 )
                 .chain(
-                    self.derived_columns
+                    self.derived_variables
                         .iter()
                         .map(|(var, method)| { format!("{var} := {method}") })
                 )
@@ -80,7 +90,7 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     /// Returns all referenced unknown variables in the system. Might contain repetitions.
     ///
-    /// Variables referenced in derived columns are not included, as they are not part of the constraints.
+    /// Variables referenced in derived variables are not included, as they are not part of the constraints.
     pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
         self.algebraic_constraints
             .iter()
@@ -98,7 +108,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
-        self.derived_columns.extend(system.derived_columns);
+        self.derived_variables.extend(system.derived_variables);
     }
 }
 
