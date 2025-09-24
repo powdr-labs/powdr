@@ -185,7 +185,8 @@ impl PowdrExecutor {
         w.write_usize(self.apc.instructions().len()).unwrap();
 
         // For each instruction, serialize pre_compute_size, the full data slice, and ExecFunc raw pointer
-        // TODO: can parallelize this, because we are just precomputing the instruction handler functions and populating their payloads (pre-compute),
+        // TODO: can parallelize this (probably requires multiple `BufWriter`s`), 
+        // because we are just precomputing the instruction handler functions and populating their payloads (pre-compute),
         // so it's not a sequential operation?
         self.apc.instructions().iter().for_each(|instruction| {
             let exec = self
@@ -223,7 +224,7 @@ unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     pre_compute: &[u8],
     vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    execute_e12_impl::<F, CTX>(pre_compute, vm_state);
+    execute_e12_impl(pre_compute, vm_state);
 }
 
 // #[create_tco_handler]
@@ -243,7 +244,7 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
     let start = core::mem::size_of::<usize>();
     let pre_compute_after_air_idx = &pre_compute[start..];
 
-    execute_e12_impl::<F, CTX>(pre_compute_after_air_idx, vm_state);
+    execute_e12_impl(pre_compute_after_air_idx, vm_state);
 }
 
 #[inline(always)]
