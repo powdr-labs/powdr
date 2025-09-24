@@ -163,10 +163,15 @@ pub enum BusInteractionKind {
     Receive,
 }
 
+/// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicMachine<T> {
+    /// Constraints whose expressions have to evaluate to zero for an assignment to be satisfying.
     pub constraints: Vec<SymbolicConstraint<T>>,
+    /// A bus interaction that models communication with other machines / chips or static lookups.
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+    /// Columns that have been newly created during the optimization process with a method
+    /// to compute their values from other columns.
     pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
 }
 

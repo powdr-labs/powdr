@@ -25,9 +25,11 @@ pub struct ConstraintSystem<T, V> {
 
 pub type DerivedColumn<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
 
+/// Specifies a way to compute the value of a variable from other variables.
+/// It is generic over the field `T` and the expression type `E`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComputationMethod<T, E> {
-    /// A constant value. TODO this is weird because we could also just have 'E' here.
+    /// A constant value.
     Constant(T),
     /// The field inverse of an expression if it exists or zero otherwise.
     InverseOrZero(E),
