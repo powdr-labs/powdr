@@ -120,6 +120,8 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
+    // TODO remove unreferenced derived variables.
+
     constraint_system
 }
 

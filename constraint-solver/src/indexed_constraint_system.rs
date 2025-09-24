@@ -91,34 +91,44 @@ impl<T, V> Default for IndexedConstraintSystemWithQueue<T, V> {
     }
 }
 
-/// A reference to an item in the constraint system.
+/// A reference to an item in the constraint system, based on the index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 enum ConstraintSystemItem {
+    /// A reference to an algebraic constraint.
     AlgebraicConstraint(usize),
+    /// A reference to a bus interaction.
     BusInteraction(usize),
+    /// A reference to a derived column. This is only used internal to the
+    /// IndexedConstraintSystem.
+    DerivedColumn(usize),
 }
 
 impl ConstraintSystemItem {
     /// Returns an index that is unique across both algebraic constraints and bus interactions.
     fn flat_id(&self) -> usize {
         match self {
-            ConstraintSystemItem::AlgebraicConstraint(i) => 2 * i,
-            ConstraintSystemItem::BusInteraction(i) => 2 * i + 1,
+            ConstraintSystemItem::AlgebraicConstraint(i) => 3 * i,
+            ConstraintSystemItem::BusInteraction(i) => 3 * i + 1,
+            ConstraintSystemItem::DerivedColumn(i) => 3 * i + 2,
         }
     }
 
     /// Turns this indexed-based item into a reference to the actual constraint.
-    fn to_constraint_ref<'a, T, V>(
+    /// Fails for derived columns.
+    fn try_to_constraint_ref<'a, T, V>(
         self,
         constraint_system: &'a ConstraintSystem<T, V>,
-    ) -> ConstraintRef<'a, T, V> {
+    ) -> Option<ConstraintRef<'a, T, V>> {
         match self {
-            ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
-                constraint_system.algebraic_constraints[i].as_ref(),
-            ),
-            ConstraintSystemItem::BusInteraction(i) => {
-                ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
+            ConstraintSystemItem::AlgebraicConstraint(i) => {
+                Some(ConstraintRef::AlgebraicConstraint(
+                    constraint_system.algebraic_constraints[i].as_ref(),
+                ))
             }
+            ConstraintSystemItem::BusInteraction(i) => Some(ConstraintRef::BusInteraction(
+                &constraint_system.bus_interactions[i],
+            )),
+            ConstraintSystemItem::DerivedColumn(_) => None,
         }
     }
 }
@@ -208,6 +218,7 @@ fn retain<V, Item>(
     constraint_kind_constructor: impl Fn(usize) -> ConstraintSystemItem + Copy,
 ) {
     let mut counter = 0usize;
+    // `replacement_map[i]` = `Some(j)` if item at index `i` is kept and is now at index `j`
     let mut replacement_map = vec![];
     list.retain(|c| {
         let retain = f(c);
@@ -236,6 +247,7 @@ fn retain<V, Item>(
                 ConstraintSystemItem::BusInteraction(i) if !is_algebraic_constraint => {
                     replacement_map[*i].map(constraint_kind_constructor)
                 }
+                ConstraintSystemItem::DerivedColumn(_) => Some(*item),
                 ConstraintSystemItem::AlgebraicConstraint(_)
                 | ConstraintSystemItem::BusInteraction(_) => Some(*item),
             })
@@ -273,6 +285,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
         let bus_interactions_count = self.constraint_system.bus_interactions.len();
+        let derived_columns_count = self.constraint_system.derived_columns.len();
         // Compute the occurrences of the variables in the new constraints,
         // but update their indices.
         // Iterating over hash map here is fine because we are just extending another hash map.
@@ -285,13 +298,15 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
                 ConstraintSystemItem::BusInteraction(i) => {
                     ConstraintSystemItem::BusInteraction(i + bus_interactions_count)
                 }
+                ConstraintSystemItem::DerivedColumn(i) => {
+                    ConstraintSystemItem::DerivedColumn(i + derived_columns_count)
+                }
             });
             self.variable_occurrences
                 .entry(variable)
                 .or_default()
                 .extend(occurrences);
         }
-        // TODO
         self.constraint_system.extend(system)
     }
 }
@@ -307,7 +322,7 @@ impl<T: RuntimeConstant, V: Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
             .filter_map(|v| self.variable_occurrences.get(v))
             .flatten()
             .unique()
-            .map(|&item| item.to_constraint_ref(&self.constraint_system))
+            .flat_map(|&item| item.try_to_constraint_ref(&self.constraint_system))
     }
 }
 

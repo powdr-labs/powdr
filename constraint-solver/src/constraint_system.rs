@@ -79,6 +79,8 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     /// Returns all referenced unknown variables in the system. Might contain repetitions.
+    ///
+    /// Variables referenced in derived columns are not included, as they are not part of the constraints.
     pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
         self.algebraic_constraints
             .iter()
@@ -91,7 +93,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 
     /// Extends the constraint system by the constraints of another system.
-    /// No de-duplication is performed.
+    /// No de-duplication of constraints or disambiguation of variables is performed.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
