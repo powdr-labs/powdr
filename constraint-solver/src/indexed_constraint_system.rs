@@ -156,14 +156,18 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         &self.constraint_system.bus_interactions
     }
 
+    /// Returns all (unknown) variables in the system. Might contain variables
+    /// that do not appear in the system any more (because the constraints were deleted).
+    /// Does not contain repetitions and is very efficient but returns the variables in a
+    /// non-deterministic order.
     pub fn variables(&self) -> impl Iterator<Item = &V> {
         self.variable_occurrences.keys()
     }
 
-    /// Returns all expressions that appear in the constraint system, i.e. all algebraic
-    /// constraints and all expressions in bus interactions.
-    pub fn expressions(&self) -> impl Iterator<Item = &GroupedExpression<T, V>> {
-        self.constraint_system.expressions()
+    /// Returns all (unknown) variables that occur in the system in a deterministic order
+    /// but might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
+        self.constraint_system.referenced_unknown_variables()
     }
 
     /// Removes all constraints that do not fulfill the predicate.
