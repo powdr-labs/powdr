@@ -171,7 +171,6 @@ impl PowdrExecutor {
         }
 
         *data = PowdrPreCompute {
-            // TODO: generate the precomputed data for each original instruction here
             original_instructions: self
                 .apc
                 .instructions()
