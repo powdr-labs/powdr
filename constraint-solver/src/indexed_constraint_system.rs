@@ -116,6 +116,16 @@ impl ConstraintSystemItem {
         }
     }
 
+    /// Returns the index of the item. Note that the indices are not disjoint between different kinds
+    /// of items.
+    fn index(&self) -> usize {
+        match self {
+            ConstraintSystemItem::AlgebraicConstraint(index)
+            | ConstraintSystemItem::BusInteraction(index)
+            | ConstraintSystemItem::DerivedVariable(index) => index,
+        }
+    }
+
     /// Returns true if this constraint system item is an actual constraint and not a derived variable.
     fn is_constraint(&self) -> bool {
         matches!(
@@ -216,6 +226,19 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
             ConstraintSystemItem::BusInteraction,
         );
     }
+
+    /// Removes all derived variables that do not fulfill the predicate.
+    pub fn retain_derived_variables(
+        &mut self,
+        mut f: impl FnMut(&(V, ComputationMethod<T, GroupedExpression<T, V>>)) -> bool,
+    ) {
+        retain(
+            &mut self.constraint_system.derived_variables,
+            &mut self.variable_occurrences,
+            &mut f,
+            ConstraintSystemItem::DerivedVariable,
+        );
+    }
 }
 
 /// Behaves like `list.retain(f)` but also updates the variable occurrences
@@ -242,25 +265,21 @@ fn retain<V, Item>(
         retain
     });
     assert_eq!(counter, list.len());
-    // We call it once on zero just to find out which type it returns
-    // so we know which one to use in the match below.
-    let is_algebraic_constraint = matches!(
-        constraint_kind_constructor(0),
-        ConstraintSystemItem::AlgebraicConstraint(_)
-    );
+    // We call it once on zero just to find out which enum variant it returns,
+    // so we can compare the discriminants below.
+    let discriminant = std::mem::discriminant(&constraint_kind_constructor(0));
     occurrences.values_mut().for_each(|occurrences| {
         *occurrences = occurrences
             .iter()
-            .filter_map(|item| match item {
-                ConstraintSystemItem::AlgebraicConstraint(i) if is_algebraic_constraint => {
-                    replacement_map[*i].map(constraint_kind_constructor)
+            .filter(|item| {
+                if std::mem::discriminant(item) == discriminant {
+                    // We have an item of the kind we are modifying, so apply
+                    // the replacement map
+                    replacement_map[item.index()].map(constraint_kind_constructor)
+                } else {
+                    // This is a constraint of the wrong kind, do not modify it.
+                    *item
                 }
-                ConstraintSystemItem::BusInteraction(i) if !is_algebraic_constraint => {
-                    replacement_map[*i].map(constraint_kind_constructor)
-                }
-                ConstraintSystemItem::DerivedVariable(_) => Some(*item),
-                ConstraintSystemItem::AlgebraicConstraint(_)
-                | ConstraintSystemItem::BusInteraction(_) => Some(*item),
             })
             .collect();
     });
