@@ -10,6 +10,7 @@ use crate::{
 
 use openvm_algebra_circuit::AlgebraCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
+use openvm_circuit::arch::PreflightExecutor;
 use openvm_ecc_circuit::EccCpuProverExt;
 use openvm_instructions::instruction::Instruction;
 use openvm_keccak256_circuit::Keccak256CpuProverExt;
@@ -31,8 +32,8 @@ use openvm_circuit::{
     arch::{
         AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecuteFunc,
         ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory, MeteredExecutionCtxTrait,
-        MeteredExecutor, PreflightExecutor, StaticProgramError, VmBuilder, VmCircuitExtension,
-        VmExecState, VmProverExtension, VmStateMut,
+        MeteredExecutor, StaticProgramError, VmBuilder, VmCircuitExtension, VmExecState,
+        VmProverExtension, VmStateMut,
     },
     system::{
         memory::online::{GuestMemory, TracingMemory},
@@ -56,7 +57,6 @@ mod periphery;
 pub mod utils;
 
 pub use periphery::PowdrPeripheryInstances;
-// use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor {
@@ -267,60 +267,13 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     }
 }
 
-impl<F: PrimeField32> PreflightExecutor<F> for PowdrExecutor {
+impl PreflightExecutor<BabyBear> for PowdrExecutor {
     fn execute(
         &self,
-        state: VmStateMut<F, TracingMemory, MatrixRecordArena<F>>,
-        instruction: &Instruction<F>,
+        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
+        instruction: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
         // This is pretty much done, just need to move up from `execute()` below with very small modifications
-        todo!()
-    }
-
-    fn get_opcode_name(&self, opcode: usize) -> String {
-        todo!()
-    }
-}
-
-use openvm_circuit::arch::VmCircuitConfig;
-use openvm_circuit::arch::VmExecutionConfig;
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
-
-impl PowdrExecutor {
-    pub fn new(
-        air_by_opcode_id: OriginalAirs<BabyBear>,
-        // memory: Arc<Mutex<TracingMemory>>,
-        base_config: ExtendedVmConfig,
-        periphery: PowdrPeripheryInstances,
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    ) -> Self {
-        Self {
-            air_by_opcode_id,
-            chip_inventory: {
-                let airs: AirInventory<BabyBearSC> =
-                    create_dummy_airs(&base_config.sdk_vm_config, periphery.dummy.clone())
-                        .expect("Failed to create dummy airs");
-
-                create_dummy_chip_complex(&base_config.sdk_vm_config, airs, periphery.dummy)
-                    .expect("Failed to create chip complex")
-                    .inventory
-            },
-            executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
-            number_of_calls: 0,
-            periphery: periphery.real,
-            apc,
-            record_arena_by_air_name: Default::default(),
-        }
-    }
-
-    pub fn number_of_calls(&self) -> usize {
-        self.number_of_calls
-    }
-
-    pub fn execute(
-        &mut self,
-        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
-    ) -> Result<(), ExecutionError> {
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
             pc,
@@ -371,7 +324,6 @@ impl PowdrExecutor {
                 .executor_inventory
                 .get_executor(instruction.0.opcode)
                 .unwrap();
-            use openvm_circuit::arch::PreflightExecutor;
 
             // TODO: this chunk is a bit repetitive
             let air_name = self
@@ -394,16 +346,58 @@ impl PowdrExecutor {
         }
 
         // After execution, put back the original ctx
-        // TODO: `original_ctx` might just be useless and tossed away
+        // TODO: `original_ctx` might just be useless and tossed away, so there's no need to put it back?
+        // `original_ctx` is the trace initialized for APC, but we really only generate the dummy traces here and assemble them to APC trace in `generate_witness`
         // state.ctx = original_ctx;
 
         // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
-        self.record_arena_by_air_name
-            .extend(record_arena_by_air_name);
+        // TODO: self is immutable in `PreflightExecutor::execute`, so I'm not sure how we can mutate PowdrExecutor here
+        // self.record_arena_by_air_name
+        //     .extend(record_arena_by_air_name);
 
-        self.number_of_calls += 1;
+        // self.number_of_calls += 1;
 
         Ok(())
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        todo!()
+    }
+}
+
+use openvm_circuit::arch::VmCircuitConfig;
+use openvm_circuit::arch::VmExecutionConfig;
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+
+impl PowdrExecutor {
+    pub fn new(
+        air_by_opcode_id: OriginalAirs<BabyBear>,
+        // memory: Arc<Mutex<TracingMemory>>,
+        base_config: ExtendedVmConfig,
+        periphery: PowdrPeripheryInstances,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    ) -> Self {
+        Self {
+            air_by_opcode_id,
+            chip_inventory: {
+                let airs: AirInventory<BabyBearSC> =
+                    create_dummy_airs(&base_config.sdk_vm_config, periphery.dummy.clone())
+                        .expect("Failed to create dummy airs");
+
+                create_dummy_chip_complex(&base_config.sdk_vm_config, airs, periphery.dummy)
+                    .expect("Failed to create chip complex")
+                    .inventory
+            },
+            executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
+            number_of_calls: 0,
+            periphery: periphery.real,
+            apc,
+            record_arena_by_air_name: Default::default(),
+        }
+    }
+
+    pub fn number_of_calls(&self) -> usize {
+        self.number_of_calls
     }
 
     /// Generates the witness for the autoprecompile. The result will be a matrix of
