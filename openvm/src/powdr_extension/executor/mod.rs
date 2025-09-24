@@ -229,12 +229,14 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (col_index, computation_method) in &columns_to_compute {
-                    row_slice[*col_index] = match computation_method {
+                for (column, computation_method) in &columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&column.id];
+                    row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::InverseOrZero(expr) => {
-                            let expr_val =
-                                expr.to_expression(&|n| *n, &|var_index| row_slice[*var_index]);
+                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                                row_slice[apc_poly_id_to_index[&column_ref.id]]
+                            });
                             if expr_val.is_zero() {
                                 F::ZERO
                             } else {

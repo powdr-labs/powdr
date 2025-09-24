@@ -1,11 +1,11 @@
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
-use powdr_expression::AlgebraicExpression;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
+use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::{Apc, InstructionHandler};
 
 /// Returns data needed for constructing the APC trace.
@@ -19,7 +19,8 @@ pub struct TraceData<'a, F> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: BTreeMap<usize, ComputationMethod<F, AlgebraicExpression<F, usize>>>,
+    pub columns_to_compute:
+        BTreeMap<AlgebraicReference, ComputationMethod<F, AlgebraicExpression<F>>>,
 }
 
 pub struct Trace<F> {
@@ -64,9 +65,6 @@ where
         .enumerate()
         .map(|(index, c)| (c.id, index))
         .collect();
-
-    // The index of the "is_valid" column.
-    let is_valid_index = apc_poly_id_to_index[&apc.is_valid_poly_id()];
 
     let original_instruction_table_offsets = original_instruction_air_ids
         .iter()
@@ -116,9 +114,15 @@ where
         })
         .collect();
 
-    let columns_to_compute = [(is_valid_index, ComputationMethod::Constant(field_unity))]
+    // The "is_valid" column
+    let is_valid_column = AlgebraicReference {
+        name: "is_valid".to_string().into(),
+        id: apc.is_valid_poly_id(),
+    };
+
+    let columns_to_compute = [(is_valid_column, ComputationMethod::Constant(field_unity))]
         .into_iter()
-        // TODO        .chain(apc.machine.derived_columns.iter().cloned())
+        .chain(apc.machine.derived_columns.iter().cloned())
         .collect();
 
     TraceData {
