@@ -26,6 +26,10 @@ use crate::{
     stats_logger::StatsLogger,
 };
 
+mod equal_zero_checks;
+
+use equal_zero_checks::replace_equal_zero_checks;
+
 #[derive(Debug)]
 pub enum Error {
     ConstraintSolverError(powdr_constraint_solver::solver::Error),
@@ -55,6 +59,7 @@ pub fn optimize_constraints<
         + RangeConstraintHandler<P>
         + Clone,
     stats_logger: &mut StatsLogger,
+    new_var: &mut impl FnMut() -> V,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
 ) -> Result<ConstraintSystem<P, V>, Error> {
@@ -75,11 +80,20 @@ pub fn optimize_constraints<
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
 
+    let constraint_system = replace_equal_zero_checks(
+        constraint_system,
+        solver,
+        bus_interaction_handler.clone(),
+        new_var,
+    );
+    stats_logger.log("replacing 'equals zero' checks", &constraint_system);
+
     let constraint_system = trivial_simplifications(
         constraint_system,
         bus_interaction_handler.clone(),
         stats_logger,
     );
+    stats_logger.log("removing trivial constraints", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
@@ -119,6 +133,12 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
 
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
+
+    let constraint_system = remove_unreferenced_derived_variables(constraint_system);
+    stats_logger.log(
+        "removing unreferenced derived variables",
+        &constraint_system,
+    );
 
     constraint_system
 }
@@ -467,5 +487,18 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
         }
     });
     constraint_system.add_algebraic_constraints(constraint_to_add);
+    constraint_system
+}
+
+fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: IndexedConstraintSystem<P, V>,
+) -> IndexedConstraintSystem<P, V> {
+    // Note that `referenced_unknown_variables` only returns variables referenced in constraints.
+    let referenced_variables = constraint_system
+        .referenced_unknown_variables()
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    constraint_system.retain_derived_variables(|(var, _)| referenced_variables.contains(var));
     constraint_system
 }

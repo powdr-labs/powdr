@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
@@ -10,21 +11,33 @@ use crate::{
     SymbolicMachine,
 };
 
-/// Converts the field type of a symbolic machine.
-pub fn convert_machine_field_type<T, U>(
+pub fn convert_machine<T, U>(
     machine: SymbolicMachine<T>,
-    convert_field_element: &impl Fn(T) -> U,
+    convert: &impl Fn(T) -> U,
 ) -> SymbolicMachine<U> {
     SymbolicMachine {
         constraints: machine
             .constraints
             .into_iter()
-            .map(|c| convert_symbolic_constraint(c, convert_field_element))
+            .map(|c| convert_symbolic_constraint(c, convert))
             .collect(),
         bus_interactions: machine
             .bus_interactions
             .into_iter()
-            .map(|i| convert_bus_interaction(i, convert_field_element))
+            .map(|i| convert_bus_interaction(i, convert))
+            .collect(),
+        derived_columns: machine
+            .derived_columns
+            .into_iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(convert(c)),
+                    ComputationMethod::InverseOrZero(e) => {
+                        ComputationMethod::InverseOrZero(convert_expression(e, convert))
+                    }
+                };
+                (v.clone(), method)
+            })
             .collect(),
     }
 }
@@ -82,10 +95,6 @@ fn convert_expression<T, U>(
     }
 }
 
-/// Converts a basic block into a symbolic machine and a vector
-/// that contains, for each instruction in the basic block,
-/// a mapping from local column IDs to global column IDs
-/// (in the form of a vector).
 pub fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
@@ -103,7 +112,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
             .clone();
 
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
-            convert_machine_field_type(machine, &|x| A::from_field(x));
+            convert_machine(machine, &|x| A::from_field(x));
 
         // It is sufficient to provide the initial PC, because the PC update should be
         // deterministic within a basic block. Therefore, all future PCs can be derived
@@ -166,6 +175,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
         SymbolicMachine {
             constraints,
             bus_interactions,
+            derived_columns: vec![],
         },
         col_subs,
     )

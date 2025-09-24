@@ -314,6 +314,27 @@ mod single_instruction_tests {
         let program = [sra(68, 40, 3, 1)];
         assert_machine_output(program.to_vec(), "single_sra");
     }
+
+    #[test]
+    fn single_seqz() {
+        // seqz translates to "sltu 1"
+        // SLTU rd_ptr = 116, rs1_ptr = 116, rs2 = 1, rs2_as = 0
+        let program = [sltu(116, 116, 1, 0)];
+        assert_machine_output(program.to_vec(), "single_seqz");
+    }
+
+    #[test]
+    fn single_sltu_2() {
+        let program = [sltu(116, 116, 2, 0)];
+        assert_machine_output(program.to_vec(), "single_sltu_2");
+    }
+
+    #[test]
+    fn single_beqz() {
+        // beqz translates to "beq 0"
+        let program = [beq(8, 0, 2)];
+        assert_machine_output(program.to_vec(), "single_beqz");
+    }
 }
 
 mod complex_tests {

@@ -15,7 +15,7 @@ use crate::{
 
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
-    trace_handler::{generate_trace, ComputationMethod, Trace, TraceData},
+    trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };
 
@@ -49,6 +49,8 @@ mod inventory;
 mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
+use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_number::ExpressionConvertible;
 use powdr_openvm_hints_circuit::HintsExtension;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
@@ -170,6 +172,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             &self.air_by_opcode_id,
             self.number_of_calls,
             &self.apc,
+            F::ONE, // TODO this is stupid but I did not find a way to get the 1 in the field.
         );
 
         // precompute the symbolic bus sends to the range checker for each original instruction
@@ -226,20 +229,24 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (col_index, computation_method) in &columns_to_compute {
-                    row_slice[*col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => F::from_canonical_u64(*c),
-                        ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
-                            .iter()
-                            .map(|col| row_slice[*col])
-                            .reduce(|a, b| a + b)
-                            .unwrap()
-                            .inverse(),
+                for (column, computation_method) in &columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&column.id];
+                    row_slice[col_index] = match computation_method {
+                        ComputationMethod::Constant(c) => *c,
+                        ComputationMethod::InverseOrZero(expr) => {
+                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                                row_slice[apc_poly_id_to_index[&column_ref.id]]
+                            });
+                            if expr_val.is_zero() {
+                                F::ZERO
+                            } else {
+                                expr_val.inverse()
+                            }
+                        }
                     };
                 }
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
-
                 // replay the side effects of this row on the main periphery
                 self.apc
                     .machine()

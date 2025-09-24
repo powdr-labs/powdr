@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::AlgebraicConstraint;
+use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, ComputationMethod};
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
@@ -13,6 +13,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
+use crate::powdr::UniqueReferences;
 use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
@@ -24,12 +25,25 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
+/// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
+/// All constraints in the returned machine will respect the given degree bound.
+/// New variables may be introduced in the process.
 pub fn optimize<A: Adapter>(
     mut machine: SymbolicMachine<A::PowdrField>,
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
+    let mut next_free_column_id = machine.unique_references().map(|c| c.id).max().unwrap_or(0) + 1;
+    let mut new_var = || {
+        let id = next_free_column_id;
+        next_free_column_id += 1;
+        AlgebraicReference {
+            name: format!("new_var_{id}").into(),
+            id,
+        }
+    };
+
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
@@ -46,6 +60,7 @@ pub fn optimize<A: Adapter>(
             &mut solver,
             bus_interaction_handler.clone(),
             &mut stats_logger,
+            &mut new_var,
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
         )?
@@ -142,7 +157,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .iter()
                 .map(|arg| {
                     let mut arg = arg.clone();
-                    powdr::substitute_subexpressions(&mut arg, &subs);
+                    powdr::substitute_algebraic_algebraic(&mut arg, &subs);
                     simplify_expression(arg)
                 })
                 .collect();
@@ -170,14 +185,14 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.bus_interactions.push(latest_send.unwrap());
 
     for c in &mut machine.constraints {
-        powdr::substitute_subexpressions(&mut c.expr, &subs);
+        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs);
         c.expr = simplify_expression(c.expr.clone());
     }
     for b in &mut machine.bus_interactions {
-        powdr::substitute_subexpressions(&mut b.mult, &subs);
+        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs);
         b.mult = simplify_expression(b.mult.clone());
         for a in &mut b.args {
-            powdr::substitute_subexpressions(a, &subs);
+            powdr::substitute_algebraic_algebraic(a, &subs);
             *a = simplify_expression(a.clone());
         }
     }
@@ -201,6 +216,19 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .iter()
             .map(symbolic_bus_interaction_to_bus_interaction)
             .collect(),
+        derived_variables: symbolic_machine
+            .derived_columns
+            .iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
+                    ComputationMethod::InverseOrZero(c) => {
+                        ComputationMethod::InverseOrZero(algebraic_to_grouped_expression(c))
+                    }
+                };
+                (v.clone(), method)
+            })
+            .collect(),
     }
 }
 
@@ -217,6 +245,19 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .bus_interactions
             .into_iter()
             .map(bus_interaction_to_symbolic_bus_interaction)
+            .collect(),
+        derived_columns: constraint_system
+            .derived_variables
+            .into_iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
+                    ComputationMethod::InverseOrZero(c) => {
+                        ComputationMethod::InverseOrZero(grouped_expression_to_algebraic(c))
+                    }
+                };
+                (v, method)
+            })
             .collect(),
     }
 }

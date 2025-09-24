@@ -16,6 +16,7 @@ derive_more = "0.99.17"
 auto_enums = "0.8.5"
 log = "0.4.27"
 bitvec = "1.0.1"
+serde = "1.0.218"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
