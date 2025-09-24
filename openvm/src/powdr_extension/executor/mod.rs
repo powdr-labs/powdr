@@ -201,7 +201,7 @@ impl PowdrExecutor {
             // Note that we call `pre_compute` instead of `metered_pre_compute`, which sets the chip_index and increment trace height for each original instruction AIR
             // Because trace heights are used for segmentation calculation, we don't want to account for original instructions but instead post-optimization APC
             let func = exec
-                .pre_compute(pc, &instruction.0, {
+                .pre_compute(curr_pc, &instruction.0, {
                     // Reserve the pre-compute slice and let the callee fill it in
                     let precompute = w.reserve_mut(pre_len).unwrap();
                     precompute
