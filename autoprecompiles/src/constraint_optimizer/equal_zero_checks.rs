@@ -5,7 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 use num_traits::One;
 use powdr_constraint_solver::constraint_system::{
-    AlgebraicConstraint, BusInteractionHandler, ConstraintSystem,
+    AlgebraicConstraint, BusInteractionHandler, ComputationMethod, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::{
     GroupedExpression, NoRangeConstraints, RangeConstraintProvider,
@@ -309,15 +309,20 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         .map(|v| GroupedExpression::from_unknown_variable(v.clone()))
         .reduce(|a, b| a + b)
         .unwrap();
-    let sum_inv = GroupedExpression::from_unknown_variable(new_var());
+    let sum_inv_var = new_var();
+    let sum_inv = GroupedExpression::from_unknown_variable(sum_inv_var.clone());
     let new_constraints = vec![
         AlgebraicConstraint::assert_zero(output_expr.clone() * sum_of_inputs.clone()),
         AlgebraicConstraint::assert_eq(
             output_expr,
-            GroupedExpression::one() - sum_inv.clone() * sum_of_inputs,
+            GroupedExpression::one() - sum_inv.clone() * sum_of_inputs.clone(),
         ),
     ];
     constraint_system.add_algebraic_constraints(new_constraints.clone());
+    constraint_system.add_derived_variable(
+        sum_inv_var.clone(),
+        ComputationMethod::InverseOrZero(sum_of_inputs),
+    );
     solver.add_algebraic_constraints(new_constraints);
 
     // Verify that the modified system still has the same property (optional)

@@ -317,6 +317,20 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         });
     }
 
+    /// Adds a derived variable. The variable is not created with this function, it only adds
+    /// a method to compute it.
+    pub fn add_derived_variable(
+        &mut self,
+        variable: V,
+        method: ComputationMethod<T, GroupedExpression<T, V>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: Vec::new(),
+            derived_variables: vec![(variable, method)],
+        });
+    }
+
     /// Extends the constraint system by the constraints of another system.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
