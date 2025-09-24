@@ -234,7 +234,15 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
         derived_columns: constraint_system
             .derived_variables
             .into_iter()
-            .map(|_| panic!("Derived columns should have been inlined away by now."))
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
+                    ComputationMethod::InverseOrZero(c) => {
+                        ComputationMethod::InverseOrZero(grouped_expression_to_algebraic(c))
+                    }
+                };
+                (v, method)
+            })
             .collect(),
     }
 }

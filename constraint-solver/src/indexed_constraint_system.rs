@@ -122,7 +122,7 @@ impl ConstraintSystemItem {
         match self {
             ConstraintSystemItem::AlgebraicConstraint(index)
             | ConstraintSystemItem::BusInteraction(index)
-            | ConstraintSystemItem::DerivedVariable(index) => index,
+            | ConstraintSystemItem::DerivedVariable(index) => *index,
         }
     }
 
@@ -271,14 +271,14 @@ fn retain<V, Item>(
     occurrences.values_mut().for_each(|occurrences| {
         *occurrences = occurrences
             .iter()
-            .filter(|item| {
+            .filter_map(|item| {
                 if std::mem::discriminant(item) == discriminant {
                     // We have an item of the kind we are modifying, so apply
                     // the replacement map
                     replacement_map[item.index()].map(constraint_kind_constructor)
                 } else {
                     // This is a constraint of the wrong kind, do not modify it.
-                    *item
+                    Some(*item)
                 }
             })
             .collect();
