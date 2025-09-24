@@ -1,16 +1,23 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    collections::HashMap,
+    sync::Arc,
+};
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
     extraction_utils::OriginalAirs,
-    powdr_extension::executor::utils::{BufReader, BufWriter},
     powdr_extension::executor::{inventory::DummyChipComplex, periphery::SharedPeripheryChips},
     BabyBearSC, ExtendedVmConfig, Instr,
 };
 
 use openvm_algebra_circuit::AlgebraCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
-use openvm_circuit::arch::PreflightExecutor;
+use openvm_circuit::arch::{
+    execution_mode::{ExecutionCtx, MeteredCostCtx},
+    E2PreCompute, PreflightExecutor,
+};
+use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_ecc_circuit::EccCpuProverExt;
 use openvm_instructions::instruction::Instruction;
 use openvm_keccak256_circuit::Keccak256CpuProverExt;
@@ -54,7 +61,6 @@ use powdr_autoprecompiles::InstructionHandler;
 mod inventory;
 /// The shared periphery chips used by the PowdrExecutor
 mod periphery;
-pub mod utils;
 
 pub use periphery::PowdrPeripheryInstances;
 
@@ -69,15 +75,22 @@ pub struct PowdrExecutor {
     record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>,
 }
 
+const MAXIMUM_NUMBER_OF_ORIGINAL_INSTRUCTIONS: usize = 1000;
+
+#[derive(AlignedBytesBorrow, Clone)]
+#[repr(C)]
+struct PowdrPreCompute<Ctx> {
+    original_instructions: Vec<(ExecuteFunc<BabyBear, Ctx>, Vec<u8>)>,
+}
+
 impl Executor<BabyBear> for PowdrExecutor {
     // Note: this is only used in `get_pre_compute_max_size` in OVM to pre allocate buffers for precomputed instructions.
     // `get_pre_compute_max_size` takes the max of the pre compute sizes of all instructions (including Powdr instruction) and pad to next power of two.
     // Then, `alloc_pre_compute_buf` allocates the calculated max size * length of the program.
     // TODO: it might be a concern that Powdr pre_compute_size might be too long, as it aggregates those of all original instructions.
     fn pre_compute_size(&self) -> usize {
-        // Total size: [usize num_instr] + per-instruction
-        // [usize pre_len] + [pre_len bytes] + [func ptr bytes]
-        self.compute_total_size(/*include_apc_idx*/ false)
+        // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
+        size_of::<PowdrPreCompute<ExecutionCtx>>()
     }
 
     fn pre_compute<Ctx>(
@@ -89,183 +102,131 @@ impl Executor<BabyBear> for PowdrExecutor {
     where
         Ctx: ExecutionCtxTrait,
     {
-        self.pre_compute_impl_e1::<Ctx>(pc, data);
+        let pre_compute: &mut PowdrPreCompute<Ctx> = data.borrow_mut();
 
-        Ok(execute_e1_impl::<BabyBear, Ctx>)
+        self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
+
+        Ok(execute_e1_impl::<Ctx>)
     }
 }
 
-impl<F: PrimeField32> MeteredExecutor<F> for PowdrExecutor {
+impl MeteredExecutor<BabyBear> for PowdrExecutor {
     // TODO: it might be a concern that Powdr metered_pre_compute_size might be too long, as it aggregates those of all original instructions.
     fn metered_pre_compute_size(&self) -> usize {
-        // Total size: [usize apc_idx] + [usize num_instr] + per-instruction:
-        // [usize pre_len] + [pre_len bytes] + [func ptr bytes]
-        self.compute_total_size(/*include_apc_idx*/ true)
+        // TODO: do we know `MeteredCostCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
+        size_of::<E2PreCompute<PowdrPreCompute<MeteredCostCtx>>>()
     }
 
     fn metered_pre_compute<Ctx>(
         &self,
-        air_idx: usize,
+        chip_idx: usize,
         pc: u32,
-        inst: &Instruction<F>,
+        inst: &Instruction<BabyBear>,
         data: &mut [u8],
-    ) -> Result<ExecuteFunc<F, Ctx>, StaticProgramError>
+    ) -> Result<ExecuteFunc<BabyBear, Ctx>, StaticProgramError>
     where
         Ctx: MeteredExecutionCtxTrait,
     {
-        // Serialize pre-computed payload and function pointer for each instruction
-        self.pre_compute_impl_e2::<Ctx>(pc, data, air_idx);
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<Ctx>> = data.borrow_mut();
+        pre_compute.chip_idx = chip_idx as u32;
 
-        // Return the function pointer that executes all function pointers with their corresponding pre-computed payloads from the `data` buffer.
-        Ok(execute_e2_impl::<F, Ctx>)
+        self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
+
+        Ok(execute_e2_impl::<Ctx>)
     }
 }
 
 impl PowdrExecutor {
     #[inline]
-    fn compute_total_size(&self, include_apc_idx: bool) -> usize {
-        let usize_size = core::mem::size_of::<usize>();
-        let func_ptr_size = usize_size; // ExecuteFunc stored as raw pointer-sized bytes
 
-        let mut total = 0usize;
-        if include_apc_idx {
-            total = total.saturating_add(usize_size);
-        }
-
-        // num_instructions marker
-        total = total.saturating_add(usize_size);
-
-        for instruction in self.apc.instructions().iter() {
-            // pre_len marker
-            total = total.saturating_add(usize_size);
-            // payload bytes (non-metered size used for both modes)
-            let pre_len = self
-                .executor_inventory
-                .get_executor(instruction.0.opcode)
-                .unwrap()
-                .pre_compute_size();
-            total = total.saturating_add(pre_len);
-            // function pointer bytes
-            total = total.saturating_add(func_ptr_size);
-        }
-
-        total
-    }
-
-    fn pre_compute_impl_e1<Ctx>(&self, pc: u32, data: &mut [u8])
+    fn pre_compute_impl<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut PowdrPreCompute<Ctx>,
+    ) -> Result<(), StaticProgramError>
     where
         Ctx: ExecutionCtxTrait,
     {
-        // Just create the buf writer with no need to write the apc_air_idx
-        let mut w = BufWriter::new(data);
+        let &Instruction {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            ..
+        } = inst;
 
-        // Serialize pre-computed payload and function pointer for each instruction
-        self.pre_compute_impl_e12::<Ctx>(pc, &mut w);
-    }
+        // TODO: assert that the opcode is the one we expect
 
-    fn pre_compute_impl_e2<Ctx>(&self, pc: u32, data: &mut [u8], apc_air_idx: usize)
-    where
-        Ctx: MeteredExecutionCtxTrait,
-    {
-        // Serialize apc_air_idx
-        let mut w = BufWriter::new(data);
-        w.write_usize(apc_air_idx).unwrap();
+        if !a.is_zero()
+            || !b.is_zero()
+            || !c.is_zero()
+            || !d.is_zero()
+            || !e.is_zero()
+            || !f.is_zero()
+            || !g.is_zero()
+        {
+            return Err(StaticProgramError::InvalidInstruction(pc));
+        }
 
-        // Serialize pre-computed payload and function pointer for each instruction
-        self.pre_compute_impl_e12::<Ctx>(pc, &mut w);
-    }
-
-    fn pre_compute_impl_e12<Ctx>(&self, pc: u32, w: &mut BufWriter<'_>)
-    where
-        Ctx: ExecutionCtxTrait,
-    {
-        let mut curr_pc: u32 = pc;
-
-        // Write number of instructions to data as raw bytes
-        w.write_usize(self.apc.instructions().len()).unwrap();
-
-        // For each instruction, serialize pre_compute_size, the full data slice, and ExecFunc raw pointer
-        // TODO: can parallelize this (probably requires multiple `BufWriter`s`), 
-        // because we are just precomputing the instruction handler functions and populating their payloads (pre-compute),
-        // so it's not a sequential operation?
-        self.apc.instructions().iter().for_each(|instruction| {
-            let exec = self
-                .executor_inventory
-                .get_executor(instruction.0.opcode)
-                .unwrap();
-
-            // Write pre_compute_size to data as raw bytes
-            let pre_len = exec.pre_compute_size();
-            w.write_usize(pre_len).unwrap();
-
-            // Write pre_compute_size bytes to data by calling `pre_compute` and return function raw pointer
-            // Note that we call `pre_compute` instead of `metered_pre_compute`, which sets the chip_index and increment trace height for each original instruction AIR
-            // Because trace heights are used for segmentation calculation, we don't want to account for original instructions but instead post-optimization APC
-            let func = exec
-                .pre_compute(curr_pc, &instruction.0, {
-                    // Reserve the pre-compute slice and let the callee fill it in
-                    let precompute = w.reserve_mut(pre_len).unwrap();
-                    precompute
+        *data = PowdrPreCompute {
+            // TODO: generate the precomputed data for each original instruction here
+            original_instructions: self
+                .apc
+                .instructions()
+                .iter()
+                .map(|instruction| {
+                    let executor = self
+                        .executor_inventory
+                        .get_executor(instruction.0.opcode)
+                        .ok_or(StaticProgramError::InvalidInstruction(pc))?;
+                    let pre_compute_size = executor.pre_compute_size();
+                    let mut pre_compute_data = vec![0u8; pre_compute_size];
+                    let execute_func =
+                        executor.pre_compute::<Ctx>(pc, &instruction.0, &mut pre_compute_data)?;
+                    Ok((execute_func, pre_compute_data.to_vec()))
                 })
-                .unwrap();
+                .collect::<Result<Vec<_>, StaticProgramError>>()?,
+        };
 
-            // Write function raw pointer to data as raw bytes
-            w.write_exec_func::<BabyBear, Ctx>(func).unwrap();
-
-            // Advance pc by 4, because instructions in APC are contiguous
-            curr_pc += 4;
-        })
+        Ok(())
     }
 }
 
-// #[create_tco_handler]
 #[inline(always)]
-unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
-    pre_compute: &[u8],
-    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
+    pre_compute: &PowdrPreCompute<CTX>,
+    vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
-    execute_e12_impl(pre_compute, vm_state);
+    pre_compute
+        .original_instructions
+        .iter()
+        .fold(vm_state, |vm_state, (executor, data)| {
+            executor(data, vm_state);
+            vm_state
+        });
 }
 
-// #[create_tco_handler]
-#[inline(always)]
-unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
+unsafe fn execute_e1_impl<CTX: ExecutionCtxTrait>(
     pre_compute: &[u8],
-    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+    vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
-    // Read the chip_idx of the APC
-    let mut r = BufReader::new(pre_compute);
-    let chip_idx = r.read_usize().unwrap();
-
-    // Increment trace height for the APC for segmentation in metered and RecordArena initialization in preflight
-    vm_state.ctx.on_height_change(chip_idx as usize, 1);
-
-    // Advance pre_compute pointer by size of a usize to skip the apc_air_idx
-    let start = core::mem::size_of::<usize>();
-    let pre_compute_after_air_idx = &pre_compute[start..];
-
-    execute_e12_impl(pre_compute_after_air_idx, vm_state);
+    let pre_compute: &PowdrPreCompute<CTX> = pre_compute.borrow();
+    execute_e12_impl::<CTX>(pre_compute, vm_state);
 }
 
-#[inline(always)]
-unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
+unsafe fn execute_e2_impl<CTX: MeteredExecutionCtxTrait>(
     pre_compute: &[u8],
-    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+    vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
-    let mut r = BufReader::new(pre_compute);
-
-    // Read the number of instructions
-    let num = r.read_usize().unwrap();
-    for _ in 0..num {
-        // Read the `pre_compute_size`
-        let pre_len = r.read_usize().unwrap();
-        // Read the pre-compute bytes
-        let payload = r.read_bytes(pre_len).unwrap();
-        // Read the ExecuteFunc pointer
-        let func = r.read_exec_func::<F, CTX>().unwrap();
-        // Call ExecuteFunc
-        unsafe { func(payload, vm_state) };
-    }
+    let pre_compute: &E2PreCompute<PowdrPreCompute<CTX>> = pre_compute.borrow();
+    vm_state
+        .ctx
+        .on_height_change(pre_compute.chip_idx as usize, 1);
+    execute_e12_impl::<CTX>(&pre_compute.data, vm_state);
 }
 
 impl PreflightExecutor<BabyBear> for PowdrExecutor {
