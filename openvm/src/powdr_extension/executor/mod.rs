@@ -75,8 +75,6 @@ pub struct PowdrExecutor {
     record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>,
 }
 
-const MAXIMUM_NUMBER_OF_ORIGINAL_INSTRUCTIONS: usize = 1000;
-
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
 struct PowdrPreCompute<Ctx> {
