@@ -164,45 +164,46 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        Ok(if self.expression.linear_components().count() == 1 {
-            let (var, coeff) = self.expression.linear_components().next().unwrap();
-            // Solve "coeff * X + self.constant = 0" by division.
-            assert!(
-                !coeff.is_known_zero(),
-                "Zero coefficient has not been removed: {self}"
-            );
-            let constant = self.expression.constant_offset();
-            if coeff.is_known_nonzero() {
-                // In this case, we can always compute a solution.
-                let value = constant.field_div(&-coeff.clone());
-                ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
-                    var.clone(),
-                    value,
-                    range_constraints,
-                )?])
-            } else if constant.is_known_nonzero() {
-                // If the offset is not zero, then the coefficient must be non-zero,
-                // otherwise the constraint is violated.
-                let value = constant.field_div(&-coeff.clone());
-                ProcessResult::complete(vec![
-                    Assertion::assert_is_nonzero(coeff.clone()),
-                    assignment_if_satisfies_range_constraints(
+        Ok(
+            if let Ok((var, coeff)) = self.expression.linear_components().exactly_one() {
+                // Solve "coeff * X + self.constant = 0" by division.
+                assert!(
+                    !coeff.is_known_zero(),
+                    "Zero coefficient has not been removed: {self}"
+                );
+                let constant = self.expression.constant_offset();
+                if coeff.is_known_nonzero() {
+                    // In this case, we can always compute a solution.
+                    let value = constant.field_div(&-coeff.clone());
+                    ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
                         var.clone(),
                         value,
                         range_constraints,
-                    )?,
-                ])
+                    )?])
+                } else if constant.is_known_nonzero() {
+                    // If the offset is not zero, then the coefficient must be non-zero,
+                    // otherwise the constraint is violated.
+                    let value = constant.field_div(&-coeff.clone());
+                    ProcessResult::complete(vec![
+                        Assertion::assert_is_nonzero(coeff.clone()),
+                        assignment_if_satisfies_range_constraints(
+                            var.clone(),
+                            value,
+                            range_constraints,
+                        )?,
+                    ])
+                } else {
+                    // If this case, we could have an equation of the form
+                    // 0 * X = 0, which is valid and generates no information about X.
+                    ProcessResult::empty()
+                }
             } else {
-                // If this case, we could have an equation of the form
-                // 0 * X = 0, which is valid and generates no information about X.
-                ProcessResult::empty()
-            }
-        } else {
-            ProcessResult {
-                effects: self.transfer_constraints(range_constraints),
-                complete: false,
-            }
-        })
+                ProcessResult {
+                    effects: self.transfer_constraints(range_constraints),
+                    complete: false,
+                }
+            },
+        )
     }
 
     /// Extract the range constraints from the expression.
