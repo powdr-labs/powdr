@@ -216,6 +216,7 @@ mod tests {
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         assert_eq!(
@@ -237,6 +238,7 @@ bus: none, -tmp_0 = 0
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         assert_eq!(
@@ -255,6 +257,7 @@ bus: none, tmp_0 + 4 = 0
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         assert_eq!(
@@ -273,6 +276,7 @@ bus: none, tmp_0 + 4 = 0
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         assert_eq!(
@@ -293,6 +297,7 @@ bus: none, tmp_0 + 1 = 0
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         assert_eq!(
@@ -312,6 +317,7 @@ bus: none, -tmp_0 = 0
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         assert_eq!(

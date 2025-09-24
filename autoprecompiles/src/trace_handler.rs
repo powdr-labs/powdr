@@ -1,13 +1,12 @@
 use itertools::Itertools;
-use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator};
+use powdr_constraint_solver::constraint_system::ComputationMethod;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
-use crate::powdr::UniqueReferences;
-use crate::{Apc, InstructionHandler, SymbolicMachine};
+use crate::{Apc, InstructionHandler};
 
 /// Returns data needed for constructing the APC trace.
 pub struct TraceData<'a, F> {
@@ -20,7 +19,8 @@ pub struct TraceData<'a, F> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: BTreeMap<usize, ComputationMethod>,
+    pub columns_to_compute:
+        BTreeMap<AlgebraicReference, ComputationMethod<F, AlgebraicExpression<F>>>,
 }
 
 pub struct Trace<F> {
@@ -34,23 +34,16 @@ impl<F> Trace<F> {
     }
 }
 
-pub enum ComputationMethod {
-    /// A constant value.
-    Constant(u64),
-    /// The field inverse of a sum of values of other columns,
-    /// given by their indices.
-    InverseOfSum(Vec<usize>),
-}
-
 pub fn generate_trace<'a, IH>(
     air_id_to_dummy_trace: &'a HashMap<IH::AirId, Trace<IH::Field>>,
     instruction_handler: &'a IH,
     apc_call_count: usize,
     apc: &Apc<IH::Field, IH::Instruction>,
+    field_unity: IH::Field,
 ) -> TraceData<'a, IH::Field>
 where
     IH: InstructionHandler,
-    IH::Field: Display + Send + Sync,
+    IH::Field: Display + Clone + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
 {
     // Returns a vector with the same length as original instructions
@@ -72,9 +65,6 @@ where
         .enumerate()
         .map(|(index, c)| (c.id, index))
         .collect();
-
-    // The index of the "is_valid" column.
-    let is_valid_index = apc_poly_id_to_index[&apc.is_valid_poly_id()];
 
     let original_instruction_table_offsets = original_instruction_air_ids
         .iter()
@@ -124,93 +114,21 @@ where
         })
         .collect();
 
-    let mut columns_to_compute = [(is_valid_index, ComputationMethod::Constant(1u64))]
+    // The "is_valid" column
+    let is_valid_column = AlgebraicReference {
+        name: "is_valid".to_string().into(),
+        id: apc.is_valid_poly_id(),
+    };
+
+    let columns_to_compute = [(is_valid_column, ComputationMethod::Constant(field_unity))]
         .into_iter()
-        .collect::<BTreeMap<_, _>>();
-    // Column IDs for which we could not find a corresponding column in the dummy trace.
-    // Those are newly created columns that we will need to compute.
-    for column in apc
-        .machine
-        .main_columns()
-        .filter(|id| !mapped_poly_ids.contains(&id.id) && id.id != apc.is_valid_poly_id())
-    {
-        columns_to_compute.insert(
-            apc_poly_id_to_index[&column.id],
-            derive_computation_method(&column, apc.machine()),
-        );
-    }
+        .chain(apc.machine.derived_columns.iter().cloned())
+        .collect();
 
     TraceData {
         dummy_values,
         dummy_trace_index_to_apc_index_by_instruction,
         apc_poly_id_to_index,
         columns_to_compute,
-    }
-}
-
-fn derive_computation_method<T: Display>(
-    column: &AlgebraicReference,
-    machine: &SymbolicMachine<T>,
-) -> ComputationMethod {
-    for constr in &machine.constraints {
-        if !constr.unique_references().contains(column) {
-            continue;
-        }
-        println!("{constr}");
-        // // We try to match against the pattern `column * something - 1 = 0`.
-        // // TODO cannot use GroupedExpression here, unfortunately.
-        // // TODO avoid doing the conversion multiple times.
-        // let expr = constr.expr.to_expression(
-        //     &|n| GroupedExpression::<_, AlgebraicReference>::from_number(A::from_field(*n)),
-        //     &|r| GroupedExpression::from_unknown_variable(r.clone()),
-        // );
-        // let (quadratic, linear, constant) = expr.components();
-    }
-    panic!("Could not derive a computation method for column {column}");
-}
-
-fn try_derive_method_from_constr<T: Display>(
-    column: &AlgebraicReference,
-    expr: &AlgebraicExpression<T>,
-) -> Option<ComputationMethod> {
-    match expr {
-        AlgebraicExpression::Reference(_) => todo!(),
-        AlgebraicExpression::Number(_) => None,
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            match op {
-                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => None,
-                AlgebraicBinaryOperator::Mul => try_derive_method_from_constr(column, left)
-                    .or_else(|| try_derive_method_from_constr(column, right)),
-            }
-        }
-        AlgebraicExpression::UnaryOperation(_) => None,
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_try_derive() {
-        let x = AlgebraicReference {
-            id: 0,
-            name: "x".to_string().into(),
-        };
-        let x_expr = AlgebraicExpression::Reference(x.clone());
-        let y = AlgebraicExpression::Reference(AlgebraicReference {
-            id: 1,
-            name: "y".to_string().into(),
-        });
-        let z = AlgebraicExpression::Reference(AlgebraicReference {
-            id: 2,
-            name: "z".to_string().into(),
-        });
-        // (1 - x * (y + z)) * z
-        let expr = (AlgebraicExpression::from(1u64) - x_expr.clone() * (y.clone() + z.clone()))
-            * z.clone();
-        let result = try_derive_method_from_constr(&x, &expr);
-        assert!(result.is_some());
-        // TODO more
     }
 }

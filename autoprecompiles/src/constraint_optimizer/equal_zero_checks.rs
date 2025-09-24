@@ -251,6 +251,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     let mut isolated_system = ConstraintSystem {
         algebraic_constraints: vec![],
         bus_interactions: vec![],
+        derived_variables: vec![],
     };
     constraint_system.retain_algebraic_constraints(|constr| {
         // Remove the constraint if it references a variable to remove

@@ -6,6 +6,7 @@ use crate::{
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
+use serde::{Deserialize, Serialize};
 use std::{fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
@@ -18,6 +19,39 @@ pub struct ConstraintSystem<T, V> {
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
+    /// Newly added variables whose values are derived from existing variables.
+    pub derived_variables: Vec<DerivedVariable<T, V>>,
+}
+
+pub type DerivedVariable<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
+
+/// Specifies a way to compute the value of a variable from other variables.
+/// It is generic over the field `T` and the expression type `E`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ComputationMethod<T, E> {
+    /// A constant value.
+    Constant(T),
+    /// The field inverse of an expression if it exists or zero otherwise.
+    InverseOrZero(E),
+}
+
+impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComputationMethod::Constant(c) => write!(f, "{c}"),
+            ComputationMethod::InverseOrZero(e) => write!(f, "InverseOrZero({e})"),
+        }
+    }
+}
+
+impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
+    /// Returns the set of referenced unknown variables in the computation method. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &F> + '_> {
+        match self {
+            ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
+            ComputationMethod::InverseOrZero(e) => e.referenced_unknown_variables(),
+        }
+    }
 }
 
 impl<T, V> Default for ConstraintSystem<T, V> {
@@ -25,6 +59,7 @@ impl<T, V> Default for ConstraintSystem<T, V> {
         ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
+            derived_variables: Vec::new(),
         }
     }
 }
@@ -42,6 +77,11 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                         .iter()
                         .map(|bus_inter| format!("{bus_inter}"))
                 )
+                .chain(
+                    self.derived_variables
+                        .iter()
+                        .map(|(var, method)| { format!("{var} := {method}") })
+                )
                 .format("\n")
         )
     }
@@ -49,6 +89,8 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
 
 impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     /// Returns all referenced unknown variables in the system. Might contain repetitions.
+    ///
+    /// Variables referenced in derived variables are not included, as they are not part of the constraints.
     pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
         self.algebraic_constraints
             .iter()
@@ -61,11 +103,12 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 
     /// Extends the constraint system by the constraints of another system.
-    /// No de-duplication is performed.
+    /// No de-duplication of constraints or disambiguation of variables is performed.
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         self.algebraic_constraints
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
+        self.derived_variables.extend(system.derived_variables);
     }
 }
 

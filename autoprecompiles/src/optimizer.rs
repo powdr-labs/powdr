@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::AlgebraicConstraint;
+use powdr_constraint_solver::constraint_system::{AlgebraicConstraint, ComputationMethod};
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
@@ -216,6 +216,19 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .iter()
             .map(symbolic_bus_interaction_to_bus_interaction)
             .collect(),
+        derived_variables: symbolic_machine
+            .derived_columns
+            .iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
+                    ComputationMethod::InverseOrZero(c) => {
+                        ComputationMethod::InverseOrZero(algebraic_to_grouped_expression(c))
+                    }
+                };
+                (v.clone(), method)
+            })
+            .collect(),
     }
 }
 
@@ -232,6 +245,19 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .bus_interactions
             .into_iter()
             .map(bus_interaction_to_symbolic_bus_interaction)
+            .collect(),
+        derived_columns: constraint_system
+            .derived_variables
+            .into_iter()
+            .map(|(v, method)| {
+                let method = match method {
+                    ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
+                    ComputationMethod::InverseOrZero(c) => {
+                        ComputationMethod::InverseOrZero(grouped_expression_to_algebraic(c))
+                    }
+                };
+                (v, method)
+            })
             .collect(),
     }
 }

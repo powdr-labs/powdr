@@ -134,6 +134,12 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
     let constraint_system = remove_redundant_constraints(constraint_system);
     stats_logger.log("removing redundant constraints", &constraint_system);
 
+    let constraint_system = remove_unreferenced_derived_variables(constraint_system);
+    stats_logger.log(
+        "removing unreferenced derived variables",
+        &constraint_system,
+    );
+
     constraint_system
 }
 
@@ -481,5 +487,18 @@ fn remove_duplicate_factors<P: FieldElement, V: Clone + Ord + Hash + Display>(
         }
     });
     constraint_system.add_algebraic_constraints(constraint_to_add);
+    constraint_system
+}
+
+fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash + Display>(
+    mut constraint_system: IndexedConstraintSystem<P, V>,
+) -> IndexedConstraintSystem<P, V> {
+    // Note that `referenced_unknown_variables` only returns variables referenced in constraints.
+    let referenced_variables = constraint_system
+        .referenced_unknown_variables()
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    constraint_system.retain_derived_variables(|(var, _)| referenced_variables.contains(var));
     constraint_system
 }
