@@ -222,7 +222,9 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     let pc_base = exe.program.pc_base;
     let pc_step = DEFAULT_PC_STEP;
-    let mut program = exe.program.clone();
+    // We need to clone the program because we need to modify it to add the apc instructions.
+    let mut exe = (*exe).clone();
+    let program = &mut exe.program;
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -252,7 +254,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .collect();
 
     CompiledProgram {
-        exe,
+        exe: Arc::new(exe),
         vm_config: SpecializedConfig::new(
             original_config,
             extensions,
