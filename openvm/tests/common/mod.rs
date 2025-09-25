@@ -31,6 +31,8 @@ pub mod apc_builder_utils {
 
     use crate::common::original_vm_config;
 
+    // This code is not dead, but somehow the compiler thinks so.
+    #[allow(dead_code)]
     pub fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         let original_config = original_vm_config();
         let degree_bound = DEFAULT_DEGREE_BOUND;
@@ -67,6 +69,8 @@ pub mod apc_builder_utils {
         )
     }
 
+    // This code is not dead, but somehow the compiler thinks so.
+    #[allow(dead_code)]
     pub fn assert_machine_output(
         program: Vec<Instruction<BabyBear>>,
         module_name: &str,
