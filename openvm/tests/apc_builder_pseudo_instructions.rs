@@ -1,7 +1,12 @@
 mod common;
-use common::apc_builder_utils::assert_machine_output;
+use openvm_instructions::instruction::Instruction;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm::symbolic_instruction_builder::*;
 use test_log::test;
+
+fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
+    common::apc_builder_utils::assert_machine_output(program, "pseudo_instructions", test_name);
+}
 
 // Arithmetic pseudo instructions
 #[test]

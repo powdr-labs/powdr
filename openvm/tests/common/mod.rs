@@ -64,18 +64,26 @@ pub mod apc_builder_utils {
         )
     }
 
-    pub fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
+    pub fn assert_machine_output(
+        program: Vec<Instruction<BabyBear>>,
+        module_name: &str,
+        test_name: &str,
+    ) {
         let actual = compile(program.to_vec());
-        let base = Path::new("tests/apc_builder_outputs");
-        let file_path = base.join(format!("{test_name}.txt"));
+
+        let expected_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("apc_snapshots")
+            .join(module_name)
+            .join(format!("{test_name}.txt"));
 
         let should_update_expectation = std::env::var("UPDATE_EXPECT")
             .map(|v| v.as_str() == "1")
             .unwrap_or(false);
 
-        let expected = file_path
+        let expected = expected_path
             .exists()
-            .then(|| fs::read_to_string(&file_path).unwrap());
+            .then(|| fs::read_to_string(&expected_path).unwrap());
 
         match (expected, should_update_expectation) {
             (Some(expected), _) if expected == actual => {
@@ -96,8 +104,8 @@ pub mod apc_builder_utils {
             }
             _ => {
                 // Expectation file does not exist or is different from "actual" and we are allowed to update it.
-                fs::create_dir_all(base).unwrap();
-                fs::write(&file_path, &actual).unwrap();
+                fs::create_dir_all(expected_path.parent().unwrap()).unwrap();
+                fs::write(&expected_path, &actual).unwrap();
                 println!(
                     "Expected output for `{test_name}` was created. Re-run the test to confirm."
                 );
