@@ -14,7 +14,7 @@ use crate::{
 use openvm_algebra_circuit::AlgebraCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
 use openvm_circuit::arch::{
-    execution_mode::{ExecutionCtx, MeteredCostCtx},
+    execution_mode::{ExecutionCtx, MeteredCostCtx, MeteredCtx},
     E2PreCompute, PreflightExecutor,
 };
 use openvm_circuit_primitives::AlignedBytesBorrow;
@@ -111,8 +111,8 @@ impl Executor<BabyBear> for PowdrExecutor {
 impl MeteredExecutor<BabyBear> for PowdrExecutor {
     // TODO: it might be a concern that Powdr metered_pre_compute_size might be too long, as it aggregates those of all original instructions.
     fn metered_pre_compute_size(&self) -> usize {
-        // TODO: do we know `MeteredCostCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
-        size_of::<E2PreCompute<PowdrPreCompute<MeteredCostCtx>>>()
+        // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
+        size_of::<E2PreCompute<PowdrPreCompute<MeteredCtx>>>()
     }
 
     fn metered_pre_compute<Ctx>(
@@ -170,20 +170,27 @@ impl PowdrExecutor {
             return Err(StaticProgramError::InvalidInstruction(pc));
         }
 
+        // TODO: we can parallelize this now?
         *data = PowdrPreCompute {
             original_instructions: self
                 .apc
                 .instructions()
                 .iter()
-                .map(|instruction| {
+                .enumerate()
+                .map(|(idx, instruction)| {
                     let executor = self
                         .executor_inventory
                         .get_executor(instruction.0.opcode)
-                        .ok_or(StaticProgramError::InvalidInstruction(pc))?;
+                        .ok_or(StaticProgramError::ExecutorNotFound {
+                            opcode: instruction.0.opcode,
+                        })?;
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
-                    let execute_func =
-                        executor.pre_compute::<Ctx>(pc, &instruction.0, &mut pre_compute_data)?;
+                    let execute_func = executor.pre_compute::<Ctx>(
+                        pc + idx as u32 * 4,
+                        &instruction.0,
+                        &mut pre_compute_data,
+                    )?;
                     Ok((execute_func, pre_compute_data.to_vec()))
                 })
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
