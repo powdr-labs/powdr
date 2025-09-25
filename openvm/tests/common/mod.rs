@@ -51,8 +51,9 @@ pub mod apc_builder_utils {
             start_pc: 0,
         };
 
-        let apc = build::<BabyBearOpenVmApcAdapter>(basic_block.clone(), vm_config, degree_bound, None)
-            .unwrap();
+        let apc =
+            build::<BabyBearOpenVmApcAdapter>(basic_block.clone(), vm_config, degree_bound, None)
+                .unwrap();
         let apc = apc.machine();
 
         let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
@@ -97,7 +98,9 @@ pub mod apc_builder_utils {
                 // Expectation file does not exist or is different from "actual" and we are allowed to update it.
                 fs::create_dir_all(base).unwrap();
                 fs::write(&file_path, &actual).unwrap();
-                println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
+                println!(
+                    "Expected output for `{test_name}` was created. Re-run the test to confirm."
+                );
             }
         }
     }
