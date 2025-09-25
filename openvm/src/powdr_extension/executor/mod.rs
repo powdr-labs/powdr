@@ -395,14 +395,16 @@ impl PowdrExecutor {
             .iter()
             .enumerate()
             .rev()
-            .map(|(insertion_idx, chip)| {
+            .filter_map(|(insertion_idx, chip)| {
                 let air_name = self.chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                let record_arena = self
-                    .record_arena_by_air_name
-                    .borrow_mut()
-                    .remove(&air_name)
-                    .unwrap();
+                let record_arena = {
+                    let mut arenas = self.record_arena_by_air_name.borrow_mut();
+                    match arenas.remove(&air_name) {
+                        Some(ra) => ra,
+                        None => return None, // skip this iteration, because we only have record arena for chips that are used
+                    }
+                };
 
                 // Arc<DenseMatrix>
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
@@ -410,7 +412,7 @@ impl PowdrExecutor {
                 let DenseMatrix { values, width, .. } =
                     Arc::try_unwrap(shared_trace).expect("Can't unwrap shared Arc<DenseMatrix>");
 
-                (air_name, Trace::new(values, width))
+                Some((air_name, Trace::new(values, width)))
             })
             .collect();
 
