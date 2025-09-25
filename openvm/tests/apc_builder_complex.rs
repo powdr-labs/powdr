@@ -60,3 +60,15 @@ fn stack_accesses() {
 
     assert_machine_output(program.to_vec(), "stack_accesses");
 }
+
+#[test]
+fn load_two_bytes_compare() {
+    // Block 0x3bc8fc of the Reth benchmark.
+    // => Executed 293k times, especially ineffective (1.85x reduction).
+    let program = [
+        loadb(52, 40, 0, 2, 1, 0),
+        loadb(56, 44, 0, 2, 1, 0),
+        bne(52, 56, 28),
+    ];
+    assert_machine_output(program.to_vec(), "load_two_bytes_compare");
+}
