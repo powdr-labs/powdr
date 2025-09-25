@@ -1,7 +1,5 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::HashMap,
-    sync::Arc,
+    borrow::{Borrow, BorrowMut}, cell::RefCell, collections::HashMap, sync::Arc
 };
 
 use crate::{
@@ -69,10 +67,10 @@ pub struct PowdrExecutor {
     air_by_opcode_id: OriginalAirs<BabyBear>,
     chip_inventory: ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>,
     executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    number_of_calls: usize,
+    number_of_calls: RefCell<usize>,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>,
+    record_arena_by_air_name: RefCell<HashMap<String, MatrixRecordArena<BabyBear>>>,
 }
 
 #[derive(AlignedBytesBorrow, Clone)]
@@ -318,10 +316,11 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
 
         // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
         // TODO: self is immutable in `PreflightExecutor::execute`, so I'm not sure how we can mutate PowdrExecutor here
-        // self.record_arena_by_air_name
-        //     .extend(record_arena_by_air_name);
+        self.record_arena_by_air_name
+            .borrow_mut()
+            .extend(record_arena_by_air_name);
 
-        // self.number_of_calls += 1;
+        *self.number_of_calls.borrow_mut() += 1;
 
         Ok(())
     }
@@ -355,15 +354,15 @@ impl PowdrExecutor {
                     .inventory
             },
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
-            number_of_calls: 0,
+            number_of_calls: RefCell::new(0),
             periphery: periphery.real,
             apc,
-            record_arena_by_air_name: Default::default(),
+            record_arena_by_air_name: RefCell::new(Default::default()),
         }
     }
 
     pub fn number_of_calls(&self) -> usize {
-        self.number_of_calls
+        *self.number_of_calls.borrow()
     }
 
     /// Generates the witness for the autoprecompile. The result will be a matrix of
@@ -371,7 +370,7 @@ impl PowdrExecutor {
     /// nodes in the APC circuit.
     pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
         assert_eq!(
-            self.number_of_calls, 0,
+            *self.number_of_calls.borrow(), 0,
             "program is not modified to run apcs yet, so this should be zero"
         );
 
@@ -409,7 +408,7 @@ impl PowdrExecutor {
         } = generate_trace::<OriginalAirs<BabyBear>>(
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
-            self.number_of_calls,
+            *self.number_of_calls.borrow(),
             &self.apc,
         );
 
@@ -431,7 +430,7 @@ impl PowdrExecutor {
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
+        let height = next_power_of_two_or_zero(*self.number_of_calls.borrow());
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
