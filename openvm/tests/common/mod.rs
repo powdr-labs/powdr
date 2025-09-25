@@ -1,36 +1,39 @@
+use openvm_sdk::config::SdkVmConfig;
+use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig};
+
+pub fn original_vm_config() -> OriginalVmConfig {
+    let sdk_vm_config = SdkVmConfig::builder()
+        .system(Default::default())
+        .rv32i(Default::default())
+        .rv32m(Default::default())
+        .io(Default::default())
+        .build();
+
+    let ext_vm_config = ExtendedVmConfig { sdk_vm_config };
+    OriginalVmConfig::new(ext_vm_config)
+}
+
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
-    use openvm_sdk::config::SdkVmConfig;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::blocks::BasicBlock;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
     use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
-    use powdr_openvm::extraction_utils::OriginalVmConfig;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
     use powdr_openvm::BabyBearOpenVmApcAdapter;
-    use powdr_openvm::ExtendedVmConfig;
     use powdr_openvm::Instr;
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;
 
+    use crate::common::original_vm_config;
+
     pub fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
-        let sdk_vm_config = SdkVmConfig::builder()
-            .system(Default::default())
-            .rv32i(Default::default())
-            .rv32m(Default::default())
-            .io(Default::default())
-            .build();
-
-        let ext_vm_config = ExtendedVmConfig { sdk_vm_config };
-
-        let original_config = OriginalVmConfig::new(ext_vm_config);
-
+        let original_config = original_vm_config();
         let degree_bound = DEFAULT_DEGREE_BOUND;
-
         let airs = original_config.airs(degree_bound.identities).unwrap();
         let bus_map = original_config.bus_map();
 
