@@ -2,6 +2,7 @@
 
 pub mod algebraic_constraint;
 pub mod constraint_system;
+pub mod correctness_trace;
 pub mod effect;
 pub mod grouped_expression;
 pub mod indexed_constraint_system;
