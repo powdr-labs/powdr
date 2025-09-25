@@ -1,5 +1,8 @@
 use std::{
-    borrow::{Borrow, BorrowMut}, cell::RefCell, collections::HashMap, sync::Arc
+    borrow::{Borrow, BorrowMut},
+    cell::RefCell,
+    collections::HashMap,
+    sync::Arc,
 };
 
 use crate::{
@@ -24,7 +27,9 @@ use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
 use openvm_sha256_circuit::Sha2CpuProverExt;
-use openvm_stark_backend::{p3_field::Field, prover::cpu::CpuBackend};
+use openvm_stark_backend::{
+    p3_field::Field, p3_matrix::dense::DenseMatrix, prover::cpu::CpuBackend, Chip,
+};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
@@ -315,7 +320,6 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // state.ctx = original_ctx;
 
         // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
-        // TODO: self is immutable in `PreflightExecutor::execute`, so I'm not sure how we can mutate PowdrExecutor here
         self.record_arena_by_air_name
             .borrow_mut()
             .extend(record_arena_by_air_name);
@@ -370,31 +374,41 @@ impl PowdrExecutor {
     /// nodes in the APC circuit.
     pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
         assert_eq!(
-            *self.number_of_calls.borrow(), 0,
+            *self.number_of_calls.borrow(),
+            0,
             "program is not modified to run apcs yet, so this should be zero"
         );
 
+        // zip(self.inventory.chips.iter().enumerate().rev(), record_arenas).map(
+        //     |((insertion_idx, chip), records)| {
+        //         // Only create a span if record is not empty:
+        //         let _span = (!records.is_empty()).then(|| {
+        //             let air_name = self.inventory.airs.ext_airs[insertion_idx].name();
+        //             info_span!("single_trace_gen", air = air_name).entered()
+        //         });
+        //         chip.generate_proving_ctx(records)
+        //     },
+
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = self
-            .executor_inventory
-            .executors
+            .chip_inventory
+            .chips()
             .iter()
             .enumerate()
-            .map(|(executor_id, _)| {
-                let insertion_index =
-                    self.chip_inventory.executor_idx_to_insertion_idx[executor_id];
-                let air_ref = &self.chip_inventory.airs().ext_airs()[insertion_index];
-                let air_name = air_ref.name();
+            .rev()
+            .map(|(insertion_idx, chip)| {
+                let air_name = self.chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                // TODO: fetch the record arena from `PowdrExecutor.record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>>`
-                // then call generate_proving_ctx on it and the corresponding executor
+                let record_arena = self
+                    .record_arena_by_air_name
+                    .borrow_mut()
+                    .remove(&air_name)
+                    .unwrap();
 
-                // let DenseMatrix { values, width, .. } =
-                //     *tracing::debug_span!("dummy trace", air_name = air_name.clone())
-                //         .in_scope(|| Chip::generate_proving_ctx(&executor, unimplemented!("HashMap<air_name, MatrixRecordArena<BabyBear>>")).common_main.unwrap());
-
-                // TODO: replace the empty trace by the result of calling `generate_proving_ctx` above
-                let values = vec![];
-                let width = air_ref.width();
+                // Arc<DenseMatrix>
+                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
+                // Reference count should be 1 here as it's just created
+                let DenseMatrix { values, width, .. } =
+                    Arc::try_unwrap(shared_trace).expect("Can't unwrap shared Arc<DenseMatrix>");
 
                 (air_name, Trace::new(values, width))
             })
