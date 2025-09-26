@@ -3,13 +3,15 @@ use eyre::Result;
 use itertools::Itertools;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
+use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
-use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
-    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig, VmBuilder,
-    VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmProverExtension,
+    debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
+    ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
+    PreflightExecutionOutput, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
+    VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
+use openvm_circuit::arch::{RowMajorMatrixArena, VirtualMachine};
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -22,6 +24,7 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_native_circuit::NativeCpuBuilder;
 use openvm_sdk::config::TranspilerConfig;
+use openvm_sdk::prover::vm::new_local_prover;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
 use openvm_sdk::GenericSdk;
 use openvm_sdk::{
@@ -62,7 +65,7 @@ use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
-use tracing::Level;
+use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
@@ -775,10 +778,80 @@ pub fn prove(
     sdk.app_keygen();
 
     // TODO: allow mock, for now it's not implemented so we run the normal prover.
-    let mock = false;
+    let mock = true;
 
     if mock {
-    } else {
+        // Build owned vm instance, so we can mutate it later
+        let vm_builder = sdk.app_vm_builder().clone();
+        let vm_pk = sdk.app_pk().app_vm_pk.clone();
+        let exe = sdk.convert_to_exe(exe.clone())?;
+
+        let mut vm_instance: VmInstance<BabyBearPoseidon2Engine, _> =
+            new_local_prover(vm_builder, &vm_pk, exe)?;
+
+        // this instance should contain no pk, and we can't generate it unless we enable stark-debug feature
+        // let mut vm_instance = app_prover.instance().clone();
+        vm_instance.reset_state(inputs.clone());
+        let metered_ctx = vm_instance.vm.build_metered_ctx();
+        let metered_interpreter = vm_instance.vm.metered_interpreter(&vm_instance.exe())?;
+        let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
+        // let mut proofs = Vec::with_capacity(segments.len());
+        let mut state = vm_instance.state_mut().take();
+        for (seg_idx, segment) in segments.into_iter().enumerate() {
+            let vm = &mut vm_instance.vm;
+            let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
+            // We need a separate span so the metric label includes "segment" from _segment_span
+            let _prove_span = info_span!("total_proof").entered();
+            let Segment {
+                instret_start,
+                num_insns,
+                trace_heights,
+            } = segment;
+            assert_eq!(state.as_ref().unwrap().instret, instret_start);
+            let from_state = Option::take(&mut state).unwrap();
+            vm.transport_init_memory_to_device(&from_state.memory);
+            let PreflightExecutionOutput {
+                system_records,
+                record_arenas,
+                to_state,
+            } = vm.execute_preflight(
+                &mut vm_instance.interpreter,
+                from_state,
+                Some(num_insns),
+                &trace_heights,
+            )?;
+            state = Some(to_state);
+
+            let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
+
+            // CHANGE: debug_proving_ctx
+            let air_inv = vm.config().create_airs().unwrap();
+            let pk = air_inv.keygen(&vm.engine);
+            debug_proving_ctx(vm, &pk, &ctx);
+        }
+    }
+    // if mock {
+    //     tracing::info!("Checking constraints and witness in Mock prover...");
+    //     let engine = BabyBearPoseidon2Engine::new(app_fri_params);
+    //     let (vm, pk) =
+    //         VirtualMachine::new_with_keygen(engine, SpecializedConfigCpuBuilder, vm_config.clone())
+    //             .unwrap();
+    //     // let streams = Streams::from(inputs);
+    //     let mut result = vm.execute_and_generate(exe.clone(), streams).unwrap();
+    //     let _final_memory = Option::take(&mut result.final_memory);
+    //     let global_airs = vm.config().create_chip_complex().unwrap().airs();
+    //     for proof_input in &result.per_segment {
+    //         let (airs, pks, air_proof_inputs): (Vec<_>, Vec<_>, Vec<_>) =
+    //             multiunzip(proof_input.per_air.iter().map(|(air_id, air_proof_input)| {
+    //                 (
+    //                     global_airs[*air_id].clone(),
+    //                     pk.per_air[*air_id].clone(),
+    //                     air_proof_input.clone(),
+    //                 )
+    //             }));
+    //         vm.engine.debug(&airs, &pks, &air_proof_inputs);
+    //     }
+    else {
         // Generate a proof
         tracing::info!("Generating app proof...");
         let start = std::time::Instant::now();
@@ -873,8 +946,9 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap();
+        // assert!(result.is_ok());
     }
 
     fn prove_mock(
