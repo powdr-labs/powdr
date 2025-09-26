@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::bus_map::BusMap;
-use crate::extraction_utils::OriginalAirs;
+use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
@@ -11,18 +11,20 @@ use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
 use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{BabyBearSC, ExtendedVmConfig, Instr};
+use crate::{BabyBearSC, Instr};
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_instructions::LocalOpcode;
-use openvm_stark_backend::p3_air::BaseAir;
-use openvm_stark_backend::p3_field::FieldAlgebra;
-use openvm_stark_backend::p3_matrix::dense::{DenseMatrix, RowMajorMatrix};
-use openvm_stark_backend::p3_matrix::Matrix;
-use openvm_stark_backend::prover::hal::ProverBackend;
-use openvm_stark_backend::prover::types::AirProvingContext;
-use openvm_stark_backend::ChipUsageGetter;
-use openvm_stark_backend::{p3_field::PrimeField32, rap::AnyRap, Chip};
+use openvm_stark_backend::{
+    p3_air::BaseAir,
+    p3_field::{FieldAlgebra, PrimeField32},
+    p3_matrix::{
+        dense::{DenseMatrix, RowMajorMatrix},
+        Matrix,
+    },
+    prover::{hal::ProverBackend, types::AirProvingContext},
+    Chip, ChipUsageGetter,
+};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
@@ -43,8 +45,7 @@ impl PlonkChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-        // memory: Arc<Mutex<TracingMemory>>,
-        base_config: ExtendedVmConfig,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
         copy_constraint_bus_id: u16,

@@ -1,4 +1,5 @@
 use openvm_circuit::arch::{PhantomSubExecutor, Streams};
+use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::riscv::RV32_MEMORY_AS;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_rv32im_circuit::adapters::read_rv32_register;
@@ -14,7 +15,7 @@ pub struct ReverseBytesSubEx;
 impl<F: PrimeField32> PhantomSubExecutor<F> for ReverseBytesSubEx {
     fn phantom_execute(
         &self,
-        memory: &openvm_circuit::system::memory::online::GuestMemory,
+        memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
         _: PhantomDiscriminant,
@@ -54,7 +55,7 @@ impl_modulus!(
 impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseFieldSubEx {
     fn phantom_execute(
         &self,
-        memory: &openvm_circuit::system::memory::online::GuestMemory,
+        memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
         _: PhantomDiscriminant,
@@ -104,7 +105,7 @@ pub struct K256InverseField10x26SubEx;
 impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
     fn phantom_execute(
         &self,
-        memory: &openvm_circuit::system::memory::online::GuestMemory,
+        memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
         _: PhantomDiscriminant,
@@ -158,7 +159,7 @@ pub struct K256SqrtField10x26SubEx;
 impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
     fn phantom_execute(
         &self,
-        memory: &openvm_circuit::system::memory::online::GuestMemory,
+        memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
         _: PhantomDiscriminant,

@@ -10,4 +10,4 @@ mod vm;
 mod plonk;
 
 pub use opcode::PowdrOpcode;
-pub use vm::{PowdrExecutor, PowdrExtension, PowdrPrecompile};
+pub use vm::{PowdrExtension, PowdrExtensionExecutor, PowdrPrecompile};

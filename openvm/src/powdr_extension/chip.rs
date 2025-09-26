@@ -3,8 +3,9 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
-    ExtendedVmConfig, Instr,
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    powdr_extension::executor::PowdrPeripheryInstances,
+    Instr,
 };
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
@@ -21,7 +22,7 @@ use openvm_stark_backend::{
     interaction::InteractionBuilder,
     p3_field::PrimeField32,
     p3_matrix::Matrix,
-    rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
+    rap::{BaseAirWithPublicValues, PartitionedBaseAir},
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -42,8 +43,7 @@ impl PowdrChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-        // memory: Arc<Mutex<TracingMemory>>,
-        base_config: ExtendedVmConfig,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
