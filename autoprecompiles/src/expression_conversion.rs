@@ -1,5 +1,6 @@
 use powdr_constraint_solver::{
-    grouped_expression::GroupedExpression, runtime_constant::RuntimeConstant,
+    grouped_expression::{GroupedExpression, GroupedExpressionComponent},
+    runtime_constant::RuntimeConstant,
 };
 use powdr_expression::{AlgebraicUnaryOperation, AlgebraicUnaryOperator};
 use powdr_number::{ExpressionConvertible, FieldElement};
@@ -20,38 +21,35 @@ pub fn algebraic_to_grouped_expression<T: FieldElement>(
 /// Tries to simplify the expression wrt negation and constant factors
 /// to aid human readability.
 pub fn grouped_expression_to_algebraic<T: FieldElement>(
-    expr: &GroupedExpression<T, AlgebraicReference>,
+    expr: GroupedExpression<T, AlgebraicReference>,
 ) -> AlgebraicExpression<T> {
     // Turn the expression into a list of to-be-summed items and try to
     // simplify on the way.
-    let (quadratic, linear, constant) = expr.components();
-    let items = quadratic
-        .iter()
-        .map(|(l, r)| {
+    let items = expr.into_summands().filter_map(|c| match c {
+        GroupedExpressionComponent::Quadratic(l, r) => {
             let l = grouped_expression_to_algebraic(l);
             let (l, l_negated) = extract_negation_if_possible(l);
             let r = grouped_expression_to_algebraic(r);
             let (r, r_negated) = extract_negation_if_possible(r);
-            if l_negated == r_negated {
+            Some(if l_negated == r_negated {
                 l * r
             } else {
                 -(l * r)
-            }
-        })
-        .chain(linear.map(|(v, c)| {
-            if c.is_one() {
-                AlgebraicExpression::Reference(v.clone())
-            } else if (-*c).is_one() {
-                -AlgebraicExpression::Reference(v.clone())
-            } else if c.is_in_lower_half() {
-                AlgebraicExpression::from(*c) * AlgebraicExpression::Reference(v.clone())
-            } else {
-                -(AlgebraicExpression::from(-*c) * AlgebraicExpression::Reference(v.clone()))
-            }
-        }))
-        .chain(
-            (!constant.is_known_zero()).then(|| field_element_to_algebraic_expression(*constant)),
-        );
+            })
+        }
+        GroupedExpressionComponent::Linear(v, c) => Some(if c.is_one() {
+            AlgebraicExpression::Reference(v.clone())
+        } else if (-c).is_one() {
+            -AlgebraicExpression::Reference(v.clone())
+        } else if c.is_in_lower_half() {
+            AlgebraicExpression::from(c) * AlgebraicExpression::Reference(v.clone())
+        } else {
+            -(AlgebraicExpression::from(-c) * AlgebraicExpression::Reference(v.clone()))
+        }),
+        GroupedExpressionComponent::Constant(constant) => {
+            (!constant.is_known_zero()).then(|| field_element_to_algebraic_expression(constant))
+        }
+    });
 
     // Now order the items by negated and non-negated.
     let mut positive = vec![];

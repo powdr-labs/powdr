@@ -5,7 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant};
+use crate::runtime_constant::RuntimeConstant;
 
 /// Returns the set of all variables reachable from an initial set via shared constraints
 /// (algebraic constraints and bus interactions).
@@ -15,7 +15,7 @@ pub fn reachable_variables<T, V>(
     constraint_system: &IndexedConstraintSystem<T, V>,
 ) -> HashSet<V>
 where
-    T: RuntimeConstant + ReferencedSymbols<V>,
+    T: RuntimeConstant,
     V: Clone + Ord + Hash + Display,
 {
     reachable_variables_except_blocked(initial_variables, std::iter::empty(), constraint_system)
@@ -33,7 +33,7 @@ pub fn reachable_variables_except_blocked<T, V>(
     constraint_system: &IndexedConstraintSystem<T, V>,
 ) -> HashSet<V>
 where
-    T: RuntimeConstant + ReferencedSymbols<V>,
+    T: RuntimeConstant,
     V: Clone + Ord + Hash + Display,
 {
     let mut reachable_variables = initial_variables.into_iter().collect::<HashSet<_>>();
@@ -46,12 +46,12 @@ where
             constraint_system.constraints_referencing_variables(&reachable_variables_vec)
         {
             if constraint
-                .referenced_variables()
+                .referenced_unknown_variables()
                 .any(|var| reachable_variables.contains(var) && !blocking_variables.contains(var))
             {
                 // This constraint is connected to a reachable variable,
                 // add all variables of this constraint.
-                reachable_variables.extend(constraint.referenced_variables().cloned());
+                reachable_variables.extend(constraint.referenced_unknown_variables().cloned());
             }
         }
         if reachable_variables.len() == size_before {

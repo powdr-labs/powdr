@@ -76,7 +76,10 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
         // First, try to find a good factor so that `left` and `right`
         // likely cancel out except for a constant. As a good guess,
         // we try to match the coefficient of the first variable.
-        let factor = match (left.components().1.next(), right.components().1.next()) {
+        let factor = match (
+            left.linear_components().next(),
+            right.linear_components().next(),
+        ) {
             (Some((left_var, left_coeff)), Some((right_var, right_coeff)))
                 if left_var == right_var =>
             {
@@ -122,7 +125,7 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
             .into_iter()
             .min_by_key(|e| {
                 // Return the abs of the constant offset, or None on larger fields.
-                e.components().2.try_to_number().and_then(try_to_abs_u64)
+                e.constant_offset().try_to_number().and_then(try_to_abs_u64)
             })
             .unwrap();
 

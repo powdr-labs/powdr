@@ -83,26 +83,27 @@ where
     /// `variable` does not appear in the quadratic component and
     /// has a coefficient which is known to be not zero.
     ///
+    /// If the constraint has the form `A + k * x = 0` where `A` does not
+    /// contain the variable `x` and `k` is a non-zero runtime constant,
+    /// it returns `A * (-k^(-1))`.
+    ///
     /// Returns the resulting solved grouped expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
-        let expression = self.expression;
+        let coefficient = self
+            .expression
+            .coefficient_of_variable_in_affine_part(variable)?;
+        if !coefficient.is_known_nonzero() {
+            return None;
+        }
 
-        if expression
-            .quadratic
-            .iter()
-            .flat_map(|(l, r)| [l, r])
-            .flat_map(|c| c.referenced_unknown_variables())
-            .contains(variable)
-        {
-            // The variable is in the quadratic component, we cannot solve for it.
+        let subtracted = self.expression.clone()
+            - GroupedExpression::from_unknown_variable(variable.clone()) * coefficient.clone();
+        if subtracted.referenced_unknown_variables().contains(variable) {
+            // There is another occurrence of the variable in the quadratic component,
+            // we cannot solve for it.
             return None;
         }
-        if !expression.linear.get(variable)?.is_known_nonzero() {
-            return None;
-        }
-        let mut result = self.expression.clone();
-        let coefficient = result.linear.remove(variable)?;
-        Some(result * (-T::one().field_div(&coefficient)))
+        Some(subtracted * (-T::one().field_div(coefficient)))
     }
 
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
@@ -128,10 +129,14 @@ where
         let normalization_factor = expr
             .referenced_unknown_variables()
             .find_map(|var| {
-                let coeff = expression.coefficient_of_variable(var)?;
+                let coeff = expression.coefficient_of_variable_in_affine_part(var)?;
                 // We can only divide if we know the coefficient is non-zero.
                 if coeff.is_known_nonzero() {
-                    Some(expr.coefficient_of_variable(var).unwrap().field_div(coeff))
+                    Some(
+                        expr.coefficient_of_variable_in_affine_part(var)
+                            .unwrap()
+                            .field_div(coeff),
+                    )
                 } else {
                     None
                 }
@@ -159,46 +164,46 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        let expression = self.expression;
-
-        Ok(if expression.linear.len() == 1 {
-            let (var, coeff) = expression.linear.iter().next().unwrap();
-            // Solve "coeff * X + self.constant = 0" by division.
-            assert!(
-                !coeff.is_known_zero(),
-                "Zero coefficient has not been removed: {self}"
-            );
-            if coeff.is_known_nonzero() {
-                // In this case, we can always compute a solution.
-                let value = expression.constant.field_div(&-coeff.clone());
-                ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
-                    var.clone(),
-                    value,
-                    range_constraints,
-                )?])
-            } else if expression.constant.is_known_nonzero() {
-                // If the offset is not zero, then the coefficient must be non-zero,
-                // otherwise the constraint is violated.
-                let value = expression.constant.field_div(&-coeff.clone());
-                ProcessResult::complete(vec![
-                    Assertion::assert_is_nonzero(coeff.clone()),
-                    assignment_if_satisfies_range_constraints(
+        Ok(
+            if let Ok((var, coeff)) = self.expression.linear_components().exactly_one() {
+                // Solve "coeff * X + self.constant = 0" by division.
+                assert!(
+                    !coeff.is_known_zero(),
+                    "Zero coefficient has not been removed: {self}"
+                );
+                let constant = self.expression.constant_offset();
+                if coeff.is_known_nonzero() {
+                    // In this case, we can always compute a solution.
+                    let value = constant.field_div(&-coeff.clone());
+                    ProcessResult::complete(vec![assignment_if_satisfies_range_constraints(
                         var.clone(),
                         value,
                         range_constraints,
-                    )?,
-                ])
+                    )?])
+                } else if constant.is_known_nonzero() {
+                    // If the offset is not zero, then the coefficient must be non-zero,
+                    // otherwise the constraint is violated.
+                    let value = constant.field_div(&-coeff.clone());
+                    ProcessResult::complete(vec![
+                        Assertion::assert_is_nonzero(coeff.clone()),
+                        assignment_if_satisfies_range_constraints(
+                            var.clone(),
+                            value,
+                            range_constraints,
+                        )?,
+                    ])
+                } else {
+                    // If this case, we could have an equation of the form
+                    // 0 * X = 0, which is valid and generates no information about X.
+                    ProcessResult::empty()
+                }
             } else {
-                // If this case, we could have an equation of the form
-                // 0 * X = 0, which is valid and generates no information about X.
-                ProcessResult::empty()
-            }
-        } else {
-            ProcessResult {
-                effects: self.transfer_constraints(range_constraints),
-                complete: false,
-            }
-        })
+                ProcessResult {
+                    effects: self.transfer_constraints(range_constraints),
+                    complete: false,
+                }
+            },
+        )
     }
 
     /// Extract the range constraints from the expression.
@@ -208,13 +213,11 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
     ) -> Vec<Effect<T, V>> {
-        let expression = self.expression;
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
-        assert!(!expression.is_quadratic());
-        expression
-            .linear
-            .iter()
+        assert!(!self.expression.is_quadratic());
+        self.expression
+            .linear_components()
             .filter_map(|(var, _)| {
                 let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
                 Some((var, rc))
@@ -852,7 +855,7 @@ mod tests {
 
         expr.substitute_by_unknown(&"x", &subst);
         assert!(!expr.is_quadratic());
-        assert_eq!(expr.linear.len(), 3);
+        assert_eq!(expr.linear_components().count(), 3);
         assert_eq!(expr.to_string(), "a + b + y");
     }
 
@@ -865,29 +868,40 @@ mod tests {
 
         expr.substitute_by_unknown(&"x", &subst);
 
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(
             expr.to_string(),
             "((a) * (b) + 1) * (w) + (a) * (b) + 3 * y + 6"
         );
+
         // Structural validation
-        assert_eq!(quadratic.len(), 2);
-        assert_eq!(quadratic[0].0.to_string(), "(a) * (b) + 1");
-        assert_eq!(quadratic[0].0.quadratic[0].0.to_string(), "a");
-        assert_eq!(quadratic[0].0.quadratic[0].1.to_string(), "b");
-        assert!(quadratic[0].0.linear.is_empty());
+        let [first_quadratic, second_quadratic] = expr
+            .quadratic_components()
+            .iter()
+            .cloned()
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        assert_eq!(first_quadratic.0.to_string(), "(a) * (b) + 1");
+        let inner_quadratic = first_quadratic.0.quadratic_components();
+        assert_eq!(inner_quadratic[0].0.to_string(), "a");
+        assert_eq!(inner_quadratic[0].1.to_string(), "b");
+        assert!(first_quadratic.0.linear_components().count() == 0);
         assert_eq!(
-            quadratic[0].0.constant.try_to_number(),
+            first_quadratic.0.constant_offset().try_to_number(),
             Some(GoldilocksField::from(1)),
         );
-        assert_eq!(quadratic[0].1.to_string(), "w");
-        assert_eq!(quadratic[1].0.to_string(), "a");
-        assert_eq!(quadratic[1].1.to_string(), "b");
-        assert_eq!(linear[0].0.to_string(), "y");
-        assert_eq!(linear.len(), 1);
-        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(6)),);
+        assert_eq!(first_quadratic.1.to_string(), "w");
+
+        assert_eq!(second_quadratic.0.to_string(), "a");
+        assert_eq!(second_quadratic.1.to_string(), "b");
+
+        let [linear] = expr.linear_components().collect_vec().try_into().unwrap();
+        assert_eq!(linear.0.to_string(), "y");
+        assert_eq!(
+            expr.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(6)),
+        );
     }
 
     #[test]
@@ -899,16 +913,17 @@ mod tests {
 
         expr.substitute_by_unknown(&"a", &subst);
 
-        let (quadratic, linear_iter, constant) = expr.components();
-        let linear: Vec<_> = linear_iter.collect();
-
         assert_eq!(expr.to_string(), "(2 * x) * (y) + 7");
 
+        let quadratic = expr.quadratic_components();
         assert_eq!(quadratic.len(), 1);
         assert_eq!(quadratic[0].0.to_string(), "2 * x");
         assert_eq!(quadratic[0].1.to_string(), "y");
-        assert!(linear.is_empty());
-        assert_eq!(constant.try_to_number(), Some(GoldilocksField::from(7)));
+        assert!(expr.linear_components().next().is_none());
+        assert_eq!(
+            expr.constant_offset().try_to_number(),
+            Some(GoldilocksField::from(7))
+        );
     }
 
     #[test]
