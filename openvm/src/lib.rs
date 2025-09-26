@@ -3,13 +3,15 @@ use eyre::Result;
 use itertools::Itertools;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
+use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
-use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
-    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig, VmBuilder,
-    VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmProverExtension,
+    debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
+    ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
+    PreflightExecutionOutput, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
+    VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
+use openvm_circuit::arch::{RowMajorMatrixArena, VirtualMachine};
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -22,6 +24,7 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_native_circuit::NativeCpuBuilder;
 use openvm_sdk::config::TranspilerConfig;
+use openvm_sdk::prover::vm::new_local_prover;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
 use openvm_sdk::GenericSdk;
 use openvm_sdk::{
@@ -62,7 +65,7 @@ use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
 use crate::powdr_extension::executor::PowdrPeripheryInstances;
-use tracing::Level;
+use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
@@ -774,10 +777,55 @@ pub fn prove(
     // Generate an AppProvingKey
     sdk.app_keygen();
 
-    // TODO: allow mock, for now it's not implemented so we run the normal prover.
-    let mock = false;
-
     if mock {
+        // Build owned vm instance, so we can mutate it later
+        let vm_builder = sdk.app_vm_builder().clone();
+        let vm_pk = sdk.app_pk().app_vm_pk.clone();
+        let exe = sdk.convert_to_exe(exe.clone())?;
+        let mut vm_instance: VmInstance<BabyBearPoseidon2Engine, _> =
+            new_local_prover(vm_builder, &vm_pk, exe)?;
+
+        vm_instance.reset_state(inputs.clone());
+        let metered_ctx = vm_instance.vm.build_metered_ctx();
+        let metered_interpreter = vm_instance.vm.metered_interpreter(&vm_instance.exe())?;
+        let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
+        let mut state = vm_instance.state_mut().take();
+
+        // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
+        let vm = &mut vm_instance.vm;
+        let air_inv = vm.config().create_airs().unwrap();
+        let pk = air_inv.keygen(&vm.engine);
+
+        for (seg_idx, segment) in segments.into_iter().enumerate() {
+            let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
+            // We need a separate span so the metric label includes "segment" from _segment_span
+            let _prove_span = info_span!("total_proof").entered();
+            let Segment {
+                instret_start,
+                num_insns,
+                trace_heights,
+            } = segment;
+            assert_eq!(state.as_ref().unwrap().instret, instret_start);
+            let from_state = Option::take(&mut state).unwrap();
+            vm.transport_init_memory_to_device(&from_state.memory);
+            let PreflightExecutionOutput {
+                system_records,
+                record_arenas,
+                to_state,
+            } = vm.execute_preflight(
+                &mut vm_instance.interpreter,
+                from_state,
+                Some(num_insns),
+                &trace_heights,
+            )?;
+            state = Some(to_state);
+
+            // Generate proving context for each segment
+            let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
+
+            // Run the mock prover for each segment
+            debug_proving_ctx(vm, &pk, &ctx);
+        }
     } else {
         // Generate a proof
         tracing::info!("Generating app proof...");
@@ -873,8 +921,9 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap();
+        // assert!(result.is_ok());
     }
 
     fn prove_mock(
