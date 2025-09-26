@@ -75,8 +75,13 @@ pub struct PowdrExecutor {
     number_of_calls: RefCell<usize>,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    record_arena_dimension_by_air_name_for_each_call: HashMap<String, (usize, usize)>,
+    record_arena_dimension_by_air_name_for_each_call: HashMap<String, RecordArenaDimension>,
     record_arena_by_air_name: RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>,
+}
+
+pub struct RecordArenaDimension {
+    pub num_calls: usize,
+    pub air_width: usize,
 }
 
 #[derive(AlignedBytesBorrow, Clone)]
@@ -266,12 +271,20 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         > = self
             .record_arena_dimension_by_air_name_for_each_call
             .iter()
-            .map(|(air_name, (num_calls, air_width))| {
-                (
-                    air_name.clone(),
-                    MatrixRecordArena::with_capacity(*num_calls, *air_width), // height will be padded if `MatrixRecordArena`
-                )
-            })
+            .map(
+                |(
+                    air_name,
+                    RecordArenaDimension {
+                        num_calls,
+                        air_width,
+                    },
+                )| {
+                    (
+                        air_name.clone(),
+                        MatrixRecordArena::with_capacity(*num_calls, *air_width),
+                    )
+                },
+            )
             .collect();
 
         // execute the original instructions one by one
@@ -361,12 +374,14 @@ impl PowdrExecutor {
                     // pub fn main_width(&self) -> usize {
                     //     self.cached_mains.iter().sum::<usize>() + self.common_main
                     // }
-                    let air_width = air_by_opcode_id
-                        .get_instruction_air_stats(instruction)
-                        .main_columns;
-
-                    acc.entry(air_name.clone()).or_insert((0, 0)).0 += 1;
-                    acc.entry(air_name).or_insert((0, 0)).1 = air_width;
+                    acc.entry(air_name.clone())
+                        .or_insert(RecordArenaDimension {
+                            num_calls: 0, // initialize with 0, which can still be incremented by 1 immediately after
+                            air_width: air_by_opcode_id
+                                .get_instruction_air_stats(instruction)
+                                .main_columns,
+                        })
+                        .num_calls += 1;
                     acc
                 });
         Self {
@@ -419,14 +434,22 @@ impl PowdrExecutor {
         let mut merged_record_arena_by_air_name = self
             .record_arena_dimension_by_air_name_for_each_call
             .iter()
-            .map(|(air_name, (num_calls, air_width))| {
-                // height is padded to next power of two
-                let merged_record_arena = MatrixRecordArena::with_capacity(
-                    *num_calls * self.number_of_calls(),
-                    *air_width,
-                );
-                (air_name.clone(), merged_record_arena)
-            })
+            .map(
+                |(
+                    air_name,
+                    RecordArenaDimension {
+                        num_calls,
+                        air_width,
+                    },
+                )| {
+                    // height is padded to next power of two
+                    let merged_record_arena = MatrixRecordArena::with_capacity(
+                        *num_calls * self.number_of_calls(),
+                        *air_width,
+                    );
+                    (air_name.clone(), merged_record_arena)
+                },
+            )
             .collect::<HashMap<String, MatrixRecordArena<BabyBear>>>();
 
         for record_arena_for_this_call in record_arena_by_air_name.iter_mut() {
@@ -466,7 +489,7 @@ impl PowdrExecutor {
                     .record_arena_dimension_by_air_name_for_each_call
                     .get(air_name)
                     .unwrap()
-                    .0;
+                    .num_calls;
                 assert_eq!(
                     arena.trace_offset,
                     arena.width * height * self.number_of_calls()
