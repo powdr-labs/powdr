@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
@@ -24,7 +25,7 @@ impl<T, V> Default for Linearizer<T, V> {
     }
 }
 
-impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
+impl<T: RuntimeConstant + Hash + Display, V: Clone + Eq + Ord + Hash + Display> Linearizer<T, V> {
     /// Linearizes the expression by introducing new variables for
     /// non-affine parts. The new constraints are appended to
     /// `constraint_collection` and must be added to the system.

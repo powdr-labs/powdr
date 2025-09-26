@@ -4,6 +4,7 @@ use powdr_number::{ExpressionConvertible, FieldElement};
 use crate::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintRef,
 };
+use crate::correctness_trace::CorrectnessTrace;
 use crate::effect::Effect;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
@@ -52,6 +53,8 @@ pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
     boolean_extractor: BooleanExtractor<T, V>,
     /// The linearizing component.
     linearizer: Linearizer<T, V>,
+    /// The component that creates a trace of the solving process for correctness checking.
+    correctness_trace: CorrectnessTrace<T, V>,
 }
 
 pub trait VarDispenser<V> {
@@ -100,6 +103,7 @@ impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
             var_dispenser: Default::default(),
             boolean_extractor: Default::default(),
             linearizer: Default::default(),
+            correctness_trace: Default::default(),
             bus_interaction_handler,
         }
     }
@@ -133,6 +137,7 @@ where
         self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
+        println!("Correctness trace: {}", self.correctness_trace);
         // Apply the deduced assignments to the substitutions we performed
         // while linearizing and boolean extracting.
         // We assume that the user of the solver applies the assignments to
@@ -351,6 +356,11 @@ where
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
                     if let Some((v1, expr)) = try_to_simple_equivalence(c) {
+                        self.correctness_trace.add_assignment_by_solving(
+                            v1.clone(),
+                            expr.clone(),
+                            c.expression.clone(),
+                        );
                         self.apply_assignment(&v1, &expr);
                         continue;
                     }
@@ -358,6 +368,27 @@ where
                         .solve(&self.range_constraints)
                         .map_err(Error::AlgebraicSolverError)?
                         .effects;
+                    for effect in &effects {
+                        match effect {
+                            Effect::Assignment(v, expr) => {
+                                self.correctness_trace.add_assignment_by_solving(
+                                    v.clone(),
+                                    GroupedExpression::from_runtime_constant(expr.clone()),
+                                    c.expression.clone(),
+                                );
+                            }
+                            Effect::RangeConstraint(_, _) => {
+                                // self.correctness_trace.add_range_constraint_by_solving(
+                                //     v.clone(),
+                                //     rc.clone(),
+                                //     c.expression.clone(),
+                                // );
+                            }
+                            Effect::Assertion(_) | Effect::ConditionalAssignment { .. } => {
+                                unreachable!()
+                            }
+                        }
+                    }
                     if let Some(components) = try_split_constraint(&c, &self.range_constraints) {
                         progress |= self.add_algebraic_constraints_if_new(components);
                     }
