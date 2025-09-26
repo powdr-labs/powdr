@@ -777,28 +777,26 @@ pub fn prove(
     // Generate an AppProvingKey
     sdk.app_keygen();
 
-    // TODO: allow mock, for now it's not implemented so we run the normal prover.
-    let mock = true;
-
     if mock {
         // Build owned vm instance, so we can mutate it later
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-
         let mut vm_instance: VmInstance<BabyBearPoseidon2Engine, _> =
             new_local_prover(vm_builder, &vm_pk, exe)?;
 
-        // this instance should contain no pk, and we can't generate it unless we enable stark-debug feature
-        // let mut vm_instance = app_prover.instance().clone();
         vm_instance.reset_state(inputs.clone());
         let metered_ctx = vm_instance.vm.build_metered_ctx();
         let metered_interpreter = vm_instance.vm.metered_interpreter(&vm_instance.exe())?;
         let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
-        // let mut proofs = Vec::with_capacity(segments.len());
         let mut state = vm_instance.state_mut().take();
+
+        // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
+        let vm = &mut vm_instance.vm;
+        let air_inv = vm.config().create_airs().unwrap();
+        let pk = air_inv.keygen(&vm.engine);
+
         for (seg_idx, segment) in segments.into_iter().enumerate() {
-            let vm = &mut vm_instance.vm;
             let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
             // We need a separate span so the metric label includes "segment" from _segment_span
             let _prove_span = info_span!("total_proof").entered();
@@ -822,36 +820,13 @@ pub fn prove(
             )?;
             state = Some(to_state);
 
+            // Generate proving context for each segment
             let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
 
-            // CHANGE: debug_proving_ctx
-            let air_inv = vm.config().create_airs().unwrap();
-            let pk = air_inv.keygen(&vm.engine);
+            // Run the mock prover for each segment
             debug_proving_ctx(vm, &pk, &ctx);
         }
-    }
-    // if mock {
-    //     tracing::info!("Checking constraints and witness in Mock prover...");
-    //     let engine = BabyBearPoseidon2Engine::new(app_fri_params);
-    //     let (vm, pk) =
-    //         VirtualMachine::new_with_keygen(engine, SpecializedConfigCpuBuilder, vm_config.clone())
-    //             .unwrap();
-    //     // let streams = Streams::from(inputs);
-    //     let mut result = vm.execute_and_generate(exe.clone(), streams).unwrap();
-    //     let _final_memory = Option::take(&mut result.final_memory);
-    //     let global_airs = vm.config().create_chip_complex().unwrap().airs();
-    //     for proof_input in &result.per_segment {
-    //         let (airs, pks, air_proof_inputs): (Vec<_>, Vec<_>, Vec<_>) =
-    //             multiunzip(proof_input.per_air.iter().map(|(air_id, air_proof_input)| {
-    //                 (
-    //                     global_airs[*air_id].clone(),
-    //                     pk.per_air[*air_id].clone(),
-    //                     air_proof_input.clone(),
-    //                 )
-    //             }));
-    //         vm.engine.debug(&airs, &pks, &air_proof_inputs);
-    //     }
-    else {
+    } else {
         // Generate a proof
         tracing::info!("Generating app proof...");
         let start = std::time::Instant::now();
