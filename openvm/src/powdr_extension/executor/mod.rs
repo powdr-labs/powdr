@@ -7,15 +7,18 @@ use std::{
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::OriginalAirs,
-    powdr_extension::executor::{inventory::DummyChipComplex, periphery::SharedPeripheryChips},
-    BabyBearSC, ExtendedVmConfig, Instr,
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    powdr_extension::executor::{
+        inventory::DummyChipComplex,
+        periphery::{SharedPeripheryChips, SharedPeripheryChipsCpuProverExt},
+    },
+    BabyBearSC, Instr,
 };
 
 use openvm_algebra_circuit::AlgebraCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
 use openvm_circuit::arch::{
-    execution_mode::{ExecutionCtx, MeteredCostCtx, MeteredCtx},
+    execution_mode::{ExecutionCtx, MeteredCtx},
     E2PreCompute, PreflightExecutor,
 };
 use openvm_circuit_primitives::AlignedBytesBorrow;
@@ -54,9 +57,7 @@ use openvm_circuit::{
     arch::{Arena, MatrixRecordArena},
     utils::next_power_of_two_or_zero,
 };
-use openvm_stark_backend::{p3_field::FieldAlgebra, p3_maybe_rayon::prelude::ParallelIterator};
-
-use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
+use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
 use powdr_autoprecompiles::InstructionHandler;
 
@@ -342,7 +343,7 @@ impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
         // memory: Arc<Mutex<TracingMemory>>,
-        base_config: ExtendedVmConfig,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
@@ -350,14 +351,14 @@ impl PowdrExecutor {
             air_by_opcode_id,
             chip_inventory: {
                 let airs: AirInventory<BabyBearSC> =
-                    create_dummy_airs(&base_config.sdk_vm_config, periphery.dummy.clone())
+                    create_dummy_airs(&base_config.sdk_config.sdk, periphery.dummy.clone())
                         .expect("Failed to create dummy airs");
 
-                create_dummy_chip_complex(&base_config.sdk_vm_config, airs, periphery.dummy)
+                create_dummy_chip_complex(&base_config.sdk_config.sdk, airs, periphery.dummy)
                     .expect("Failed to create chip complex")
                     .inventory
             },
-            executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
+            executor_inventory: base_config.sdk_config.sdk.create_executors().unwrap(),
             number_of_calls: RefCell::new(0),
             periphery: periphery.real,
             apc,
@@ -584,7 +585,7 @@ fn create_dummy_chip_complex(
 
     // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
     VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
-        &shared_chips,
+        &SharedPeripheryChipsCpuProverExt,
         &shared_chips,
         inventory,
     )?;

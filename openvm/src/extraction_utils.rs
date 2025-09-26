@@ -4,10 +4,9 @@ use std::sync::{Arc, Mutex};
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
-use crate::BabyBearPoseidon2Engine;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
-use itertools::Itertools;
+use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
@@ -18,7 +17,6 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
-use openvm_sdk::config::SdkVmBuilder;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -51,7 +49,7 @@ use crate::utils::symbolic_to_algebraic;
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct OriginalAirs<F> {
     opcode_to_air: HashMap<VmOpcode, String>,
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
@@ -134,15 +132,15 @@ fn to_option<T>(mut iter: impl Iterator<Item = T>) -> Option<T> {
     }
 }
 
-/// A lazy chip complex that is initialized on the first access
-type LazyChipComplex = Option<
-    VmChipComplex<
-        BabyBearSC,
-        MatrixRecordArena<Val<BabyBearSC>>,
-        CpuBackend<BabyBearSC>,
-        SystemChipInventory<BabyBearSC>,
-    >,
+type ChipComplex = VmChipComplex<
+    BabyBearSC,
+    MatrixRecordArena<Val<BabyBearSC>>,
+    CpuBackend<BabyBearSC>,
+    SystemChipInventory<BabyBearSC>,
 >;
+
+/// A lazy chip complex that is initialized on the first access
+type LazyChipComplex = Option<ChipComplex>;
 
 /// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
@@ -153,12 +151,7 @@ pub struct ChipComplexGuard<'a> {
 }
 
 impl<'a> Deref for ChipComplexGuard<'a> {
-    type Target = VmChipComplex<
-        BabyBearSC,
-        MatrixRecordArena<Val<BabyBearSC>>,
-        CpuBackend<BabyBearSC>,
-        SystemChipInventory<BabyBearSC>,
-    >;
+    type Target = ChipComplex;
 
     fn deref(&self) -> &Self::Target {
         // Unwrap is safe here because we ensure that the chip complex is initialized
@@ -170,7 +163,6 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 
 /// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "")]
 pub struct OriginalVmConfig {
     pub sdk_config: ExtendedVmConfig,
     #[serde(skip)]
@@ -183,8 +175,7 @@ where
     Val<SC>: PrimeField32,
 {
     fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        let inventory = self.sdk_config.create_airs()?;
-        Ok(inventory)
+        self.sdk_config.create_airs()
     }
 }
 
@@ -223,8 +214,8 @@ impl OriginalVmConfig {
     }
 
     pub fn config_mut(&mut self) -> &mut ExtendedVmConfig {
-        // let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
-        // *guard = None; // Invalidate cache
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        *guard = None; // Invalidate cache
         &mut self.sdk_config
     }
 
@@ -234,16 +225,15 @@ impl OriginalVmConfig {
 
         if guard.is_none() {
             // This is the expensive part that we want to run a single time: create the chip complex
-            let airs: AirInventory<BabyBearSC> = self
+            let airs = self
                 .sdk_config
-                .sdk_vm_config
+                .sdk
                 .create_airs()
                 .expect("Failed to create air inventory");
-            let builder = SdkVmBuilder;
             let complex =
-                <SdkVmBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
-                    &builder,
-                    &self.sdk_config.sdk_vm_config,
+                <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+                    &ExtendedVmConfigCpuBuilder,
+                    &self.sdk_config,
                     airs,
                 )
                 .expect("Failed to create chip complex");
@@ -263,12 +253,7 @@ impl OriginalVmConfig {
         &self,
         max_degree: usize,
     ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
-        let chip_complex: &VmChipComplex<
-            BabyBearSC,
-            MatrixRecordArena<Val<BabyBearSC>>,
-            CpuBackend<BabyBearSC>,
-            SystemChipInventory<BabyBearSC>,
-        > = &self.chip_complex();
+        let chip_complex = &self.chip_complex();
 
         let chip_inventory = &chip_complex.inventory;
 
@@ -380,47 +365,12 @@ impl OriginalVmConfig {
             .map(|(id, bus_type)| (id as u64, bus_type)),
         )
     }
-
-    // pub fn create_chip_complex(
-    //     &self,
-    // ) -> Result<
-    //     VmChipComplex<
-    //         BabyBearSC,
-    //     >,
-    //     AirInventoryError,
-    // > {
-    //     // Clear the cache
-    //     let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
-    //     *guard = None; // Invalidate cache
-    //                    // Create a new chip complex
-    //     self.sdk_config.create_chip_complex()
-    // }
-
-    // pub fn chip_inventory_air_metrics(&self, max_degree: usize) -> HashMap<String, AirMetrics> {
-    //     let inventory = &self.chip_complex().inventory;
-
-    //     inventory
-    //         .executors()
-    //         .iter()
-    //         .map(|executor| executor.air())
-    //         .chain(
-    //             inventory
-    //                 .periphery()
-    //                 .iter()
-    //                 .map(|periphery| periphery.air()),
-    //         )
-    //         .map(|air| {
-    //             // both executors and periphery implement the same `air()` API
-    //             (air.name(), get_air_metrics(air, max_degree))
-    //         })
-    //         .collect()
-    // }
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
     let blacklist = ["KeccakVmAir"];
-    let bus_map = vm_config.sdk_config.bus_map();
-    let chip_complex = vm_config.sdk_config.chip_complex();
+    let bus_map = vm_config.sdk.bus_map();
+    let chip_complex = vm_config.sdk.chip_complex();
 
     for air in chip_complex
         .inventory
@@ -446,20 +396,10 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
     let width = air.width();
-    // TODO: I don't seem to find a function similar to `ColumnsAir::columns` that returns a `Vec<String>` or column names in openvm or in stark-backend
-    // Need to search more for this API or it might not exist any more.
-    // I'm not sure if this will create any concrete difference? Could be an issue if tools like `debug.pil` rely on it.
-    // air.columns()
-    // .inspect(|columns| {
-    //     assert_eq!(columns.len(), width);
-    // })
-    // .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect_vec())
-    // .into_iter()
-    // .map(Arc::new)
-    // .collect()
+    // TODO: add back ColumnsAir
     (0..width)
         .map(|i| Arc::new(format!("unknown_{i}")))
-        .collect_vec()
+        .collect()
 }
 
 pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
@@ -613,6 +553,7 @@ mod tests {
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
     use openvm_sdk::config::SdkVmConfig;
+    use powdr_openvm_hints_circuit::HintsExtension;
 
     #[test]
     fn test_get_bus_map() {
@@ -660,14 +601,19 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = OriginalVmConfig::new(ExtendedVmConfig { sdk_vm_config }).bus_map();
+        let _ = OriginalVmConfig::new(ExtendedVmConfig {
+            sdk: sdk_vm_config,
+            hints: HintsExtension,
+        })
+        .bus_map();
     }
 
     #[test]
     fn test_export_pil() {
         let writer = &mut Vec::new();
         let ext_config = ExtendedVmConfig {
-            sdk_vm_config: SdkVmConfig::riscv32(),
+            sdk: SdkVmConfig::riscv32(),
+            hints: HintsExtension,
         };
         let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config = SpecializedConfig::new(

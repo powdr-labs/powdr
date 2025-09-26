@@ -5,22 +5,23 @@ use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_primitives::{
+    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
+    var_range::SharedVariableRangeCheckerChip,
+};
 use openvm_instructions::LocalOpcode;
-use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
-use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
-use crate::powdr_extension::executor::PowdrPeripheryInstances;
+use crate::powdr_extension::executor::PowdrExecutor;
+use crate::{bus_map::BusMap, powdr_extension::executor::PowdrPeripheryInstances};
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
     derive::AnyEnum,
 };
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::{Field, PrimeField32},
@@ -87,12 +88,12 @@ impl<F> PowdrExtension<F> {
 
 #[derive(From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExecutor {
-    Powdr(crate::powdr_extension::executor::PowdrExecutor),
+pub enum PowdrExtensionExecutor {
+    Powdr(PowdrExecutor),
 }
 
 impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
-    type Executor = PowdrExecutor;
+    type Executor = PowdrExtensionExecutor;
 
     // TODO: this part seems duplicated to `extend_prover`, so need to study the split of functionalities between them
     fn extend_execution(
@@ -126,13 +127,12 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         );
 
         for precompile in self.precompiles.iter() {
-            let powdr_executor =
-                PowdrExecutor::Powdr(crate::powdr_extension::executor::PowdrExecutor::new(
-                    self.airs.clone(),
-                    self.base_config.config().clone(),
-                    shared_chips_pair.clone(),
-                    precompile.apc.clone(),
-                ));
+            let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
+                self.airs.clone(),
+                self.base_config.clone(),
+                shared_chips_pair.clone(),
+                precompile.apc.clone(),
+            ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }
 

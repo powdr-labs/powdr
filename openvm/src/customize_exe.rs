@@ -173,11 +173,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     let program = Prog(&exe.program);
 
-    let range_tuple_checker_sizes = vm_config
-        .sdk_vm_config
-        .rv32m
-        .unwrap()
-        .range_tuple_checker_sizes;
+    let range_tuple_checker_sizes = vm_config.sdk.rv32m.unwrap().range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(
