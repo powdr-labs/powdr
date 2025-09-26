@@ -1,11 +1,12 @@
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventoryBuilder, ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder, ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension
 };
 use openvm_circuit::derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit::system::phantom::PhantomExecutor;
 use openvm_instructions::PhantomDiscriminant;
-use openvm_stark_backend::config::StarkGenericConfig;
+use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::p3_field::{Field, PrimeField32};
+use openvm_stark_sdk::engine::StarkEngine;
 use powdr_openvm_hints_transpiler::HintsPhantom;
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +52,20 @@ impl<F: PrimeField32> VmExecutionExtension<F> for HintsExtension {
 
 impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for HintsExtension {
     fn extend_circuit(&self, _: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
+        Ok(())
+    }
+}
+
+pub struct HintsCpuProverExt;
+
+impl<E, RA> VmProverExtension<E, RA, HintsExtension> for HintsCpuProverExt where E: StarkEngine, Val<E::SC>: PrimeField32
+{
+    fn extend_prover(
+        &self,
+        _: &HintsExtension,
+        _: &mut ChipInventory<E::SC, RA, E::PB>,
+    ) -> Result<(), ChipInventoryError> {
+        // No chips to add for hints
         Ok(())
     }
 }

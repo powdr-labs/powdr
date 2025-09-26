@@ -342,7 +342,6 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
-        // memory: Arc<Mutex<TracingMemory>>,
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,

@@ -49,7 +49,7 @@ use crate::utils::symbolic_to_algebraic;
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
 
-#[derive(Clone, Serialize, Deserialize, Default, Debug)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
     opcode_to_air: HashMap<VmOpcode, String>,
     air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,

@@ -44,7 +44,7 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor};
+use powdr_openvm_hints_circuit::{HintsCpuProverExt, HintsExtension, HintsExtensionExecutor};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -378,7 +378,7 @@ pub fn compile_openvm(
 
 /// Determines how the precompile (a circuit with algebraic gates and bus interactions)
 /// is implemented as a RAP.
-#[derive(Default, Clone, Deserialize, Serialize, Debug)]
+#[derive(Default, Clone, Deserialize, Serialize)]
 pub enum PrecompileImplementation {
     /// Allocate a column for each variable and process a call in a single row.
     #[default]
@@ -589,8 +589,10 @@ where
         VmChipComplex<BabyBearSC, Self::RecordArena, E::PB, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        let chip_complex =
+        let mut chip_complex =
             VmBuilder::<E>::create_chip_complex(&SdkVmCpuBuilder, &config.sdk, circuit)?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<E, _, _>::extend_prover(&HintsCpuProverExt, &config.hints, inventory)?;
         Ok(chip_complex)
     }
 }
