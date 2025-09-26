@@ -20,7 +20,7 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_ecc_circuit::EccCpuProverExt;
-use openvm_instructions::instruction::Instruction;
+use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP};
 use openvm_keccak256_circuit::Keccak256CpuProverExt;
 use openvm_native_circuit::NativeCpuProverExt;
 use openvm_pairing_circuit::PairingProverExt;
@@ -75,7 +75,13 @@ pub struct PowdrExecutor {
     number_of_calls: RefCell<usize>,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    record_arena_by_air_name: RefCell<HashMap<String, MatrixRecordArena<BabyBear>>>,
+    record_arena_dimension_by_air_name_for_each_call: HashMap<String, RecordArenaDimension>,
+    record_arena_by_air_name: RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>,
+}
+
+pub struct RecordArenaDimension {
+    pub num_calls: usize,
+    pub air_width: usize,
 }
 
 #[derive(AlignedBytesBorrow, Clone)]
@@ -242,6 +248,9 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
         instruction: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
+        // check if this is run
+        println!("powdr preflight execute pc: {}", state.pc);
+
         // This is pretty much done, just need to move up from `execute()` below with very small modifications
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
@@ -256,39 +265,34 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         } = state;
 
         // Create dummy record arenas by air name, initialized with number of original air calls as height and original air width as width
-        let mut record_arena_by_air_name: HashMap<String, MatrixRecordArena<BabyBear>> = self
-            .apc
-            .instructions()
+        let mut record_arena_by_air_name_for_this_call: HashMap<
+            String,
+            MatrixRecordArena<BabyBear>,
+        > = self
+            .record_arena_dimension_by_air_name_for_each_call
             .iter()
-            .fold(HashMap::new(), |mut acc, instruction| {
-                let air_name = self
-                    .air_by_opcode_id
-                    .get_instruction_air_and_id(instruction)
-                    .0;
-                // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
-                // pub fn main_width(&self) -> usize {
-                //     self.cached_mains.iter().sum::<usize>() + self.common_main
-                // }
-                let air_width = self
-                    .air_by_opcode_id
-                    .get_instruction_air_stats(instruction)
-                    .main_columns;
-
-                acc.entry(air_name.clone()).or_insert((0, 0)).0 += 1;
-                acc.entry(air_name).or_insert((0, 0)).1 = air_width;
-                acc
-            })
-            .into_iter()
-            .map(|(air_name, (num_calls, air_width))| {
-                (
+            .map(
+                |(
                     air_name,
-                    MatrixRecordArena::with_capacity(num_calls, air_width),
-                )
-            })
+                    RecordArenaDimension {
+                        num_calls,
+                        air_width,
+                    },
+                )| {
+                    (
+                        air_name.clone(),
+                        MatrixRecordArena::with_capacity(*num_calls, *air_width),
+                    )
+                },
+            )
             .collect();
 
         // execute the original instructions one by one
         for instruction in self.apc.instructions().iter() {
+            println!(
+                "powdr preflight execute original instruction at pc: {}",
+                *pc
+            );
             let executor = self
                 .executor_inventory
                 .get_executor(instruction.0.opcode)
@@ -306,13 +310,28 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 streams,
                 rng,
                 custom_pvs,
-                // Use dummy record arena
-                // Note: this has the effect of isolating APC original instruction records to the ctx object here.
-                ctx: record_arena_by_air_name.get_mut(&air_name).unwrap(),
+                // We execute in the context of the relevant dummy table
+                ctx: record_arena_by_air_name_for_this_call
+                    .get_mut(&air_name)
+                    .unwrap(),
             };
 
             executor.execute(state, &instruction.0)?;
         }
+
+        // print dummy record arena
+        record_arena_by_air_name_for_this_call
+            .iter()
+            .for_each(|(air_name, arena)| {
+                println!(
+                    "powdr preflight execute dummy record arena for air: {}",
+                    air_name
+                );
+                println!(
+                    "powdr preflight execute dummy record arena: {:?}",
+                    arena.trace_buffer
+                );
+            });
 
         // After execution, put back the original ctx
         // TODO: `original_ctx` might just be useless and tossed away, so there's no need to put it back?
@@ -322,7 +341,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
         self.record_arena_by_air_name
             .borrow_mut()
-            .extend(record_arena_by_air_name);
+            .push(record_arena_by_air_name_for_this_call);
 
         *self.number_of_calls.borrow_mut() += 1;
 
@@ -346,6 +365,25 @@ impl PowdrExecutor {
         periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
+        let record_arena_dimension_by_air_name_for_each_call =
+            apc.instructions()
+                .iter()
+                .fold(HashMap::new(), |mut acc, instruction| {
+                    let air_name = air_by_opcode_id.get_instruction_air_and_id(instruction).0;
+                    // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
+                    // pub fn main_width(&self) -> usize {
+                    //     self.cached_mains.iter().sum::<usize>() + self.common_main
+                    // }
+                    acc.entry(air_name.clone())
+                        .or_insert(RecordArenaDimension {
+                            num_calls: 0, // initialize with 0, which can still be incremented by 1 immediately after
+                            air_width: air_by_opcode_id
+                                .get_instruction_air_stats(instruction)
+                                .main_columns,
+                        })
+                        .num_calls += 1;
+                    acc
+                });
         Self {
             air_by_opcode_id,
             chip_inventory: {
@@ -361,6 +399,7 @@ impl PowdrExecutor {
             number_of_calls: RefCell::new(0),
             periphery: periphery.real,
             apc,
+            record_arena_dimension_by_air_name_for_each_call,
             record_arena_by_air_name: RefCell::new(Default::default()),
         }
     }
@@ -389,6 +428,83 @@ impl PowdrExecutor {
         //         chip.generate_proving_ctx(records)
         //     },
 
+        // merge record arenas, taking care of padding during initialization
+        let mut record_arena_by_air_name = self.record_arena_by_air_name.borrow_mut();
+
+        let mut merged_record_arena_by_air_name = self
+            .record_arena_dimension_by_air_name_for_each_call
+            .iter()
+            .map(
+                |(
+                    air_name,
+                    RecordArenaDimension {
+                        num_calls,
+                        air_width,
+                    },
+                )| {
+                    // height is padded to next power of two
+                    let merged_record_arena = MatrixRecordArena::with_capacity(
+                        *num_calls * self.number_of_calls(),
+                        *air_width,
+                    );
+                    (air_name.clone(), merged_record_arena)
+                },
+            )
+            .collect::<HashMap<String, MatrixRecordArena<BabyBear>>>();
+
+        for record_arena_for_this_call in record_arena_by_air_name.iter_mut() {
+            for (air_name, src_arena) in record_arena_for_this_call.drain() {
+                // Compute number of rows actually used (trace_offset is in elements)
+                let rows_used = src_arena.trace_offset / src_arena.width;
+                if rows_used == 0 {
+                    continue;
+                }
+
+                let dst_arena = merged_record_arena_by_air_name
+                    .get_mut(&air_name)
+                    .expect("destination arena missing for air name");
+
+                // Ensure widths match
+                debug_assert_eq!(dst_arena.width, src_arena.width);
+
+                // Allocate pre-initialized empty mutable buffer in the destination for these rows
+                // This also increases `dst_arena.trace_offset`
+                let dst_bytes = dst_arena.alloc_buffer(rows_used);
+
+                // Copy the used portion of the source buffer (as bytes)
+                let src_slice = &src_arena.trace_buffer[0..src_arena.trace_offset];
+                // `src_size` is different from `src_arena.trace_offset`, which is number of `F`, whereas here we need the number of bytes
+                let src_size = core::mem::size_of_val(src_slice);
+                let src_ptr = src_slice.as_ptr() as *const u8;
+                let src_bytes = unsafe { core::slice::from_raw_parts(src_ptr, src_size) };
+                dst_bytes.copy_from_slice(src_bytes);
+            }
+        }
+
+        // Assert the `trace_offset` of `merged_record_arena_by_air_name`
+        merged_record_arena_by_air_name
+            .iter()
+            .for_each(|(air_name, arena)| {
+                let height = self
+                    .record_arena_dimension_by_air_name_for_each_call
+                    .get(air_name)
+                    .unwrap()
+                    .num_calls;
+                assert_eq!(
+                    arena.trace_offset,
+                    arena.width * height * self.number_of_calls()
+                );
+                println!("merged record arena assert_eq passes for air: {}", air_name);
+            });
+
+        // print merged record arena
+        merged_record_arena_by_air_name
+            .iter()
+            .for_each(|(air_name, arena)| {
+                println!("merged record arena for air: {}", air_name);
+                println!("merged record arena: {:?}", arena.trace_buffer);
+            });
+
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = self
             .chip_inventory
             .chips()
@@ -399,7 +515,7 @@ impl PowdrExecutor {
                 let air_name = self.chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    let mut arenas = self.record_arena_by_air_name.borrow_mut();
+                    let arenas = merged_record_arena_by_air_name.borrow_mut();
                     match arenas.remove(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
@@ -480,6 +596,8 @@ impl PowdrExecutor {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
+
+                    println!("apc row_slice: {:?}", row_slice);
                 }
 
                 // Fill in the columns we have to compute from other columns
