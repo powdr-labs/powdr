@@ -73,13 +73,6 @@ pub trait RuntimeConstant:
     }
 }
 
-pub trait ReferencedSymbols<V> {
-    /// Returns an iterator over all referenced symbols in this constant.
-    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
-    where
-        V: 'a;
-}
-
 pub trait Substitutable<V> {
     /// Substitutes a variable with another constant.
     fn substitute(&mut self, variable: &V, substitution: &Self);
@@ -120,16 +113,6 @@ impl<T: FieldElement> RuntimeConstant for T {
 
     fn field_inverse(&self) -> Self {
         T::from(1) / *self
-    }
-}
-
-impl<T: FieldElement, V> ReferencedSymbols<V> for T {
-    fn referenced_symbols<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a
-    where
-        V: 'a,
-    {
-        // No symbols in numbers.
-        std::iter::empty()
     }
 }
 

@@ -13,10 +13,6 @@ use openvm_stark_backend::{
 };
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_expression::AlgebraicExpression;
-use powdr_expression::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
-    AlgebraicUnaryOperator,
-};
 
 use crate::bus_map::BusMap;
 
@@ -64,32 +60,15 @@ pub fn symbolic_to_algebraic<F: PrimeField32>(
     match expr {
         SymbolicExpression::Constant(c) => AlgebraicExpression::Number(*c),
         SymbolicExpression::Add { x, y, .. } => {
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: Box::new(symbolic_to_algebraic(x, columns)),
-                right: Box::new(symbolic_to_algebraic(y, columns)),
-                op: AlgebraicBinaryOperator::Add,
-            })
+            symbolic_to_algebraic(x, columns) + symbolic_to_algebraic(y, columns)
         }
         SymbolicExpression::Sub { x, y, .. } => {
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: Box::new(symbolic_to_algebraic(x, columns)),
-                right: Box::new(symbolic_to_algebraic(y, columns)),
-                op: AlgebraicBinaryOperator::Sub,
-            })
+            symbolic_to_algebraic(x, columns) - symbolic_to_algebraic(y, columns)
         }
         SymbolicExpression::Mul { x, y, .. } => {
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: Box::new(symbolic_to_algebraic(x, columns)),
-                right: Box::new(symbolic_to_algebraic(y, columns)),
-                op: AlgebraicBinaryOperator::Mul,
-            })
+            symbolic_to_algebraic(x, columns) * symbolic_to_algebraic(y, columns)
         }
-        SymbolicExpression::Neg { x, .. } => {
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                expr: Box::new(symbolic_to_algebraic(x, columns)),
-                op: AlgebraicUnaryOperator::Minus,
-            })
-        }
+        SymbolicExpression::Neg { x, .. } => -symbolic_to_algebraic(x, columns),
         SymbolicExpression::Variable(SymbolicVariable { entry, index, .. }) => match entry {
             Entry::Main { offset, part_index } => {
                 assert_eq!(*part_index, 0);

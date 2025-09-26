@@ -128,7 +128,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
     /// Returns an equivalent candidate that is normalized
     /// such that `var` has a coefficient of `1`.
     fn normalized_for_var(&self, var: &V) -> Self {
-        let coefficient = self.expr.coefficient_of_variable(var).unwrap();
+        let coefficient = self
+            .expr
+            .coefficient_of_variable_in_affine_part(var)
+            .unwrap();
 
         // self represents
         // `(coeff * var + X) * (coeff * var + X + offset) = 0`
