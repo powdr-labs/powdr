@@ -115,6 +115,12 @@ impl<F> OriginalAirs<F> {
     pub fn allow_list(&self) -> Vec<VmOpcode> {
         self.opcode_to_air.keys().cloned().collect()
     }
+
+    pub fn airs_by_name(&self) -> impl Iterator<Item = (&String, &SymbolicMachine<F>)> {
+        self.air_name_to_machine
+            .iter()
+            .map(|(name, (machine, _))| (name, machine))
+    }
 }
 
 fn to_option<T>(mut v: Vec<T>) -> Option<T> {
