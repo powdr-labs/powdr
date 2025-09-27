@@ -6,7 +6,7 @@ use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
-use powdr::UniqueReferences;
+use crate::powdr::UniqueReferences;
 use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -17,7 +17,7 @@ use std::io::BufWriter;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use symbolic_machine_generator::statements_to_symbolic_machine;
+use crate::symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
 
@@ -361,9 +361,9 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)
-        .absolute(machine.unique_references().count() as u64);
+        .absolute(machine.constraints.len() as u64);
     metrics::counter!("before_opt_interactions", &labels)
-        .absolute(machine.unique_references().count() as u64);
+        .absolute(machine.bus_interactions.len() as u64);
 
     let machine = optimizer::optimize::<A>(
         machine,
@@ -378,9 +378,9 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("after_opt_constraints", &labels)
-        .absolute(machine.unique_references().count() as u64);
+        .absolute(machine.constraints.len() as u64);
     metrics::counter!("after_opt_interactions", &labels)
-        .absolute(machine.unique_references().count() as u64);
+        .absolute(machine.bus_interactions.len() as u64);
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
