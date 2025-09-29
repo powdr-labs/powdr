@@ -10,8 +10,7 @@ use itertools::Itertools;
 
 use crate::{
     constraint_system::{
-        AlgebraicConstraint, BusInteraction, ComputationMethod, ConstraintRef, ConstraintSystem,
-        DerivedVariable,
+        AlgebraicConstraint, BusInteraction, ConstraintRef, ConstraintSystem, DerivedVariable,
     },
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
@@ -480,13 +479,9 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
                 .fields_mut()
                 .for_each(|expr| expr.substitute_by_known(variable, substitution));
         }
-        ConstraintSystemItem::DerivedVariable(i) => match &mut constraint_system.derived_variables
-            [i]
+        ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
             .computation_method
-        {
-            ComputationMethod::InverseOrZero(e) => e.substitute_by_known(variable, substitution),
-            ComputationMethod::Constant(_) => {}
-        },
+            .substitute_by_known(variable, substitution),
     }
 }
 
@@ -507,13 +502,9 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
                 .fields_mut()
                 .for_each(|expr| expr.substitute_by_unknown(variable, substitution));
         }
-        ConstraintSystemItem::DerivedVariable(i) => match &mut constraint_system.derived_variables
-            [i]
+        ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
             .computation_method
-        {
-            ComputationMethod::InverseOrZero(e) => e.substitute_by_unknown(variable, substitution),
-            ComputationMethod::Constant(_) => {}
-        },
+            .substitute_by_unknown(variable, substitution),
     }
 }
 

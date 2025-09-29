@@ -2,7 +2,7 @@ use crate::{
     effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::RuntimeConstant,
+    runtime_constant::{RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
@@ -21,41 +21,6 @@ pub struct ConstraintSystem<T, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
     pub derived_variables: Vec<DerivedVariable<T, V>>,
-}
-
-#[derive(Clone)]
-pub struct DerivedVariable<T, V> {
-    pub variable: V,
-    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
-}
-
-/// Specifies a way to compute the value of a variable from other variables.
-/// It is generic over the field `T` and the expression type `E`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ComputationMethod<T, E> {
-    /// A constant value.
-    Constant(T),
-    /// The field inverse of an expression if it exists or zero otherwise.
-    InverseOrZero(E),
-}
-
-impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ComputationMethod::Constant(c) => write!(f, "{c}"),
-            ComputationMethod::InverseOrZero(e) => write!(f, "InverseOrZero({e})"),
-        }
-    }
-}
-
-impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
-    /// Returns the set of referenced unknown variables in the computation method. Might contain repetitions.
-    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &F> + '_> {
-        match self {
-            ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
-            ComputationMethod::InverseOrZero(e) => e.referenced_unknown_variables(),
-        }
-    }
 }
 
 impl<T, V> Default for ConstraintSystem<T, V> {
@@ -114,6 +79,69 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
         self.derived_variables.extend(system.derived_variables);
+    }
+}
+
+#[derive(Clone)]
+pub struct DerivedVariable<T, V> {
+    pub variable: V,
+    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+}
+
+/// Specifies a way to compute the value of a variable from other variables.
+/// It is generic over the field `T` and the expression type `E`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ComputationMethod<T, E> {
+    /// A constant value.
+    Constant(T),
+    /// The field inverse of an expression if it exists or zero otherwise.
+    InverseOrZero(E),
+}
+
+impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComputationMethod::Constant(c) => write!(f, "{c}"),
+            ComputationMethod::InverseOrZero(e) => write!(f, "InverseOrZero({e})"),
+        }
+    }
+}
+
+impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
+    /// Returns the set of referenced unknown variables in the computation method. Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &F> + '_> {
+        match self {
+            ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
+            ComputationMethod::InverseOrZero(e) => e.referenced_unknown_variables(),
+        }
+    }
+}
+
+impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
+    ComputationMethod<T, GroupedExpression<T, V>>
+{
+    /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
+    /// If it was already known, it will be substituted in the known expressions.
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
+        match self {
+            ComputationMethod::Constant(_) => {}
+            ComputationMethod::InverseOrZero(e) => {
+                e.substitute_by_known(variable, substitution);
+            }
+        }
+    }
+
+    /// Substitute an unknown variable by a GroupedExpression.
+    ///
+    /// Note this does NOT work properly if the variable is used inside a
+    /// known SymbolicExpression.
+    pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
+        match self {
+            ComputationMethod::Constant(_) => {}
+            ComputationMethod::InverseOrZero(e) => {
+                e.substitute_by_unknown(variable, substitution);
+            }
+        }
     }
 }
 
