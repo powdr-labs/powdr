@@ -123,10 +123,19 @@ fn single_loadh() {
 #[test]
 fn single_loadb() {
     let program = [
-        // Load [x2 + 3]_2 into x8 but `needs_write=0`
-        loadb(0, 2, 3, 2, 0, 0),
+        // Load [x2 + 3]_2 into x8
+        loadb(8, 2, 3, 2, 1, 0),
     ];
     assert_machine_output(program.to_vec(), "single_loadb");
+}
+
+#[test]
+fn single_loadb_x0() {
+    let program = [
+        // Load [x2 + 3]_2 into x0, i.e. `needs_write=0`
+        loadb(0, 2, 3, 2, 0, 0),
+    ];
+    assert_machine_output(program.to_vec(), "single_loadb_x0");
 }
 
 // Branch Eq Chip instructions
