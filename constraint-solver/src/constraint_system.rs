@@ -23,7 +23,11 @@ pub struct ConstraintSystem<T, V> {
     pub derived_variables: Vec<DerivedVariable<T, V>>,
 }
 
-pub type DerivedVariable<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
+#[derive(Clone)]
+pub struct DerivedVariable<T, V> {
+    pub variable: V,
+    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+}
 
 /// Specifies a way to compute the value of a variable from other variables.
 /// It is generic over the field `T` and the expression type `E`.
@@ -77,11 +81,12 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                         .iter()
                         .map(|bus_inter| format!("{bus_inter}"))
                 )
-                .chain(
-                    self.derived_variables
-                        .iter()
-                        .map(|(var, method)| { format!("{var} := {method}") })
-                )
+                .chain(self.derived_variables.iter().map(
+                    |DerivedVariable {
+                         variable,
+                         computation_method,
+                     }| { format!("{variable} := {computation_method}") }
+                ))
                 .format("\n")
         )
     }

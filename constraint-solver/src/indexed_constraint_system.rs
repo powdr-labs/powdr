@@ -11,6 +11,7 @@ use itertools::Itertools;
 use crate::{
     constraint_system::{
         AlgebraicConstraint, BusInteraction, ComputationMethod, ConstraintRef, ConstraintSystem,
+        DerivedVariable,
     },
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
@@ -225,10 +226,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     }
 
     /// Removes all derived variables that do not fulfill the predicate.
-    pub fn retain_derived_variables(
-        &mut self,
-        mut f: impl FnMut(&(V, ComputationMethod<T, GroupedExpression<T, V>>)) -> bool,
-    ) {
+    pub fn retain_derived_variables(&mut self, mut f: impl FnMut(&DerivedVariable<T, V>) -> bool) {
         retain(
             &mut self.constraint_system.derived_variables,
             &mut self.variable_occurrences,
@@ -445,11 +443,19 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
         // We ignore the derived variable itself because it is not a constraint
         // and does not matter in substitutions (if we substitute the derived
         // variable it is deleted in a later step).
-        .flat_map(|(i, (_, expr))| {
-            expr.referenced_unknown_variables()
-                .unique()
-                .map(move |v| (v.clone(), ConstraintSystemItem::DerivedVariable(i)))
-        });
+        .flat_map(
+            |(
+                i,
+                DerivedVariable {
+                    computation_method, ..
+                },
+            )| {
+                computation_method
+                    .referenced_unknown_variables()
+                    .unique()
+                    .map(move |v| (v.clone(), ConstraintSystemItem::DerivedVariable(i)))
+            },
+        );
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
         .chain(occurrences_in_derived_variables)
@@ -476,7 +482,7 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
         }
         ConstraintSystemItem::DerivedVariable(i) => match &mut constraint_system.derived_variables
             [i]
-            .1
+            .computation_method
         {
             ComputationMethod::InverseOrZero(e) => e.substitute_by_known(variable, substitution),
             ComputationMethod::Constant(_) => {}
@@ -503,7 +509,7 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
         }
         ConstraintSystemItem::DerivedVariable(i) => match &mut constraint_system.derived_variables
             [i]
-            .1
+            .computation_method
         {
             ComputationMethod::InverseOrZero(e) => e.substitute_by_unknown(variable, substitution),
             ComputationMethod::Constant(_) => {}
@@ -824,24 +830,26 @@ mod tests {
 
     #[test]
     fn substitute_in_deried_columns() {
-        let mut system: IndexedConstraintSystem<_, _> = ConstraintSystem::<
-            GoldilocksField,
-            &'static str,
-        > {
-            algebraic_constraints: vec![],
-            bus_interactions: vec![],
-            derived_variables: vec![
-                (
-                    "d1",
-                    ComputationMethod::InverseOrZero(GroupedExpression::from_unknown_variable("x")),
-                ),
-                (
-                    "d2",
-                    ComputationMethod::InverseOrZero(GroupedExpression::from_unknown_variable("y")),
-                ),
-            ],
-        }
-        .into();
+        let mut system: IndexedConstraintSystem<_, _> =
+            ConstraintSystem::<GoldilocksField, &'static str> {
+                algebraic_constraints: vec![],
+                bus_interactions: vec![],
+                derived_variables: vec![
+                    DerivedVariable {
+                        variable: "d1",
+                        computation_method: ComputationMethod::InverseOrZero(
+                            GroupedExpression::from_unknown_variable("x"),
+                        ),
+                    },
+                    DerivedVariable {
+                        variable: "d2",
+                        computation_method: ComputationMethod::InverseOrZero(
+                            GroupedExpression::from_unknown_variable("y"),
+                        ),
+                    },
+                ],
+            }
+            .into();
         // We first substitute `y` by an expression that contains `x` such that when we
         // substitute `x` in the next step, `d2` has to be updated again.
         system.substitute_by_unknown(
