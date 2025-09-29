@@ -39,7 +39,7 @@ pub fn convert_machine_field_type<T, U>(
                         convert_expression(e, convert_field_element),
                     ),
                 };
-                (v.clone(), method)
+                (v, method)
             })
             .collect(),
     }

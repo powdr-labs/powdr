@@ -100,7 +100,7 @@ enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     /// A reference to a bus interaction.
     BusInteraction(usize),
-    /// A reference to a derived variable. This is only used internal to the
+    /// A reference to a derived variable. This is only used internally to the
     /// IndexedConstraintSystem.
     DerivedVariable(usize),
 }
@@ -126,12 +126,9 @@ impl ConstraintSystemItem {
         }
     }
 
-    /// Returns true if this constraint system item is an actual constraint and not a derived variable.
-    fn is_constraint(&self) -> bool {
-        matches!(
-            self,
-            ConstraintSystemItem::AlgebraicConstraint(_) | ConstraintSystemItem::BusInteraction(_)
-        )
+    /// Returns true if this constraint system item is a derived variable instead of an actual constraint.
+    fn is_derived_variable(&self) -> bool {
+        matches!(self, ConstraintSystemItem::DerivedVariable(_))
     }
 
     /// Turns this indexed-based item into a reference to the actual constraint.
@@ -445,7 +442,7 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
         .derived_variables
         .iter()
         .enumerate()
-        // We ignore the derived variables itself because it is not a constraint
+        // We ignore the derived variable itself because it is not a constraint
         // and does not matter in substitutions (if we substitute the derived
         // variable it is deleted in a later step).
         .flat_map(|(i, (_, expr))| {
@@ -561,7 +558,7 @@ where
     pub fn variable_updated(&mut self, variable: &V) {
         if let Some(items) = self.constraint_system.variable_occurrences.get(variable) {
             for item in items {
-                if item.is_constraint() {
+                if !item.is_derived_variable() {
                     self.queue.push(*item);
                 }
             }
@@ -675,7 +672,7 @@ impl ConstraintSystemQueue {
     }
 
     fn push(&mut self, item: ConstraintSystemItem) {
-        assert!(item.is_constraint());
+        assert!(!item.is_derived_variable());
         if self.in_queue.len() <= item.flat_constraint_id() {
             self.in_queue.resize(item.flat_constraint_id() + 1, false);
         }
