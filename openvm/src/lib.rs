@@ -194,7 +194,7 @@ where
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     extension.airs.clone(),
-                    extension.base_config.sdk_config.clone(),
+                    extension.base_config.clone(),
                     shared_chips_pair.clone(),
                 ),
                 PrecompileImplementation::PlonkChip => todo!(),
